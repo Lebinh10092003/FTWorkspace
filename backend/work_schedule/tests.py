@@ -51,7 +51,7 @@ class WorkScheduleSheetParserTests(TestCase):
             ]),
             "Trực tiếp: 09:30 - 12:00\nTrực tiếp: 13:30 - 18:00\nOnline: 20:00 - 23:00",
         )
-        self.assertEqual(_attendance_value([Shift("direct", time(0), time(0), True)]), "Nghỉ")
+        self.assertEqual(_attendance_value([Shift("direct", time(0), time(0), True)]), "")
 
     def test_attendance_column_does_not_shift_assessment_or_hidden_metadata(self):
         columns = {

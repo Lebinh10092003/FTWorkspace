@@ -441,6 +441,9 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     [error, setError] = useState("");
   const savingTaskRef = useRef(false);
   const localEditSeqRef = useRef(0);
+  const loadSeqRef = useRef(0);
+  const pendingMutationCountRef = useRef(0);
+  const movingTaskIdsRef = useRef(new Set<number>());
   const [sheetUrl, setSheetUrl] = useState(""),
     [sheetNotice, setSheetNotice] = useState("");
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(mondayOf(weekStart), index)), [weekStart]);
@@ -456,6 +459,15 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Không thể xử lý lịch làm việc.");
     return data;
+  };
+  const mutationJson = async (url: string, options: RequestInit) => {
+    localEditSeqRef.current += 1;
+    pendingMutationCountRef.current += 1;
+    try {
+      return await requestJson(url, options);
+    } finally {
+      pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
+    }
   };
   const navigateSchedule = (nextView: View, nextPeriod = calendarPeriod) => {
     setView(nextView);
@@ -473,12 +485,20 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
   const load = async (silent = false) => {
+    // A background refresh must never replace an optimistic edit with the DB
+    // snapshot taken just before that edit finished saving.
+    if (silent && pendingMutationCountRef.current > 0) return;
+    const loadSeq = ++loadSeqRef.current;
     if (!silent) setLoading(true);
     setError("");
     const editSeq = localEditSeqRef.current;
     try {
       const [items, people, team] = await Promise.all([requestJson("/api/work-schedule/items"), requestJson("/api/auth/assignable-staff"), requestJson("/api/work-schedule/team")]);
-      if (silent && editSeq !== localEditSeqRef.current) return;
+      if (
+        loadSeq !== loadSeqRef.current
+        || editSeq !== localEditSeqRef.current
+        || pendingMutationCountRef.current > 0
+      ) return;
       const nextTasks = Array.isArray(items.items) ? items.items : [];
       const nextStaff = Array.isArray(people) ? people : [];
       const nextTeamMembers = Array.isArray(team.members) ? team.members : [];
@@ -492,13 +512,15 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
       if (userRole === "ADMIN") setSheetUrl(current => current || String(items.sheetUrl || team.sheetUrl || ""));
       workScheduleSnapshot = { owner: userEmail, savedAt: Date.now(), tasks: nextTasks, staff: nextStaff, teamMembers: nextTeamMembers, teamTasks: nextTeamTasks, retentionStart: nextRetentionStart };
     } catch (cause: any) {
-      setError(cause.message || "Không thể tải lịch làm việc.");
+      if (loadSeq === loadSeqRef.current && editSeq === localEditSeqRef.current) {
+        setError(cause.message || "Không thể tải lịch làm việc.");
+      }
     } finally {
-      if (!silent) setLoading(false);
+      if (loadSeq === loadSeqRef.current) setLoading(false);
     }
   };
   const syncSheet = async () => {
-    const data = await requestJson("/api/work-schedule/sync", {
+    const data = await mutationJson("/api/work-schedule/sync", {
       method: "POST",
       body: JSON.stringify({ direction: "both" }),
     });
@@ -565,7 +587,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     try {
       const assignees = !editing.id && editing.assignmentMode ? (editing.executorEmails || []).filter(Boolean) : [editing.executorEmail];
       if (!assignees.length) throw new Error("Vui lòng chọn ít nhất một nhân viên nhận việc.");
-      const data = await requestJson(editing.id ? `/api/work-schedule/items/${editing.id}` : "/api/work-schedule/items", {
+      const data = await mutationJson(editing.id ? `/api/work-schedule/items/${editing.id}` : "/api/work-schedule/items", {
         method: editing.id ? "PATCH" : "POST",
         body: JSON.stringify(editing.assignmentMode ? { ...editing, executorEmails: assignees } : editing),
       });
@@ -587,15 +609,16 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
       setSavingTask(false);
     }
   };
-  const saveInlineDay = (date: string, items: Array<{ id?: number; title: string; progressNote: string; status: WorkStatus; dailyOrder: number }>, deleteIds: number[], executorEmail?: string, leaderAssessment?: string) =>
-    requestJson("/api/work-schedule/day", {
+  const saveInlineDay = async (date: string, items: Array<{ id?: number; title: string; progressNote: string; status: WorkStatus; dailyOrder: number }>, deleteIds: number[], executorEmail?: string, leaderAssessment?: string) => {
+    return mutationJson("/api/work-schedule/day", {
       method: "POST",
       body: JSON.stringify({ date, items, deleteIds, executorEmail, ...(leaderAssessment !== undefined ? { leaderAssessment } : {}) }),
     });
+  };
   const saveProgressNote = async (draft = editing) => {
     if (!draft?.id) return;
     try {
-      const data = await requestJson(`/api/work-schedule/items/${draft.id}`, {
+      const data = await mutationJson(`/api/work-schedule/items/${draft.id}`, {
         method: "PATCH",
         body: JSON.stringify({ progressNote: draft.progressNote }),
       });
@@ -607,7 +630,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     }
   };
   const changeTaskDates = async (ids: number[], date: string) => {
-    await requestJson("/api/work-schedule/items/batch", {
+    await mutationJson("/api/work-schedule/items/batch", {
       method: "POST",
       body: JSON.stringify({ ids, action: "date", date }),
     });
@@ -630,7 +653,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
   };
   const batchAddPeople = async (mode: "supporters" | "managers", emails: string[]) => {
     try {
-      await requestJson("/api/work-schedule/items/batch", {
+      await mutationJson("/api/work-schedule/items/batch", {
         method: "POST",
         body: JSON.stringify({ ids: selectedIds, action: mode === "supporters" ? "add_supporters" : "add_managers", emails }),
       });
@@ -661,11 +684,11 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     if (!confirmed) return;
     try {
       if (ids.length === 1)
-        await requestJson(`/api/work-schedule/items/${ids[0]}`, {
+        await mutationJson(`/api/work-schedule/items/${ids[0]}`, {
           method: "DELETE",
         });
       else
-        await requestJson("/api/work-schedule/items/batch", {
+        await mutationJson("/api/work-schedule/items/batch", {
           method: "POST",
           body: JSON.stringify({ ids, action: "delete" }),
         });
@@ -682,7 +705,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
   };
   const batchStatus = async (nextStatus: "todo" | "doing" | "completed") => {
     try {
-      await requestJson("/api/work-schedule/items/batch", {
+      await mutationJson("/api/work-schedule/items/batch", {
         method: "POST",
         body: JSON.stringify({
           ids: selectedIds,
@@ -708,7 +731,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
       return;
     }
     try {
-      await requestJson(`/api/work-schedule/items/${draft.id}/review`, {
+      await mutationJson(`/api/work-schedule/items/${draft.id}/review`, {
         method: "POST",
         body: JSON.stringify({
           action,
@@ -733,7 +756,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     });
     if (value === null) return;
     try {
-      await requestJson("/api/work-schedule/items/batch", {
+      await mutationJson("/api/work-schedule/items/batch", {
         method: "POST",
         body: JSON.stringify({
           ids: selectedIds,
@@ -754,9 +777,16 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     const task = tasks.find((item) => item.id === draggedId);
     setDraggedId(null);
     if (!task || !task.canEdit || task.status === "reviewed") return;
-    localEditSeqRef.current += 1;
-    const previousTasks = tasks,
-      targetDate = patch.date || task.date,
+    if (patch.status === "reviewed") {
+      void appDialog.alert("Nhiệm vụ chỉ chuyển sang Đã review sau khi lãnh đạo xác nhận kết quả.", {
+        title: "Không thể chuyển trực tiếp",
+        tone: "info",
+      });
+      return;
+    }
+    if (movingTaskIdsRef.current.has(task.id)) return;
+    movingTaskIdsRef.current.add(task.id);
+    const targetDate = patch.date || task.date,
       nextOrder = Math.max(0, ...tasks.filter((item) => item.executor.email === task.executor.email && item.date === targetDate && item.id !== task.id).map((item) => item.dailyOrder)) + 1;
     setTasks((rows) =>
       rows.map((item) =>
@@ -771,23 +801,32 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
           : item,
       ),
     );
-    const draft = {
-      ...draftFromTask(task),
-      ...patch,
-      status: (patch.status === "reviewed" ? task.status : patch.status || task.status) as Exclude<WorkStatus, "reviewed">,
-    };
     try {
-      await requestJson(`/api/work-schedule/items/${task.id}`, {
+      const data = await mutationJson(`/api/work-schedule/items/${task.id}`, {
         method: "PATCH",
-        body: JSON.stringify(draft),
+        // Only send the field represented by the drop. Sending a full, stale
+        // task draft could overwrite another edit made at nearly the same time.
+        body: JSON.stringify({
+          ...(patch.date ? { date: targetDate } : {}),
+          ...(patch.status ? { status: patch.status } : {}),
+        }),
       });
-      void load(true);
+      if (data.item) {
+        setTasks((rows) => rows.map((item) => item.id === task.id ? data.item : item));
+        setTeamTasks((rows) => rows.map((item) => item.id === task.id ? data.item : item));
+      }
     } catch (cause: any) {
-      setTasks(previousTasks);
+      // Roll back only this task so a failed request cannot undo other drops
+      // that completed while it was in flight.
+      setTasks((rows) => rows.map((item) => item.id === task.id ? task : item));
+      setTeamTasks((rows) => rows.map((item) => item.id === task.id ? task : item));
       void appDialog.alert(cause.message, {
         title: "Không thể di chuyển lịch",
         tone: "danger",
       });
+    } finally {
+      movingTaskIdsRef.current.delete(task.id);
+      if (pendingMutationCountRef.current === 0) void load(true);
     }
   };
   const navItems: Array<{ id: View; label: string; icon: React.ElementType }> = [
@@ -1648,8 +1687,10 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
           <td className="border-b border-r border-slate-400 p-0"><ImportantWorkContentEditor value={draft.content} tasks={workItems} onInput={(event) => resizeGridTextarea(event.currentTarget)} onChange={(event) => updateCell(row.key, { content: event.target.value })} onBlur={() => void saveTable()} className={editorClass} /></td>
           <td className="border-b border-r border-slate-400 p-0"><textarea ref={resizeGridTextarea} value={draft.selfAssessment} onInput={(event) => resizeGridTextarea(event.currentTarget)} onChange={(event) => updateCell(row.key, { selfAssessment: event.target.value })} onBlur={() => void saveTable()} placeholder="1. Ghi chú tiến trình hiện tại" className={`${editorClass} text-xs ${compactSelfAssessment ? "content-center text-center font-bold text-emerald-700" : ""}`} /></td>
           {!people && <td onDoubleClick={() => void openAttendanceEditor(row.date)} title="Bấm đúp để chỉnh sửa công ca" className="cursor-pointer border-b border-r border-slate-400 px-3 py-2 align-middle text-xs leading-6 text-slate-700 hover:bg-emerald-50/60">
-            {(attendanceByDate[row.date] || []).length
-              ? (attendanceByDate[row.date] || []).map((shift, index) => <div key={index} className={shift.isDayOff ? "font-bold text-amber-700" : "font-semibold"}>{shift.isDayOff ? "Nghỉ" : `${shift.workMode === "online" ? "Online" : "Trực tiếp"}: ${shift.shiftStart} - ${shift.shiftEnd}`}</div>)
+            {(attendanceByDate[row.date] || []).some((shift) => !shift.isDayOff)
+              ? (attendanceByDate[row.date] || []).filter((shift) => !shift.isDayOff).map((shift, index) => <div key={index} className="font-semibold">{`${shift.workMode === "online" ? "Online" : "Trực tiếp"}: ${shift.shiftStart} - ${shift.shiftEnd}`}</div>)
+              : (attendanceByDate[row.date] || []).some((shift) => shift.isDayOff)
+                ? null
               : <span className="text-slate-300">—</span>}
           </td>}
           <td className="border-b border-slate-400 p-0"><textarea ref={resizeGridTextarea} readOnly={!canReviewDay} value={draft.leaderAssessment} onInput={(event) => resizeGridTextarea(event.currentTarget)} onChange={(event) => updateCell(row.key, { leaderAssessment: event.target.value })} onBlur={() => void saveTable()} placeholder="Chưa đánh giá" className={`${editorClass} text-xs ${canReviewDay ? "" : "bg-slate-50/50 text-slate-600"} ${compactLeaderAssessment ? "content-center text-center font-bold text-violet-700" : ""}`} /></td>

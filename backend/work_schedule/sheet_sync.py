@@ -326,7 +326,7 @@ def _attendance_value(entries):
     if not entries:
         return ""
     if any(entry.is_day_off for entry in entries):
-        return "Nghỉ"
+        return ""
     return "\n".join(
         f"{'Online' if entry.work_mode == 'online' else 'Trực tiếp'}: "
         f"{entry.shift_start.strftime('%H:%M')} - {entry.shift_end.strftime('%H:%M')}"
