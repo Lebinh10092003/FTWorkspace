@@ -364,6 +364,48 @@ class WorkScheduleApiTests(TestCase):
         self.assertEqual(deleted.status_code, 200, deleted.data)
         self.assertFalse(WorkItem.objects.filter(pk=item["id"]).exists())
 
+    def test_executor_can_delete_manager_assigned_work_from_day_table(self):
+        item = self.create_item()
+
+        deleted = self.request(self.executor_token, "post", "/api/work-schedule/day", {
+            "date": item["date"],
+            "items": [],
+            "deleteIds": [item["id"]],
+        })
+
+        self.assertEqual(deleted.status_code, 200, deleted.data)
+        self.assertFalse(WorkItem.objects.filter(pk=item["id"]).exists())
+
+    def test_executor_can_delete_manager_assigned_training_work_from_day_table(self):
+        from digital_training.models import TrainingSession
+
+        session = TrainingSession.objects.create(
+            title="Tập huấn B3 TH Kim Đồng",
+            session_date="2026-09-12",
+            start_time=time(7, 30),
+            end_time=time(12, 30),
+            source=TrainingSession.SOURCE_WORK_SCHEDULE,
+        )
+        item = WorkItem.objects.create(
+            creator=self.manager,
+            executor=self.executor,
+            title=session.title,
+            work_date=session.session_date,
+            training_session=session,
+            daily_order=1,
+        )
+        item.managers.add(self.manager)
+
+        deleted = self.request(self.executor_token, "post", "/api/work-schedule/day", {
+            "date": str(item.work_date),
+            "items": [],
+            "deleteIds": [item.id],
+        })
+
+        self.assertEqual(deleted.status_code, 200, deleted.data)
+        self.assertFalse(WorkItem.objects.filter(pk=item.id).exists())
+        self.assertFalse(TrainingSession.objects.filter(pk=session.id).exists())
+
     def test_progress_note_can_be_updated_independently_in_any_status(self):
         item = self.create_item()
         WorkItem.objects.filter(pk=item["id"]).update(status="reviewed", reviewed_at=timezone.now())

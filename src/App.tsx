@@ -659,9 +659,9 @@ export default function App() {
     return (
       <div className={`workspace-theme workspace-theme-${appearance.theme} min-h-dvh liquid-bg flex flex-col font-sans relative overflow-x-hidden`} style={workspaceAppearanceStyle(appearance)}>
         <header className="sticky top-0 z-30 w-full glass-panel border-b border-white/50">
-          <div className="relative mx-auto flex h-20 max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-8">
-            <div className="flex h-full shrink-0 items-stretch">
-              <img src="/logo.png" alt="FermatTech Logo" className="h-full w-auto object-contain" />
+          <div className="relative mx-auto flex max-w-[1600px] items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex shrink-0 items-center">
+              <img src="/logo.png" alt="FermatTech Logo" className="h-12 w-auto object-contain" />
             </div>
             <div className="pointer-events-none absolute left-1/2 max-w-[48vw] -translate-x-1/2 truncate whitespace-nowrap text-center">
               <h1 className="workspace-title text-sm font-extrabold tracking-tight sm:text-lg lg:text-2xl">

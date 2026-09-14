@@ -456,8 +456,20 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
         ...(options.headers || {}),
       },
     });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Không thể xử lý lịch làm việc.");
+    const responseText = await response.text();
+    let data: any = {};
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = {};
+    }
+    if (!response.ok) {
+      const unavailable = response.status >= 500;
+      const fallback = unavailable
+        ? "Máy chủ tạm thời không thể lưu lịch. Nội dung bạn vừa nhập vẫn được giữ; vui lòng bấm Lưu bảng để thử lại."
+        : `Không thể xử lý lịch làm việc (mã ${response.status}).`;
+      throw new Error(data.error || data.detail || fallback);
+    }
     return data;
   };
   const mutationJson = async (url: string, options: RequestInit) => {
