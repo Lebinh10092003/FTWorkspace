@@ -35,7 +35,10 @@ from .models import (
     Department, JobTitle, SystemConfig, UserLogin, UserProfile,
     WorkspaceNotification, WorkspaceNotificationRead,
 )
-from .notifications import notification_visible_to, notify_workspace
+from .notifications import (
+    max_notification_cutoff, notification_visible_to, notify_workspace,
+    read_notification_cutoff,
+)
 from .monthly_sheets import (
     MODULES as MONTHLY_SHEET_MODULES,
     get_monthly_sheet_links,
@@ -1093,7 +1096,12 @@ def workspace_notifications(request):
             target_modules=["social-dashboard"],
             expires_at=token_notice["expiresAtValue"] + timedelta(days=7),
         )
-    rows = WorkspaceNotification.objects.prefetch_related("read_receipts").all()[:250]
+    rows = WorkspaceNotification.objects.filter(
+        created_at__gt=max_notification_cutoff(),
+    ).exclude(
+        read_receipts__user=profile,
+        read_receipts__read_at__lte=read_notification_cutoff(),
+    ).prefetch_related("read_receipts").all()[:250]
     visible = [item for item in rows if notification_visible_to(item, profile)][:100]
     read_ids = set(WorkspaceNotificationRead.objects.filter(user=profile, notification__in=visible).values_list("notification_id", flat=True))
     return Response({
@@ -1120,7 +1128,12 @@ def read_workspace_notification(request, notification_id):
 @api_view(["POST"])
 @permission_classes([IsWorkspaceAuthenticated])
 def read_all_workspace_notifications(request):
-    rows = [item for item in WorkspaceNotification.objects.all()[:250] if notification_visible_to(item, request.user)]
+    rows = [
+        item for item in WorkspaceNotification.objects.filter(
+            created_at__gt=max_notification_cutoff()
+        )[:250]
+        if notification_visible_to(item, request.user)
+    ]
     WorkspaceNotificationRead.objects.bulk_create(
         [WorkspaceNotificationRead(notification=item, user=request.user) for item in rows],
         ignore_conflicts=True,

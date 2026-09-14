@@ -5,7 +5,8 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import JobTitle, UserProfile, WorkspaceNotification
+from .models import JobTitle, UserProfile, WorkspaceNotification, WorkspaceNotificationRead
+from .notifications import purge_read_workspace_notifications
 
 
 class JobTitleAndNotificationTests(TestCase):
@@ -65,6 +66,65 @@ class JobTitleAndNotificationTests(TestCase):
         WorkspaceNotification.objects.create(event_key="work-item:43", title="Việc khác", message="Nội dung")
         self.assertEqual(self.client.post("/api/notifications/read-all").status_code, 200)
         self.assertEqual(self.client.get("/api/notifications").data["unreadCount"], 0)
+
+    def test_read_notification_disappears_for_that_user_after_seven_days(self):
+        notification = WorkspaceNotification.objects.create(
+            event_key="read-retention", title="Đã đọc", message="Nội dung",
+        )
+        receipt = WorkspaceNotificationRead.objects.create(notification=notification, user=self.admin)
+        WorkspaceNotificationRead.objects.filter(pk=receipt.pk).update(
+            read_at=timezone.now() - timedelta(days=8)
+        )
+
+        response = self.client.get("/api/notifications")
+
+        self.assertEqual(response.data["notifications"], [])
+        self.assertEqual(response.data["unreadCount"], 0)
+
+    def test_shared_notification_is_kept_until_every_recipient_has_read_for_seven_days(self):
+        first = UserProfile.objects.create(
+            email="first@example.test", role="EMPLOYEE", access_modules=["work-schedule"]
+        )
+        second = UserProfile.objects.create(
+            email="second@example.test", role="EMPLOYEE", access_modules=["work-schedule"]
+        )
+        notification = WorkspaceNotification.objects.create(
+            event_key="shared-retention", title="Dùng chung", message="Nội dung",
+            target_emails=[first.email, second.email],
+        )
+        old = timezone.now() - timedelta(days=8)
+        for user in (self.admin, first):
+            receipt = WorkspaceNotificationRead.objects.create(notification=notification, user=user)
+            WorkspaceNotificationRead.objects.filter(pk=receipt.pk).update(read_at=old)
+
+        result = purge_read_workspace_notifications()
+
+        self.assertEqual(result["notificationsDeleted"], 0)
+        self.assertTrue(WorkspaceNotification.objects.filter(pk=notification.pk).exists())
+        self.client.force_authenticate(first)
+        self.assertEqual(self.client.get("/api/notifications").data["notifications"], [])
+        self.client.force_authenticate(second)
+        self.assertEqual(self.client.get("/api/notifications").data["unreadCount"], 1)
+
+        receipt = WorkspaceNotificationRead.objects.create(notification=notification, user=second)
+        WorkspaceNotificationRead.objects.filter(pk=receipt.pk).update(read_at=old)
+        result = purge_read_workspace_notifications()
+        self.assertEqual(result["notificationsDeleted"], 1)
+        self.assertFalse(WorkspaceNotification.objects.filter(pk=notification.pk).exists())
+
+    def test_unread_notification_is_deleted_after_twenty_one_days(self):
+        notification = WorkspaceNotification.objects.create(
+            event_key="absolute-retention", title="Chưa đọc", message="Nội dung",
+        )
+        WorkspaceNotification.objects.filter(pk=notification.pk).update(
+            created_at=timezone.now() - timedelta(days=22)
+        )
+
+        self.assertEqual(self.client.get("/api/notifications").data["notifications"], [])
+        result = purge_read_workspace_notifications()
+
+        self.assertEqual(result["expiredOrMaxAgeDeleted"], 1)
+        self.assertFalse(WorkspaceNotification.objects.filter(pk=notification.pk).exists())
 
     @patch("authentication.views._token_notification_payloads")
     def test_social_token_warning_targets_users_with_social_access(self, payloads):
