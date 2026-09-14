@@ -20,7 +20,7 @@ import AccountMenu from "./AccountMenu";
 import SearchableSelect from "./SearchableSelect";
 import { matchesSearch } from "../lib/searchText";
 import { DateBadge, DeadlineLegend as Legend, Metric, SessionsTable, TimeField, dateValue, emptyDate, todayIso, sessionDisplayName, sessionTimelineLabel, sessionRecencyKey, formatGrade, BirthDateControl, LIST_PAGE_SIZE, TablePagination } from "./examination/ui";
-import { sessionRounds } from "./examination/rounds";
+import { roundDates, sessionRounds } from "./examination/rounds";
 import { examinationPathFor, examinationRouteFromPath } from "./examination/routes";
 const emptyCandidate: Candidate = {
   code: "",
@@ -399,8 +399,8 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
   };
   const sortedDatedRounds = (session: Session) =>
     sessionRounds(session)
-      .filter((round) => /^\d{4}-\d{2}-\d{2}$/.test(String(round.date || "")))
-      .sort((left, right) => String(left.date).localeCompare(String(right.date)));
+      .flatMap((round) => roundDates(round).map((date) => ({ ...round, date })))
+      .sort((left, right) => left.date.localeCompare(right.date));
   const finalRound = (session: Session) => {
     const rounds = sortedDatedRounds(session);
     return rounds[rounds.length - 1] || null;
@@ -429,10 +429,14 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     return Math.round((new Date(`${value}T00:00:00`).getTime() - new Date(`${today}T00:00:00`).getTime()) / 86400000);
   };
   const isOverviewSession = (session: Session) => {
+    // A scheduled future round is the source of truth for an active session.
+    // Phase labels are editable and must never hide a real upcoming milestone.
+    if (nextScheduledRound(session)) return true;
     const final = finalRound(session),
       finalOffset = roundDayOffset(final?.date);
     if (finalOffset !== null && finalOffset < -30) return false;
     if (completedPhase(session)) return finalOffset !== null && finalOffset <= 0 && finalOffset >= -30;
+    if (finalOffset !== null) return finalOffset >= -30;
     return trackedPhase(session);
   };
   const overviewSort = (left: Session, right: Session) => {
@@ -464,7 +468,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
   useEffect(() => {
     if (overviewCompetitionFilter && !overviewSourceSessions.some((session) => session.code === overviewCompetitionFilter)) setOverviewCompetitionFilter("");
   }, [overviewCompetitionFilter, overviewSourceSessions]);
-  const overviewChartSessions = useMemo(() => overviewSessions.filter((session) => trackedPhase(session) && !completedPhase(session)), [overviewSessions]);
+  const overviewChartSessions = useMemo(() => overviewSessions.filter((session) => !completedPhase(session)), [overviewSessions]);
   const overviewChartData = useMemo(
     () =>
       overviewChartSessions.map((session) => ({
@@ -474,7 +478,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     [overviewChartSessions],
   );
   const overviewChartWidth = Math.max(760, overviewChartData.length * 180);
-  const milestoneSessions = useMemo(() => overviewSessions.filter((session) => Boolean(nextScheduledRound(session)) && !["tuyen sinh"].includes(overviewPhaseKey(session.phase))), [overviewSessions, today]);
+  const milestoneSessions = useMemo(() => overviewSessions.filter((session) => Boolean(nextScheduledRound(session))), [overviewSessions, today]);
   const sessionMonthKey = (session: Session) => session.nationalDate?.slice(0, 7) || session.internationalDate?.slice(0, 7) || "";
   const sessionYear = (session: Session) => sessionMonthKey(session).slice(0, 4) || session.time.match(/20\d{2}/)?.[0] || "";
   const sessionMonthLabel = (key: string) => (key ? `T${Number(key.slice(5, 7))}/${key.slice(0, 4)}` : "Chưa có thông tin");
