@@ -420,8 +420,13 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
   const trackedPhase = (session: Session) => {
     const phase = overviewPhaseKey(session.phase);
     if (!phase || phase === "chua cap nhat" || phase === "hoan thanh") return false;
-    const permitted = ["tuyen sinh", "chuan bi vong quoc gia", "vong quoc gia", "vong chung ket quoc gia", "cong bo ket qua vong quoc gia", "on tap vong quoc gia", "on tap vong quoc te", "vong quoc te", "tong hop ket qua", "cong bo ket qua", "cong bo ket qua, phuc khao", "vinh danh"];
-    return permitted.some((item) => phase === item || phase.startsWith(item + " "));
+    // Preparation/communications do not yet have a candidate population to
+    // monitor. Track recruitment, actual round/revision phases and the
+    // post-round result lifecycle instead of relying on exact editable labels.
+    if (phase.startsWith("chuan bi") || phase.startsWith("truyen thong")) return false;
+    if (phase === "tuyen sinh" || phase.includes("vong")) return true;
+    const resultPhases = ["tong hop ket qua", "cong bo ket qua", "vinh danh"];
+    return resultPhases.some((item) => phase === item || phase.startsWith(item + " ") || phase.startsWith(item + ","));
   };
   const roundDayOffset = (roundDate?: string) => {
     const value = String(roundDate || "");
@@ -429,14 +434,10 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     return Math.round((new Date(`${value}T00:00:00`).getTime() - new Date(`${today}T00:00:00`).getTime()) / 86400000);
   };
   const isOverviewSession = (session: Session) => {
-    // A scheduled future round is the source of truth for an active session.
-    // Phase labels are editable and must never hide a real upcoming milestone.
-    if (nextScheduledRound(session)) return true;
     const final = finalRound(session),
       finalOffset = roundDayOffset(final?.date);
     if (finalOffset !== null && finalOffset < -30) return false;
     if (completedPhase(session)) return finalOffset !== null && finalOffset <= 0 && finalOffset >= -30;
-    if (finalOffset !== null) return finalOffset >= -30;
     return trackedPhase(session);
   };
   const overviewSort = (left: Session, right: Session) => {
