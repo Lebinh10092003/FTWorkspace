@@ -519,7 +519,10 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
   const visibleCompetitions = filteredCompetitions.slice((activeCompetitionPage - 1) * LIST_PAGE_SIZE, activeCompetitionPage * LIST_PAGE_SIZE);
   const nextMilestone = (session: Session) => {
     const round = nextScheduledRound(session);
-    return round ? { label: round.label || round.name, date: String(round.date || "") } : { label: "Chưa có thông tin", date: "" };
+    const date = String(round?.date || "");
+    return round
+      ? { label: round.name || round.label, date, dateLabel: date.split("-").reverse().join("/") }
+      : { label: "Chưa có thông tin", date: "", dateLabel: "Chưa có thông tin" };
   };
   const open = (next: "choice" | "competition" | "session" = "choice", id = "") => {
     setError("");
@@ -1103,7 +1106,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
                     </b>
                     <small className="mt-0.5 block text-xs text-slate-500">{milestone.label}</small>
                   </span>
-                  <DateBadge label={milestone.label} date={milestone.date} />
+                  <DateBadge label={milestone.dateLabel} date={milestone.date} />
                 </button>
               );
             })}
