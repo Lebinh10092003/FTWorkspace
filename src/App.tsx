@@ -221,6 +221,7 @@ export default function App() {
   // Yesterday timesheet warning
   const [yesterdayWarning, setYesterdayWarning] = useState<{ show: boolean; date: string }>({ show: false, date: '' });
   const [dismissPermanent, setDismissPermanent] = useState(false);
+  const [attendanceEditDate, setAttendanceEditDate] = useState('');
 
   const isGuest = !idToken || user.email === GUEST_USER.email;
   const normalisedEmployeeIdentity = [user.jobTitle?.name || '', ...(user.departments || []).map(item => item.name)]
@@ -384,6 +385,13 @@ export default function App() {
         body: JSON.stringify({ workDate: yesterdayWarning.date, isDayOff: true }),
       });
     } catch { /* ignore */ }
+  };
+
+  const editYesterdayTimesheet = () => {
+    const targetDate = yesterdayWarning.date;
+    dismissYesterdayWarning();
+    setAttendanceEditDate(targetDate);
+    setViewMode('attendance');
   };
 
 
@@ -651,9 +659,9 @@ export default function App() {
     return (
       <div className={`workspace-theme workspace-theme-${appearance.theme} min-h-dvh liquid-bg flex flex-col font-sans relative overflow-x-hidden`} style={workspaceAppearanceStyle(appearance)}>
         <header className="sticky top-0 z-30 w-full glass-panel border-b border-white/50">
-          <div className="relative mx-auto flex max-w-[1600px] items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex shrink-0 items-center">
-              <img src="/logo.png" alt="FermatTech Logo" className="h-12 object-contain" />
+          <div className="relative mx-auto flex h-20 max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-8">
+            <div className="flex h-full shrink-0 items-stretch">
+              <img src="/logo.png" alt="FermatTech Logo" className="h-full w-auto object-contain" />
             </div>
             <div className="pointer-events-none absolute left-1/2 max-w-[48vw] -translate-x-1/2 truncate whitespace-nowrap text-center">
               <h1 className="workspace-title text-sm font-extrabold tracking-tight sm:text-lg lg:text-2xl">
@@ -678,24 +686,30 @@ export default function App() {
 
         <main className="z-10 mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           {yesterdayWarning.show && (
-            <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-              <div className="flex items-start gap-3">
-                <TriangleAlert className="mt-0.5 h-6 w-6 shrink-0 text-amber-600" />
-                <div className="flex-1">
-                  <h3 className="text-base font-extrabold text-amber-900">Bạn chưa cập nhật công ca cho ngày {fmtDDMMYYYY(yesterdayWarning.date)}</h3>
-                  <p className="mt-1 text-sm text-amber-800">Vui lòng cập nhật công ca trong thời gian sớm nhất để đảm bảo dữ liệu chấm công chính xác.</p>
-                  <label className="mt-3 flex items-center gap-2 text-xs font-bold text-amber-700">
+            <div className="fixed inset-0 z-[11000] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm">
+              <div role="alertdialog" aria-modal="true" aria-labelledby="timesheet-warning-title" className="w-full max-w-xl overflow-hidden rounded-3xl border border-amber-200 bg-white shadow-2xl">
+                <div className="flex items-start gap-4 border-b border-amber-100 bg-amber-50 px-6 py-5">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-100 text-amber-700">
+                    <TriangleAlert className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 id="timesheet-warning-title" className="text-lg font-extrabold text-amber-950">Bạn chưa cập nhật công ca cho ngày {fmtDDMMYYYY(yesterdayWarning.date)}</h3>
+                    <p className="mt-1 text-sm leading-6 text-amber-800">Vui lòng cập nhật công ca để đảm bảo dữ liệu chấm công chính xác. Bạn cần chọn một thao tác bên dưới để tiếp tục.</p>
+                  </div>
+                </div>
+                <div className="px-6 py-5">
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
                     <input type="checkbox" checked={dismissPermanent} onChange={e => setDismissPermanent(e.target.checked)} className="h-3.5 w-3.5 rounded border-amber-400" />
                     Không nhắc lại cảnh báo này
                   </label>
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <button type="button" onClick={() => { dismissYesterdayWarning(); setViewMode('attendance'); }} className="flex flex-col items-center gap-1.5 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow transition hover:bg-blue-700">
+                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    <button type="button" autoFocus onClick={editYesterdayTimesheet} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow transition hover:bg-blue-700">
                       <CalendarDays className="h-5 w-5" /><span>Cập nhật ngay</span>
                     </button>
-                    <button type="button" onClick={() => void markYesterdayDayOff()} className="flex flex-col items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow transition hover:bg-emerald-700">
+                    <button type="button" onClick={() => void markYesterdayDayOff()} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow transition hover:bg-emerald-700">
                       <Moon className="h-5 w-5" /><span>Hôm qua tôi nghỉ</span>
                     </button>
-                    <button type="button" onClick={dismissYesterdayWarning} className="flex flex-col items-center gap-1.5 rounded-xl bg-rose-600 px-5 py-3 text-sm font-bold text-white shadow transition hover:bg-rose-700">
+                    <button type="button" onClick={dismissYesterdayWarning} className="flex items-center justify-center gap-2 rounded-xl bg-slate-600 px-4 py-3 text-sm font-bold text-white shadow transition hover:bg-slate-700">
                       <TriangleAlert className="h-5 w-5" /><span>Bỏ qua</span>
                     </button>
                   </div>
@@ -867,7 +881,14 @@ export default function App() {
   if (viewMode === 'attendance') {
     return (
       <Suspense fallback={<div className="grid h-screen place-items-center bg-[#f3f5f1]">Đang nạp mô-đun Công ca...</div>}>
-        <Attendance onBackToWorkspace={() => setViewMode('workspace')} idToken={idToken || ''} userName={user.displayName} userEmail={user.email} />
+        <Attendance
+          onBackToWorkspace={() => setViewMode('workspace')}
+          idToken={idToken || ''}
+          userName={user.displayName}
+          userEmail={user.email}
+          initialEditDate={attendanceEditDate}
+          onInitialEditOpened={() => setAttendanceEditDate('')}
+        />
       </Suspense>
     );
   }

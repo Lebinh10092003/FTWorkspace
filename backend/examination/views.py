@@ -14,6 +14,7 @@ from django.utils import timezone
 from .models import Competition, ExamSession, Candidate, CandidateParticipation, RoundResult, ExamRoom, LogNote, ExaminationSheet, ExaminationSheetPublication
 from .eligibility import ELIGIBILITY_ELIGIBLE, normalize_eligibility
 from authentication.models import SystemConfig, UserProfile
+from authentication.notifications import notify_workspace
 from authentication.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsManagerOrAdmin, IsAdmin
 from .sheet_publication import academic_year_for_date, publication_payload, session_academic_year, session_tab_name, sync_publication
 from .sheet_scheduler import output_sheet_has_unreviewed_changes
@@ -1203,6 +1204,12 @@ def competition_create(request):
         created_by=request.user.email if hasattr(request.user, 'email') else None
     )
     append_audit(f'competition-{comp.id}', 'Tạo cuộc thi: ' + audit_values({}, {'code': comp.code, 'name': comp.name, 'parent': comp.parent, 'organizer': comp.organizer}, {'code':'Mã cuộc thi', 'name':'Tên cuộc thi', 'parent':'Cuộc thi mẹ', 'organizer':'Ban tổ chức quốc tế'}), request)
+    notify_examination_staff(
+        event_key=f'examination-competition-created:{comp.id}',
+        title=f'Cuộc thi mới: {comp.code}',
+        message=f'{audit_actor(request)} đã tạo cuộc thi {comp.name}, Ban tổ chức quốc tế {comp.organizer}.',
+        action_url=f'/examination/competitions/{comp.id}',
+    )
     return Response(serialize_competition(comp), status=status.HTTP_201_CREATED)
 
 @api_view(['PUT', 'DELETE'])
@@ -1239,6 +1246,13 @@ def competition_detail(request, pk):
             
         change_text = audit_values(before, {'code': comp.code, 'name': comp.name, 'parent': comp.parent, 'organizer': comp.organizer}, {'code':'Mã cuộc thi', 'name':'Tên cuộc thi', 'parent':'Cuộc thi mẹ', 'organizer':'Ban tổ chức quốc tế'})
         append_audit(f'competition-{comp.id}', 'Cập nhật cuộc thi: ' + (change_text or 'Không có thay đổi dữ liệu.'), request)
+        if change_text:
+            notify_examination_staff(
+                event_key=f'examination-competition-updated:{comp.id}:{uuid.uuid4().hex}',
+                title=f'Đã cập nhật cuộc thi {comp.code}',
+                message=f'{audit_actor(request)} đã cập nhật: {change_text}',
+                action_url=f'/examination/competitions/{comp.id}',
+            )
         return Response(serialize_competition(comp))
         
     elif request.method == 'DELETE':
@@ -1284,6 +1298,26 @@ def _phase_key(value):
         char for char in unicodedata.normalize('NFD', str(value or '').casefold())
         if unicodedata.category(char) != 'Mn'
     ).replace('đ', 'd')
+
+
+def notify_examination_staff(*, event_key, title, message, action_url, severity='info'):
+    """Notify Khảo thí staff, falling back to module access for legacy profiles."""
+    department_members = list(
+        UserProfile.objects.filter(
+            Q(department__name__iexact='Khảo thí') |
+            Q(departments__name__iexact='Khảo thí')
+        ).values_list('email', flat=True).distinct()
+    )
+    return notify_workspace(
+        event_key=event_key,
+        title=title,
+        message=message,
+        severity=severity,
+        category='examination',
+        action_url=action_url,
+        target_emails=department_members,
+        target_modules=[] if department_members else ['examination'],
+    )
 
 
 def _parse_round_date(value):
@@ -1394,6 +1428,14 @@ def refresh_automatic_session_phase(session, current_date=None):
             f'Hệ thống tự chuyển giai đoạn từ "{previous or "Chưa cập nhật"}" thành "{phase}" theo lịch các vòng thi.',
             system=True,
         )
+        effective_date = current_date or timezone.localdate()
+        notify_examination_staff(
+            event_key=f'examination-session-phase:{session.id}:{phase}:{effective_date.isoformat()}',
+            title=f'{session.code}: chuyển sang {phase}',
+            message=f'Kỳ tổ chức {session.name} đã tự chuyển từ “{previous or "Chưa cập nhật"}” sang “{phase}” theo lịch các vòng thi.',
+            action_url=f'/examination/sessions/{session.id}',
+            severity='success' if _phase_key(phase) == 'hoan thanh' else 'info',
+        )
     return phase
 
 @api_view(['POST'])
@@ -1463,6 +1505,12 @@ def session_create(request):
     ensure_output_sheet_source(sess, data.get('outputSheetUrl'), data.get('outputSheetTab'), getattr(request.user, 'email', ''))
     append_audit(f'session-{sess.id}', 'Tạo kỳ tổ chức: ' + audit_values({}, {'name': sess.name, 'competition': comp.code, 'phase': sess.phase, 'rounds': processed_rounds}, {'name':'Tên kỳ tổ chức', 'competition':'Cuộc thi', 'phase':'Giai đoạn', 'rounds':'Các vòng thi'}), request)
     append_audit(f'competition-{comp.id}', 'Tạo kỳ tổ chức: ' + audit_values({}, {'name': sess.name, 'competition': comp.code, 'phase': sess.phase, 'rounds': processed_rounds}, {'name':'Tên kỳ tổ chức', 'competition':'Cuộc thi', 'phase':'Giai đoạn', 'rounds':'Các vòng thi'}), request)
+    notify_examination_staff(
+        event_key=f'examination-session-created:{sess.id}',
+        title=f'Kỳ tổ chức mới: {sess.code}',
+        message=f'{audit_actor(request)} đã tạo kỳ tổ chức {sess.name}.',
+        action_url=f'/examination/sessions/{sess.id}',
+    )
     return Response(serialize_session(sess), status=status.HTTP_201_CREATED)
 
 @api_view(['PUT', 'DELETE'])
@@ -1530,6 +1578,14 @@ def session_detail(request, pk):
         append_competition_scope_audit(sess, 'Cập nhật kỳ tổ chức: ' + (change_text or 'Không có thay đổi dữ liệu.'), request)
         if before.get('competitionId') and before.get('competitionId') != after.get('competitionId'):
             append_audit(f"competition-{before['competitionId']}", f'Kỳ tổ chức {sess.code} · {sess.name} đã chuyển sang cuộc thi khác.', request)
+        important_fields = {'name', 'phase', 'national', 'nationalDate', 'international', 'internationalDate', 'competitionId', 'rounds'}
+        if any(before.get(field) != after.get(field) for field in important_fields):
+            notify_examination_staff(
+                event_key=f'examination-session-updated:{sess.id}:{uuid.uuid4().hex}',
+                title=f'Đã cập nhật kỳ tổ chức {sess.code}',
+                message=f'{audit_actor(request)} đã cập nhật: {change_text}',
+                action_url=f'/examination/sessions/{sess.id}',
+            )
         return Response(serialize_session(sess))
         
     elif request.method == 'DELETE':

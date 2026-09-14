@@ -351,6 +351,19 @@ class WorkScheduleApiTests(TestCase):
         self.assertEqual(deleted.status_code, 200, deleted.data)
         self.assertFalse(WorkItem.objects.filter(pk=first["id"]).exists())
 
+    def test_executor_can_delete_work_assigned_by_manager(self):
+        item = self.create_item()
+        executor_view = self.request(
+            self.executor_token, "get", f"/api/work-schedule/items/{item['id']}"
+        ).json()
+        self.assertTrue(executor_view["canDelete"])
+
+        deleted = self.request(
+            self.executor_token, "delete", f"/api/work-schedule/items/{item['id']}"
+        )
+        self.assertEqual(deleted.status_code, 200, deleted.data)
+        self.assertFalse(WorkItem.objects.filter(pk=item["id"]).exists())
+
     def test_progress_note_can_be_updated_independently_in_any_status(self):
         item = self.create_item()
         WorkItem.objects.filter(pk=item["id"]).update(status="reviewed", reviewed_at=timezone.now())

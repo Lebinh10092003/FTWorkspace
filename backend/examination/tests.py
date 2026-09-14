@@ -1,4 +1,4 @@
-from authentication.models import UserProfile
+from authentication.models import Department, UserProfile, WorkspaceNotification
 from importlib import import_module
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
@@ -992,6 +992,76 @@ class AutomaticSessionPhaseTests(TestCase):
 
         self.session.phase = 'Chờ quyết định Hội đồng'
         self.assertEqual(automatic_session_phase(self.session, date(2026, 11, 1)), 'Chờ quyết định Hội đồng')
+
+
+class ExaminationNotificationTests(TestCase):
+    def setUp(self):
+        department = Department.objects.create(name='Khảo thí', code='EXAM')
+        self.manager = UserProfile.objects.create(
+            email='exam-manager@example.com', name='Exam Manager', role='MANAGER',
+            department=department, access_modules=['examination'],
+        )
+        UserProfile.objects.create(
+            email='other@example.com', name='Other', role='EMPLOYEE',
+            access_modules=['work-schedule'],
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.manager)
+
+    def test_create_and_update_competition_notify_examination_department(self):
+        created = self.client.post('/api/examination/competitions', {
+            'code': 'NEW', 'name': 'New Olympiad', 'organizer': 'International Board',
+        }, format='json')
+        self.assertEqual(created.status_code, 201)
+        notification = WorkspaceNotification.objects.get(event_key=f"examination-competition-created:{created.data['id']}")
+        self.assertEqual(notification.target_emails, ['exam-manager@example.com'])
+        self.assertEqual(notification.action_url, f"/examination/competitions/{created.data['id']}")
+
+        updated = self.client.put(
+            f"/api/examination/competitions/{created.data['id']}",
+            {'organizer': 'Updated International Board'}, format='json',
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(WorkspaceNotification.objects.filter(event_key__startswith='examination-competition-updated:').count(), 1)
+
+    def test_automatic_phase_change_creates_targeted_notification(self):
+        from datetime import date
+        from .views import refresh_automatic_session_phase
+
+        session = ExamSession.objects.create(
+            id='notify-phase', competition_id='', code='NOTICE', name='Notice session',
+            parent='Notice', organizer='FT', time='', sort_key='notify-phase', phase='Vinh danh',
+            rounds=[{'id': 'international', 'name': 'Vòng Quốc tế', 'date': '2026-08-09'}],
+        )
+        refresh_automatic_session_phase(session, date(2026, 9, 13))
+
+        notification = WorkspaceNotification.objects.get(event_key='examination-session-phase:notify-phase:Hoàn thành:2026-09-13')
+        self.assertEqual(notification.target_emails, ['exam-manager@example.com'])
+        self.assertEqual(notification.severity, 'success')
+        self.assertEqual(notification.action_url, '/examination/sessions/notify-phase')
+
+    def test_create_and_important_session_update_create_notifications(self):
+        competition = Competition.objects.create(
+            id='notification-comp', code='NTF', name='Notification Olympiad',
+            parent='NTF', organizer='FT', sort_key='notification-comp',
+        )
+        created = self.client.post('/api/examination/sessions', {
+            'competitionId': competition.id,
+            'name': 'NTF 2027',
+            'national': {'label': 'T5/2027', 'date': '2027-05-10'},
+            'international': {'label': 'T8/2027', 'date': '2027-08-10'},
+            'rounds': [],
+        }, format='json')
+        self.assertEqual(created.status_code, 201)
+        self.assertTrue(WorkspaceNotification.objects.filter(event_key=f"examination-session-created:{created.data['id']}").exists())
+
+        updated = self.client.put(
+            f"/api/examination/sessions/{created.data['id']}",
+            {'phase': 'Ôn tập Vòng quốc tế'}, format='json',
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(WorkspaceNotification.objects.filter(event_key__startswith='examination-session-updated:').count(), 1)
+
 class SheetPublicationTests(TestCase):
     def setUp(self):
         self.user = UserProfile.objects.create(email='sheets-admin@example.com', name='Sheets Admin', role='ADMIN')

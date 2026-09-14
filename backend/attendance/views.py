@@ -3,6 +3,7 @@ import unicodedata
 from datetime import date, datetime, time, timedelta
 
 from django.db import IntegrityError, transaction
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -38,6 +39,33 @@ def _local(value):
 
 def _is_default_day_off(value):
     return value.weekday() >= 5 or (value.month, value.day) in FIXED_HOLIDAYS
+
+
+def _required_timesheet_dates(profiles, start, end):
+    """Weekend dates that become working days because of their work schedule."""
+    from work_schedule.models import WorkItem
+
+    emails = [profile.email for profile in profiles]
+    result = {email: set() for email in emails}
+    if not emails:
+        return result
+    rows = WorkItem.objects.filter(
+        executor_id__in=emails,
+        work_date__gte=start,
+        work_date__lt=end,
+    ).values("executor_id", "work_date").annotate(
+        item_count=Count("id"),
+        training_count=Count("id", filter=Q(training_session__isnull=False)),
+    )
+    for row in rows:
+        work_date = row["work_date"]
+        if (
+            work_date.weekday() >= 5
+            and (work_date.month, work_date.day) not in FIXED_HOLIDAYS
+            and (row["item_count"] >= 3 or row["training_count"] > 0)
+        ):
+            result[row["executor_id"]].add(work_date)
+    return result
 
 
 def _normalized_label(value):
@@ -147,8 +175,8 @@ def _is_privileged(request):
 
 
 def _can_edit_date(request, work_date):
-    """Everyone can edit any date now."""
-    return True
+    """Past and current dates are editable; future attendance is never writable."""
+    return work_date <= timezone.localdate()
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +312,7 @@ def timesheet_list(request):
 
     summary_profiles = list(all_employees) if scope == "all" and privileged else [request.user]
     training_summary = _training_session_counts(summary_profiles, start, end) if _can_show_training_summary(request.user) else {}
+    required_dates = _required_timesheet_dates(summary_profiles, start, end)
 
     return Response({
         "serverTime": _local(timezone.now()).isoformat(),
@@ -301,6 +330,10 @@ def timesheet_list(request):
         "editLogs": [_log_payload(lg) for lg in logs],
         "employees": employees,
         "trainingSummaryByEmployee": training_summary,
+        "requiredTimesheetDatesByEmployee": {
+            email: [work_date.isoformat() for work_date in sorted(dates)]
+            for email, dates in required_dates.items()
+        },
     })
 
 
@@ -313,6 +346,12 @@ def timesheet_save(request):
         work_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
     except (TypeError, ValueError):
         return Response({"error": "Ngày không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if work_date > timezone.localdate():
+        return Response(
+            {"error": "Không thể cập nhật công ca cho ngày trong tương lai."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     # Determine target employee (privileged users can edit others)
     target_email = str(request.data.get("employeeEmail") or "").strip()
@@ -462,7 +501,10 @@ def timesheet_prefill(request):
     )
 
     is_weekend = target_date.weekday() >= 5
-    default_day_off = _is_default_day_off(target_date)
+    required_dates = _required_timesheet_dates(
+        [target_user], min(target_date, yesterday), max(target_date, yesterday) + timedelta(days=1)
+    )[target_user.email]
+    default_day_off = _is_default_day_off(target_date) and target_date not in required_dates
     default_mode = "online" if is_weekend else "direct"
 
     # Auto-fill logic:
@@ -492,25 +534,12 @@ def timesheet_prefill(request):
                 {"start": "13:30", "end": "17:30", "workMode": default_mode, "notes": ""},
             ]
 
-    # Yesterday warning: check work schedules for weekend logic
+    # Weekend days with 3+ tasks or a training session are working days. The
+    # same rule drives both this warning and the default checkbox in the UI.
     yesterday_warning = False
     if target_date == today and not yesterday_filled:
-        days_ago = (today - yesterday).days
-        if days_ago == 1:  # only warn for exactly yesterday
-            if (yesterday.month, yesterday.day) in FIXED_HOLIDAYS:
-                yesterday_warning = False
-            elif yesterday.weekday() >= 5:
-                # Weekend: only warn if 3+ work items or has training
-                from work_schedule.models import WorkItem
-                yesterday_items = WorkItem.objects.filter(
-                    executor=request.user, work_date=yesterday,
-                )
-                item_count = yesterday_items.count()
-                has_training = yesterday_items.filter(training_session__isnull=False).exists()
-                if item_count >= 3 or has_training:
-                    yesterday_warning = True
-            else:
-                yesterday_warning = True
+        yesterday_is_day_off = _is_default_day_off(yesterday) and yesterday not in required_dates
+        yesterday_warning = not yesterday_is_day_off
 
     # Edit logs for this date
     edit_logs = list(

@@ -1,4 +1,5 @@
 from datetime import datetime, time, timedelta
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -10,7 +11,7 @@ from digital_training.models import TrainingSession
 
 from .models import AttendanceRecord, TimesheetEditLog, TimesheetEntry
 from .views import _worked_minutes
-from work_schedule.models import WorkScheduleSheetChange
+from work_schedule.models import WorkItem, WorkScheduleSheetChange
 
 
 class AttendanceApiTests(TestCase):
@@ -131,6 +132,60 @@ class AttendanceApiTests(TestCase):
                 self.assertTrue(response.json()["defaultDayOff"])
                 self.assertEqual(response.json()["shifts"], [])
 
+    @mock.patch("attendance.views.timezone.localdate", return_value=datetime(2026, 9, 14).date())
+    def test_busy_weekend_requires_timesheet_and_triggers_yesterday_warning(self, _localdate):
+        sunday = datetime(2026, 9, 13).date()
+        for order in range(1, 4):
+            WorkItem.objects.create(
+                creator=self.profile,
+                executor=self.profile,
+                title=f"Nhiệm vụ cuối tuần {order}",
+                work_date=sunday,
+                daily_order=order,
+            )
+
+        prefill = self.request("get", "/api/attendance/timesheet/prefill")
+        sunday_prefill = self.request("get", f"/api/attendance/timesheet/prefill?date={sunday}")
+        listing = self.request("get", "/api/attendance/timesheet?month=2026-09&scope=all")
+
+        self.assertEqual(prefill.status_code, 200, prefill.content)
+        self.assertTrue(prefill.json()["yesterdayWarning"])
+        self.assertFalse(sunday_prefill.json()["defaultDayOff"])
+        self.assertIn(
+            sunday.isoformat(),
+            listing.json()["requiredTimesheetDatesByEmployee"][self.profile.email],
+        )
+
+    @mock.patch("attendance.views.timezone.localdate", return_value=datetime(2026, 9, 14).date())
+    def test_normal_weekend_stays_day_off_and_does_not_warn(self, _localdate):
+        sunday = datetime(2026, 9, 13).date()
+
+        prefill_today = self.request("get", "/api/attendance/timesheet/prefill")
+        prefill_sunday = self.request("get", f"/api/attendance/timesheet/prefill?date={sunday}")
+
+        self.assertFalse(prefill_today.json()["yesterdayWarning"])
+        self.assertTrue(prefill_sunday.json()["defaultDayOff"])
+
+    def test_weekend_training_session_requires_timesheet(self):
+        sunday = datetime(2026, 9, 13).date()
+        session = TrainingSession.objects.create(
+            title="Tập huấn cuối tuần",
+            session_date=sunday,
+            status="planned",
+        )
+        WorkItem.objects.create(
+            creator=self.profile,
+            executor=self.profile,
+            title=session.title,
+            work_date=sunday,
+            daily_order=1,
+            training_session=session,
+        )
+
+        prefill = self.request("get", f"/api/attendance/timesheet/prefill?date={sunday}")
+
+        self.assertFalse(prefill.json()["defaultDayOff"])
+
     def test_edit_log_is_created_only_when_working_times_change(self):
         work_date = timezone.localdate().isoformat()
         initial = {
@@ -166,6 +221,34 @@ class AttendanceApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(TimesheetEntry.objects.filter(employee=self.profile, work_date=work_date, is_day_off=True).exists())
         self.assertFalse(TimesheetEntry.objects.filter(employee=other, work_date=work_date).exists())
+
+    def test_future_timesheet_cannot_be_created_or_edited_even_by_admin(self):
+        future_date = timezone.localdate() + timedelta(days=1)
+        existing = TimesheetEntry.objects.create(
+            employee=self.profile,
+            work_date=future_date,
+            shift_number=1,
+            shift_start=time(8, 0),
+            shift_end=time(12, 0),
+            work_mode="direct",
+        )
+        payload = {
+            "workDate": future_date.isoformat(),
+            "isDayOff": True,
+        }
+
+        employee_response = self.request("post", "/api/attendance/timesheet/save", payload)
+        self.profile.role = "ADMIN"
+        self.profile.save(update_fields=["role", "updated_at"])
+        admin_response = self.request("post", "/api/attendance/timesheet/save", payload)
+        prefill = self.request("get", f"/api/attendance/timesheet/prefill?date={future_date}")
+
+        self.assertEqual(employee_response.status_code, 400, employee_response.content)
+        self.assertEqual(admin_response.status_code, 400, admin_response.content)
+        self.assertIn("tương lai", employee_response.json()["error"])
+        self.assertFalse(prefill.json()["canEdit"])
+        existing.refresh_from_db()
+        self.assertFalse(existing.is_day_off)
 
     def test_training_summary_is_limited_by_employee_department_and_role(self):
         training = Department.objects.create(name="Phòng Đào tạo số")

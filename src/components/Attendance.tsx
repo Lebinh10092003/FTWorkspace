@@ -48,6 +48,7 @@ type TimesheetData = {
   editLogs: EditLog[];
   employees: Employee[];
   trainingSummaryByEmployee: Record<string, { instructorSessions: number; supportSessions: number }>;
+  requiredTimesheetDatesByEmployee: Record<string, string[]>;
 };
 
 type PrefillData = {
@@ -65,7 +66,14 @@ type PrefillData = {
 };
 
 type ShiftRow = { start: string; end: string; workMode: 'direct' | 'online' };
-type AttendanceProps = { onBackToWorkspace: () => void; idToken: string; userName: string; userEmail?: string };
+type AttendanceProps = {
+  onBackToWorkspace: () => void;
+  idToken: string;
+  userName: string;
+  userEmail?: string;
+  initialEditDate?: string;
+  onInitialEditOpened?: () => void;
+};
 
 /* ------------------------------------------------------------------ */
 /*  In-memory cache                                                    */
@@ -127,7 +135,7 @@ const editLogText = (log: EditLog) => {
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
-export default function Attendance({ onBackToWorkspace, idToken, userName, userEmail }: AttendanceProps) {
+export default function Attendance({ onBackToWorkspace, idToken, userName, userEmail, initialEditDate, onInitialEditOpened }: AttendanceProps) {
   const initialMonth = currentMonth();
   const cached = cache?.owner === idToken && cache.month === initialMonth && Date.now() - cache.savedAt < CACHE_TTL ? cache : null;
 
@@ -217,6 +225,12 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
     return map;
   }, [viewEntries]);
 
+  const requiredTimesheetDates = useMemo(() => {
+    const target = selectedEmployee || userEmail || '';
+    return new Set(data?.requiredTimesheetDatesByEmployee?.[target] || []);
+  }, [data?.requiredTimesheetDatesByEmployee, selectedEmployee, userEmail]);
+  const isEffectiveDayOff = (date: string) => isDefaultDayOff(date) && !requiredTimesheetDates.has(date);
+
   /* ---------- Summary cutoff: end of yesterday ---------- */
   const summaryCutoff = useMemo(() => summaryCutoffFor(month), [month]);
 
@@ -252,15 +266,19 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
     const today = todayIso();
     return allDates.filter(d => {
       if (d >= today) return false; // don't warn about future/today
-      if (isDefaultDayOff(d)) return false;
+      if (isEffectiveDayOff(d)) return false;
       return !entriesByDate.has(d);
     });
-  }, [allDates, entriesByDate]);
+  }, [allDates, entriesByDate, requiredTimesheetDates]);
 
   /* ---------- Open popup ---------- */
   const openPopup = async (dateOverride?: string, dayOffOverride?: boolean) => {
     setPopupError('');
     const targetDate = dateOverride || todayIso();
+    if (targetDate > todayIso()) {
+      void appDialog.alert('Không thể cập nhật công ca cho ngày trong tương lai.', { title: 'Ngày chưa thể cập nhật', tone: 'warning' });
+      return;
+    }
     setPopupDate(targetDate);
     setPopupOpen(true);
     setIsDayOff(false);
@@ -302,8 +320,18 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
     }
   };
 
+  useEffect(() => {
+    if (!initialEditDate) return;
+    setMonth(initialEditDate.slice(0, 7));
+    void openPopup(initialEditDate).finally(() => onInitialEditOpened?.());
+  }, [initialEditDate]);
+
   /* ---------- Quick mark day off ---------- */
   const quickDayOff = async (dateStr: string) => {
+    if (dateStr > todayIso()) {
+      void appDialog.alert('Không thể đánh dấu nghỉ cho ngày trong tương lai.', { title: 'Ngày chưa thể cập nhật', tone: 'warning' });
+      return;
+    }
     try {
       const existing = entriesByDate.get(dateStr);
       const payload: any = { workDate: dateStr, isDayOff: true };
@@ -347,6 +375,10 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
 
   /* ---------- Save ---------- */
   const saveTimesheet = async () => {
+    if (popupDate > todayIso()) {
+      setPopupError('Không thể cập nhật công ca cho ngày trong tương lai.');
+      return;
+    }
     setSaving(true);
     setPopupError('');
     try {
@@ -483,10 +515,11 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
                       const weekend = isWeekend(dateStr);
                       const hasDayOff = originalEntries.some(e => e.isDayOff);
                       const hasEntries = originalEntries.length > 0;
-                      const defaultDayOff = isDefaultDayOff(dateStr);
+                      const defaultDayOff = isEffectiveDayOff(dateStr);
                       const markedDayOff = hasDayOff || (!hasEntries && defaultDayOff);
                       const dayTotal = originalEntries.reduce((total, entry) => total + (entry.isDayOff ? 0 : entry.workedMinutes), 0);
                       const isPast = dateStr < todayIso();
+                      const isFuture = dateStr > todayIso();
                       const logs = editLogsByDate.get(dateStr) || [];
                       const showDailyTotal = !markedDayOff;
                       const rowSpan = entries.length + (showDailyTotal ? 1 : 0);
@@ -499,14 +532,15 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
                               {index === 0 && <td rowSpan={rowSpan} className="align-top">
                                 <div className="flex items-start justify-between gap-2">
                                   <span className="whitespace-nowrap text-base font-bold tabular-nums">{fmtDate(dateStr)}</span>
-                                  <button type="button" onClick={() => void openPopup(dateStr)} className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600" title="Chỉnh sửa công ca"><Edit3 className="h-4 w-4" /></button>
+                                  <button type="button" disabled={isFuture} onClick={() => void openPopup(dateStr)} className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400" title={isFuture ? 'Không thể cập nhật công ca trong tương lai' : 'Chỉnh sửa công ca'}><Edit3 className="h-4 w-4" /></button>
                                 </div>
-                                <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs font-semibold leading-4 text-amber-800">
+                                <label className={`mt-2 flex items-start gap-2 text-xs font-semibold leading-4 text-amber-800 ${isFuture ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
                                   <input
                                     type="checkbox"
                                     checked={markedDayOff}
+                                    disabled={isFuture}
                                     onChange={event => event.target.checked ? void quickDayOff(dateStr) : void openPopup(dateStr, false)}
-                                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-amber-600"
+                                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
                                   />
                                   <span>Tích vào đây nếu là ngày nghỉ</span>
                                 </label>
@@ -584,7 +618,7 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
             <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
               {/* Date picker + day off */}
               <div className="grid grid-cols-2 gap-4">
-                <label className="block"><span className="mb-1 block text-sm font-bold">Ngày</span><input type="date" className="ft-input" value={popupDate} onChange={e => { setPopupDate(e.target.value); void openPopup(e.target.value); }} /></label>
+                <label className="block"><span className="mb-1 block text-sm font-bold">Ngày</span><input type="date" max={todayIso()} className="ft-input" value={popupDate} onChange={e => { setPopupDate(e.target.value); void openPopup(e.target.value); }} /></label>
                 <div className="flex items-end pb-0.5">
                   <label className="flex items-center gap-2 text-sm font-bold">
                     <input type="checkbox" checked={isDayOff} onChange={e => {
@@ -647,7 +681,7 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
 
             <div className="flex items-center justify-end gap-2 border-t px-6 py-4">
               <button type="button" onClick={() => setPopupOpen(false)} className="ft-btn ft-btn-secondary">Hủy</button>
-              <button type="button" onClick={() => void saveTimesheet()} disabled={saving || (!isDayOff && shifts.length === 0)} className="ft-btn ft-btn-primary">
+              <button type="button" onClick={() => void saveTimesheet()} disabled={saving || popupDate > todayIso() || (!isDayOff && shifts.length === 0)} className="ft-btn ft-btn-primary">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 {saving ? 'Đang lưu...' : 'Lưu'}
               </button>
