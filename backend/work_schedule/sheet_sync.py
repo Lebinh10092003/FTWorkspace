@@ -496,6 +496,21 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
     notes = assessment_notes(_cell(row, 5), len(parsed))
     leader_notes = assessment_notes(_cell(row, 6), len(parsed))
     ids = _task_uids(_cell(row, 9))
+    group_uids = {item.sync_uid for item in group_items}
+    has_group_uid = any(sync_uid in group_uids for sync_uid in ids if sync_uid)
+    has_same_source_row = any(item.source_sheet_row == offset for item in group_items)
+    same_complete_title_set = (
+        len(parsed) == len(group_items)
+        and sorted(_duplicate_title_key(task.title) for task in parsed)
+        == sorted(_duplicate_title_key(item.title) for item in group_items)
+    )
+    if group_items and not has_same_source_row and not has_group_uid and not same_complete_title_set:
+        # A second row with the same employee/date but without this group's
+        # UUIDs is a competing duplicate, not a trustworthy row move. Do not
+        # let a partial legacy/copy-pasted row overwrite or delete the
+        # canonical group's tasks. The push phase will refresh the canonical
+        # row selected from the Sheet index.
+        return created, updated, deleted, touched
     retained_ids = set()
     for index, parsed_task in enumerate(parsed, 1):
         supplied_uid = ids[index - 1] if index <= len(ids) else None

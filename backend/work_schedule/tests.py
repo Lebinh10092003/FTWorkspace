@@ -1147,6 +1147,35 @@ class WorkScheduleSheetWebhookTests(TestCase):
         copied = WorkItem.objects.get(executor=other, work_date="2026-09-08")
         self.assertNotEqual(copied.sync_uid, original.sync_uid)
 
+    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_competing_duplicate_row_without_group_ids_cannot_overwrite_canonical_tasks(
+        self, mock_service, mock_ensure, mock_push
+    ):
+        original = WorkItem.objects.create(
+            creator_id=self.EMPLOYEE_EMAIL, executor_id=self.EMPLOYEE_EMAIL,
+            title="Nhiệm vụ đầy đủ", work_date="2026-09-08",
+            source_sheet_row=self.ROW_NUMBER, source_task_index=1,
+        )
+        duplicate_values = self.row_values("Bản cũ bị thiếu")
+        duplicate_values[9] = ""
+
+        response = self.post({
+            "event_id": "evt-competing-duplicate",
+            "row": self.ROW_NUMBER + 1,
+            "values": duplicate_values,
+        })
+
+        self.assertEqual(response.status_code, 200, response.content)
+        original.refresh_from_db()
+        self.assertEqual(original.title, "Nhiệm vụ đầy đủ")
+        self.assertEqual(original.source_sheet_row, self.ROW_NUMBER)
+        self.assertEqual(
+            WorkItem.objects.filter(executor_id=self.EMPLOYEE_EMAIL, work_date="2026-09-08").count(),
+            1,
+        )
+
     def test_two_phase_pull_preserves_task_identity_when_rows_change_dates(self):
         first = WorkItem.objects.create(
             creator_id=self.EMPLOYEE_EMAIL, executor_id=self.EMPLOYEE_EMAIL,
