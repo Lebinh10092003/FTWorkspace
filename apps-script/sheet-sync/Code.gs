@@ -16,13 +16,15 @@
  *        WEBHOOK_SECRET = <same value as backend SHEET_WEBHOOK_SECRET>
  *   2. Triggers (clock icon in the left sidebar) -> Add Trigger:
  *        Function: onEditInstallable | Event source: From spreadsheet | Event type: On edit
+ *   3. Add a second trigger:
+ *        Function: onChangeInstallable | Event source: From spreadsheet | Event type: On change
  *      (an installable trigger, not the bare `onEdit(e)` simple trigger, because UrlFetchApp
  *      needs authorization that simple triggers are not allowed to request).
  */
 
 var SHEET_NAME = 'Lịch công tác';
 var OUTBOX_SHEET_NAME = '_SYNC_OUTBOX';
-var FIRST_DATA_ROW = 2; // row 1 is the header; matches backend sheet_sync.py's `A2:K...` range.
+var FIRST_DATA_ROW = 3; // row 1 is the title and row 2 contains the column headers.
 
 // Installable trigger entry point. Wire this up via Triggers -> Add Trigger -> On edit.
 function onEditInstallable(e) {
@@ -37,6 +39,28 @@ function onEditInstallable(e) {
     if (row < FIRST_DATA_ROW) continue; // skip header row edits
     handleRowEdit_(sheet, row);
   }
+}
+
+// Structural operations do not reliably emit row-level onEdit events. Reconcile
+// the retained window once after insert/delete/sort/move operations instead.
+function onChangeInstallable(e) {
+  if (!e || !e.source) return;
+  var sheet = e.source.getActiveSheet();
+  if (!sheet || sheet.getName() !== SHEET_NAME) return;
+  var changeType = String(e.changeType || 'OTHER');
+  if (['INSERT_ROW', 'REMOVE_ROW', 'OTHER'].indexOf(changeType) === -1) return;
+
+  var props = PropertiesService.getScriptProperties();
+  var now = Date.now();
+  var lastRun = Number(props.getProperty('LAST_STRUCTURAL_SYNC_AT') || 0);
+  if (now - lastRun < 10000) return;
+  props.setProperty('LAST_STRUCTURAL_SYNC_AT', String(now));
+
+  var eventId = Utilities.getUuid();
+  var payload = { event_type: 'full_sync', sheet_name: SHEET_NAME, reason: changeType };
+  var outboxRow = appendToOutbox_(eventId, 1, payload);
+  var result = sendFullSyncWebhook_(eventId, changeType);
+  markOutboxResult_(outboxRow, result);
 }
 
 function handleRowEdit_(sheet, row) {
@@ -103,6 +127,35 @@ function sendWebhook_(eventId, row, values) {
   }
 }
 
+function sendFullSyncWebhook_(eventId, reason) {
+  var props = PropertiesService.getScriptProperties();
+  var url = props.getProperty('WEBHOOK_URL');
+  var secret = props.getProperty('WEBHOOK_SECRET');
+  if (!url || !secret) {
+    return { ok: false, summary: 'Thiếu WEBHOOK_URL/WEBHOOK_SECRET trong Script Properties.' };
+  }
+  var payload = {
+    event_id: eventId,
+    event_type: 'full_sync',
+    sheet_name: SHEET_NAME,
+    reason: reason || 'structural_change',
+  };
+  try {
+    var response = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'X-Sheet-Webhook-Secret': secret },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+    });
+    var code = response.getResponseCode();
+    var body = response.getContentText();
+    return { ok: code === 200 || code === 202, summary: 'HTTP ' + code + ': ' + body.substring(0, 300) };
+  } catch (error) {
+    return { ok: false, summary: 'Lỗi UrlFetchApp: ' + error };
+  }
+}
+
 function ensureOutboxSheet_() {
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   var outbox = spreadsheet.getSheetByName(OUTBOX_SHEET_NAME);
@@ -131,7 +184,9 @@ function retryFailedOutboxRows() {
     var eventId = rows[i][0];
     var row = rows[i][1];
     var values = JSON.parse(rows[i][3]);
-    var result = sendWebhook_(eventId, row, values);
+    var result = values && values.event_type === 'full_sync'
+      ? sendFullSyncWebhook_(eventId, values.reason)
+      : sendWebhook_(eventId, row, values);
     markOutboxResult_(i + 2, result);
   }
 }

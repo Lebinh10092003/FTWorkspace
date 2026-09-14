@@ -61,7 +61,7 @@ SHEET_COLUMN_ALIASES = {
     "content": ("nội dung công việc",),
     "self_notes": ("tự đánh giá",),
     "attendance": ("chấm công",),
-    "leader_notes": ("lãnh đạo đánh giá",),
+    "leader_notes": ("lãnh đạo đánh giá", "lđ đánh giá", "ld đánh giá"),
     "employee_id": ("employeeid", "employee id"),
     "record_id": ("web_record_id",),
     "task_ids": ("web_task_ids",),
@@ -147,16 +147,13 @@ def _canonical_row(row, columns):
 
 
 def _retained_sheet_start_row(service, start_date):
-    """Resolve and cache the first Sheet row in the rolling retention window."""
-    cache_key = f"work_schedule_sheet_window:{_spreadsheet_id()}"
-    cached = SystemConfig.objects.filter(key=cache_key).first()
-    cached_data = cached.data if cached and isinstance(cached.data, dict) else {}
-    if cached_data.get("startDate") == start_date.isoformat():
-        try:
-            return max(3, int(cached_data.get("startRow")))
-        except (TypeError, ValueError):
-            pass
+    """Resolve the earliest physical row in the rolling retention window.
 
+    Row positions are deliberately not cached: inserting, deleting, sorting, or
+    moving Sheet rows invalidates a cached offset. Reading the date column is a
+    small, bounded lookup and also finds a recent row moved above the usual
+    chronological block.
+    """
     columns, _ = _sheet_columns(service)
     date_column = _column_letter(columns["date"])
     result = service.spreadsheets().values().get(
@@ -165,17 +162,12 @@ def _retained_sheet_start_row(service, start_date):
         valueRenderOption="FORMATTED_VALUE",
     ).execute()
     values = result.get("values", [])
-    start_row = len(values) + 3
+    matching_rows = []
     for offset, row in enumerate(values, start=3):
         row_date = _parse_date(_cell(row, 0))
         if row_date and row_date >= start_date:
-            start_row = offset
-            break
-    SystemConfig.objects.update_or_create(
-        key=cache_key,
-        defaults={"data": {"startDate": start_date.isoformat(), "startRow": start_row}},
-    )
-    return start_row
+            matching_rows.append(offset)
+    return min(matching_rows, default=len(values) + 3)
 
 
 def _rows(service, start_row=2):
@@ -233,6 +225,25 @@ def _active_profile_by_sheet_identity(identity):
     return suffix[0] if len(suffix) == 1 else None
 
 
+def _sheet_name_email_map():
+    """Build one ambiguity-safe name resolver per sync instead of querying per row."""
+    candidates = defaultdict(set)
+    for profile in UserProfile.objects.filter(employment_status="ACTIVE").only("email", "name"):
+        parts = _normalise_staff_name(profile.name).split()
+        for length in range(1, len(parts) + 1):
+            candidates[" ".join(parts[-length:])].add(profile.email)
+    resolved = {name: next(iter(emails)) for name, emails in candidates.items() if len(emails) == 1}
+    for name, email in SHEET_STAFF_EMAILS.items():
+        normalized_name = _normalise_staff_name(name)
+        matching_emails = candidates.get(normalized_name, set())
+        # Keep historical short-name aliases only while they remain unique.
+        # Once another active employee shares that suffix, the Sheet must use
+        # the disambiguated full/middle name instead of silently choosing one.
+        if len(matching_emails) <= 1 and (not matching_emails or email in matching_emails):
+            resolved[normalized_name] = email
+    return resolved
+
+
 def _sheet_employee_code(email, profile=None):
     if email in EMAIL_EMPLOYEES:
         return EMAIL_EMPLOYEES[email]
@@ -242,19 +253,20 @@ def _sheet_employee_code(email, profile=None):
     return str(profile.employee_code or profile.email) if profile else email
 
 
-def _row_employee_email(row):
+def _row_employee_email(row, name_email_map=None):
+    # Staff name + work date is the row identity. EmployeeID remains only as a
+    # compatibility fallback for historical rows and may be removed later.
+    staff_name = re.sub(r"^\s*\d+\s*[.)-]?\s*", "", _cell(row, 3)).strip()
+    normalized_name = _normalise_staff_name(staff_name)
+    resolver = name_email_map if name_email_map is not None else _sheet_name_email_map()
+    email = resolver.get(normalized_name)
+    if email:
+        return email
     sheet_identity = _cell(row, 7)
     email = EMPLOYEE_EMAILS.get(sheet_identity)
     if email:
         return email
     profile = _active_profile_by_sheet_identity(sheet_identity)
-    if profile:
-        return profile.email
-    staff_name = re.sub(r"^\s*\d+\s*[.)-]?\s*", "", _cell(row, 3)).strip()
-    alias_email = SHEET_STAFF_EMAILS.get(staff_name.casefold())
-    if alias_email:
-        return alias_email
-    profile = _active_profile_by_sheet_identity(staff_name)
     return profile.email if profile else None
 
 
@@ -290,6 +302,14 @@ def _task_uids(value):
         except ValueError:
             result.append(None)
     return result
+
+
+def _row_preference_score(row):
+    """Choose the canonical row when the same staff name/date appears twice."""
+    valid_ids = sum(uid is not None for uid in _task_uids(_cell(row, 9)))
+    web_record = int(_cell(row, 8).upper().startswith("REC-WEB-"))
+    parsed_count = len(_unique_sheet_tasks(parse_sheet_tasks(_cell(row, 4))))
+    return valid_ids, web_record, parsed_count, len(_cell(row, 4))
 
 
 def _numbered(values):
@@ -438,7 +458,23 @@ def ensure_sheet_row_capacity(service, required_row):
     return current_rows + rows_to_add
 
 
-def _ingest_row(offset, row, today):
+def _legacy_group_match(group_items, parsed_task, index, retained_ids):
+    """Conservatively match a task that has no usable Sheet UUID.
+
+    Name/date identify the row group; title identifies a task during the legacy
+    backfill only. A physical row number is intentionally never used as task
+    identity because it changes after sort/insert/delete operations.
+    """
+    available = [item for item in group_items if item.pk not in retained_ids]
+    title_key = _duplicate_title_key(parsed_task.title)
+    title_matches = [item for item in available if _duplicate_title_key(item.title) == title_key]
+    if len(title_matches) == 1:
+        return title_matches[0]
+    order_matches = [item for item in available if item.daily_order == index]
+    return order_matches[0] if len(order_matches) == 1 else None
+
+
+def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=None):
     """Parse one sheet row (A:K, same shape as `_rows()` yields) and upsert its WorkItems.
 
     Shared by `pull_from_sheet` (bulk, one row per iteration) and the realtime
@@ -454,19 +490,25 @@ def _ingest_row(offset, row, today):
     executor = UserProfile.objects.filter(email=email, employment_status="ACTIVE").first()
     if not executor:
         return created, updated, deleted, touched
-    source_items = list(WorkItem.objects.filter(source_sheet_row=offset))
+    group_items = list(WorkItem.objects.filter(executor=executor, work_date=work_date))
     touched.add((email, work_date))
-    touched.update((item.executor_id, item.work_date) for item in source_items)
     parsed = _unique_sheet_tasks(parse_sheet_tasks(_cell(row, 4)))
     notes = assessment_notes(_cell(row, 5), len(parsed))
     leader_notes = assessment_notes(_cell(row, 6), len(parsed))
     ids = _task_uids(_cell(row, 9))
     retained_ids = set()
     for index, parsed_task in enumerate(parsed, 1):
-        sync_uid = ids[index - 1] if index <= len(ids) and ids[index - 1] else deterministic_sheet_uid(offset, index)
-        item = WorkItem.objects.filter(sync_uid=sync_uid).first()
+        supplied_uid = ids[index - 1] if index <= len(ids) else None
+        item = WorkItem.objects.filter(sync_uid=supplied_uid).first() if supplied_uid else None
+        if item and item.executor_id != email:
+            # A copied hidden UUID must never move another employee's task. A
+            # genuine row move keeps the same staff name, so cross-person IDs
+            # are treated as missing and replaced during the push-back phase.
+            item = None
+            supplied_uid = None
         if not item:
-            item = WorkItem.objects.filter(source_sheet_row=offset, source_task_index=index).first()
+            item = _legacy_group_match(group_items, parsed_task, index, retained_ids)
+        sync_uid = supplied_uid or (item.sync_uid if item else uuid.uuid4())
         note = notes[index - 1] if index <= len(notes) else ""
         task_status = status_from_note(note, work_date > today)
         leader_note = leader_notes[index - 1] if index <= len(leader_notes) else ""
@@ -487,6 +529,8 @@ def _ingest_row(offset, row, today):
         is_web_training = bool(is_web_origin and item and item.label == "Tập huấn")
         is_training = is_sheet_training or is_web_training
         if item:
+            previous_group = (item.executor_id, item.work_date)
+            touched.add(previous_group)
             item.executor = executor
             item.title = item.title if preserve_web_title else parsed_task.title[:1000]
             item.progress_note = custom_note[:1000]
@@ -525,8 +569,10 @@ def _ingest_row(offset, row, today):
         from .training_sync import sync_training_from_work_item
         sync_training_from_work_item(item)
         retained_ids.add(item.pk)
-    stale_items = [item for item in source_items if item.pk not in retained_ids]
-    if stale_items:
+    if retained_by_group is not None:
+        retained_by_group[(email, work_date)].update(retained_ids)
+    stale_items = [item for item in group_items if item.pk not in retained_ids and item.source_sheet_row]
+    if delete_missing and stale_items:
         from .training_sync import delete_training_for_work_item
 
         for item in stale_items:
@@ -539,19 +585,52 @@ def _ingest_row(offset, row, today):
 def pull_from_sheet(service, start_date, end_date):
     created = updated = deleted = 0
     touched = set()
+    duplicate_groups = []
     today = timezone.localdate()
     with suppress_sheet_queue():
         rows_start = _retained_sheet_start_row(service, max(start_date, retained_from()))
+        name_email_map = _sheet_name_email_map()
+        candidate_rows = []
+        grouped_rows = defaultdict(list)
         for offset, row in enumerate(_rows(service, rows_start), start=rows_start):
             work_date = _parse_date(_cell(row, 1))
             if not work_date or not (start_date <= work_date <= end_date):
                 continue
-            row_created, row_updated, row_deleted, row_touched = _ingest_row(offset, row, today)
+            email = _row_employee_email(row, name_email_map)
+            if not email:
+                continue
+            grouped_rows[(email, work_date)].append((offset, row))
+        for group, matches in grouped_rows.items():
+            matches.sort(key=lambda value: _row_preference_score(value[1]), reverse=True)
+            candidate_rows.append(matches[0])
+            if len(matches) > 1:
+                duplicate_groups.append({
+                    "email": group[0], "date": group[1].isoformat(),
+                    "rows": [row_number for row_number, _ in matches],
+                    "selectedRow": matches[0][0],
+                })
+        retained_by_group = defaultdict(set)
+        for offset, row in sorted(candidate_rows):
+            row_created, row_updated, row_deleted, row_touched = _ingest_row(
+                offset, row, today, delete_missing=False, retained_by_group=retained_by_group
+            )
             created += row_created
             updated += row_updated
             deleted += row_deleted
             touched |= row_touched
-    return {"created": created, "updated": updated, "deleted": deleted, "groups": touched}
+        from .training_sync import delete_training_for_work_item
+        for (email, work_date), retained_ids in retained_by_group.items():
+            stale_items = WorkItem.objects.filter(
+                executor_id=email, work_date=work_date, source_sheet_row__isnull=False
+            ).exclude(pk__in=retained_ids)
+            for item in stale_items:
+                delete_training_for_work_item(item)
+                item.delete()
+                deleted += 1
+    return {
+        "created": created, "updated": updated, "deleted": deleted,
+        "groups": touched, "duplicateGroups": duplicate_groups,
+    }
 
 
 def _find_row(rows, email, work_date, items, row_index=None, rows_start=2):
@@ -560,15 +639,9 @@ def _find_row(rows, email, work_date, items, row_index=None, rows_start=2):
         if matched:
             return matched
     else:
-        employee_id = _sheet_employee_code(email)
         for index, row in enumerate(rows, start=rows_start):
-            if _parse_date(_cell(row, 1)) == work_date and employee_id and _cell(row, 7) == employee_id:
+            if _parse_date(_cell(row, 1)) == work_date and _row_employee_email(row) == email:
                 return index, row
-    source_rows = {item.source_sheet_row for item in items if item.source_sheet_row}
-    if len(source_rows) == 1:
-        number = source_rows.pop()
-        if rows_start <= number < rows_start + len(rows):
-            return number, rows[number - rows_start]
     return None, None
 
 
@@ -647,11 +720,15 @@ def push_groups_to_sheet(service, groups, force=False):
     synced = []
     update_rows = []
     row_index = {}
+    name_email_map = _sheet_name_email_map()
     for row_number, row in enumerate(rows, start=rows_start):
-        row_email = _row_employee_email(row)
+        row_email = _row_employee_email(row, name_email_map)
         row_date = _parse_date(_cell(row, 1))
         if row_email and row_date:
-            row_index.setdefault((row_email, row_date), (row_number, row))
+            key = (row_email, row_date)
+            current_match = row_index.get(key)
+            if current_match is None or _row_preference_score(row) > _row_preference_score(current_match[1]):
+                row_index[key] = (row_number, row)
     items_by_group = defaultdict(list)
     attendance_by_group = defaultdict(list)
     if groups:

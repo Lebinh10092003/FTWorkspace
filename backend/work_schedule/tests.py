@@ -21,9 +21,11 @@ from .sheet_sync import (
     _group_values,
     _row_hash,
     _row_employee_email,
+    _sheet_columns,
     _unique_sheet_tasks,
     deterministic_sheet_uid,
     ensure_sheet_row_capacity,
+    pull_from_sheet,
     sync_lease,
 )
 from .training_sync import sync_work_item_from_training
@@ -73,11 +75,59 @@ class WorkScheduleSheetParserTests(TestCase):
         self.assertEqual(canonical[6], "Lãnh đạo duyệt")
         self.assertEqual(canonical[7:], ["EMP-1", "REC-WEB-1", "1. task-id", "hash"])
 
+    def test_abbreviated_leader_header_and_moved_attendance_column_are_supported(self):
+        service = mock.MagicMock()
+        service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {
+            "values": [[
+                "Thứ", "Ngày", "Tuần", "Chủ trì", "Nội dung công việc",
+                "Chấm công", "Tự đánh giá", "LĐ đánh giá", "EmployeeID",
+                "WEB_TASK_IDS", "WEB_SYNC_HASH", "WEB_SYNC_HASH", "WEB_RECORD_ID",
+            ]]
+        }
+
+        columns, _ = _sheet_columns(service)
+
+        self.assertEqual(columns["attendance"], 5)
+        self.assertEqual(columns["self_notes"], 6)
+        self.assertEqual(columns["leader_notes"], 7)
+        self.assertEqual(columns["task_ids"], 9)
+        self.assertEqual(columns["sync_hash"], 10)
+        self.assertEqual(columns["record_id"], 12)
+
     def test_sheet_mapping_includes_director_thuan(self):
         self.assertEqual(EMPLOYEE_EMAILS["EMP-E6557326"], "thuanld@fermat.edu.vn")
         self.assertEqual(
             _row_employee_email(["", "09/09/2026", "37", "1. Thuận", "Nội dung", "", "", "#REF!"]),
             "thuanld@fermat.edu.vn",
+        )
+
+    def test_staff_name_takes_priority_over_legacy_employee_id(self):
+        self.assertEqual(
+            _row_employee_email([
+                "", "09/09/2026", "37", "9. Sơn", "Nội dung", "", "",
+                "EMP-E6557326",
+            ]),
+            "sondc@fermat.edu.vn",
+        )
+
+    def test_ambiguous_short_name_requires_disambiguated_full_name(self):
+        UserProfile.objects.create(
+            email="liennt@fermat.edu.vn", name="Ngô Thị Liên",
+            role="EMPLOYEE", employment_status="ACTIVE", access_modules=[],
+        )
+        UserProfile.objects.create(
+            email="lien.other@example.com", name="Trần Mỹ Liên",
+            role="EMPLOYEE", employment_status="ACTIVE", access_modules=[],
+        )
+
+        self.assertIsNone(_row_employee_email([
+            "", "09/09/2026", "37", "Liên", "Nội dung", "", "", "",
+        ]))
+        self.assertEqual(
+            _row_employee_email([
+                "", "09/09/2026", "37", "Ngô Thị Liên", "Nội dung", "", "", "",
+            ]),
+            "liennt@fermat.edu.vn",
         )
 
     def test_sheet_identity_and_hash_are_stable_when_title_is_not_the_identity(self):
@@ -1049,6 +1099,101 @@ class WorkScheduleSheetWebhookTests(TestCase):
         mock_push.assert_called_once()
         touched_groups = mock_push.call_args.args[1]
         self.assertEqual(touched_groups, {(self.EMPLOYEE_EMAIL, item.work_date)})
+
+    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_row_move_without_task_id_keeps_the_same_work_item(self, mock_service, mock_ensure, mock_push):
+        values = self.row_values("Việc được di chuyển")
+        values[7] = ""  # EmployeeID is optional; staff name + date identify the row.
+        first = self.post({"event_id": "evt-move-create", "row": self.ROW_NUMBER, "values": values})
+        self.assertEqual(first.status_code, 200, first.content)
+        item = WorkItem.objects.get(source_sheet_row=self.ROW_NUMBER)
+        original_pk = item.pk
+        original_uid = item.sync_uid
+
+        moved = self.post({"event_id": "evt-move-destination", "row": self.ROW_NUMBER + 25, "values": values})
+
+        self.assertEqual(moved.status_code, 200, moved.content)
+        item.refresh_from_db()
+        self.assertEqual(item.pk, original_pk)
+        self.assertEqual(item.sync_uid, original_uid)
+        self.assertEqual(item.source_sheet_row, self.ROW_NUMBER + 25)
+        self.assertEqual(WorkItem.objects.filter(executor_id=self.EMPLOYEE_EMAIL, work_date="2026-09-08").count(), 1)
+
+    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_copied_task_id_cannot_move_work_to_another_person(self, mock_service, mock_ensure, mock_push):
+        original = WorkItem.objects.create(
+            creator_id=self.EMPLOYEE_EMAIL, executor_id=self.EMPLOYEE_EMAIL,
+            title="Việc của Sơn", work_date="2026-09-08", source_sheet_row=self.ROW_NUMBER,
+            source_task_index=1,
+        )
+        other = UserProfile.objects.create(
+            email="other-sheet-user@example.com", name="Nguyễn Văn Khác",
+            role="EMPLOYEE", access_modules=[],
+        )
+        values = [
+            "Ba", "08/09/2026", "37", other.name, "1. Việc được sao chép", "", "",
+            "", "", f"1. {original.sync_uid}", "",
+        ]
+
+        response = self.post({"event_id": "evt-cross-person-copy", "row": self.ROW_NUMBER + 40, "values": values})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        original.refresh_from_db()
+        self.assertEqual(original.executor_id, self.EMPLOYEE_EMAIL)
+        copied = WorkItem.objects.get(executor=other, work_date="2026-09-08")
+        self.assertNotEqual(copied.sync_uid, original.sync_uid)
+
+    def test_two_phase_pull_preserves_task_identity_when_rows_change_dates(self):
+        first = WorkItem.objects.create(
+            creator_id=self.EMPLOYEE_EMAIL, executor_id=self.EMPLOYEE_EMAIL,
+            title="Việc ngày 08", work_date="2026-09-08", source_sheet_row=self.ROW_NUMBER,
+            source_task_index=1,
+        )
+        second = WorkItem.objects.create(
+            creator_id=self.EMPLOYEE_EMAIL, executor_id=self.EMPLOYEE_EMAIL,
+            title="Việc ngày 09", work_date="2026-09-09", source_sheet_row=self.ROW_NUMBER + 1,
+            source_task_index=1,
+        )
+        rows = [
+            ["Ba", "08/09/2026", "37", "Sơn", "1. Việc ngày 09", "", "", "", "", f"1. {second.sync_uid}", ""],
+            ["Tư", "09/09/2026", "37", "Sơn", "1. Việc ngày 08", "", "", "", "", f"1. {first.sync_uid}", ""],
+        ]
+        with mock.patch("work_schedule.sheet_sync._retained_sheet_start_row", return_value=self.ROW_NUMBER), \
+             mock.patch("work_schedule.sheet_sync._rows", return_value=rows):
+            result = pull_from_sheet(mock.MagicMock(), date(2026, 9, 1), date(2026, 9, 30))
+
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.work_date.isoformat(), "2026-09-09")
+        self.assertEqual(second.work_date.isoformat(), "2026-09-08")
+        self.assertEqual(first.source_sheet_row, self.ROW_NUMBER + 1)
+        self.assertEqual(second.source_sheet_row, self.ROW_NUMBER)
+        self.assertEqual(WorkItem.objects.filter(pk__in=[first.pk, second.pk]).count(), 2)
+        self.assertEqual(result["deleted"], 0)
+
+    def test_full_pull_prefers_duplicate_name_date_row_with_valid_task_ids(self):
+        item = WorkItem.objects.create(
+            creator_id=self.EMPLOYEE_EMAIL, executor_id=self.EMPLOYEE_EMAIL,
+            title="Việc đầy đủ", work_date="2026-09-08", source_sheet_row=self.ROW_NUMBER,
+            source_task_index=1,
+        )
+        rows = [
+            ["Ba", "08/09/2026", "37", "Sơn", "1. Việc đầy đủ", "", "", "", "", f"1. {item.sync_uid}", ""],
+            ["Ba", "08/09/2026", "37", "Sơn", "1. Bản cũ thiếu ID", "", "", "", "", "REC-LEGACY", ""],
+        ]
+        with mock.patch("work_schedule.sheet_sync._retained_sheet_start_row", return_value=self.ROW_NUMBER), \
+             mock.patch("work_schedule.sheet_sync._rows", return_value=rows):
+            result = pull_from_sheet(mock.MagicMock(), date(2026, 9, 1), date(2026, 9, 30))
+
+        item.refresh_from_db()
+        self.assertEqual(item.title, "Việc đầy đủ")
+        self.assertEqual(item.source_sheet_row, self.ROW_NUMBER)
+        self.assertEqual(result["duplicateGroups"][0]["selectedRow"], self.ROW_NUMBER)
+        self.assertEqual(result["duplicateGroups"][0]["rows"], [self.ROW_NUMBER, self.ROW_NUMBER + 1])
 
     @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
