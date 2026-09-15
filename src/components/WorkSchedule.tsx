@@ -1519,6 +1519,8 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
   const [attendanceByDate, setAttendanceByDate] = useState<Record<string, TimesheetShift[]>>({});
   const [attendanceEditor, setAttendanceEditor] = useState<TimesheetEditorState | null>(null);
   const savingRef = useRef(false);
+  const failedSaveRef = useRef<string | null>(null);
+  const [tableSaveError, setTableSaveError] = useState("");
   const draftsRef = useRef(drafts);
   const dirtyRowsRef = useRef(dirtyRows);
   const tableRef = useRef<HTMLTableElement>(null);
@@ -1637,6 +1639,8 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
   }, [tasks, gridKey]);
 
   const updateCell = (key: string, patch: Partial<InlineDayDraft>) => {
+    failedSaveRef.current = null;
+    setTableSaveError("");
     const nextDrafts = { ...draftsRef.current, [key]: { ...(draftsRef.current[key] || { content: "", selfAssessment: "", leaderAssessment: "" }), ...patch } };
     draftsRef.current = nextDrafts;
     setDrafts(nextDrafts);
@@ -1645,11 +1649,14 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
       setDirtyRows(dirtyRowsRef.current);
     }
   };
-  const saveTable = async () => {
+  const saveTable = async (retry = false) => {
     if (savingRef.current || !dirtyRowsRef.current.length) return;
     const savingRows = [...dirtyRowsRef.current];
     const sourceDrafts = draftsRef.current;
     const savedDrafts = Object.fromEntries(savingRows.map((key) => [key, sourceDrafts[key]]));
+    const saveFingerprint = JSON.stringify(savedDrafts);
+    if (!retry && failedSaveRef.current === saveFingerprint) return;
+    setTableSaveError("");
     savingRef.current = true;
     setSaving(true);
     try {
@@ -1724,6 +1731,12 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
         }
         const blocked = removed.find((task) => !task.canDelete);
         if (blocked) throw new Error(`Bạn không có quyền xóa nhiệm vụ số ${blocked.dailyOrder} của ngày ${fullDate(row.date)}.`);
+        if (!items.length && !removed.length) {
+          if (nextDrafts[key]?.selfAssessment.trim() || nextDrafts[key]?.leaderAssessment.trim()) {
+            throw new Error(`Ngày ${fullDate(row.date)} chưa có nhiệm vụ. Vui lòng nhập nội dung công việc trước khi ghi đánh giá.`);
+          }
+          continue;
+        }
         await saveInlineDay(row.date, items, removed.map((task) => task.id), row.executorEmail || undefined, nextDrafts[key]?.leaderAssessment);
       }
       await reloadTasks(true);
@@ -1734,7 +1747,10 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
       dirtyRowsRef.current = remainingDirtyRows;
       setDirtyRows(remainingDirtyRows);
     } catch (cause: any) {
-      void appDialog.alert(cause.message || "Không thể lưu bảng lịch.", { title: "Không thể lưu bảng", tone: "danger" });
+      failedSaveRef.current = saveFingerprint;
+      const message = cause.message || "Không thể lưu bảng lịch.";
+      setTableSaveError(message);
+      await appDialog.alert(message, { title: "Không thể lưu bảng", tone: "danger" });
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -1755,7 +1771,9 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
     };
   }, [dirtyRows, drafts, saving]);
 
-  return <><section className="overflow-hidden border border-slate-400 bg-white shadow-sm">
+  return <>
+    {tableSaveError && <div role="status" className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"><span>{tableSaveError} Nội dung chưa lưu vẫn được giữ.</span><button type="button" disabled={saving} onClick={() => void saveTable(true)} className="shrink-0 rounded-lg border border-rose-300 px-3 py-2 font-semibold disabled:opacity-50">Thử lưu lại</button></div>}
+    <section className="overflow-hidden border border-slate-400 bg-white shadow-sm">
     <div className="overflow-x-auto"><table ref={tableRef} className="w-full min-w-[1400px] table-fixed border-collapse text-sm">
       <thead className="bg-[#e5f4e8] text-[#001e40]"><tr>
         <th className="w-24 border-b border-r border-slate-400 px-2 py-2 text-left">Thứ</th><th className="w-28 border-b border-r border-slate-400 px-2 py-2 text-left">Ngày</th><th className="w-16 border-b border-r border-slate-400 px-2 py-2 text-center">Tuần</th>
