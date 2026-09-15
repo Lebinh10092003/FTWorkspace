@@ -32,6 +32,18 @@ from .training_sync import sync_work_item_from_training
 
 
 class WorkScheduleSheetParserTests(TestCase):
+    def test_personal_tags_preserve_times_and_authored_title(self):
+        for title in ["[Lịch cá nhân] 17h00: Đón con", "[Hỗ trợ] [Lịch cá nhân] 17h00: Đón con", "[LỊCH CÁ NHÂN] [Hỗ trợ] 17h00: Đón con", "17h00: Lịch riêng đón con"]:
+            with self.subTest(title=title):
+                task = parse_sheet_tasks("1. " + title)[0]
+                self.assertEqual(task.title, title)
+                self.assertEqual(task.start_time, time(17))
+                self.assertTrue(task.has_time_prefix)
+                self.assertTrue(_build_content_format_runs("1. " + title)[0]["format"]["bold"])
+        task = parse_sheet_tasks("1. [Lịch cá nhân] Đón con")[0]
+        self.assertIsNone(task.start_time)
+        self.assertFalse(task.has_time_prefix)
+
     def test_leader_notes_use_only_explicit_task_numbers(self):
         self.assertEqual(leader_assessment_notes("2. Tốt\nChi tiết\n9. Ngoài phạm vi", 3), ["", "Tốt\nChi tiết", ""])
         self.assertEqual(leader_assessment_notes("3: Đạt\n1 Hoàn thành", 3), ["Hoàn thành", "", "Đạt"])

@@ -1443,16 +1443,39 @@ type GridSaveItem = { id?: number; title: string; progressNote: string; status: 
 type ScheduleGridRow = { key: string; date: string; executorEmail: string; person?: TeamMember };
 
 const numberedGridCell = (values: Array<{ number: number; text: string }>) => values.map((value) => `${value.number}. ${value.text}`).join("\n");
-const timePrefixedGridLine = /^\s*\d+\s*[.,)]\s*(?:\[\s*hỗ\s+trợ\s*\]\s*)?\d{1,2}(?:\s*[hH]\s*\d{0,2}|\s*:\s*\d{2})(?=\s|[:;,.-])/i;
+const timePrefixedGridLine = /^\s*\d+\s*[.,)]\s*(?:\[\s*(?:hỗ\s+trợ|lịch\s+cá\s+nhân)\s*\]\s*)*\d{1,2}(?:\s*[hH]\s*\d{0,2}|\s*:\s*\d{2})(?=\s|[:;,.-])/i;
 
 const supportTag = /^\s*\[\s*hỗ\s+trợ\s*\]\s*/i;
+const personalTag = /^\s*\[\s*lịch\s+cá\s+nhân\s*\]\s*/i;
+const personalPhrase = /(?:^|[^\p{L}\p{N}])lịch\s+(?:cá\s+nhân|riêng)(?=$|[^\p{L}\p{N}])/iu;
+function taskTags(title: string) {
+  let content = title;
+  let support = false;
+  let personal = personalPhrase.test(title);
+  while (supportTag.test(content) || personalTag.test(content)) {
+    if (supportTag.test(content)) {
+      support = true;
+      content = content.replace(supportTag, "");
+    } else {
+      personal = true;
+      content = content.replace(personalTag, "");
+    }
+  }
+  return { content, support, personal };
+}
 function SupportBadge() {
   return <span className="mr-1.5 inline-flex items-center gap-1 rounded bg-orange-100 px-1.5 py-0.5 align-middle text-[11px] font-bold not-italic text-orange-700"><Tag className="h-3 w-3 fill-orange-500 text-orange-500" aria-hidden="true" />Hỗ trợ</span>;
 }
+function PersonalBadge() {
+  return <span className="mr-1.5 inline-flex items-center gap-1 rounded bg-fuchsia-100 px-1.5 py-0.5 align-middle text-[11px] font-bold not-italic text-fuchsia-700"><Tag className="h-3 w-3 fill-fuchsia-500 text-fuchsia-500" aria-hidden="true" />Lịch cá nhân</span>;
+}
+function TaskBadges({ support, personal }: { support: boolean; personal: boolean }) {
+  return <>{support && <SupportBadge />}{personal && <PersonalBadge />}</>;
+}
 function WorkTitle({ task }: { task: WorkTask }) {
-  const tagged = supportTag.test(task.title);
+  const tags = taskTags(task.title);
   const prefix = task.displayTitle.endsWith(task.title) ? task.displayTitle.slice(0, -task.title.length) : "";
-  return <>{tagged && <SupportBadge />}{prefix}{tagged ? task.title.replace(supportTag, "") : task.title}</>;
+  return <><TaskBadges {...tags} />{prefix}{tags.content}</>;
 }
 
 function ImportantWorkContentEditor({ value, tasks, className, onInput, onChange, onBlur }: {
@@ -1474,8 +1497,9 @@ function ImportantWorkContentEditor({ value, tasks, className, onInput, onChange
     }
     const marker = numbered?.[0] || "";
     const taskText = numbered ? line.slice(marker.length) : line;
-    const tagged = !!numbered && supportTag.test(taskText);
-    return <React.Fragment key={`${index}-${line}`}><span className={currentImportant ? "font-bold italic text-black" : "font-medium text-slate-900"}>{tagged ? <>{marker}<SupportBadge />{taskText.replace(supportTag, "")}</> : line || " "}</span>{index < value.split("\n").length - 1 && "\n"}</React.Fragment>;
+    const tags = taskTags(taskText);
+    const tagged = !!numbered && (tags.support || tags.personal);
+    return <React.Fragment key={`${index}-${line}`}><span className={currentImportant ? "font-bold italic text-black" : "font-medium text-slate-900"}>{tagged ? <>{marker}<TaskBadges {...tags} />{tags.content}</> : line || " "}</span>{index < value.split("\n").length - 1 && "\n"}</React.Fragment>;
   });
   return <div className="relative">
     {!!value && !focused && <div data-grid-cell-measure aria-hidden className="pointer-events-none absolute inset-0 whitespace-pre-wrap p-2 leading-5">{renderedLines}</div>}

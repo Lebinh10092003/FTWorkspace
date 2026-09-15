@@ -18,7 +18,7 @@ from integrations.google_sheets import build_sheets_service, extract_spreadsheet
 
 from .models import WorkItem, WorkScheduleSheetChange, WorkScheduleSheetSyncLease
 from .retention import purge_expired_work_schedule, retained_from
-from .sheet_parser import without_support_tag, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
+from .sheet_parser import without_task_tags, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
 from .signals import suppress_sheet_queue
 
 
@@ -716,7 +716,7 @@ def _build_content_format_runs(content, items=None):
                 and ordered_items[task_index].priority == "high"
             )
             marker = re.match(r"^\s*\d+\s*[.,)]\s*", line)
-            time_line = marker.group(0) + without_support_tag(line[marker.end():])
+            time_line = marker.group(0) + without_task_tags(line[marker.end():])
             current_bold = bool(_TIME_LINE_RE.match(time_line)) or is_high_priority
         is_bold = current_bold
         if is_bold != prev_bold:
