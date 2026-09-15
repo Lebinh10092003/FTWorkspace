@@ -40,6 +40,16 @@ class WorkScheduleSheetParserTests(TestCase):
         with self.assertRaises(ValueError):
             parse_leader_review("101%")
 
+    def test_support_tag_preserves_authored_times_and_sheet_formatting(self):
+        raw = "1. [Hỗ trợ] 17h00: Hỗ trợ tập huấn buổi 3 MN Từ Liêm 2\n2. [Hỗ trợ] 8h00 - 10h30: Hỗ trợ tập huấn TH & THCS Lý Thường Kiệt, Buổi 1"
+        tasks = parse_sheet_tasks(raw)
+        self.assertEqual(tasks[0].start_time, time(17))
+        self.assertEqual(tasks[1].start_time, time(8))
+        self.assertEqual(tasks[1].end_time, time(10, 30))
+        self.assertTrue(all(task.has_time_prefix for task in tasks))
+        self.assertTrue(tasks[0].title.startswith("[Hỗ trợ]"))
+        self.assertTrue(_build_content_format_runs(raw)[0]["format"]["bold"])
+
     def test_rolling_history_and_notification_windows(self):
         today = date(2026, 9, 10)
         self.assertEqual(retained_from(today), date(2026, 7, 1))
@@ -794,6 +804,93 @@ class WorkScheduleApiTests(TestCase):
                 self.assertEqual(item.priority, "high")
                 self.assertTrue(item.time_prefix_in_title)
                 item.delete()
+
+    def test_direct_manager_can_edit_and_review_employee_authored_tasks(self):
+        self.executor.manager = self.manager
+        self.executor.save(update_fields=["manager"])
+        item = WorkItem.objects.create(creator=self.executor, executor=self.executor,
+                                      work_date=date(2026, 9, 15), title="Việc nhân viên nhập")
+        response = self.request(self.manager_token, "get", "/api/work-schedule/team")
+        task = next(row for row in response.data["items"] if row["id"] == item.pk)
+        self.assertEqual(task["viewerRelation"], "team_viewer")
+        self.assertTrue(task["canAssess"])
+        response = self.request(self.manager_token, "post", "/api/work-schedule/day", {
+            "date": "2026-09-15", "executorEmail": self.executor.email,
+            "items": [{"id": item.pk, "title": "[Hỗ trợ] 8h00 - 10h30: Hỗ trợ tập huấn", "dailyOrder": 1}],
+        })
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertEqual((item.start_time, item.end_time, item.priority), (time(8), time(10, 30), "high"))
+        response = self.request(self.manager_token, "post", "/api/work-schedule/day", {
+            "date": "2026-09-15", "executorEmail": self.executor.email,
+            "items": [{"id": item.pk, "title": "[Hỗ trợ] Hỗ trợ tập huấn", "dailyOrder": 1}],
+        })
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertEqual((item.start_time, item.end_time, item.priority, item.time_prefix_in_title), (None, None, "medium", False))
+
+    def test_removing_authored_time_in_detail_clears_auto_priority(self):
+        item = WorkItem.objects.create(creator=self.executor, executor=self.executor, work_date=date(2026, 9, 15),
+                                      title="17h00: Việc quan trọng", start_time=time(17), priority="high", time_prefix_in_title=True)
+        response = self.request(self.executor_token, "patch", f"/api/work-schedule/items/{item.pk}", {"title": "Việc không giờ"})
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertEqual((item.start_time, item.priority), (None, "medium"))
+
+    def test_manual_high_priority_without_time_is_preserved(self):
+        item = WorkItem.objects.create(creator=self.executor, executor=self.executor,
+                                      work_date=date(2026, 9, 15), title="Quan trọng thủ công", priority="high")
+        response = self.request(self.executor_token, "post", "/api/work-schedule/day", {
+            "date": "2026-09-15", "items": [{"id": item.pk, "title": "[Hỗ trợ] Quan trọng thủ công", "dailyOrder": 1}],
+        })
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertEqual(item.priority, "high")
+
+    def test_manual_priority_is_restored_after_adding_and_removing_time(self):
+        for priority in ["low", "medium", "high"]:
+            item = WorkItem.objects.create(creator=self.executor, executor=self.executor,
+                                          work_date=date(2026, 9, 15), title="Việc không giờ", priority=priority)
+            for title, expected in [("[Hỗ trợ] 8h00: Việc có giờ", "high"), ("[Hỗ trợ] Việc không giờ", priority)]:
+                response = self.request(self.executor_token, "post", "/api/work-schedule/day", {
+                    "date": "2026-09-15", "items": [{"id": item.pk, "title": title, "dailyOrder": 1}],
+                })
+                self.assertEqual(response.status_code, 200, response.data)
+                item.refresh_from_db()
+                self.assertEqual(item.priority, expected)
+            self.assertIsNone(item.priority_before_time)
+            item.delete()
+
+    def test_day_response_failure_rolls_back_saved_changes(self):
+        item = WorkItem.objects.create(creator=self.executor, executor=self.executor,
+                                      work_date=date(2026, 9, 15), title="Nội dung cũ")
+        with mock.patch("work_schedule.views._payload", side_effect=[{"canEdit": True}, RuntimeError("response failed")]):
+            with self.assertRaises(RuntimeError):
+                self.request(self.executor_token, "post", "/api/work-schedule/day", {
+                    "date": "2026-09-15", "items": [{"id": item.pk, "title": "Nội dung mới", "dailyOrder": 1}],
+                })
+        item.refresh_from_db()
+        self.assertEqual(item.title, "Nội dung cũ")
+
+    def test_unchanged_sheet_does_not_overwrite_unsent_manager_edit(self):
+        from collections import defaultdict
+        from .sheet_sync import _ingest_row
+        item = WorkItem.objects.create(creator=self.executor, executor=self.executor,
+                                      work_date=date(2026, 9, 15), title="Nội dung quản lý vừa sửa", source_sheet_row=5001)
+        row = ["", "15/09/2026", "38", self.executor.email, "1. Nội dung cũ", "", "", self.executor.email, "REC-WEB-TEST", f"1. {item.sync_uid}"]
+        row.append(_row_hash(row[4], row[5], row[6], row[9]))
+        retained = defaultdict(set)
+        with mock.patch("work_schedule.sheet_sync._row_employee_email", return_value=self.executor.email):
+            counts = _ingest_row(5001, row, date(2026, 9, 15), retained_by_group=retained)
+        self.assertEqual(counts[:3], (0, 0, 0))
+        item.refresh_from_db()
+        self.assertEqual(item.title, "Nội dung quản lý vừa sửa")
+        self.assertIn(item.pk, retained[(self.executor.email, item.work_date)])
+        # A pending web deletion must not be undone by the stale Sheet row.
+        item.delete()
+        with mock.patch("work_schedule.sheet_sync._row_employee_email", return_value=self.executor.email):
+            _ingest_row(5001, row, date(2026, 9, 15))
+        self.assertFalse(WorkItem.objects.filter(executor=self.executor, work_date="2026-09-15").exists())
 
     def test_grid_title_with_time_range_is_preserved_verbatim(self):
         # Users often write "7:30 - 12:30" (start–end) in the schedule grid. The

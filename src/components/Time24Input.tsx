@@ -100,7 +100,7 @@ export default function Time24Input({ value, label, onChange, disabled = false, 
             onChange={(event) => typePart(part, event.target.value)}
             onBlur={() => commitPart(part)}
             onFocus={(event) => event.currentTarget.select()}
-            className="min-w-0 flex-1 bg-transparent py-1.5 pl-2 text-center font-semibold tabular-nums outline-none disabled:cursor-not-allowed"
+            className="w-0 min-w-0 flex-1 bg-transparent py-1.5 pl-2 text-center font-semibold tabular-nums outline-none disabled:cursor-not-allowed"
           />
           <button
             type="button"
@@ -133,7 +133,7 @@ export default function Time24Input({ value, label, onChange, disabled = false, 
   };
 
   return (
-    <div ref={rootRef} data-time-picker="24h" className={`flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-1.5 py-1 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 ${disabled ? "bg-slate-50 opacity-70" : ""} ${className}`}>
+    <div ref={rootRef} data-time-picker="24h" className={`flex w-full min-w-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-1.5 py-1 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 ${disabled ? "bg-slate-50 opacity-70" : ""} ${className}`}>
       {partInput("hour", HOURS)}
       <span className="font-extrabold text-slate-400">:</span>
       {partInput("minute", MINUTES)}

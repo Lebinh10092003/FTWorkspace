@@ -18,7 +18,7 @@ from integrations.google_sheets import build_sheets_service, extract_spreadsheet
 
 from .models import WorkItem, WorkScheduleSheetChange, WorkScheduleSheetSyncLease
 from .retention import purge_expired_work_schedule, retained_from
-from .sheet_parser import leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
+from .sheet_parser import without_support_tag, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
 from .signals import suppress_sheet_queue
 
 
@@ -493,6 +493,16 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
         return created, updated, deleted, touched
     group_items = list(WorkItem.objects.filter(executor=executor, work_date=work_date))
     touched.add((email, work_date))
+    # An unchanged Sheet row is an old snapshot while a web edit is queued.
+    # Do not recreate deleted tasks or overwrite unsent titles during a full pull.
+    live_hash = _row_hash(_cell(row, 4), _cell(row, 5), _cell(row, 6), _cell(row, 9))
+    if _cell(row, 10) == live_hash and WorkScheduleSheetChange.objects.filter(
+        executor_email=email, work_date=work_date,
+        status__in=[WorkScheduleSheetChange.STATUS_PENDING, WorkScheduleSheetChange.STATUS_FAILED, WorkScheduleSheetChange.STATUS_CONFLICT],
+    ).exists():
+        if retained_by_group is not None:
+            retained_by_group[(email, work_date)].update(item.pk for item in group_items)
+        return created, updated, deleted, touched
     parsed = _unique_sheet_tasks(parse_sheet_tasks(_cell(row, 4)))
     notes = assessment_notes(_cell(row, 5), len(parsed))
     leader_notes = leader_assessment_notes(_cell(row, 6), len(parsed))
@@ -558,9 +568,15 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
             item.source_sheet_row = offset
             item.source_task_index = index
             item.source_record_id = source_record_id
+            had_time_prefix = item.time_prefix_in_title
             item.time_prefix_in_title = explicit_time
             if explicit_time:
+                if not had_time_prefix:
+                    item.priority_before_time = item.priority
                 item.priority = "high"
+            elif had_time_prefix:
+                item.priority = item.priority_before_time or "medium"
+                item.priority_before_time = None
             item.label = "Tập huấn" if is_training else "Công việc"
             item.sync_uid = sync_uid
             item.save()
@@ -572,6 +588,7 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
                 work_date=work_date, start_time=parsed_task.start_time,
                 end_time=parsed_task.end_time or (training_end(parsed_task.start_time) if is_training else None),
                 status=task_status, priority="high" if explicit_time else "medium",
+                priority_before_time="medium" if explicit_time else None,
                 label="Tập huấn" if is_training else "Công việc",
                 daily_order=index, source_sheet_row=offset, source_task_index=index,
                 source_record_id=source_record_id,
@@ -698,7 +715,9 @@ def _build_content_format_runs(content, items=None):
                 task_index < len(ordered_items)
                 and ordered_items[task_index].priority == "high"
             )
-            current_bold = bool(_TIME_LINE_RE.match(line)) or is_high_priority
+            marker = re.match(r"^\s*\d+\s*[.,)]\s*", line)
+            time_line = marker.group(0) + without_support_tag(line[marker.end():])
+            current_bold = bool(_TIME_LINE_RE.match(time_line)) or is_high_priority
         is_bold = current_bold
         if is_bold != prev_bold:
             fmt = {'bold': True, 'italic': True, 'foregroundColorStyle': {'rgbColor': {'red': 0.0, 'green': 0.0, 'blue': 0.0}}} if is_bold else {}

@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from "react-dom";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Clock, Edit3, FileText, Globe, Laptop, Loader2, MapPin, Moon, Plus, Save, Search, Trash2, TriangleAlert, UserCheck, Users, X } from 'lucide-react';
 import Time24Input from './Time24Input';
 import { appDialog } from './AppDialog';
@@ -151,6 +152,10 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
 
   // Popup
   const [popupOpen, setPopupOpen] = useState(false);
+  const [popupLoading, setPopupLoading] = useState(false);
+  const popupLoadSeqRef = useRef(0);
+  const popupOpenKeyRef = useRef<string | null>(null);
+  const closePopup = () => { popupLoadSeqRef.current += 1; popupOpenKeyRef.current = null; setPopupOpen(false); };
   const [popupDate, setPopupDate] = useState('');
   const [isDayOff, setIsDayOff] = useState(false);
   const [shifts, setShifts] = useState<ShiftRow[]>([]);
@@ -279,6 +284,11 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
       void appDialog.alert('Không thể cập nhật công ca cho ngày trong tương lai.', { title: 'Ngày chưa thể cập nhật', tone: 'warning' });
       return;
     }
+    const openKey = `${selectedEmployee}|${targetDate}|${dayOffOverride ?? ""}`;
+    if (popupOpenKeyRef.current === openKey) return;
+    popupOpenKeyRef.current = openKey;
+    const loadSeq = ++popupLoadSeqRef.current;
+    setPopupLoading(true);
     setPopupDate(targetDate);
     setPopupOpen(true);
     setIsDayOff(false);
@@ -290,6 +300,8 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
       const employee = selectedEmployee ? `&employee=${encodeURIComponent(selectedEmployee)}` : '';
       const res = await fetch(`/api/attendance/timesheet/prefill?date=${targetDate}${employee}`, { headers: { Authorization: `Bearer ${idToken}` } });
       const body: PrefillData = await res.json();
+      if (!res.ok) throw new Error((body as any).error || 'Không thể tải công ca.');
+      if (loadSeq !== popupLoadSeqRef.current) return;
       setPrefill(body);
 
       if (body.existing.length > 0) {
@@ -315,8 +327,10 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
         const mode = (body.defaultWorkMode || 'direct') as 'direct' | 'online';
         setShifts([{ start: '08:00', end: '12:00', workMode: mode }]);
       }
-    } catch {
-      setShifts([{ start: '08:00', end: '12:00', workMode: 'direct' }]);
+    } catch (cause: any) {
+      if (loadSeq === popupLoadSeqRef.current) setPopupError(cause.message || 'Không thể tải công ca. Vui lòng thử lại.');
+    } finally {
+      if (loadSeq === popupLoadSeqRef.current) setPopupLoading(false);
     }
   };
 
@@ -375,6 +389,7 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
 
   /* ---------- Save ---------- */
   const saveTimesheet = async () => {
+    if (popupLoading || !prefill || saving) return;
     if (popupDate > todayIso()) {
       setPopupError('Không thể cập nhật công ca cho ngày trong tương lai.');
       return;
@@ -395,7 +410,7 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || 'Không thể lưu.');
       setNotice(body.message || 'Đã lưu công ca.');
-      setPopupOpen(false);
+      closePopup();
       window.dispatchEvent(new CustomEvent('ft-timesheet-saved', { detail: { date: popupDate } }));
       await load(true);
     } catch (e: any) {
@@ -604,9 +619,9 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
       </div>{/* end flex-1 wrapper */}
 
       {/* ---------- Popup ---------- */}
-      {popupOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) setPopupOpen(false); }}>
-          <div className="w-full max-w-3xl rounded-2xl border bg-white shadow-2xl">
+      {popupOpen && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) closePopup(); }}>
+          <div role="dialog" aria-modal="true" aria-label="Chỉnh sửa công ca" className="w-full min-w-0 max-w-3xl rounded-2xl border bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b px-6 py-4">
               <div>
                 <p className="text-xs font-bold uppercase text-emerald-600">{isEdit ? 'Chỉnh sửa' : 'Thêm mới'}</p>
@@ -616,6 +631,7 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
             </div>
 
             <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
+              {popupLoading ? <p role="status" className="py-8 text-center text-sm text-slate-500">Đang tải công ca…</p> : <>
               {/* Date picker + day off */}
               <div className="grid grid-cols-2 gap-4">
                 <label className="block"><span className="mb-1 block text-sm font-bold">Ngày</span><input type="date" max={todayIso()} className="ft-input" value={popupDate} onChange={e => { setPopupDate(e.target.value); void openPopup(e.target.value); }} /></label>
@@ -639,12 +655,12 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
                 <div className="mt-5 space-y-3">
                   <p className="text-xs font-bold uppercase text-slate-500">Các ca làm việc</p>
                   {shifts.map((shift, idx) => (
-                    <div key={idx} className="grid grid-cols-[1fr_1fr_auto] items-start gap-3 rounded-xl border bg-slate-50 px-4 py-3">
-                      <div className="grid grid-cols-2 gap-3">
+                    <div key={idx} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-start gap-3 rounded-xl border bg-slate-50 px-4 py-3">
+                      <div className="grid min-w-0 grid-cols-2 gap-3">
                         <label><span className="mb-1 block text-xs font-bold text-slate-500">Bắt đầu (24h)</span><Time24Input label="Bắt đầu" value={shift.start} onChange={value => updateShift(idx, 'start', value)} /></label>
                         <label><span className="mb-1 block text-xs font-bold text-slate-500">Kết thúc (24h)</span><Time24Input label="Kết thúc" value={shift.end} onChange={value => updateShift(idx, 'end', value)} /></label>
                       </div>
-                      <div>
+                      <div className="col-span-2 min-w-0 sm:col-span-1">
                         <span className="mb-1 block text-xs font-bold text-slate-500">Hình thức</span>
                         <div className="grid grid-cols-2 gap-1.5">
                           <button type="button" onClick={() => updateShift(idx, 'workMode', 'direct')} className={`flex items-center justify-center gap-1 rounded-lg border px-2 py-2 text-xs font-bold transition ${shift.workMode === 'direct' ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-slate-200 bg-white text-slate-500 hover:border-emerald-200'}`}><MapPin className="h-3 w-3" />Trực tiếp</button>
@@ -676,19 +692,20 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
                 </div>
               )}
 
-              {popupError && <div className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">{popupError}</div>}
+              {popupError && <div className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">{popupError}{!prefill && <button type="button" onClick={() => { popupOpenKeyRef.current = null; void openPopup(popupDate); }} className="ml-3 underline">Thử tải lại</button>}</div>}
+              </>}
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t px-6 py-4">
               <button type="button" onClick={() => setPopupOpen(false)} className="ft-btn ft-btn-secondary">Hủy</button>
-              <button type="button" onClick={() => void saveTimesheet()} disabled={saving || popupDate > todayIso() || (!isDayOff && shifts.length === 0)} className="ft-btn ft-btn-primary">
+              <button type="button" onClick={() => void saveTimesheet()} disabled={saving || popupLoading || !prefill || popupDate > todayIso() || (!isDayOff && shifts.length === 0)} className="ft-btn ft-btn-primary">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 {saving ? 'Đang lưu...' : 'Lưu'}
               </button>
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* Toast */}
       {notice && <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-xl bg-emerald-800 px-4 py-3 text-sm font-bold text-white shadow-2xl" role="status"><UserCheck className="h-4 w-4 text-emerald-300" />{notice}</div>}

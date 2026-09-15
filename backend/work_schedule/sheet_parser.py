@@ -3,6 +3,13 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
 
+SUPPORT_TAG = re.compile(r"^\s*\[\s*hỗ\s+trợ\s*\]\s*", re.IGNORECASE)
+
+
+def without_support_tag(value: str) -> str:
+    return SUPPORT_TAG.sub("", str(value or ""), count=1)
+
+
 NUMBERED_LINE = re.compile(r"^\s*(\d{1,3})\s*[.,)]\s*(.*?)(?:\s*)$")
 LEADING_TIME = re.compile(
     r"^\s*(\d{1,2})(?:\s*[hH]\s*(\d{1,2})?|\s*:\s*(\d{2}))(?:\s*[:;,.\-]\s*|\s+)(.+)$",
@@ -52,8 +59,9 @@ def parse_sheet_tasks(value: str) -> list[ParsedSheetTask]:
         start = None
         end = None
         title = raw_title.strip()
-        range_match = LEADING_TIME_RANGE.match(title)
-        match = range_match or LEADING_TIME.match(title)
+        timed_title = without_support_tag(title)
+        range_match = LEADING_TIME_RANGE.match(timed_title)
+        match = range_match or LEADING_TIME.match(timed_title)
         if range_match:
             hour = int(range_match.group(1))
             minute = int(range_match.group(2) or range_match.group(3) or 0)

@@ -31,6 +31,7 @@ class WorkItem(models.Model):
     end_time = models.TimeField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_TODO, db_index=True)
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="medium")
+    priority_before_time = models.CharField(max_length=20, blank=True, null=True, choices=PRIORITY_CHOICES)
     label = models.CharField(max_length=100, blank=True, default="Công việc")
     daily_order = models.PositiveIntegerField(default=1)
     needs_revision = models.BooleanField(default=False)

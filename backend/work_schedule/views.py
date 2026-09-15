@@ -115,7 +115,7 @@ def _normalize_daily_order(executor_id, work_date):
 
 def _payload(item, user, role):
     relation = _viewer_relation(item, user)
-    can_view_review = role == "ADMIN" or relation in {"manager", "creator"}
+    can_view_review = role == "ADMIN" or relation in {"manager", "creator"} or item.executor.manager_id == user.email
     display_status = item.status
     title_prefix = ""
     if relation == "manager" and item.status == WorkItem.STATUS_COMPLETED and not item.reviewed_at:
@@ -200,6 +200,11 @@ def _apply_data(request, item, creating=False, allow_people=True, data_override=
     end_time = parse_time(end_raw) if end_raw else None
     from .sheet_parser import parse_sheet_tasks
     authored_time = parse_sheet_tasks(f"1. {title}")[0]
+    if item.time_prefix_in_title and "title" in data and title != item.title:
+        start_time = authored_time.start_time
+        end_time = authored_time.end_time
+        start_raw = start_time.isoformat() if start_time else ""
+        end_raw = end_time.isoformat() if end_time else ""
     if not start_raw and authored_time.has_time_prefix:
         start_time = authored_time.start_time
         if not end_raw:
@@ -212,7 +217,12 @@ def _apply_data(request, item, creating=False, allow_people=True, data_override=
     requested_status = str(data.get("status", item.status if item else WorkItem.STATUS_TODO) or "").lower()
     requested_priority = str(data.get("priority", item.priority if item else "medium") or "").lower()
     if authored_time.has_time_prefix:
+        if not item.time_prefix_in_title:
+            item.priority_before_time = requested_priority
         requested_priority = "high"
+    elif item.time_prefix_in_title and "title" in data:
+        requested_priority = item.priority_before_time or "medium"
+        item.priority_before_time = None
     if requested_status not in VALID_STATUSES or requested_status == WorkItem.STATUS_REVIEWED:
         return Response({"error": "Trạng thái công việc không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
     if requested_priority not in VALID_PRIORITIES:
@@ -461,6 +471,7 @@ def work_day_edit(request):
                     end_time=row["parsed_title"].end_time,
                     time_prefix_in_title=row["parsed_title"].has_time_prefix,
                     priority="high" if row["parsed_title"].has_time_prefix else "medium",
+                    priority_before_time="medium" if row["parsed_title"].has_time_prefix else None,
                 )
                 if request.user_role == "MANAGER" and executor.email != request.user.email:
                     item.managers.add(request.user)
@@ -468,6 +479,7 @@ def work_day_edit(request):
                 item = visible[row["id"]]
                 update_fields = ["progress_note", "updated_at"]
                 item.progress_note = row["progress_note"]
+                had_time_prefix = item.time_prefix_in_title
                 if row["title"] != item.title:
                     item.title = row["title"]
                     update_fields.append("title")
@@ -476,9 +488,16 @@ def work_day_edit(request):
                     item.end_time = parsed_title.end_time
                     item.time_prefix_in_title = parsed_title.has_time_prefix
                     update_fields.extend(["start_time", "end_time", "time_prefix_in_title"])
-                    if parsed_title.has_time_prefix and item.priority != "high":
+                    if parsed_title.has_time_prefix:
+                        if not had_time_prefix:
+                            item.priority_before_time = item.priority
+                            update_fields.append("priority_before_time")
                         item.priority = "high"
                         update_fields.append("priority")
+                    elif had_time_prefix:
+                        item.priority = item.priority_before_time or "medium"
+                        item.priority_before_time = None
+                        update_fields.extend(["priority", "priority_before_time"])
                 if row["status"] is not None and row["status"] != item.status:
                     item.status = row["status"]
                     update_fields.append("status")
@@ -493,7 +512,7 @@ def work_day_edit(request):
                 id__in=updated_ids,
                 executor=executor,
                 work_date=work_date,
-            ))
+            ).select_related("executor").prefetch_related("managers"))
             from .sheet_parser import leader_assessment_notes, parse_leader_review
             notes = leader_assessment_notes(leader_assessment, max((item.daily_order for item in review_targets), default=0))
             pending_reviews = [(item, notes[item.daily_order - 1]) for item in review_targets
@@ -525,11 +544,10 @@ def work_day_edit(request):
         for executor_id, date in affected_groups:
             _normalize_daily_order(executor_id, date)
 
-    refreshed = list(_visible_items(request.user, request.user_role).filter(id__in=updated_ids).order_by("daily_order", "created_at"))
-    return Response({
-        "message": "Đã cập nhật bảng lịch trong ngày.",
-        "items": [_payload(item, request.user, request.user_role) for item in refreshed],
-    })
+        refreshed = list(_visible_items(request.user, request.user_role).filter(id__in=updated_ids).order_by("daily_order", "created_at"))
+        response_data = {"message": "Đã cập nhật bảng lịch trong ngày.",
+                         "items": [_payload(item, request.user, request.user_role) for item in refreshed]}
+    return Response(response_data)
 
 
 @api_view(["GET", "PATCH", "DELETE"])
