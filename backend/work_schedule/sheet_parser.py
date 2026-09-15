@@ -116,3 +116,37 @@ def training_end(start: time | None) -> time | None:
     if not start:
         return None
     return (datetime.combine(datetime.min.date(), start) + timedelta(hours=3)).time()
+
+
+def leader_assessment_notes(value: str, task_count: int) -> list[str]:
+    """Map explicit review numbers without assigning invalid numbers elsewhere."""
+    raw = str(value or "").strip()
+    notes = [""] * task_count
+    if not raw:
+        return notes
+    entries = []
+    current = None
+    for line in raw.splitlines():
+        match = re.match(r"^\s*(\d{1,3})(?:\s*[.,):\-]\s*|\s+)(.*)$", line)
+        if match:
+            current = (int(match.group(1)), [match.group(2).strip()])
+            entries.append(current)
+        elif current and line.strip():
+            current[1].append(line.strip())
+    if not entries:
+        return [raw] * task_count
+    for number, parts in entries:
+        if 1 <= number <= task_count:
+            note = "\n".join(parts).strip()
+            notes[number - 1] = "\n".join(filter(None, [notes[number - 1], note]))
+    return notes
+
+
+def parse_leader_review(note: str) -> tuple[int, str]:
+    match = re.match(r"^\s*(\d{1,3})\s*%\s*(?:[·:\-]\s*)?(.*)$", note, re.DOTALL)
+    if match:
+        percent = int(match.group(1))
+        if percent > 100:
+            raise ValueError("Mức độ hoàn thành phải từ 0 đến 100%.")
+        return percent, match.group(2).strip()
+    return 100, note.strip()

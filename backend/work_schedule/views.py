@@ -161,6 +161,7 @@ def _payload(item, user, role):
         # originally assigned the work. The UI still warns before deleting a
         # delegated item, but the API must not reject that confirmed action.
         "canDelete": role == "ADMIN" or item.creator_id == user.email or relation in {"manager", "executor"},
+        "canAssess": can_view_review and can_manage,
         "canReview": can_view_review and can_manage and item.status == WorkItem.STATUS_COMPLETED and not item.reviewed_at,
         "canManagePeople": can_manage or relation == "executor",
         "createdAt": item.created_at.isoformat(),
@@ -493,25 +494,20 @@ def work_day_edit(request):
                 executor=executor,
                 work_date=work_date,
             ))
-            pending_reviews = [item for item in review_targets if item.status != WorkItem.STATUS_REVIEWED]
-            if any(item.status != WorkItem.STATUS_COMPLETED for item in pending_reviews):
+            from .sheet_parser import leader_assessment_notes, parse_leader_review
+            notes = leader_assessment_notes(leader_assessment, max((item.daily_order for item in review_targets), default=0))
+            pending_reviews = [(item, notes[item.daily_order - 1]) for item in review_targets
+                               if notes[item.daily_order - 1] and notes[item.daily_order - 1].casefold() not in {"chưa đánh giá", "chua danh gia"}]
+            if any(not _can_manage(item, request.user, request.user_role) for item, note in pending_reviews):
                 transaction.set_rollback(True)
-                return Response({"error": "Chỉ có thể đánh giá theo ngày khi tất cả nhiệm vụ đã hoàn thành."}, status=status.HTTP_400_BAD_REQUEST)
-            if any(not _can_manage(item, request.user, request.user_role) for item in pending_reviews):
+                return Response({"error": "Bạn không có quyền đánh giá nhiệm vụ này."}, status=status.HTTP_403_FORBIDDEN)
+            try:
+                parsed_reviews = [(item, *parse_leader_review(note)) for item, note in pending_reviews]
+            except ValueError as error:
                 transaction.set_rollback(True)
-                return Response({"error": "Bạn không có quyền đánh giá toàn bộ nhiệm vụ trong ngày này."}, status=status.HTTP_403_FORBIDDEN)
-            assessment_match = re.match(r"^\s*(\d{1,3})\s*%\s*(?:[·:\-]\s*)?(.*)$", leader_assessment, re.DOTALL)
-            if assessment_match:
-                review_percent = int(assessment_match.group(1))
-                review_note = assessment_match.group(2).strip()
-            else:
-                review_percent = 100
-                review_note = "" if leader_assessment.lower() in {"hoàn thành", "đã hoàn thành", "xong"} else leader_assessment
-            if review_percent > 100:
-                transaction.set_rollback(True)
-                return Response({"error": "Mức độ hoàn thành phải từ 0 đến 100%."}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
             reviewed_at = timezone.now()
-            for item in pending_reviews:
+            for item, review_percent, review_note in parsed_reviews:
                 item.status = WorkItem.STATUS_REVIEWED
                 item.review_percent = review_percent
                 item.review_note = review_note

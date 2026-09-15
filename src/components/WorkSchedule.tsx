@@ -39,6 +39,7 @@ type WorkTask = {
   canEdit: boolean;
   canDelete: boolean;
   canReview: boolean;
+  canAssess: boolean;
   canManagePeople: boolean;
 };
 type WorkDraft = {
@@ -93,6 +94,24 @@ type WorkScheduleSnapshot = {
 
 const WORK_SCHEDULE_MEMORY_TTL_MS = 5 * 60 * 1000;
 let workScheduleSnapshot: WorkScheduleSnapshot | null = null;
+
+// Cache only menu visibility, never personnel data or authorization.
+function teamMenuCacheKey(email: string, role: string) {
+  return `work-schedule:team-menu:${role}:${email}`;
+}
+
+function initialTeamMenuVisibility(email: string, role: string, snapshot: WorkScheduleSnapshot | null) {
+  if (snapshot) return snapshot.teamMembers.length > 0;
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(teamMenuCacheKey(email, role)) || "null");
+    if (cached && typeof cached.visible === "boolean" && Date.now() - cached.savedAt < WORK_SCHEDULE_MEMORY_TTL_MS) {
+      return cached.visible;
+    }
+  } catch {
+    // Storage may be unavailable; role still provides an initial menu hint.
+  }
+  return role === "ADMIN" || role === "MANAGER";
+}
 
 function scheduleLocation() {
   const path = window.location.pathname;
@@ -426,6 +445,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     [staff, setStaff] = useState<Person[]>(cachedSnapshot?.staff || [{ email: userEmail, name: userName }]),
     [teamMembers, setTeamMembers] = useState<TeamMember[]>(cachedSnapshot?.teamMembers || []),
     [teamTasks, setTeamTasks] = useState<WorkTask[]>(cachedSnapshot?.teamTasks || []),
+    [showTeamMenu, setShowTeamMenu] = useState(() => initialTeamMenuVisibility(userEmail, userRole, cachedSnapshot)),
     [retentionStart, setRetentionStart] = useState(cachedSnapshot?.retentionStart || ""),
     [selectedDate, setSelectedDate] = useState(iso(new Date())),
     [weekStart, setWeekStart] = useState(mondayOf(new Date())),
@@ -519,6 +539,13 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
       setTasks(nextTasks);
       setStaff(nextStaff);
       setTeamMembers(nextTeamMembers);
+      const teamMenuVisible = nextTeamMembers.length > 0;
+      setShowTeamMenu(teamMenuVisible);
+      try {
+        sessionStorage.setItem(teamMenuCacheKey(userEmail, userRole), JSON.stringify({ visible: teamMenuVisible, savedAt: Date.now() }));
+      } catch {
+        // A storage failure must not prevent the loaded schedule from rendering.
+      }
       setTeamTasks(nextTeamTasks);
       setRetentionStart(nextRetentionStart);
       if (userRole === "ADMIN") setSheetUrl(current => current || String(items.sheetUrl || team.sheetUrl || ""));
@@ -849,7 +876,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
   const navItems: Array<{ id: View; label: string; icon: React.ElementType }> = [
     { id: "board", label: "Công việc theo ngày", icon: LayoutDashboard },
     { id: "week", label: "Lịch tuần / tháng", icon: CalendarDays },
-    ...(teamMembers.length > 0 ? [{ id: "team" as View, label: "Quản lý nhân sự", icon: UserCheck }] : []),
+    ...(showTeamMenu ? [{ id: "team" as View, label: "Quản lý nhân sự", icon: UserCheck }] : []),
     ...(userRole === "ADMIN" ? [{ id: "sheet" as View, label: "Liên kết Google Sheets", icon: FileSpreadsheet }] : []),
   ];
 
@@ -1475,13 +1502,14 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
     const workItems = rowsFor(row);
     const allCompleted = workItems.length > 0 && workItems.every((task) => task.status === "completed" || task.status === "reviewed");
     const allReviewed = workItems.length > 0 && workItems.every((task) => task.status === "reviewed");
-    const leaderAssessments = [...new Set(workItems
+    const leaderAssessments = numberedGridCell(workItems
       .filter((task) => task.reviewPercent !== null)
-      .map((task) => `${task.reviewPercent}%${task.reviewNote ? ` · ${task.reviewNote}` : ""}`))];
+      .map((task) => ({ number: task.dailyOrder, text: task.reviewPercent === 100 && task.reviewNote ? task.reviewNote : `${task.reviewPercent}%${task.reviewNote ? ` · ${task.reviewNote}` : ""}` })));
+    const plainCompletion = allReviewed && workItems.every((task) => task.reviewPercent === 100 && (!task.reviewNote || task.reviewNote.toLocaleLowerCase() === "hoàn thành"));
     return [row.key, {
       content: numberedGridCell(workItems.map((task) => ({ number: task.dailyOrder, text: task.title }))),
       selfAssessment: allCompleted ? "Hoàn thành" : numberedGridCell(workItems.map((task) => ({ number: task.dailyOrder, text: displayedSelfAssessment(task) }))),
-      leaderAssessment: allReviewed ? "Hoàn thành" : leaderAssessments.join("\n"),
+      leaderAssessment: plainCompletion ? "Hoàn thành" : leaderAssessments,
     }];
   })) as Record<string, InlineDayDraft>;
   const gridKey = gridRows.map((row) => row.key).join("|");
@@ -1737,7 +1765,7 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
       <tbody>{gridRows.map((row) => {
         const workItems = rowsFor(row), draft = drafts[row.key] || { content: "", selfAssessment: "", leaderAssessment: "" };
         const attendanceIsFuture = row.date > iso(new Date());
-        const canReviewDay = workItems.some((task) => task.canReview) && workItems.every((task) => task.status === "completed" || task.status === "reviewed");
+        const canReviewDay = workItems.some((task) => task.canAssess);
         const compactSelfAssessment = isCompletionNote(draft.selfAssessment);
         const compactLeaderAssessment = isCompletionNote(draft.leaderAssessment);
         const editorClass = "block min-h-20 w-full resize-none overflow-hidden border-0 bg-transparent p-2 leading-5 outline-none hover:bg-blue-50/30 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500";

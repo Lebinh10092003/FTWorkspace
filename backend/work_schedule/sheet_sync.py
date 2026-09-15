@@ -18,7 +18,7 @@ from integrations.google_sheets import build_sheets_service, extract_spreadsheet
 
 from .models import WorkItem, WorkScheduleSheetChange, WorkScheduleSheetSyncLease
 from .retention import purge_expired_work_schedule, retained_from
-from .sheet_parser import assessment_notes, parse_sheet_tasks, status_from_note, training_end
+from .sheet_parser import leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
 from .signals import suppress_sheet_queue
 
 
@@ -330,10 +330,11 @@ def _group_values(items):
         if item.progress_note or item.status in {WorkItem.STATUS_COMPLETED, WorkItem.STATUS_REVIEWED}
     )
     all_reviewed = bool(items) and all(item.status == WorkItem.STATUS_REVIEWED for item in items)
-    leader_notes = "Hoàn thành" if all_reviewed else "\n".join(
+    leader_notes = "Hoàn thành" if all_reviewed and all(item.review_percent in {None, 100} and (not item.review_note or item.review_note.casefold() == "hoàn thành") for item in items) else "\n".join(
         f"{index}. " +
-        (f"{item.review_percent}%" if item.review_percent is not None else "Hoàn thành") +
-        (f" · {item.review_note}" if item.review_note else "")
+        (item.review_note if item.review_percent in {None, 100} and item.review_note else
+         (f"{item.review_percent}%" if item.review_percent is not None else "Hoàn thành") +
+         (f" · {item.review_note}" if item.review_note else ""))
         for index, item in enumerate(items, 1)
         if item.status == WorkItem.STATUS_REVIEWED
     )
@@ -494,7 +495,7 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
     touched.add((email, work_date))
     parsed = _unique_sheet_tasks(parse_sheet_tasks(_cell(row, 4)))
     notes = assessment_notes(_cell(row, 5), len(parsed))
-    leader_notes = assessment_notes(_cell(row, 6), len(parsed))
+    leader_notes = leader_assessment_notes(_cell(row, 6), len(parsed))
     ids = _task_uids(_cell(row, 9))
     group_uids = {item.sync_uid for item in group_items}
     has_group_uid = any(sync_uid in group_uids for sync_uid in ids if sync_uid)
@@ -578,6 +579,17 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
                 sync_uid=sync_uid,
             )
             created += 1
+        if task_status == WorkItem.STATUS_REVIEWED:
+            item.review_percent, item.review_note = parse_leader_review(leader_note)
+            item.review_note = item.review_note[:1000]
+            item.reviewed_at = item.reviewed_at or timezone.now()
+            item.needs_revision = False
+        else:
+            item.review_percent = None
+            item.review_note = ""
+            item.reviewed_at = None
+            item.reviewed_by = None
+        item.save(update_fields=["review_percent", "review_note", "reviewed_at", "reviewed_by", "needs_revision"])
         # Reconcile the calendar projection immediately. In particular this
         # removes old 09:00-12:00 sessions that were generated merely because
         # an untimed task happened to mention "tập huấn".

@@ -10,7 +10,7 @@ from rest_framework.authtoken.models import Token
 from authentication.models import UserProfile
 
 from .models import WorkItem, WorkScheduleSheetChange, WorkScheduleSheetInboundEvent, WorkScheduleSheetSyncLease
-from .sheet_parser import assessment_notes, parse_sheet_tasks, status_from_note, training_end
+from .sheet_parser import leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
 from .retention import notification_from, retained_from
 from .sheet_sync import (
     EMPLOYEE_EMAILS,
@@ -32,6 +32,14 @@ from .training_sync import sync_work_item_from_training
 
 
 class WorkScheduleSheetParserTests(TestCase):
+    def test_leader_notes_use_only_explicit_task_numbers(self):
+        self.assertEqual(leader_assessment_notes("2. Tốt\nChi tiết\n9. Ngoài phạm vi", 3), ["", "Tốt\nChi tiết", ""])
+        self.assertEqual(leader_assessment_notes("3: Đạt\n1 Hoàn thành", 3), ["Hoàn thành", "", "Đạt"])
+        self.assertEqual(leader_assessment_notes("Hoàn thành", 3), ["Hoàn thành"] * 3)
+        self.assertEqual(parse_leader_review("80% · Cần bổ sung"), (80, "Cần bổ sung"))
+        with self.assertRaises(ValueError):
+            parse_leader_review("101%")
+
     def test_rolling_history_and_notification_windows(self):
         today = date(2026, 9, 10)
         self.assertEqual(retained_from(today), date(2026, 7, 1))
@@ -160,7 +168,7 @@ class WorkScheduleSheetParserTests(TestCase):
         _, _, all_reviewed_notes, _ = _group_values([
             Item("reviewed"), Item("reviewed", review_percent=90)
         ])
-        self.assertEqual(all_reviewed_notes, "Hoàn thành")
+        self.assertEqual(all_reviewed_notes, "1. Hoàn thành\n2. 90%")
 
     def test_sheet_output_keeps_web_grid_title_verbatim(self):
         class Item:
@@ -534,7 +542,30 @@ class WorkScheduleApiTests(TestCase):
         reviewed = WorkItem.objects.filter(pk__in=[first["id"], second["id"]])
         self.assertEqual(reviewed.filter(status="reviewed", review_percent=100, reviewed_by=self.manager).count(), 2)
 
-    def test_day_review_rejects_when_any_task_is_not_completed(self):
+    def test_manager_reviews_only_the_numbered_task_and_preserves_note(self):
+        self.executor.manager = self.manager
+        self.executor.save(update_fields=["manager"])
+        first = self.create_item()
+        second = self.request(self.manager_token, "post", "/api/work-schedule/items", {
+            "title": "Nhiệm vụ thứ hai", "date": first["date"],
+            "executorEmail": self.executor.email, "managerEmails": [self.manager.email],
+        }).json()["item"]
+        response = self.request(self.manager_token, "post", "/api/work-schedule/day", {
+            "date": first["date"], "executorEmail": self.executor.email,
+            "leaderAssessment": "2. Kết quả tốt",
+            "items": [
+                {"id": first["id"], "title": first["title"], "dailyOrder": 1},
+                {"id": second["id"], "title": second["title"], "dailyOrder": 2},
+            ],
+        })
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(WorkItem.objects.get(pk=first["id"]).status, "todo")
+        reviewed = WorkItem.objects.get(pk=second["id"])
+        self.assertEqual(reviewed.status, "reviewed")
+        self.assertEqual(reviewed.review_note, "Kết quả tốt")
+        self.assertEqual(_group_values(list(WorkItem.objects.filter(pk__in=[first["id"], second["id"]]).order_by("daily_order")))[2], "2. Kết quả tốt")
+
+    def test_day_review_completion_confirms_unfinished_tasks(self):
         self.executor.manager = self.manager
         self.executor.save(update_fields=["manager"])
         item = self.create_item()
@@ -545,8 +576,8 @@ class WorkScheduleApiTests(TestCase):
             "items": [{"id": item["id"], "title": item["title"], "progressNote": "", "status": "todo", "dailyOrder": 1}],
         })
 
-        self.assertEqual(response.status_code, 400, response.data)
-        self.assertEqual(WorkItem.objects.get(pk=item["id"]).status, "todo")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(WorkItem.objects.get(pk=item["id"]).status, "reviewed")
 
     def test_day_table_edit_can_delete_a_removed_numbered_task(self):
         first = self.create_item()
