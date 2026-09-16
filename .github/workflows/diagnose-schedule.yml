@@ -1,0 +1,26 @@
+name: Diagnose schedule saves
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read production health and recent save errors
+        env:
+          VPS_HOST: ${{ secrets.DEPLOY_HOST }}
+          VPS_PORT: ${{ secrets.DEPLOY_PORT }}
+          VPS_USERNAME: ${{ secrets.DEPLOY_USER }}
+          SSHPASS: ${{ secrets.DEPLOY_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -qq -o Acquire::Retries=3
+          sudo apt-get install -y -qq sshpass
+          install -d -m 700 ~/.ssh
+          ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" > ~/.ssh/known_hosts
+          sshpass -e ssh -p "$VPS_PORT" -o StrictHostKeyChecking=yes "$VPS_USERNAME@$VPS_HOST" 'sudo -n journalctl -u workspace-django.service --since "24 hours ago" --no-pager -n 5000 | grep -E -A 18 -B 3 "Internal Server Error|Traceback|OperationalError|IntegrityError|database is locked|work-schedule/day" | tail -n 350; true'
+          sshpass -e ssh -p "$VPS_PORT" -o StrictHostKeyChecking=yes "$VPS_USERNAME@$VPS_HOST" 'cd /var/www/ft-workspace/backend && sudo -u workspace -H ../.venv/bin/python manage.py shell' < backend/scripts/diagnose_schedule_saves.py

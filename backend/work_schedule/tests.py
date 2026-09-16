@@ -604,6 +604,20 @@ class WorkScheduleApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(WorkItem.objects.get(pk=item["id"]).status, "reviewed")
 
+    def test_manager_can_edit_reviewed_employee_content(self):
+        item = self.create_item()
+        WorkItem.objects.filter(pk=item["id"]).update(status="reviewed", review_percent=100, reviewed_at=timezone.now())
+        response = self.request(self.manager_token, "post", "/api/work-schedule/day", {
+            "date": item["date"], "executorEmail": self.executor.email,
+            "items": [{"id": item["id"], "title": "Nội dung quản lý chỉnh sửa", "status": "reviewed", "dailyOrder": 1}],
+        })
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(WorkItem.objects.get(pk=item["id"]).title, "Nội dung quản lý chỉnh sửa")
+        response = self.request(self.executor_token, "post", "/api/work-schedule/day", {
+            "date": item["date"], "items": [{"id": item["id"], "title": "Nhân viên sửa sau review"}],
+        })
+        self.assertEqual(response.status_code, 403)
+
     def test_personal_table_cannot_submit_reviews_even_for_admin(self):
         item = self.create_item()
         admin, admin_token = self.profile("review-admin@example.com", "ADMIN")

@@ -156,11 +156,11 @@ def _payload(item, user, role):
         "reviewNote": item.review_note if can_view_review else "",
         "reviewedBy": _profile_payload(item.reviewed_by) if can_view_review and item.reviewed_by else None,
         "reviewedAt": item.reviewed_at.isoformat() if can_view_review and item.reviewed_at else None,
-        "canEdit": (can_manage or relation == "executor") and not item.reviewed_at,
+        "canEdit": (can_manage and role in {"ADMIN", "MANAGER"}) or ((can_manage or relation == "executor") and not item.reviewed_at),
         # The executor owns their displayed schedule even when a manager/admin
         # originally assigned the work. The UI still warns before deleting a
         # delegated item, but the API must not reject that confirmed action.
-        "canDelete": role == "ADMIN" or item.creator_id == user.email or relation in {"manager", "executor"},
+        "canDelete": (can_manage and role in {"ADMIN", "MANAGER"}) or item.creator_id == user.email or relation in {"manager", "executor"},
         "canAssess": can_view_review and can_manage,
         "canReview": can_view_review and can_manage and item.status == WorkItem.STATUS_COMPLETED and not item.reviewed_at,
         "canManagePeople": can_manage or relation == "executor",

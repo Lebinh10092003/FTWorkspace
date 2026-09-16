@@ -59,7 +59,7 @@ def queue_group(executor_email, work_date):
     if _queue_suppressed.get() or not executor_email or not work_date:
         return
     WorkScheduleSheetChange.objects.create(executor_email=executor_email, work_date=work_date)
-    transaction.on_commit(launch_sheet_sync_worker)
+    transaction.on_commit(launch_sheet_sync_worker, robust=True)
 
 
 @receiver(pre_save, sender=WorkItem)

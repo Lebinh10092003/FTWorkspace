@@ -1443,6 +1443,21 @@ type GridSaveItem = { id?: number; title: string; progressNote: string; status: 
 type ScheduleGridRow = { key: string; date: string; executorEmail: string; person?: TeamMember };
 
 const numberedGridCell = (values: Array<{ number: number; text: string }>) => values.map((value) => `${value.number}. ${value.text}`).join("\n");
+function matchGridTasks(entries: Array<{ number: number; text: string }>, original: WorkTask[]) {
+  const used = new Set<number>();
+  const matches = entries.map((entry) => {
+    const task = original.find((item) => !used.has(item.id) && item.title.trim() === entry.text.trim());
+    if (task) used.add(task.id);
+    return task;
+  });
+  return matches.map((task, index) => {
+    if (task) return task;
+    const candidate = original.find((item) => !used.has(item.id) && item.dailyOrder === entries[index].number)
+      || original.find((item) => !used.has(item.id));
+    if (candidate) used.add(candidate.id);
+    return candidate;
+  });
+}
 const timePrefixedGridLine = /^\s*\d+\s*[.,)]\s*(?:\[\s*(?:hỗ\s+trợ|lịch\s+cá\s+nhân)\s*\]\s*)*\d{1,2}(?:\s*[hH]\s*\d{0,2}|\s*:\s*\d{2})(?=\s|[:;,.-])/i;
 
 const supportTag = /^\s*\[\s*hỗ\s+trợ\s*\]\s*/i;
@@ -1699,6 +1714,20 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
   const updateCell = (key: string, patch: Partial<InlineDayDraft>) => {
     failedSaveRef.current = null;
     setTableSaveError("");
+    const previous = draftsRef.current[key];
+    if (patch.content !== undefined && previous && patch.content !== previous.content) {
+      const row = gridRows.find((item) => item.key === key)!;
+      const entries = splitNumberedCell(patch.content).filter((entry) => entry.text);
+      const matches = matchGridTasks(entries, rowsFor(row));
+      if (matches.some((task) => !task)) {
+        if (isCompletionNote(previous.selfAssessment)) {
+          patch.selfAssessment = numberedGridCell(entries.map((entry, index) => ({ number: entry.number, text: matches[index] ? "Hoàn thành" : "" })));
+        }
+        if (isCompletionNote(previous.leaderAssessment)) {
+          patch.leaderAssessment = numberedGridCell(entries.filter((_, index) => matches[index]?.status === "reviewed").map((entry) => ({ number: entry.number, text: "Hoàn thành" })));
+        }
+      }
+    }
     const nextDrafts = { ...draftsRef.current, [key]: { ...(draftsRef.current[key] || { content: "", selfAssessment: "", leaderAssessment: "" }), ...patch } };
     draftsRef.current = nextDrafts;
     setDrafts(nextDrafts);
@@ -1760,10 +1789,9 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
         if (content.length > 100) throw new Error(`Ngày ${fullDate(row.date)} vượt quá 100 nhiệm vụ.`);
         if (content.some((entry) => entry.number < 1 || entry.number > 100)) throw new Error(`Số thứ tự nhiệm vụ của ngày ${fullDate(row.date)} phải nằm trong khoảng 1–100.`);
         const usedIds = new Set<number>();
+        const matches = matchGridTasks(content, original);
         const items = content.map((entry, index) => {
-          let current = original.find((task) => !usedIds.has(task.id) && task.title.trim() === entry.text.trim());
-          if (!current) current = original.find((task) => !usedIds.has(task.id) && task.dailyOrder === entry.number);
-          if (!current) current = original.find((task, taskIndex) => taskIndex >= index && !usedIds.has(task.id));
+          const current = matches[index];
           if (current) usedIds.add(current.id);
           const note = singleCompletion ? "Hoàn thành" : notes.find((item) => item.number === entry.number)?.text || notes[index]?.text || "";
           return {
