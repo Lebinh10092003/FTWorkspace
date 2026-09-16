@@ -360,6 +360,8 @@ def work_day_edit(request):
     raw_delete_ids = request.data.get("deleteIds", [])
     leader_assessment_supplied = "leaderAssessment" in request.data
     leader_assessment = str(request.data.get("leaderAssessment") or "").strip()[:1000]
+    if leader_assessment_supplied and (request.data.get("assessmentContext") != "team" or request.user_role not in {"ADMIN", "MANAGER"}):
+        return Response({"error": "Chỉ được sửa lãnh đạo đánh giá trong Quản lý nhân sự."}, status=status.HTTP_403_FORBIDDEN)
     executor_email = str(request.data.get("executorEmail") or request.user.email).strip().lower()
     executor = UserProfile.objects.filter(email=executor_email, employment_status="ACTIVE").first()
     if not work_date:
@@ -507,7 +509,7 @@ def work_day_edit(request):
                 item.save(update_fields=update_fields)
                 sync_training_from_work_item(item)
             updated_ids.append(item.id)
-        if leader_assessment_supplied and leader_assessment:
+        if leader_assessment_supplied:
             review_targets = list(WorkItem.objects.filter(
                 id__in=updated_ids,
                 executor=executor,
@@ -517,7 +519,9 @@ def work_day_edit(request):
             notes = leader_assessment_notes(leader_assessment, max((item.daily_order for item in review_targets), default=0))
             pending_reviews = [(item, notes[item.daily_order - 1]) for item in review_targets
                                if notes[item.daily_order - 1] and notes[item.daily_order - 1].casefold() not in {"chưa đánh giá", "chua danh gia"}]
-            if any(not _can_manage(item, request.user, request.user_role) for item, note in pending_reviews):
+            reviewed_ids = {item.pk for item, _ in pending_reviews}
+            clear_reviews = [item for item in review_targets if item.pk not in reviewed_ids]
+            if any(not _can_manage(item, request.user, request.user_role) for item in [target for target, _ in pending_reviews] + clear_reviews):
                 transaction.set_rollback(True)
                 return Response({"error": "Bạn không có quyền đánh giá nhiệm vụ này."}, status=status.HTTP_403_FORBIDDEN)
             try:
@@ -526,6 +530,16 @@ def work_day_edit(request):
                 transaction.set_rollback(True)
                 return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
             reviewed_at = timezone.now()
+            for item in clear_reviews:
+                if item.status == WorkItem.STATUS_REVIEWED:
+                    item.status = WorkItem.STATUS_COMPLETED
+                item.review_percent = None
+                item.review_note = ""
+                item.reviewed_by = None
+                item.reviewed_at = None
+                item.needs_revision = False
+                item.save(update_fields=["status", "review_percent", "review_note", "reviewed_by", "reviewed_at", "needs_revision", "updated_at"])
+                sync_training_from_work_item(item)
             for item, review_percent, review_note in parsed_reviews:
                 item.status = WorkItem.STATUS_REVIEWED
                 item.review_percent = review_percent

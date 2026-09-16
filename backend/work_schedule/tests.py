@@ -554,6 +554,7 @@ class WorkScheduleApiTests(TestCase):
             "date": first["date"],
             "executorEmail": self.executor.email,
             "leaderAssessment": "Hoàn thành",
+            "assessmentContext": "team",
             "items": [
                 {"id": first["id"], "title": first["title"], "progressNote": "Hoàn thành", "status": "completed", "dailyOrder": 1},
                 {"id": second["id"], "title": second["title"], "progressNote": "Hoàn thành", "status": "completed", "dailyOrder": 2},
@@ -575,6 +576,7 @@ class WorkScheduleApiTests(TestCase):
         response = self.request(self.manager_token, "post", "/api/work-schedule/day", {
             "date": first["date"], "executorEmail": self.executor.email,
             "leaderAssessment": "2. Kết quả tốt",
+            "assessmentContext": "team",
             "items": [
                 {"id": first["id"], "title": first["title"], "dailyOrder": 1},
                 {"id": second["id"], "title": second["title"], "dailyOrder": 2},
@@ -595,11 +597,67 @@ class WorkScheduleApiTests(TestCase):
             "date": item["date"],
             "executorEmail": self.executor.email,
             "leaderAssessment": "Hoàn thành",
+            "assessmentContext": "team",
             "items": [{"id": item["id"], "title": item["title"], "progressNote": "", "status": "todo", "dailyOrder": 1}],
         })
 
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(WorkItem.objects.get(pk=item["id"]).status, "reviewed")
+
+    def test_personal_table_cannot_submit_reviews_even_for_admin(self):
+        item = self.create_item()
+        admin, admin_token = self.profile("review-admin@example.com", "ADMIN")
+        for token in [self.executor_token, self.manager_token, admin_token]:
+            for context in [None, "personal"]:
+                with self.subTest(context=context):
+                    response = self.request(token, "post", "/api/work-schedule/day", {
+                        "date": item["date"], "executorEmail": self.executor.email,
+                        "leaderAssessment": "Hoàn thành", "assessmentContext": context,
+                        "items": [{"id": item["id"], "title": "Không được thay đổi"}],
+                    })
+                    self.assertEqual(response.status_code, 403)
+        response = self.request(self.executor_token, "post", "/api/work-schedule/day", {
+            "date": item["date"], "assessmentContext": "team", "leaderAssessment": "",
+            "items": [{"id": item["id"], "title": item["title"]}],
+        })
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(WorkItem.objects.get(pk=item["id"]).title, item["title"])
+
+    def test_team_table_clears_review_and_reload_stays_empty(self):
+        self.executor.manager = self.manager
+        self.executor.save(update_fields=["manager"])
+        item = self.create_item()
+        for text in ["Hoàn thành", ""]:
+            response = self.request(self.manager_token, "post", "/api/work-schedule/day", {
+                "date": item["date"], "executorEmail": self.executor.email,
+                "assessmentContext": "team", "leaderAssessment": text,
+                "items": [{"id": item["id"], "title": item["title"], "dailyOrder": 1}],
+            })
+            self.assertEqual(response.status_code, 200, response.data)
+        saved = WorkItem.objects.get(pk=item["id"])
+        self.assertEqual(saved.status, "completed")
+        self.assertIsNone(saved.review_percent)
+        self.assertEqual(saved.review_note, "")
+        self.assertIsNone(saved.reviewed_at)
+        self.assertIsNone(saved.reviewed_by)
+        self.assertEqual(_group_values([saved])[2], "")
+        reloaded = self.request(self.manager_token, "get", f"/api/work-schedule/items/{item['id']}").json()
+        self.assertIsNone(reloaded["reviewPercent"])
+        self.assertEqual(reloaded["reviewNote"], "")
+
+    def test_removing_one_numbered_review_preserves_the_other(self):
+        first, second = self.create_item(), self.create_item()
+        for text in ["Hoàn thành", "2. Tốt"]:
+            response = self.request(self.manager_token, "post", "/api/work-schedule/day", {
+                "date": first["date"], "executorEmail": self.executor.email,
+                "assessmentContext": "team", "leaderAssessment": text,
+                "items": [{"id": item["id"], "title": item["title"], "dailyOrder": order}
+                          for order, item in enumerate([first, second], 1)],
+            })
+            self.assertEqual(response.status_code, 200, response.data)
+        self.assertIsNone(WorkItem.objects.get(pk=first["id"]).review_percent)
+        self.assertEqual(WorkItem.objects.get(pk=first["id"]).status, "completed")
+        self.assertEqual(WorkItem.objects.get(pk=second["id"]).review_note, "Tốt")
 
     def test_day_table_edit_can_delete_a_removed_numbered_task(self):
         first = self.create_item()

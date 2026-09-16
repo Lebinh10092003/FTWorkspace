@@ -652,7 +652,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
   const saveInlineDay = async (date: string, items: Array<{ id?: number; title: string; progressNote: string; status: WorkStatus; dailyOrder: number }>, deleteIds: number[], executorEmail?: string, leaderAssessment?: string) => {
     const data = await mutationJson("/api/work-schedule/day", {
       method: "POST",
-      body: JSON.stringify({ date, items, deleteIds, executorEmail, ...(leaderAssessment !== undefined ? { leaderAssessment } : {}) }),
+      body: JSON.stringify({ date, items, deleteIds, executorEmail, ...(leaderAssessment !== undefined ? { leaderAssessment, assessmentContext: "team" } : {}) }),
     });
     if (!Array.isArray(data.items)) throw new Error("Chưa nhận được xác nhận lưu từ máy chủ. Nội dung bạn nhập vẫn được giữ.");
     const savedItems: WorkTask[] = data.items;
@@ -1797,7 +1797,7 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
           persistedRows.add(key);
           continue;
         }
-        const leaderChanged = nextDrafts[key]?.leaderAssessment !== makeDrafts()[key]?.leaderAssessment;
+        const leaderChanged = !!people?.length && nextDrafts[key]?.leaderAssessment !== makeDrafts()[key]?.leaderAssessment;
         await saveInlineDay(row.date, items, removed.map((task) => task.id), row.executorEmail || undefined, leaderChanged ? nextDrafts[key]?.leaderAssessment : undefined);
         persistedRows.add(key);
       }
@@ -1847,7 +1847,7 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
       <tbody>{gridRows.map((row) => {
         const workItems = rowsFor(row), draft = drafts[row.key] || { content: "", selfAssessment: "", leaderAssessment: "" };
         const attendanceIsFuture = row.date > iso(new Date());
-        const canReviewDay = workItems.some((task) => task.canAssess);
+        const canReviewDay = !!people?.length && workItems.some((task) => task.canAssess);
         const compactSelfAssessment = isCompletionNote(draft.selfAssessment);
         const compactLeaderAssessment = isCompletionNote(draft.leaderAssessment);
         const editorClass = "block min-h-20 w-full resize-none overflow-hidden border-0 bg-transparent p-2 leading-5 outline-none hover:bg-blue-50/30 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500";
