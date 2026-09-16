@@ -1,6 +1,9 @@
 """Read-only production checks; omit task contents and account credentials."""
 import os
 import sys
+import re
+import subprocess
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path.cwd()))
@@ -18,7 +21,17 @@ with connection.cursor() as cursor:
         print(statement, cursor.fetchall())
 print("Task status counts", list(WorkItem.objects.values("status").annotate(count=Count("id"))))
 print("Sheet queue counts", list(WorkScheduleSheetChange.objects.values("status").annotate(count=Count("id"))))
-profiles = UserProfile.objects.filter(name__icontains="Việt Dũng")
-for profile in profiles:
-    print("Affected employee", profile.name, "has_manager", bool(profile.manager_id))
-    print("Affected task metadata", list(WorkItem.objects.filter(executor=profile, work_date="2026-09-14").values("id", "daily_order", "status", "reviewed_at", "source_sheet_row")))
+print("Reviewed tasks count", WorkItem.objects.filter(reviewed_at__isnull=False).count())
+print("Active employees without manager count", UserProfile.objects.filter(employment_status="ACTIVE", manager__isnull=True).count())
+# Never print raw journal lines: they may contain HR data, request URLs or tokens.
+result = subprocess.run(["sudo", "-n", "journalctl", "-u", "workspace-django.service", "--since", "24 hours ago", "--no-pager", "-n", "5000"], capture_output=True, text=True)
+if result.returncode:
+    print("Journal access unavailable")
+else:
+    log = result.stdout
+    print("Exception type counts", dict(Counter(re.findall(r"\b([A-Za-z]+Error):", log))))
+    print("Database lock error count", log.count("database is locked"))
+    print("Worker timeout count", log.count("WORKER TIMEOUT"))
+    print("Out of memory count", log.lower().count("out of memory"))
+    frames = re.findall(r'File "(/var/www/ft-workspace/[^"\n]+\.py)", line (\d+), in (\w+)', log)
+    print("Application stack locations", dict(Counter(f"{Path(file).name}:{line}:{function}" for file, line, function in frames)))
