@@ -1719,14 +1719,23 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
       const row = gridRows.find((item) => item.key === key)!;
       const entries = splitNumberedCell(patch.content).filter((entry) => entry.text);
       const matches = matchGridTasks(entries, rowsFor(row));
-      if (matches.some((task) => !task)) {
-        if (isCompletionNote(previous.selfAssessment)) {
-          patch.selfAssessment = numberedGridCell(entries.map((entry, index) => ({ number: entry.number, text: matches[index] ? "Hoàn thành" : "" })));
-        }
-        if (isCompletionNote(previous.leaderAssessment)) {
-          patch.leaderAssessment = numberedGridCell(entries.filter((_, index) => matches[index]?.status === "reviewed").map((entry) => ({ number: entry.number, text: "Hoàn thành" })));
-        }
-      }
+      const oldEntries = splitNumberedCell(previous.content).filter((entry) => entry.text);
+      const oldMatches = matchGridTasks(oldEntries, rowsFor(row));
+      const previousIndexes = entries.map((entry, index) => matches[index]
+        ? oldMatches.findIndex((task) => task?.id === matches[index]?.id)
+        : oldEntries.findIndex((old) => old.text === entry.text));
+      const remap = (value: string, leader: boolean) => {
+        const compact = isCompletionNote(value);
+        if (compact && previousIndexes.every((index) => index >= 0)) return value;
+        const notes = splitNumberedCell(value);
+        const mapped = entries.map((entry, index) => {
+          const oldIndex = previousIndexes[index];
+          return { number: entry.number, text: oldIndex < 0 ? "" : compact ? "Hoàn thành" : notes.find((note) => note.number === oldEntries[oldIndex].number)?.text || "" };
+        });
+        return numberedGridCell(leader ? mapped.filter((entry) => entry.text) : mapped);
+      };
+      patch.selfAssessment = remap(previous.selfAssessment, false);
+      patch.leaderAssessment = remap(previous.leaderAssessment, true);
     }
     const nextDrafts = { ...draftsRef.current, [key]: { ...(draftsRef.current[key] || { content: "", selfAssessment: "", leaderAssessment: "" }), ...patch } };
     draftsRef.current = nextDrafts;

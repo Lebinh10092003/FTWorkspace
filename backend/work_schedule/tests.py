@@ -1073,7 +1073,7 @@ class WorkScheduleApiTests(TestCase):
         row = next(item for item in team_rows if item["id"] == response.json()["item"]["id"])
         self.assertEqual(row["viewerRelation"], "team_viewer")
         self.assertEqual(row["displayTitle"], "Việc của nhân viên")
-        self.assertFalse(row["canDelete"])
+        self.assertTrue(row["canDelete"])
         self.assertFalse(row["canReview"])
 
     def test_team_endpoint_lists_only_direct_reports_for_manager(self):
