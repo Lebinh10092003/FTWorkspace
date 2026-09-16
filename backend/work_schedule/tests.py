@@ -1462,8 +1462,27 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         original.refresh_from_db()
         self.assertEqual(original.executor_id, self.EMPLOYEE_EMAIL)
-        copied = WorkItem.objects.get(executor=other, work_date="2026-09-08")
-        self.assertNotEqual(copied.sync_uid, original.sync_uid)
+        self.assertFalse(WorkItem.objects.filter(executor=other, work_date="2026-09-08").exists())
+        self.assertEqual(response.json()["createdCount"], 0)
+        mock_push.assert_not_called()
+
+    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_hidden_employee_identity_mismatch_rejects_entire_row(self, mock_service, mock_ensure, mock_push):
+        other = UserProfile.objects.create(
+            email="hidden-sheet-user@example.com", name="Nguyễn Văn Ẩn",
+            employee_code="EMP-HIDDEN", role="EMPLOYEE", access_modules=[],
+        )
+        values = self.row_values("Nội dung bị lệch cột ẩn")
+        values[7] = other.employee_code
+
+        response = self.post({"event_id": "evt-hidden-person-conflict", "row": self.ROW_NUMBER, "values": values})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["createdCount"], 0)
+        self.assertFalse(WorkItem.objects.filter(title="Nội dung bị lệch cột ẩn").exists())
+        mock_push.assert_not_called()
 
     @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
@@ -1494,7 +1513,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
             1,
         )
 
-    def test_two_phase_pull_preserves_task_identity_when_rows_change_dates(self):
+    def test_two_phase_pull_rejects_task_ids_moved_to_other_dates(self):
         first = WorkItem.objects.create(
             creator_id=self.EMPLOYEE_EMAIL, executor_id=self.EMPLOYEE_EMAIL,
             title="Việc ngày 08", work_date="2026-09-08", source_sheet_row=self.ROW_NUMBER,
@@ -1515,11 +1534,13 @@ class WorkScheduleSheetWebhookTests(TestCase):
 
         first.refresh_from_db()
         second.refresh_from_db()
-        self.assertEqual(first.work_date.isoformat(), "2026-09-09")
-        self.assertEqual(second.work_date.isoformat(), "2026-09-08")
-        self.assertEqual(first.source_sheet_row, self.ROW_NUMBER + 1)
-        self.assertEqual(second.source_sheet_row, self.ROW_NUMBER)
+        self.assertEqual(first.work_date.isoformat(), "2026-09-08")
+        self.assertEqual(second.work_date.isoformat(), "2026-09-09")
+        self.assertEqual(first.source_sheet_row, self.ROW_NUMBER)
+        self.assertEqual(second.source_sheet_row, self.ROW_NUMBER + 1)
         self.assertEqual(WorkItem.objects.filter(pk__in=[first.pk, second.pk]).count(), 2)
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["updated"], 0)
         self.assertEqual(result["deleted"], 0)
 
     def test_full_pull_prefers_duplicate_name_date_row_with_valid_task_ids(self):

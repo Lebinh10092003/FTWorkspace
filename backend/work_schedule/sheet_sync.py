@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import unicodedata
 import uuid
@@ -20,6 +21,9 @@ from .models import WorkItem, WorkScheduleSheetChange, WorkScheduleSheetSyncLeas
 from .retention import purge_expired_work_schedule, retained_from
 from .sheet_parser import is_personal_task, without_task_tags, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
 from .signals import suppress_sheet_queue
+
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_SPREADSHEET_ID = "1kWiJdTSM_6ZDeLTGCWvDA3num5n0DmRH2Tv-6AwuBYc"
@@ -275,6 +279,18 @@ def _row_employee_email(row, name_email_map=None):
     return profile.email if profile else None
 
 
+def _row_hidden_employee_email(row):
+    """Resolve only the hidden EmployeeID, without falling back to the visible name."""
+    sheet_identity = _cell(row, 7)
+    if not sheet_identity:
+        return None
+    email = EMPLOYEE_EMAILS.get(sheet_identity)
+    if email:
+        return email
+    profile = _active_profile_by_sheet_identity(sheet_identity)
+    return profile.email if profile else None
+
+
 def _parse_date(value):
     raw = str(value or "").strip()
     for pattern in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
@@ -497,6 +513,34 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
     executor = UserProfile.objects.filter(email=email, employment_status="ACTIVE").first()
     if not executor:
         return created, updated, deleted, touched
+    hidden_email = _row_hidden_employee_email(row)
+    if hidden_email and hidden_email != email:
+        logger.warning(
+            "Ignored Sheet row %s because visible and hidden employee identities differ.",
+            offset,
+        )
+        return created, updated, deleted, touched
+    ids = _task_uids(_cell(row, 9))
+    supplied_uids = [sync_uid for sync_uid in ids if sync_uid]
+    existing_by_uid = {
+        item.sync_uid: item
+        for item in WorkItem.objects.filter(sync_uid__in=supplied_uids).only(
+            "id", "sync_uid", "executor_id", "work_date"
+        )
+    }
+    identity_conflicts = [
+        item for item in existing_by_uid.values()
+        if item.executor_id != email or item.work_date != work_date
+    ]
+    if identity_conflicts:
+        # Hidden task UUIDs are identity, not a move instruction. Reject the
+        # whole row before mutating anything: accepting part of a row used to
+        # clone another employee's/future work under the visible person/date.
+        logger.warning(
+            "Ignored Sheet row %s because task identity conflicts with employee/date.",
+            offset,
+        )
+        return created, updated, deleted, touched
     group_items = list(WorkItem.objects.filter(executor=executor, work_date=work_date))
     touched.add((email, work_date))
     # An unchanged Sheet row is an old snapshot while a web edit is queued.
@@ -512,7 +556,6 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
     parsed = _unique_sheet_tasks(parse_sheet_tasks(_cell(row, 4)))
     notes = assessment_notes(_cell(row, 5), len(parsed))
     leader_notes = leader_assessment_notes(_cell(row, 6), len(parsed))
-    ids = _task_uids(_cell(row, 9))
     group_uids = {item.sync_uid for item in group_items}
     has_group_uid = any(sync_uid in group_uids for sync_uid in ids if sync_uid)
     has_same_source_row = any(item.source_sheet_row == offset for item in group_items)
@@ -531,13 +574,7 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
     retained_ids = set()
     for index, parsed_task in enumerate(parsed, 1):
         supplied_uid = ids[index - 1] if index <= len(ids) else None
-        item = WorkItem.objects.filter(sync_uid=supplied_uid).first() if supplied_uid else None
-        if item and item.executor_id != email:
-            # A copied hidden UUID must never move another employee's task. A
-            # genuine row move keeps the same staff name, so cross-person IDs
-            # are treated as missing and replaced during the push-back phase.
-            item = None
-            supplied_uid = None
+        item = existing_by_uid.get(supplied_uid) if supplied_uid else None
         if not item:
             item = _legacy_group_match(group_items, parsed_task, index, retained_ids)
         sync_uid = supplied_uid or (item.sync_uid if item else uuid.uuid4())
