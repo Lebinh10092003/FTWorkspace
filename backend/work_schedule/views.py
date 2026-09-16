@@ -426,6 +426,8 @@ def work_day_edit(request):
             except (TypeError, ValueError):
                 return Response({"error": "Mã nhiệm vụ không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
         normalized_rows.append(normalized)
+    if any("id" not in row and row["status"] == WorkItem.STATUS_REVIEWED for row in normalized_rows):
+        return Response({"error": "Nhiệm vụ mới không thể ở trạng thái đã review."}, status=status.HTTP_400_BAD_REQUEST)
     if len(daily_orders) != len(set(daily_orders)):
         return Response({"error": "Có nhiều nhiệm vụ dùng cùng số thứ tự. Vui lòng sắp xếp lại trước khi lưu."}, status=status.HTTP_400_BAD_REQUEST)
     if len(existing_ids) != len(set(existing_ids)):
