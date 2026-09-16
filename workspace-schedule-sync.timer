@@ -1,0 +1,12 @@
+[Unit]
+Description=Retry FT Workspace queued schedule exports every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+RandomizedDelaySec=10
+Unit=workspace-schedule-sync.service
+
+[Install]
+WantedBy=timers.target
+

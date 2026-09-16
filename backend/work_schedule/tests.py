@@ -1141,6 +1141,21 @@ class WorkScheduleApiTests(TestCase):
         self.assertEqual(manager_row["reviewPercent"], 85)
 
 
+class WorkScheduleSheetRetryTests(TestCase):
+    def test_failed_sheet_changes_retry_after_cooldown(self):
+        from .sheet_sync import sync_to_sheet
+        old = WorkScheduleSheetChange.objects.create(executor_email="retry@example.com", work_date=date(2026, 9, 14), status="failed", attempts=1, processed_at=timezone.now() - timedelta(minutes=2))
+        recent = WorkScheduleSheetChange.objects.create(executor_email="recent@example.com", work_date=date(2026, 9, 14), status="failed", attempts=1, processed_at=timezone.now())
+        with mock.patch("work_schedule.sheet_sync._service"), mock.patch("work_schedule.sheet_sync.ensure_sync_columns"), mock.patch("work_schedule.sheet_sync.push_groups_to_sheet", return_value={"conflicts": []}) as pushed, mock.patch("work_schedule.sheet_sync.push_groups_to_attendance_sheet", return_value={}):
+            sync_to_sheet()
+        old.refresh_from_db()
+        recent.refresh_from_db()
+        self.assertEqual(old.status, "done")
+        self.assertEqual(old.attempts, 2)
+        self.assertEqual(recent.status, "failed")
+        self.assertIn(("retry@example.com", old.work_date), pushed.call_args.args[1])
+        self.assertNotIn(("recent@example.com", recent.work_date), pushed.call_args.args[1])
+
 class WorkScheduleSheetLeaseTests(TestCase):
     def test_lease_is_released_when_sync_raises(self):
         with self.assertRaises(RuntimeError):

@@ -62,6 +62,8 @@ fi
 sudo install -m 0644 workspace-django.service "/etc/systemd/system/$SERVICE_NAME"
 sudo install -m 0644 workspace-social-sync.service "/etc/systemd/system/$SYNC_SERVICE_NAME"
 sudo install -m 0644 workspace-social-sync.timer "/etc/systemd/system/$SYNC_TIMER_NAME"
+sudo install -m 0644 workspace-schedule-sync.service /etc/systemd/system/workspace-schedule-sync.service
+sudo install -m 0644 workspace-schedule-sync.timer /etc/systemd/system/workspace-schedule-sync.timer
 sudo install -m 0644 workspace-training-completion.service "/etc/systemd/system/$TRAINING_COMPLETION_SERVICE_NAME"
 sudo install -m 0644 workspace-training-completion.timer "/etc/systemd/system/$TRAINING_COMPLETION_TIMER_NAME"
 sudo install -m 0644 workspace-assessment-lifecycle.service "/etc/systemd/system/$ASSESSMENT_LIFECYCLE_SERVICE_NAME"
@@ -73,6 +75,7 @@ sudo install -m 0644 workspace-examination-sheet-export.timer "/etc/systemd/syst
 sudo install -m 0644 workspace-db-backup.service "/etc/systemd/system/$DB_BACKUP_SERVICE_NAME"
 sudo install -m 0644 workspace-db-backup.timer "/etc/systemd/system/$DB_BACKUP_TIMER_NAME"
 sudo systemctl daemon-reload
+sudo systemctl enable --now workspace-schedule-sync.timer
 sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl enable --now "$SYNC_TIMER_NAME"
 sudo systemctl enable --now "$TRAINING_COMPLETION_TIMER_NAME"

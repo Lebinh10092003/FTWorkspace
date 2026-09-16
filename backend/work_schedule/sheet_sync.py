@@ -925,7 +925,13 @@ def sync_to_sheet(google_token=None, force=False):
     with sync_lease() as acquired:
         if not acquired:
             return {"busy": True, "message": "Một lượt đồng bộ khác đang chạy."}
-        pending = list(WorkScheduleSheetChange.objects.filter(status=WorkScheduleSheetChange.STATUS_PENDING).order_by("created_at")[:1000])
+        retry_before = timezone.now() - timedelta(minutes=1)
+        pending = list(WorkScheduleSheetChange.objects.filter(
+            models.Q(status=WorkScheduleSheetChange.STATUS_PENDING)
+            | (models.Q(status=WorkScheduleSheetChange.STATUS_FAILED) & (
+                models.Q(processed_at__lte=retry_before) | models.Q(processed_at__isnull=True)
+            ))
+        ).order_by("created_at")[:1000])
         groups = {(row.executor_email, row.work_date) for row in pending}
         if not groups:
             return {"groups": 0, "tasks": 0, "conflicts": []}
@@ -946,7 +952,7 @@ def sync_to_sheet(google_token=None, force=False):
             WorkScheduleSheetChange.objects.bulk_update(pending, ["status", "processed_at", "attempts", "last_error"])
             return result
         except Exception as exc:
-            WorkScheduleSheetChange.objects.filter(pk__in=ids).update(status=WorkScheduleSheetChange.STATUS_FAILED, last_error=str(exc), attempts=1)
+            WorkScheduleSheetChange.objects.filter(pk__in=ids).update(status=WorkScheduleSheetChange.STATUS_FAILED, last_error=str(exc), attempts=models.F("attempts") + 1, processed_at=timezone.now())
             raise
 
 
