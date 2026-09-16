@@ -787,10 +787,21 @@ def work_schedule_sheet_webhook(request):
         sheet_name = str(request.data.get("sheet_name") or "Lịch công tác").strip()
         if sheet_name != "Lịch công tác":
             return Response({"error": "full_sync chỉ hỗ trợ tab Lịch công tác."}, status=status.HTTP_400_BAD_REQUEST)
+        reason = str(request.data.get("reason") or "").strip()
+        # Older installed Apps Script versions classified a broad range of
+        # harmless changes as OTHER. A full pull for each of those events was
+        # the main source of quota bursts; row edits and actual insert/remove
+        # events remain synchronized normally.
+        if reason.upper() == "OTHER":
+            return Response({
+                "message": "Đã bỏ qua sự kiện OTHER không làm thay đổi dữ liệu hàng.",
+                "eventType": "full_sync",
+                "status": "ignored_non_structural",
+            })
         event_payload = {
             "event_type": "full_sync",
             "sheet_name": sheet_name,
-            "reason": str(request.data.get("reason") or "").strip(),
+            "reason": reason,
         }
         event, created = WorkScheduleSheetInboundEvent.objects.get_or_create(
             event_id=event_id,

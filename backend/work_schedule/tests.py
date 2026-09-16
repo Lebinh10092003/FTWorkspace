@@ -1624,6 +1624,19 @@ class WorkScheduleSheetWebhookTests(TestCase):
         mock_full_sync.assert_not_called()
 
     @mock.patch("work_schedule.sheet_sync.full_two_way_sync")
+    def test_other_change_event_does_not_start_a_quota_heavy_full_sync(self, mock_full_sync):
+        response = self.post({
+            "event_id": "evt-full-other",
+            "event_type": "full_sync",
+            "sheet_name": "Lịch công tác",
+            "reason": "OTHER",
+        })
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["status"], "ignored_non_structural")
+        mock_full_sync.assert_not_called()
+        self.assertFalse(WorkScheduleSheetInboundEvent.objects.filter(event_id="evt-full-other").exists())
+
+    @mock.patch("work_schedule.sheet_sync.full_two_way_sync")
     def test_full_sync_busy_is_acknowledged_without_a_gateway_error(self, mock_full_sync):
         mock_full_sync.return_value = {"busy": True, "message": "Một lượt đồng bộ khác đang chạy."}
         response = self.post({
