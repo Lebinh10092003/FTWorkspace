@@ -683,16 +683,134 @@ def pull_from_sheet(service, start_date, end_date):
     }
 
 
-def _find_row(rows, email, work_date, items, row_index=None, rows_start=2):
+def _find_row(rows, email, work_date, items, row_index=None, rows_start=2, uid_index=None):
     if row_index is not None:
         matched = row_index.get((email, work_date))
         if matched:
             return matched
+        uid_matches = {
+            uid_index[item.sync_uid][0]: uid_index[item.sync_uid]
+            for item in items
+            if uid_index is not None and item.sync_uid in uid_index
+        }
+        if len(uid_matches) == 1:
+            return next(iter(uid_matches.values()))
     else:
         for index, row in enumerate(rows, start=rows_start):
             if _parse_date(_cell(row, 1)) == work_date and _row_employee_email(row) == email:
                 return index, row
     return None, None
+
+
+def _sheet_row_indexes(rows, rows_start, name_email_map):
+    row_index = {}
+    uid_index = {}
+    for row_number, row in enumerate(rows, start=rows_start):
+        row_email = _row_employee_email(row, name_email_map)
+        row_date = _parse_date(_cell(row, 1))
+        if row_email and row_date:
+            key = (row_email, row_date)
+            current_match = row_index.get(key)
+            if current_match is None or _row_preference_score(row) > _row_preference_score(current_match[1]):
+                row_index[key] = (row_number, row)
+        for sync_uid in _task_uids(_cell(row, 9)):
+            if sync_uid:
+                uid_index[sync_uid] = (row_number, row)
+    return row_index, uid_index
+
+
+def _insert_missing_rows_by_date(service, rows_start, rows, groups):
+    """Reserve missing historical rows inside the chronological block."""
+    if not groups:
+        return {}
+    working = list(rows)
+    requests = []
+    reserved_rows = {}
+    sheet_id = _sheet_properties(service)["sheetId"]
+    for group in sorted(groups, key=lambda value: (value[1], value[0])):
+        _, work_date = group
+        destination = next((
+            index for index, row in enumerate(working)
+            if _parse_date(_cell(row, 1)) and _parse_date(_cell(row, 1)) > work_date
+        ), None)
+        # A current/future row after the existing schedule can use the normal
+        # trailing blank grid; only historical rows need a physical insertion.
+        if destination is None:
+            continue
+        requests.append({
+            "insertDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": rows_start + destination - 1,
+                    "endIndex": rows_start + destination,
+                },
+                "inheritFromBefore": rows_start + destination > 1,
+            }
+        })
+        reserved_rows[group] = rows_start + destination
+        placeholder = ["", work_date.strftime("%d/%m/%Y")]
+        working.insert(destination, placeholder)
+    if requests:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=_spreadsheet_id(), body={"requests": requests}
+        ).execute()
+    return reserved_rows
+
+
+def _reorder_misplaced_web_rows(service, rows_start, rows):
+    """Move web-created rows back into the chronological Sheet block.
+
+    Older versions appended a missing group after the last populated row. That
+    left July/September records below the December block. Only rows carrying a
+    WEB record id are moved; hand-maintained legacy rows keep their positions.
+    Requests are simulated against a local list so all moves can be sent in one
+    quota-friendly batch.
+    """
+    working = list(rows)
+    requests = []
+    sheet_id = None
+    while len(requests) < 500:
+        max_date = None
+        misplaced = None
+        for index, row in enumerate(working):
+            row_date = _parse_date(_cell(row, 1))
+            if not row_date:
+                continue
+            if (
+                max_date is not None
+                and row_date < max_date
+                and _cell(row, 8).upper().startswith("REC-WEB-")
+            ):
+                misplaced = (index, row_date)
+                break
+            max_date = max(max_date, row_date) if max_date else row_date
+        if misplaced is None:
+            break
+        source_index, row_date = misplaced
+        sheet_id = sheet_id or _sheet_properties(service)["sheetId"]
+        destination_index = next(
+            index for index, row in enumerate(working[:source_index])
+            if (_parse_date(_cell(row, 1)) or datetime.min.date()) > row_date
+        )
+        requests.append({
+            "moveDimension": {
+                "source": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": rows_start + source_index - 1,
+                    "endIndex": rows_start + source_index,
+                },
+                "destinationIndex": rows_start + destination_index - 1,
+            }
+        })
+        moved = working.pop(source_index)
+        working.insert(destination_index, moved)
+    if requests:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=_spreadsheet_id(), body={"requests": requests}
+        ).execute()
+    return len(requests)
 
 
 _TIME_LINE_RE = re.compile(
@@ -768,21 +886,17 @@ def push_groups_to_sheet(service, groups, force=False):
     retention_start = retained_from()
     rows_start = _retained_sheet_start_row(service, retention_start)
     rows = _rows(service, rows_start)
+    if _reorder_misplaced_web_rows(service, rows_start, rows):
+        # Physical row numbers changed; rebuild every index before writing.
+        rows_start = _retained_sheet_start_row(service, retention_start)
+        rows = _rows(service, rows_start)
     groups = {(email, work_date) for email, work_date in groups if work_date >= retention_start}
     updates = []
     conflicts = []
     synced = []
     update_rows = []
-    row_index = {}
     name_email_map = _sheet_name_email_map()
-    for row_number, row in enumerate(rows, start=rows_start):
-        row_email = _row_employee_email(row, name_email_map)
-        row_date = _parse_date(_cell(row, 1))
-        if row_email and row_date:
-            key = (row_email, row_date)
-            current_match = row_index.get(key)
-            if current_match is None or _row_preference_score(row) > _row_preference_score(current_match[1]):
-                row_index[key] = (row_number, row)
+    row_index, uid_index = _sheet_row_indexes(rows, rows_start, name_email_map)
     items_by_group = defaultdict(list)
     attendance_by_group = defaultdict(list)
     if groups:
@@ -805,6 +919,19 @@ def push_groups_to_sheet(service, groups, force=False):
             key = (entry.employee_id, entry.work_date)
             if key in groups:
                 attendance_by_group[key].append(entry)
+    missing_groups = []
+    for email, work_date in groups:
+        items = items_by_group[(email, work_date)]
+        attendance = attendance_by_group[(email, work_date)]
+        if (items or attendance) and not _find_row(
+            rows, email, work_date, items, row_index, rows_start, uid_index
+        )[0]:
+            missing_groups.append((email, work_date))
+    reserved_rows = _insert_missing_rows_by_date(service, rows_start, rows, missing_groups)
+    if reserved_rows:
+        rows_start = _retained_sheet_start_row(service, retention_start)
+        rows = _rows(service, rows_start)
+        row_index, uid_index = _sheet_row_indexes(rows, rows_start, name_email_map)
     profiles = UserProfile.objects.in_bulk(
         {email for email, _ in groups}, field_name="email"
     )
@@ -812,12 +939,15 @@ def push_groups_to_sheet(service, groups, force=False):
     for email, work_date in sorted(groups, key=lambda value: (value[1], value[0])):
         items = items_by_group[(email, work_date)]
         attendance = attendance_by_group[(email, work_date)]
-        row_number, current = _find_row(rows, email, work_date, items, row_index, rows_start)
+        row_number, current = _find_row(rows, email, work_date, items, row_index, rows_start, uid_index)
         if row_number is None:
             if not items and not attendance:
                 continue
-            row_number, current = next_row, []
-            next_row += 1
+            row_number = reserved_rows.get((email, work_date))
+            if row_number is None:
+                row_number = next_row
+                next_row += 1
+            current = []
         update_rows.append(row_number)
         if "attendance" in columns:
             column = _column_letter(columns["attendance"])

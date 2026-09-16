@@ -1,5 +1,6 @@
 import os
 from datetime import date, time, timedelta
+from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -18,9 +19,12 @@ from .sheet_sync import (
     _attendance_value,
     _canonical_row,
     _formula_content_rows,
+    _find_row,
     _group_values,
+    _insert_missing_rows_by_date,
     _row_hash,
     _row_employee_email,
+    _reorder_misplaced_web_rows,
     _sheet_columns,
     _unique_sheet_tasks,
     deterministic_sheet_uid,
@@ -32,6 +36,45 @@ from .training_sync import sync_work_item_from_training
 
 
 class WorkScheduleSheetParserTests(TestCase):
+    def test_task_uid_finds_existing_row_when_staff_label_cannot_be_resolved(self):
+        task_uid = deterministic_sheet_uid(77, 1)
+        row = ["Ba", "15/09/2026", "38", "Tên cũ", "1. Việc", "", "", "", "REC-WEB-X", f"1. {task_uid}", ""]
+        matched = _find_row(
+            [row], "person@example.com", date(2026, 9, 15),
+            [SimpleNamespace(sync_uid=task_uid)], {}, 77, {task_uid: (77, row)},
+        )
+        self.assertEqual(matched, (77, row))
+
+    def test_web_rows_appended_after_year_end_are_moved_back_by_date(self):
+        service = mock.MagicMock()
+        service.spreadsheets().get().execute.return_value = {
+            "sheets": [{"properties": {"title": "Lịch công tác", "sheetId": 42}}]
+        }
+        rows = [
+            ["Hai", "31/08/2026", "36", "A", "", "", "", "", "REC-OLD"],
+            ["Năm", "31/12/2026", "53", "A", "", "", "", "", "REC-OLD-2"],
+            ["", "", "", ""],
+            ["Ba", "01/09/2026", "36", "A", "1. Việc", "", "", "", "REC-WEB-X"],
+        ]
+        moved = _reorder_misplaced_web_rows(service, 2200, rows)
+        self.assertEqual(moved, 1)
+        request = service.spreadsheets().batchUpdate.call_args.kwargs["body"]["requests"][0]["moveDimension"]
+        self.assertEqual(request["source"]["startIndex"], 2202)
+        self.assertEqual(request["destinationIndex"], 2200)
+
+    def test_missing_historical_group_reserves_row_inside_date_block(self):
+        service = mock.MagicMock()
+        service.spreadsheets().get().execute.return_value = {
+            "sheets": [{"properties": {"title": "Lịch công tác", "sheetId": 42}}]
+        }
+        group = ("person@example.com", date(2026, 9, 1))
+        reserved = _insert_missing_rows_by_date(service, 100, [
+            ["Hai", "31/08/2026"], ["Năm", "31/12/2026"],
+        ], [group])
+        self.assertEqual(reserved[group], 101)
+        request = service.spreadsheets().batchUpdate.call_args.kwargs["body"]["requests"][0]["insertDimension"]
+        self.assertEqual(request["range"]["startIndex"], 100)
+
     def test_sheet_headers_are_read_once_per_sync_service(self):
         service = mock.MagicMock()
         service.spreadsheets().values().get().execute.return_value = {"values": [["Thứ", "Ngày", "Tuần", "Nhân sự", "Nội dung công việc", "Tự đánh giá", "Lãnh đạo đánh giá"]]}

@@ -1860,7 +1860,15 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
 
   useEffect(() => {
     if (!dirtyRows.length || saving) return;
-    const timer = window.setTimeout(() => void saveTable(), 800);
+    // Do not persist while a grid editor still has focus. A save refreshes the
+    // task snapshot and can replace the controlled textarea value; doing that
+    // a fraction of a second after Enter used to move the caret back to the
+    // previous line. Blur/manual save is the commit boundary for active edits.
+    const timer = window.setTimeout(() => {
+      const active = document.activeElement;
+      if (active instanceof HTMLTextAreaElement && tableRef.current?.contains(active)) return;
+      void saveTable();
+    }, 2500);
     const saveWhenLeaving = () => void saveTable();
     const saveWhenHidden = () => { if (document.visibilityState === "hidden") void saveTable(); };
     window.addEventListener("blur", saveWhenLeaving);

@@ -41,14 +41,16 @@ function onEditInstallable(e) {
   }
 }
 
-// Structural operations do not reliably emit row-level onEdit events. Reconcile
-// the retained window once after insert/delete/sort/move operations instead.
+// Structural row operations do not emit row-level onEdit events. Reconcile the
+// retained window after a real row insertion/deletion. Do not treat OTHER as a
+// structural edit: Google emits it for unrelated changes and it caused needless
+// full syncs while the backend was formatting or repairing rows.
 function onChangeInstallable(e) {
   if (!e || !e.source) return;
   var sheet = e.source.getActiveSheet();
   if (!sheet || sheet.getName() !== SHEET_NAME) return;
   var changeType = String(e.changeType || 'OTHER');
-  if (['INSERT_ROW', 'REMOVE_ROW', 'OTHER'].indexOf(changeType) === -1) return;
+  if (['INSERT_ROW', 'REMOVE_ROW'].indexOf(changeType) === -1) return;
 
   var props = PropertiesService.getScriptProperties();
   var now = Date.now();
