@@ -4,6 +4,11 @@ from datetime import datetime, time, timedelta
 
 
 TASK_TAGS = re.compile(r"^\s*(?:\[\s*(?:hỗ\s+trợ|lịch\s+cá\s+nhân)\s*\]\s*)+", re.IGNORECASE)
+PERSONAL_PHRASE = re.compile(r"(?<!\w)lịch\s+(?:cá\s+nhân|riêng)(?!\w)", re.IGNORECASE)
+
+
+def is_personal_task(value: str) -> bool:
+    return bool(PERSONAL_PHRASE.search(str(value or "")))
 
 
 def without_task_tags(value: str) -> str:

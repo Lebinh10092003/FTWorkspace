@@ -39,7 +39,7 @@ class WorkScheduleSheetParserTests(TestCase):
                 self.assertEqual(task.title, title)
                 self.assertEqual(task.start_time, time(17))
                 self.assertTrue(task.has_time_prefix)
-                self.assertTrue(_build_content_format_runs("1. " + title)[0]["format"]["bold"])
+                self.assertFalse(any(run["format"].get("italic") for run in _build_content_format_runs("1. " + title)))
         task = parse_sheet_tasks("1. [Lịch cá nhân] Đón con")[0]
         self.assertIsNone(task.start_time)
         self.assertFalse(task.has_time_prefix)
@@ -603,6 +603,30 @@ class WorkScheduleApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(WorkItem.objects.get(pk=item["id"]).status, "reviewed")
+
+    def test_personal_tasks_always_medium_but_keep_times(self):
+        item = self.create_item()
+        for title in ["[Lịch cá nhân] 7h00 - 9h30: Vắng mặt do có lịch học", "8h00: LỊCH RIÊNG đi học", "[Hỗ trợ] [Lịch cá nhân] 17h00: Việc riêng", "Lịch cá nhân không có giờ"]:
+            response = self.request(self.manager_token, "post", "/api/work-schedule/day", {
+                "date": item["date"], "executorEmail": self.executor.email,
+                "items": [{"id": item["id"], "title": title, "dailyOrder": 1}],
+            })
+            self.assertEqual(response.status_code, 200, response.data)
+            saved = WorkItem.objects.get(pk=item["id"])
+            self.assertEqual(saved.priority, "medium")
+            self.assertEqual(saved.title, title)
+            if title.startswith("[Lịch cá nhân]"):
+                self.assertEqual(saved.start_time, time(7))
+                self.assertEqual(saved.end_time, time(9, 30))
+            response = self.request(self.manager_token, "patch", f"/api/work-schedule/items/{item['id']}", {"priority": "high"})
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(WorkItem.objects.get(pk=item["id"]).priority, "medium")
+        response = self.request(self.manager_token, "post", "/api/work-schedule/day", {
+            "date": item["date"], "executorEmail": self.executor.email,
+            "items": [{"id": item["id"], "title": "[Hỗ trợ] 8h00: Tập huấn", "dailyOrder": 1}],
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(WorkItem.objects.get(pk=item["id"]).priority, "high")
 
     def test_manager_can_edit_reviewed_employee_content(self):
         item = self.create_item()

@@ -406,7 +406,7 @@ function TaskCard({ task, displayOrder, selected, onSelect, onOpen, onDelete, on
           </button>
         )}
       </div>
-      <h3 className={`text-sm font-bold leading-5 text-slate-900 ${task.priority === "high" ? "italic text-black" : ""}`}>
+      <h3 className={`text-sm font-bold leading-5 text-slate-900 ${task.priority === "high" && !taskTags(task.title).personal ? "italic text-black" : ""}`}>
         <span className="mr-1.5 text-blue-600">{displayOrder}.</span>
         <WorkTitle task={task} />
       </h3>
@@ -1333,7 +1333,7 @@ function WeekView({ tasks, userEmail, idToken, visibleDays, anchor, setAnchor, p
       <span className="font-bold text-slate-500">
         {displayOrder}. {task.startTime || "Cả ngày"}
       </span>
-      <b className={`mt-1 block leading-5 ${task.priority === "high" ? "italic" : ""}`}><WorkTitle task={task} /></b>
+      <b className={`mt-1 block leading-5 ${task.priority === "high" && !taskTags(task.title).personal ? "italic" : ""}`}><WorkTitle task={task} /></b>
     </button>
   );
 
@@ -1503,12 +1503,13 @@ function ImportantWorkContentEditor({ value, tasks, className, onInput, onChange
 }) {
   const [focused, setFocused] = useState(false);
   const priorityByOrder = new Map(tasks.map((task) => [task.dailyOrder, task.priority]));
+  const personalByOrder = new Map(splitNumberedCell(value).map((entry) => [entry.number, taskTags(entry.text).personal]));
   let currentImportant = false;
   const renderedLines = value.split("\n").map((line, index) => {
     const numbered = line.match(/^\s*(\d{1,3})\s*[.,)]\s*/);
     if (numbered) {
       const task = tasks.find((item) => item.dailyOrder === Number(numbered[1]));
-      currentImportant = timePrefixedGridLine.test(line) || (priorityByOrder.get(Number(numbered[1])) === "high" && !task?.timePrefixInTitle);
+      currentImportant = !personalByOrder.get(Number(numbered[1])) && (timePrefixedGridLine.test(line) || (priorityByOrder.get(Number(numbered[1])) === "high" && !task?.timePrefixInTitle));
     }
     const marker = numbered?.[0] || "";
     const taskText = numbered ? line.slice(marker.length) : line;
@@ -2062,7 +2063,7 @@ function TaskDialog({ draft, setDraft, staff, userEmail, saveTask, saving, saveP
             </label>
             <label>
               <span className="ws-label">Mức ưu tiên</span>
-              <select disabled={!draft.canEdit} value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value })} className="ws-input disabled:bg-slate-50">
+              <select disabled={!draft.canEdit || taskTags(draft.title).personal} value={taskTags(draft.title).personal ? "medium" : draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value })} className="ws-input disabled:bg-slate-50">
                 {Object.entries(priorities).map(([key, value]) => (
                   <option key={key} value={key}>
                     {value.label}

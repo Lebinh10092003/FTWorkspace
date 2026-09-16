@@ -70,6 +70,15 @@ class WorkItem(models.Model):
             models.Index(fields=["creator", "work_date"], name="work_creator_date_idx"),
         ]
 
+    def save(self, *args, **kwargs):
+        from .sheet_parser import is_personal_task
+        if is_personal_task(self.title):
+            self.priority = "medium"
+            self.priority_before_time = "medium" if self.time_prefix_in_title else None
+            if kwargs.get("update_fields"):
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"priority", "priority_before_time"}
+        return super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.work_date} · {self.title}"
 
