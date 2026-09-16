@@ -32,6 +32,15 @@ from .training_sync import sync_work_item_from_training
 
 
 class WorkScheduleSheetParserTests(TestCase):
+    def test_sheet_headers_are_read_once_per_sync_service(self):
+        service = mock.MagicMock()
+        service.spreadsheets().values().get().execute.return_value = {"values": [["Thứ", "Ngày", "Tuần", "Nhân sự", "Nội dung công việc", "Tự đánh giá", "Lãnh đạo đánh giá"]]}
+        first = _sheet_columns(service)
+        second = _sheet_columns(service)
+        self.assertEqual(first, second)
+        self.assertEqual(service.spreadsheets().values().get().execute.call_count, 1)
+        self.assertIsNot(first[0], second[0])
+
     def test_personal_tags_preserve_times_and_authored_title(self):
         for title in ["[Lịch cá nhân] 17h00: Đón con", "[Hỗ trợ] [Lịch cá nhân] 17h00: Đón con", "[LỊCH CÁ NHÂN] [Hỗ trợ] 17h00: Đón con", "17h00: Lịch riêng đón con"]:
             with self.subTest(title=title):
@@ -628,6 +637,18 @@ class WorkScheduleApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(WorkItem.objects.get(pk=item["id"]).priority, "high")
 
+    def test_invalid_new_review_does_not_partially_save_other_tasks(self):
+        item = self.create_item()
+        response = self.request(self.manager_token, "post", "/api/work-schedule/day", {
+            "date": item["date"], "executorEmail": self.executor.email,
+            "items": [
+                {"id": item["id"], "title": "Không được lưu một phần", "dailyOrder": 1},
+                {"title": "Nhiệm vụ mới sai trạng thái", "status": "reviewed", "dailyOrder": 2},
+            ],
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(WorkItem.objects.get(pk=item["id"]).title, item["title"])
+
     def test_manager_can_edit_reviewed_employee_content(self):
         item = self.create_item()
         WorkItem.objects.filter(pk=item["id"]).update(status="reviewed", review_percent=100, reviewed_at=timezone.now())
@@ -973,10 +994,10 @@ class WorkScheduleApiTests(TestCase):
         item = WorkItem.objects.create(creator=self.executor, executor=self.executor,
                                       work_date=date(2026, 9, 15), title="Nội dung cũ")
         with mock.patch("work_schedule.views._payload", side_effect=[{"canEdit": True}, RuntimeError("response failed")]):
-            with self.assertRaises(RuntimeError):
-                self.request(self.executor_token, "post", "/api/work-schedule/day", {
-                    "date": "2026-09-15", "items": [{"id": item.pk, "title": "Nội dung mới", "dailyOrder": 1}],
-                })
+            response = self.request(self.executor_token, "post", "/api/work-schedule/day", {
+                "date": "2026-09-15", "items": [{"id": item.pk, "title": "Nội dung mới", "dailyOrder": 1}],
+            })
+            self.assertEqual(response.status_code, 500)
         item.refresh_from_db()
         self.assertEqual(item.title, "Nội dung cũ")
 
@@ -1170,6 +1191,7 @@ class WorkScheduleSheetRetryTests(TestCase):
         from .sheet_sync import sync_to_sheet
         old = WorkScheduleSheetChange.objects.create(executor_email="retry@example.com", work_date=date(2026, 9, 14), status="failed", attempts=1, processed_at=timezone.now() - timedelta(minutes=2))
         recent = WorkScheduleSheetChange.objects.create(executor_email="recent@example.com", work_date=date(2026, 9, 14), status="failed", attempts=1, processed_at=timezone.now())
+        stalled = WorkScheduleSheetChange.objects.create(executor_email="stalled@example.com", work_date=date(2026, 9, 14), status="processing", processed_at=timezone.now() - timedelta(minutes=40))
         with mock.patch("work_schedule.sheet_sync._service"), mock.patch("work_schedule.sheet_sync.ensure_sync_columns"), mock.patch("work_schedule.sheet_sync.push_groups_to_sheet", return_value={"conflicts": []}) as pushed, mock.patch("work_schedule.sheet_sync.push_groups_to_attendance_sheet", return_value={}):
             sync_to_sheet()
         old.refresh_from_db()
@@ -1177,6 +1199,8 @@ class WorkScheduleSheetRetryTests(TestCase):
         self.assertEqual(old.status, "done")
         self.assertEqual(old.attempts, 2)
         self.assertEqual(recent.status, "failed")
+        stalled.refresh_from_db()
+        self.assertEqual(stalled.status, "done")
         self.assertIn(("retry@example.com", old.work_date), pushed.call_args.args[1])
         self.assertNotIn(("recent@example.com", recent.work_date), pushed.call_args.args[1])
 

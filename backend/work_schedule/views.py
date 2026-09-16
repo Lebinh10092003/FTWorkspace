@@ -20,6 +20,7 @@ from authentication.permissions import IsAuthenticated
 from .models import WorkItem, WorkScheduleSheetInboundEvent
 from .retention import purge_expired_work_schedule, retained_from
 from .training_sync import delete_training_for_work_item, sync_training_from_work_item
+from config.db_transactions import atomic_mutation
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +268,7 @@ def _apply_data(request, item, creating=False, allow_people=True, data_override=
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
+@atomic_mutation
 def work_items(request):
     if request.method == "POST":
         raw_executor_emails = request.data.get("executorEmails")
@@ -353,6 +355,7 @@ def work_team(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@atomic_mutation
 def work_day_edit(request):
     """Update the table representation of one day without coupling notes to status."""
     work_date = parse_date(str(request.data.get("date") or ""))
@@ -568,6 +571,7 @@ def work_day_edit(request):
 
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
+@atomic_mutation
 def work_item_detail(request, item_id):
     item = _visible_items(request.user, request.user_role).filter(pk=item_id).first()
     if not item:
@@ -649,6 +653,7 @@ def _review(item, request, action):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@atomic_mutation
 def work_item_review(request, item_id):
     item = _visible_items(request.user, request.user_role).filter(pk=item_id).first()
     if not item:
@@ -666,6 +671,7 @@ def work_item_review(request, item_id):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@atomic_mutation
 def work_items_batch(request):
     raw_ids = request.data.get("ids") or []
     try:

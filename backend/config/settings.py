@@ -71,7 +71,7 @@ else:
 if not DATABASE_PATH.is_absolute():
     DATABASE_PATH = (PROJECT_ROOT / DATABASE_PATH).resolve()
 
-DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": DATABASE_PATH, "OPTIONS": {"timeout": 30}}}
+DATABASES = {"default": {"ENGINE": "config.sqlite", "NAME": DATABASE_PATH, "OPTIONS": {"timeout": 30}}}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -113,6 +113,7 @@ CSRF_TRUSTED_ORIGINS = env_list(
 )
 
 REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "config.api_errors.exception_handler",
     "DEFAULT_AUTHENTICATION_CLASSES": ["authentication.auth.DjangoTokenAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["authentication.permissions.IsAuthenticated"],
 }

@@ -121,8 +121,12 @@ def _column_letter(index):
 
 
 def _sheet_columns(service):
+    spreadsheet_id = _spreadsheet_id()
+    cached = getattr(service, "_work_schedule_columns", None)
+    if isinstance(cached, dict) and cached.get("spreadsheet_id") == spreadsheet_id:
+        return dict(cached["columns"]), list(cached["headers"])
     result = service.spreadsheets().values().get(
-        spreadsheetId=_spreadsheet_id(),
+        spreadsheetId=spreadsheet_id,
         range=f"'{SHEET_NAME}'!A2:ZZ2",
         valueRenderOption="FORMATTED_VALUE",
     ).execute()
@@ -139,6 +143,7 @@ def _sheet_columns(service):
     missing = sorted(required - columns.keys())
     if missing:
         raise RuntimeError(f"Sheet thiếu cột bắt buộc: {', '.join(missing)}")
+    service._work_schedule_columns = {"spreadsheet_id": spreadsheet_id, "columns": dict(columns), "headers": list(headers)}
     return columns, headers
 
 
@@ -425,6 +430,7 @@ def ensure_sync_columns(service):
             spreadsheetId=_spreadsheet_id(),
             body={"valueInputOption": "RAW", "data": header_updates},
         ).execute()
+        service._work_schedule_columns = None
     return columns
 
 
@@ -498,7 +504,7 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
     live_hash = _row_hash(_cell(row, 4), _cell(row, 5), _cell(row, 6), _cell(row, 9))
     if _cell(row, 10) == live_hash and WorkScheduleSheetChange.objects.filter(
         executor_email=email, work_date=work_date,
-        status__in=[WorkScheduleSheetChange.STATUS_PENDING, WorkScheduleSheetChange.STATUS_FAILED, WorkScheduleSheetChange.STATUS_CONFLICT],
+        status__in=[WorkScheduleSheetChange.STATUS_PENDING, WorkScheduleSheetChange.STATUS_PROCESSING, WorkScheduleSheetChange.STATUS_FAILED, WorkScheduleSheetChange.STATUS_CONFLICT],
     ).exists():
         if retained_by_group is not None:
             retained_by_group[(email, work_date)].update(item.pk for item in group_items)
@@ -928,17 +934,22 @@ def sync_to_sheet(google_token=None, force=False):
         if not acquired:
             return {"busy": True, "message": "Một lượt đồng bộ khác đang chạy."}
         retry_before = timezone.now() - timedelta(minutes=1)
+        stale_before = timezone.now() - timedelta(seconds=TWO_WAY_SYNC_LEASE_SECONDS)
         pending = list(WorkScheduleSheetChange.objects.filter(
             models.Q(status=WorkScheduleSheetChange.STATUS_PENDING)
             | (models.Q(status=WorkScheduleSheetChange.STATUS_FAILED) & (
                 models.Q(processed_at__lte=retry_before) | models.Q(processed_at__isnull=True)
+            ))
+            | (models.Q(status=WorkScheduleSheetChange.STATUS_PROCESSING) & (
+                models.Q(processed_at__lte=stale_before)
+                | (models.Q(processed_at__isnull=True) & models.Q(created_at__lte=stale_before))
             ))
         ).order_by("created_at")[:1000])
         groups = {(row.executor_email, row.work_date) for row in pending}
         if not groups:
             return {"groups": 0, "tasks": 0, "conflicts": []}
         ids = [row.pk for row in pending]
-        WorkScheduleSheetChange.objects.filter(pk__in=ids).update(status=WorkScheduleSheetChange.STATUS_PROCESSING)
+        WorkScheduleSheetChange.objects.filter(pk__in=ids).update(status=WorkScheduleSheetChange.STATUS_PROCESSING, processed_at=timezone.now())
         try:
             service = _service(google_token)
             ensure_sync_columns(service)

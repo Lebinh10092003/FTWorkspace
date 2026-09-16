@@ -21,6 +21,11 @@ with connection.cursor() as cursor:
         print(statement, cursor.fetchall())
 print("Task status counts", list(WorkItem.objects.values("status").annotate(count=Count("id"))))
 print("Sheet queue counts", list(WorkScheduleSheetChange.objects.values("status").annotate(count=Count("id"))))
+queue = WorkScheduleSheetChange.objects.exclude(status="done")
+print("Queue error category counts", {name: queue.filter(last_error__icontains=marker).count() for name, marker in [("sqlite_locked", "database is locked"), ("google_quota", "429"), ("google_quota_text", "Quota exceeded")]})
+from django.utils import timezone
+from datetime import timedelta
+print("Stale processing count", queue.filter(status="processing", created_at__lt=timezone.now() - timedelta(minutes=30)).count())
 print("Reviewed tasks count", WorkItem.objects.filter(reviewed_at__isnull=False).count())
 print("Active employees without manager count", UserProfile.objects.filter(employment_status="ACTIVE", manager__isnull=True).count())
 # Never print raw journal lines: they may contain HR data, request URLs or tokens.

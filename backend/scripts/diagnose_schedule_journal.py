@@ -24,3 +24,10 @@ else:
             if path in line and re.search(r'HTTP/\d(?:\.\d)?"\s+5\d\d\b', line):
                 counts[path] += 1
     print("HTTP 5xx counts by known endpoint", dict(counts))
+    started = subprocess.run(["systemctl", "show", "workspace-django.service", "--property=ActiveEnterTimestamp", "--value"], capture_output=True, text=True)
+    if started.returncode == 0 and started.stdout.strip():
+        recent = subprocess.run(["journalctl", "-u", "workspace-django.service", "--since", started.stdout.strip(), "--no-pager", "-n", "20000"], capture_output=True, text=True)
+        if recent.returncode == 0:
+            print("Since service restart exception counts", dict(Counter(re.findall(r"\b([A-Za-z]+Error):", recent.stdout))))
+            print("Since service restart database lock count", recent.stdout.count("database is locked"))
+            print("Since service restart API save failure count", recent.stdout.count("api_save_failure"))
