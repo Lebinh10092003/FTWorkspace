@@ -425,8 +425,14 @@ def _unique_sheet_task_entries_with_indices(tasks, emphasis=None, format_runs=No
             emphasized = bool(emphasis[index]) if emphasis[index] is not None else None
         task_runs = None
         if format_runs is not None and index < len(format_runs):
-            task_runs = normalize_format_runs(format_runs[index], _sheet_text_length(task.title)) or []
-            emphasized = bool(format_state_at(task_runs, 0)["bold"])
+            raw_task_runs = format_runs[index]
+            task_runs = (
+                normalize_format_runs(raw_task_runs, _sheet_text_length(task.title)) or []
+                if raw_task_runs is not None
+                else None
+            )
+            if task_runs is not None:
+                emphasized = bool(format_state_at(task_runs, 0)["bold"])
         if key not in positions:
             positions[key] = len(unique)
             unique.append((task, emphasized, task_runs, index))
@@ -666,6 +672,7 @@ def _ingest_row(
         parsed_emphasis = [emphasis for _, emphasis, _, _ in task_entries]
         parsed_format_runs = None
         parsed_source_indices = [source_index for _, _, _, source_index in task_entries]
+    cell_style_ambiguous = bool(getattr(task_format_runs, "cell_style_ambiguous", False))
     notes = assessment_notes(_cell(row, 5), len(parsed))
     leader_notes = leader_assessment_notes(_cell(row, 6), len(parsed))
     group_uids = {item.sync_uid for item in group_items}
@@ -715,12 +722,17 @@ def _ingest_row(
             if parsed_emphasis is not None and index <= len(parsed_emphasis)
             else None
         )
+        raw_sheet_format_runs = (
+            parsed_format_runs[index - 1]
+            if parsed_format_runs is not None and index <= len(parsed_format_runs)
+            else None
+        )
         sheet_format_runs = (
             normalize_format_runs(
-                parsed_format_runs[index - 1],
+                raw_sheet_format_runs,
                 _sheet_text_length(parsed_task.title),
             ) or []
-            if parsed_format_runs is not None and index <= len(parsed_format_runs)
+            if raw_sheet_format_runs is not None
             else None
         )
         # Web-origin tasks store raw user text as title (no time stripping). If the
@@ -744,6 +756,27 @@ def _ingest_row(
             effective_sheet_emphasis = bool(sheet_emphasized) and not personal_task
         else:
             effective_sheet_emphasis = getattr(item, "sheet_emphasis", None) if item else None
+        ambiguous_task_format = cell_style_ambiguous and sheet_format_runs is None
+        if ambiguous_task_format:
+            # A bold/italic base style on a multi-task cell is legacy cell
+            # formatting, not a confirmed choice for this task. Clear the
+            # stored Sheet lock so the automatic time rule can be reapplied
+            # to timed tasks while untimed tasks return to normal priority.
+            effective_sheet_emphasis = None
+            if item:
+                previous_runs = normalize_format_runs(
+                    getattr(item, "title_format_runs", None),
+                    _sheet_text_length(item.title),
+                ) or []
+                previous_was_emphasized = (
+                    getattr(item, "sheet_emphasis", None) is True
+                    or bool(format_state_at(previous_runs, 0)["bold"])
+                )
+                item.sheet_emphasis = None
+                item.title_format_runs = None
+                if not explicit_time and previous_was_emphasized:
+                    item.priority = "medium"
+                    item.priority_before_time = None
         if item and sheet_emphasized is not None:
             item.sheet_emphasis = effective_sheet_emphasis
         if item:
@@ -763,13 +796,18 @@ def _ingest_row(
             item.source_sync_hash = live_hash
             if sheet_format_runs is not None:
                 item.title_format_runs = sheet_format_runs
+            elif ambiguous_task_format:
+                item.title_format_runs = None
             if sheet_edited_at:
                 item.sheet_last_edited_at = sheet_edited_at
                 item.sheet_last_editor_email = sheet_editor_email or item.sheet_last_editor_email
                 item.sheet_last_event_id = sheet_event_id
             had_time_prefix = item.time_prefix_in_title
             item.time_prefix_in_title = explicit_time
-            if effective_sheet_emphasis is not None:
+            if ambiguous_task_format and not explicit_time:
+                item.priority = "medium"
+                item.priority_before_time = None
+            elif effective_sheet_emphasis is not None:
                 item.priority = "high" if effective_sheet_emphasis else "medium"
                 item.priority_before_time = (
                     item.priority if explicit_time else None
@@ -845,6 +883,7 @@ def pull_from_sheet(service, start_date, end_date):
     created = updated = deleted = 0
     touched = set()
     duplicate_groups = []
+    format_repair_rows = []
     today = timezone.localdate()
     with suppress_sheet_queue():
         rows_start = _retained_sheet_start_row(service, max(start_date, retained_from()))
@@ -881,6 +920,7 @@ def pull_from_sheet(service, start_date, end_date):
             emphasis_columns,
         )
         for offset, row in sorted(candidate_rows):
+            format_capture = format_runs_by_row.get(offset)
             row_created, row_updated, row_deleted, row_touched = _ingest_row(
                 offset,
                 row,
@@ -893,6 +933,30 @@ def pull_from_sheet(service, start_date, end_date):
             updated += row_updated
             deleted += row_deleted
             touched |= row_touched
+            if getattr(format_capture, "cell_style_ambiguous", False) and row_touched:
+                email = _row_employee_email(row, name_email_map)
+                work_date = _parse_date(_cell(row, 1))
+                current_items = list(
+                    WorkItem.objects.filter(
+                        executor_id=email,
+                        work_date=work_date,
+                        source_sheet_row=offset,
+                    ).order_by("daily_order", "start_time", "created_at", "pk")
+                ) if email and work_date else []
+                try:
+                    repair = _repair_sheet_row_format(
+                        service,
+                        offset,
+                        _cell(row, 4),
+                        current_items,
+                        emphasis_columns,
+                    )
+                    if repair.get("updated"):
+                        format_repair_rows.append(offset)
+                except Exception:
+                    # Formatting repair must not prevent the content sync from
+                    # completing. The recovery/full-sync path can retry it.
+                    logger.exception("Không thể sửa định dạng cũ ở dòng Sheet %s.", offset)
         from .training_sync import delete_training_for_work_item
         for (email, work_date), retained_ids in retained_by_group.items():
             stale_items = WorkItem.objects.filter(
@@ -905,6 +969,7 @@ def pull_from_sheet(service, start_date, end_date):
     return {
         "created": created, "updated": updated, "deleted": deleted,
         "groups": touched, "duplicateGroups": duplicate_groups,
+        "formatRepairRows": format_repair_rows,
     }
 
 
@@ -1126,6 +1191,31 @@ def _build_content_format_runs(content, items=None):
     return runs
 
 
+def _content_format_update_request(sheet_id, row_number, content, items, columns):
+    """Build the Sheets API request that replaces one task cell's formatting."""
+    runs = _build_content_format_runs(content, items)
+    cell = {
+        "userEnteredFormat": {"textFormat": {"bold": False, "italic": False}},
+        "textFormatRuns": [
+            {"startIndex": run["startIndex"], "format": run["format"]}
+            for run in runs
+        ],
+    }
+    return {
+        "updateCells": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": row_number - 1,
+                "endRowIndex": row_number,
+                "startColumnIndex": columns["content"],
+                "endColumnIndex": columns["content"] + 1,
+            },
+            "rows": [{"values": [cell]}],
+            "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.textFormat.italic,textFormatRuns",
+        }
+    }
+
+
 def _content_task_ranges(content):
     """Return title ranges inside a numbered cell in UTF-16 coordinates."""
     ranges = []
@@ -1137,6 +1227,7 @@ def _content_task_ranges(content):
             if current is not None:
                 current["endIndex"] = max(current["startIndex"], offset - 1)
             current = {
+                "lineStartIndex": offset,
                 "startIndex": offset + _sheet_text_length(marker.group(0)),
                 "endIndex": offset + _sheet_text_length(line),
             }
@@ -1164,13 +1255,29 @@ def _cell_base_text_format(cell):
     }
 
 
+class _TaskFormatCapture(list):
+    """Per-task rich-text runs plus metadata about an ambiguous cell style."""
+
+    def __init__(self, values, *, cell_style_ambiguous=False):
+        super().__init__(values)
+        self.cell_style_ambiguous = bool(cell_style_ambiguous)
+
+
 def _task_format_runs_from_cell(cell):
-    """Read title-local bold/italic transitions for each Sheet task."""
+    """Read title-local bold/italic transitions for each Sheet task.
+
+    A Google Sheets cell can carry a base ``textFormat`` in addition to its
+    rich-text runs. That base style applies to the whole cell and is not a
+    task-level choice. Treating it as the initial state for every numbered
+    line is what made one bold cell turn every task bold. Only runs anchored
+    inside an individual numbered line are accepted as explicit task style;
+    time/priority rules handle tasks without such an anchor.
+    """
     if not isinstance(cell, dict):
         return None
     content = str(cell.get("formattedValue") or "")
     if not content:
-        return []
+        return _TaskFormatCapture([])
     base_format = _cell_base_text_format(cell)
     raw_runs = []
     for raw_run in cell.get("textFormatRuns") or []:
@@ -1192,10 +1299,57 @@ def _task_format_runs_from_cell(cell):
             },
         })
     runs = normalize_format_runs(raw_runs, _sheet_text_length(content)) or []
-    return [
-        slice_format_runs(runs, task_range["startIndex"], task_range["endIndex"], base_format)
-        for task_range in _content_task_ranges(content)
-    ]
+    task_ranges = _content_task_ranges(content)
+    task_runs = []
+    for index, task_range in enumerate(task_ranges):
+        # A run at index 0 is commonly the cell-level base style. For later
+        # numbered lines, a run at the line start can be a deliberate choice
+        # that includes the number marker, so retain it as a local anchor.
+        local_start = task_range["startIndex"]
+        if index > 0:
+            local_start = task_range["lineStartIndex"]
+        local_runs = [
+            run for run in runs
+            if local_start <= run["startIndex"] < task_range["endIndex"]
+        ]
+        if index == 0 and not local_runs:
+            # When the cell itself is normal, a run at the beginning of the
+            # first numbered line can still be an explicit whole-task choice.
+            # A bold base style is accepted for the first line only when later
+            # lines also have their own anchors; otherwise it is the legacy
+            # whole-cell leak this parser is meant to repair.
+            later_has_local_anchor = any(
+                any(
+                    task_range["lineStartIndex"] <= run["startIndex"] < task_range["endIndex"]
+                    for run in runs
+                )
+                for task_range in task_ranges[1:]
+            )
+            if (
+                not base_format["bold"]
+                and not base_format["italic"]
+            ) or later_has_local_anchor:
+                local_runs = [
+                    run for run in runs
+                    if task_range["lineStartIndex"] <= run["startIndex"] < task_range["endIndex"]
+                ]
+        if not local_runs:
+            task_runs.append(None)
+            continue
+        task_runs.append(
+            slice_format_runs(
+                local_runs,
+                task_range["startIndex"],
+                task_range["endIndex"],
+                {"bold": False, "italic": False},
+            )
+        )
+    cell_style_ambiguous = bool(
+        task_ranges
+        and (base_format["bold"] or base_format["italic"])
+        and any(runs is None for runs in task_runs)
+    )
+    return _TaskFormatCapture(task_runs, cell_style_ambiguous=cell_style_ambiguous)
 
 
 def _row_task_format_runs_map(service, row_numbers, columns):
@@ -1309,7 +1463,28 @@ def _formula_content_rows(service, columns=None, start_row=2):
     return rows
 
 
-def push_sheet_row_metadata(service, row_number, row, items, columns=None):
+def _repair_sheet_row_format(service, row_number, content, items, columns):
+    """Replace an ambiguous legacy cell style with independent task runs."""
+    parsed_count = len(parse_sheet_tasks(content))
+    if parsed_count != len(items) and (parsed_count or items):
+        logger.warning(
+            "Skipped format repair for row %s because task count changed during ingest.",
+            row_number,
+        )
+        return {"updated": False, "reason": "task_count_mismatch"}
+    if not content:
+        return {"updated": False, "reason": "empty_content"}
+    sheet_id = _sheet_properties(service)["sheetId"]
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=_spreadsheet_id(),
+        body={"requests": [
+            _content_format_update_request(sheet_id, row_number, content, items, columns)
+        ]},
+    ).execute()
+    return {"updated": True, "row": row_number}
+
+
+def push_sheet_row_metadata(service, row_number, row, items, columns=None, *, repair_format=False):
     """Write only hidden identity metadata after a Sheet-originated edit.
 
     The visible content and all rich-text runs have just been read from the
@@ -1355,11 +1530,16 @@ def push_sheet_row_metadata(service, row_number, row, items, columns=None):
             WorkItem.objects.filter(pk__in=[item.pk for item in items]).update(
                 source_sync_hash=sync_hash,
             )
-    return {
+    result = {
         "row": row_number,
         "updated": bool(updates),
         "syncHash": sync_hash,
     }
+    if repair_format:
+        result["formatRepair"] = _repair_sheet_row_format(
+            service, row_number, content, items, columns
+        )
+    return result
 
 
 def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=None):
@@ -1511,32 +1691,14 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
         if row_number in formula_rows:
             continue
         content, _, _, _ = _group_values(items) if items else ("", "", "", "")
-        runs = _build_content_format_runs(content, items)
-        cell = {
-            'userEnteredFormat': {'textFormat': {'bold': False, 'italic': False}},
-        }
-        fields = 'userEnteredFormat.textFormat.bold,userEnteredFormat.textFormat.italic'
         # Always replace the run list for literal cells. Leaving the old list
         # behind is another way a previously bold first task can style later
         # tasks after the content has been rewritten.
-        cell['textFormatRuns'] = [
-            {'startIndex': run['startIndex'], 'format': run['format']}
-            for run in runs
-        ]
-        fields += ',textFormatRuns'
-        format_requests.append({
-            'updateCells': {
-                'range': {
-                    'sheetId': format_sheet_id,
-                    'startRowIndex': row_number - 1,
-                    'endRowIndex': row_number,
-                    'startColumnIndex': columns["content"],
-                    'endColumnIndex': columns["content"] + 1,
-                },
-                'rows': [{'values': [cell]}],
-                'fields': fields,
-            }
-        })
+        format_requests.append(
+            _content_format_update_request(
+                format_sheet_id, row_number, content, items, columns
+            )
+        )
     if format_requests:
         for start in range(0, len(format_requests), 500):
             service.spreadsheets().batchUpdate(

@@ -333,6 +333,65 @@ class WorkScheduleSheetParserTests(TestCase):
             [True, False],
         )
 
+    def test_cell_level_emphasis_does_not_leak_to_unanchored_tasks(self):
+        content = "1. 17h00: Nhiệm vụ có giờ\n2. Nhiệm vụ thường\n3. Nhiệm vụ khác"
+        capture = _task_format_runs_from_cell({
+            "formattedValue": content,
+            "effectiveFormat": {"textFormat": {"bold": True, "italic": True}},
+            "textFormatRuns": [],
+        })
+
+        self.assertEqual(capture, [None, None, None])
+        self.assertTrue(capture.cell_style_ambiguous)
+
+    def test_ambiguous_cell_style_is_repaired_by_time_rule_without_recreating_bold_leak(self):
+        from .sheet_sync import _ingest_row
+
+        profile = UserProfile.objects.create(
+            email="cell-style@example.com", name="Cell Style", role="EMPLOYEE", access_modules=[]
+        )
+        first = WorkItem.objects.create(
+            creator=profile,
+            executor=profile,
+            title="17h00: Nhiệm vụ có giờ",
+            work_date=date(2026, 9, 15),
+            daily_order=1,
+            start_time=time(17),
+            priority="high",
+            time_prefix_in_title=True,
+            sheet_emphasis=True,
+            title_format_runs=[{"startIndex": 0, "bold": True, "italic": True}],
+            source_sheet_row=5001,
+        )
+        second = WorkItem.objects.create(
+            creator=profile,
+            executor=profile,
+            title="Nhiệm vụ thường",
+            work_date=date(2026, 9, 15),
+            daily_order=2,
+            priority="high",
+            sheet_emphasis=True,
+            title_format_runs=[{"startIndex": 0, "bold": True, "italic": True}],
+            source_sheet_row=5001,
+        )
+        row = [
+            "Ba", "15/09/2026", "38", "Cell Style",
+            "1. 17h00: Nhiệm vụ có giờ\n2. Nhiệm vụ thường", "", "", "",
+            "REC-CELL-STYLE", "", "",
+        ]
+        capture = _task_format_runs_from_cell({
+            "formattedValue": row[4],
+            "effectiveFormat": {"textFormat": {"bold": True, "italic": True}},
+            "textFormatRuns": [],
+        })
+
+        _ingest_row(5001, row, date(2026, 9, 15), task_format_runs=capture)
+
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual((first.priority, first.sheet_emphasis, first.title_format_runs), ("high", None, None))
+        self.assertEqual((second.priority, second.sheet_emphasis, second.title_format_runs), ("medium", None, None))
+
     def test_sheet_rich_text_captures_italic_and_title_local_runs(self):
         content = "1. Nhiệm vụ đậm\n2. Nhiệm vụ nghiêng\n3. Nhiệm vụ thường"
         second_title = len("1. Nhiệm vụ đậm\n2. ")

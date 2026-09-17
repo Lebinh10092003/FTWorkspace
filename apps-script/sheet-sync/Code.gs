@@ -28,6 +28,8 @@ var FIRST_DATA_ROW = 3; // row 1 is the title and row 2 contains the column head
 var FORMAT_SELECTION_PROPERTY = 'LAST_SCHEDULE_FORMAT_SELECTION';
 var FORMAT_SELECTION_MAX_AGE_MS = 5 * 60 * 1000;
 var FORMAT_SELECTION_MAX_ROWS = 100;
+var OUTBOX_GROWTH_PROPERTY = 'LAST_INTERNAL_OUTBOX_GROWTH_AT';
+var OUTBOX_GROWTH_MAX_AGE_MS = 15 * 1000;
 
 // Installable trigger entry point. Wire this up via Triggers -> Add Trigger -> On edit.
 function onEditInstallable(e) {
@@ -107,6 +109,7 @@ function onChangeInstallable(e) {
     }
     return;
   }
+  if (changeType === 'INSERT_ROW' && consumeRecentOutboxGrowth_()) return;
   var sheet = e.source.getActiveSheet();
   if (!sheet || sheet.getName() !== SHEET_NAME) return;
   if (['INSERT_ROW', 'REMOVE_ROW'].indexOf(changeType) === -1) return;
@@ -122,6 +125,15 @@ function onChangeInstallable(e) {
   var outboxRow = appendToOutbox_(eventId, 1, payload);
   var result = sendFullSyncWebhook_(eventId, changeType);
   markOutboxResult_(outboxRow, result);
+}
+
+function consumeRecentOutboxGrowth_() {
+  var props = PropertiesService.getDocumentProperties();
+  var raw = props.getProperty(OUTBOX_GROWTH_PROPERTY);
+  if (!raw) return false;
+  props.deleteProperty(OUTBOX_GROWTH_PROPERTY);
+  var timestamp = Number(raw);
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= OUTBOX_GROWTH_MAX_AGE_MS;
 }
 
 function rememberedFormatSelection_(spreadsheet) {
@@ -212,7 +224,7 @@ function handleRowEdit_(sheet, row, event) {
 function appendToOutbox_(eventId, row, payload) {
   var outbox = ensureOutboxSheet_();
   var editedAt = payload && payload.edited_at ? payload.edited_at : new Date().toISOString();
-  outbox.appendRow([
+  var values = [[
     eventId,
     row,
     editedAt,
@@ -220,8 +232,28 @@ function appendToOutbox_(eventId, row, payload) {
     'pending', // status: pending -> sent | error
     '', // response summary
     '', // processed_at
-  ]);
-  return outbox.getLastRow();
+  ]];
+  // appendRow() may insert physical rows when the hidden outbox reaches its
+  // current grid size. That emits INSERT_ROW and can trigger an unintended
+  // full schedule sync while the real row event is still being processed.
+  // Write into the next existing row instead; serialize concurrent triggers so
+  // two events cannot choose the same destination row.
+  var lock = LockService.getDocumentLock();
+  lock.waitLock(5000);
+  try {
+    var nextRow = Math.max(outbox.getLastRow() + 1, 2);
+    if (nextRow > outbox.getMaxRows()) {
+      PropertiesService.getDocumentProperties().setProperty(
+        OUTBOX_GROWTH_PROPERTY,
+        String(Date.now()),
+      );
+      outbox.insertRowsAfter(outbox.getMaxRows(), Math.max(100, nextRow - outbox.getMaxRows()));
+    }
+    outbox.getRange(nextRow, 1, 1, values[0].length).setValues(values);
+    return nextRow;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function currentEditorEmail_(event) {
@@ -319,7 +351,9 @@ function ensureOutboxSheet_() {
   var outbox = spreadsheet.getSheetByName(OUTBOX_SHEET_NAME);
   if (!outbox) {
     outbox = spreadsheet.insertSheet(OUTBOX_SHEET_NAME);
-    outbox.appendRow(['event_id', 'row', 'edited_at', 'values_json', 'status', 'response', 'processed_at']);
+    outbox.getRange(1, 1, 1, 7).setValues([[
+      'event_id', 'row', 'edited_at', 'values_json', 'status', 'response', 'processed_at'
+    ]]);
     outbox.hideSheet();
   }
   return outbox;

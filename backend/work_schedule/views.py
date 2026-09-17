@@ -1057,7 +1057,14 @@ def work_schedule_sheet_webhook(request):
                 ).order_by("daily_order", "start_time", "created_at", "pk")
             ) if sheet_email and sheet_date else []
             service = service or _service(None)
-            metadata_result = push_sheet_row_metadata(service, row_number, row, current_items, columns)
+            metadata_result = push_sheet_row_metadata(
+                service,
+                row_number,
+                row,
+                current_items,
+                columns,
+                repair_format=bool(getattr(task_format_runs, "cell_style_ambiguous", False)),
+            )
         except Exception as exc:
             push_back_error = str(exc)
             logger.exception("Ghi metadata ẩn lên Sheet thất bại sau webhook (event_id=%s).", event_id)
