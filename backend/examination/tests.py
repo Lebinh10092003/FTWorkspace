@@ -1577,3 +1577,96 @@ class SheetCandidateImportPreviewTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('Google Sheets', response.data['error'])
+
+
+class CompetitionLandingPageTests(TestCase):
+    def setUp(self):
+        self.user = UserProfile.objects.create(email='landing-admin@example.com', name='Landing Admin', role='ADMIN')
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.competition = Competition.objects.create(
+            id='comp-landing', code='FMO', name='FermatTech Mathematics Olympiad',
+            parent='FermatTech', organizer='FermatTech', sort_key='fmo',
+        )
+        self.session = ExamSession.objects.create(
+            id='comp-landing-thcs', competition_id=self.competition.id, code='FMO-THCS',
+            name='Bảng Trung học cơ sở', parent=self.competition.name, organizer='FermatTech',
+            time='2026 - 2027', candidates_count=12, sort_key='fmo-0',
+            rounds=[{
+                'id': 'round-1', 'name': 'Vòng Sơ loại', 'label': 'Trực tuyến', 'date': '2026-10-04',
+                'slots': [{'id': 'round-1-a', 'date': '2026-10-04'}, {'id': 'round-1-b', 'date': '2026-10-11'}],
+            }],
+        )
+
+    def _publish(self, **overrides):
+        payload = {'published': True, 'tagline': 'Sân chơi Toán học', **overrides}
+        return self.client.put(
+            f'/api/examination/landing-pages/{self.competition.id}', payload, format='json'
+        )
+
+    def test_saving_creates_a_slug_and_publishes_the_public_page(self):
+        response = self._publish()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['slug'], 'fmo')
+
+        public = APIClient().get('/api/public/competitions/fmo')
+        self.assertEqual(public.status_code, 200, public.data)
+        self.assertEqual(public.data['competition']['name'], self.competition.name)
+        self.assertEqual(public.data['tagline'], 'Sân chơi Toán học')
+
+    def test_public_page_reads_rounds_and_candidate_totals_from_examination(self):
+        candidate = Candidate.objects.create(id='cand-1', code='C1', name='Thí sinh 1', sort_key='c1')
+        CandidateParticipation.objects.create(candidate=candidate, session=self.session)
+        self._publish()
+
+        public = APIClient().get('/api/public/competitions/fmo')
+        self.assertEqual(public.status_code, 200, public.data)
+        session_payload = public.data['sessions'][0]
+        self.assertEqual(session_payload['code'], 'FMO-THCS')
+        # Ngày chính và ngày của từng đợt tổ chức đều thuộc cùng một vòng thi.
+        self.assertEqual(session_payload['rounds'][0]['dates'], ['2026-10-04', '2026-10-11'])
+        self.assertEqual(public.data['stats']['candidates'], 1)
+        self.assertEqual(public.data['stats']['firstDate'], '2026-10-04')
+        self.assertEqual(public.data['stats']['lastDate'], '2026-10-11')
+
+    def test_unpublished_page_is_not_reachable_by_link(self):
+        self._publish(published=False)
+        self.assertEqual(APIClient().get('/api/public/competitions/fmo').status_code, 404)
+
+    def test_slug_stays_unique_across_competitions(self):
+        self._publish()
+        other = Competition.objects.create(
+            id='comp-landing-2', code='FMO', name='FermatTech Mathematics Olympiad 2',
+            parent='FermatTech', organizer='FermatTech', sort_key='fmo-2',
+        )
+        response = self.client.put(
+            f'/api/examination/landing-pages/{other.id}', {'published': True}, format='json'
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['slug'], 'fmo-2')
+
+    def test_empty_content_blocks_are_dropped(self):
+        response = self._publish(highlights=[
+            {'title': 'Chuẩn quốc tế', 'description': 'Đề thi theo ma trận năng lực.'},
+            {'title': '   ', 'description': ''},
+            'không phải khối nội dung',
+        ])
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['highlights'], [
+            {'title': 'Chuẩn quốc tế', 'description': 'Đề thi theo ma trận năng lực.'},
+        ])
+
+    def test_demo_seed_publishes_a_page_that_opens_by_link(self):
+        from django.core.management import call_command
+        from io import StringIO
+
+        call_command('seed_demo_competition_landing', stdout=StringIO())
+
+        public = APIClient().get('/api/public/competitions/demo-olympiad-fermat')
+        self.assertEqual(public.status_code, 200, public.data)
+        self.assertEqual(len(public.data['sessions']), 2)
+        self.assertEqual(public.data['stats']['rounds'], 6)
+        self.assertTrue(public.data['highlights'])
+
+        call_command('seed_demo_competition_landing', '--remove', stdout=StringIO())
+        self.assertEqual(APIClient().get('/api/public/competitions/demo-olympiad-fermat').status_code, 404)

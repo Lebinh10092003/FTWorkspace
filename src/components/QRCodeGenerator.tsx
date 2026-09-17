@@ -213,12 +213,12 @@ export default function QRCodeGenerator({ onBackToWorkspace, backLabel = 'Worksp
   return (
     <div className="ft-module-shell workspace-module-canvas flex min-h-dvh bg-[#f7f4ee] font-sans text-[#102A43]">
       <aside className="ft-module-sidebar fixed inset-y-0 left-0 hidden w-64 flex-col md:flex">
-        <div className="ft-sidebar-brand flex items-center gap-3 text-left"><img src="/logo.png" alt="FermatTech" className="h-9 w-auto object-contain" /><span><b>FermatTech</b><small>Bộ công cụ truyền thông</small></span></div>
+        <div className="ft-sidebar-brand flex items-center gap-3 text-left"><img src="/logo.png" alt="FermatTech" className="h-9 w-auto object-contain" /><span><b>FermatTech</b><small>Bộ công cụ FermatTech</small></span></div>
         <nav className="flex-1 space-y-1 p-4"><button type="button" className="ft-nav-item ft-nav-item-active flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold"><QrCode className="h-5 w-5" />Tạo mã QR</button></nav>
         <div className="ft-sidebar-footer border-t p-4"><button type="button" onClick={onBackToWorkspace} className="ft-sidebar-back flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm font-bold"><ArrowLeft className="h-5 w-5" />{backLabel}</button></div>
       </aside>
       <div className="min-w-0 flex-1 md:ml-64">
-        <header className="ft-module-header sticky top-0 z-20 flex h-16 items-center justify-between border-b px-5 md:px-8"><div><p className="text-xs font-extrabold uppercase tracking-[.14em] text-blue-600">Bộ công cụ truyền thông</p><h1 className="text-lg font-extrabold">Trình tạo mã QR</h1></div><div className="workspace-canvas-muted hidden items-center gap-2 text-xs font-semibold sm:flex"><LockKeyhole className="h-4 w-4 text-emerald-500" />Kiểm tra link trước khi xuất</div></header>
+        <header className="ft-module-header sticky top-0 z-20 flex h-16 items-center justify-between border-b px-5 md:px-8"><div><p className="text-xs font-extrabold uppercase tracking-[.14em] text-blue-600">Bộ công cụ FermatTech</p><h1 className="text-lg font-extrabold">Trình tạo mã QR</h1></div><div className="workspace-canvas-muted hidden items-center gap-2 text-xs font-semibold sm:flex"><LockKeyhole className="h-4 w-4 text-emerald-500" />Kiểm tra link trước khi xuất</div></header>
         <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
         <section className="mb-9 max-w-3xl">
           <div className="mb-3 flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#de6b35]"><span className="h-px w-8 bg-[#de6b35]" />Trình tạo mã QR trực tiếp</div>

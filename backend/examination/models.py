@@ -502,3 +502,42 @@ class AiUsageLog(models.Model):
     success = models.BooleanField(default=False)
     error_message = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class CompetitionLandingPage(models.Model):
+    """Nội dung giới thiệu công khai của một cuộc thi trong mô-đun Khảo thí.
+
+    Chỉ phần nội dung tiếp thị được lưu ở đây. Lịch thi, các vòng thi và số
+    lượng thí sinh luôn được đọc trực tiếp từ dữ liệu khảo thí khi dựng trang,
+    nên trang giới thiệu không bao giờ lệch với dữ liệu điều hành.
+    """
+
+    competition = models.OneToOneField(
+        Competition, on_delete=models.CASCADE, related_name='landing_page'
+    )
+    slug = models.SlugField(max_length=120, unique=True)
+    published = models.BooleanField(default=False)
+    tagline = models.CharField(max_length=300, blank=True, default='')
+    hero_description = models.TextField(blank=True, default='')
+    hero_image_url = models.CharField(max_length=2000, blank=True, default='')
+    about_title = models.CharField(max_length=300, blank=True, default='')
+    about_body = models.TextField(blank=True, default='')
+    registration_url = models.CharField(max_length=2000, blank=True, default='')
+    registration_note = models.CharField(max_length=500, blank=True, default='')
+    contact_email = models.CharField(max_length=255, blank=True, default='')
+    contact_phone = models.CharField(max_length=100, blank=True, default='')
+    contact_address = models.CharField(max_length=500, blank=True, default='')
+    # Danh sách các khối nội dung tự do, mỗi khối là {"title", "description"}.
+    highlights = models.JSONField(default=list, blank=True)
+    prizes = models.JSONField(default=list, blank=True)
+    faqs = models.JSONField(default=list, blank=True)
+    organizers = models.JSONField(default=list, blank=True)
+    updated_by = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['slug']
+
+    def __str__(self):
+        return f"{self.slug} · {self.competition_id}"

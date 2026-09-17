@@ -15,7 +15,7 @@ const moduleLabels: Record<string, string> = {
   'work-schedule': 'Lịch làm việc',
   'social-dashboard': 'Truyền thông',
   attendance: 'Công ca',
-  'communication-tools': 'Bộ công cụ truyền thông',
+  'communication-tools': 'Bộ công cụ FermatTech',
   examination: 'Khảo thí',
   'digital-training': 'Đào tạo số',
   'finance-report': 'Báo cáo thu chi',

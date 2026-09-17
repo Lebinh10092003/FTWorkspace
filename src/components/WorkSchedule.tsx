@@ -518,6 +518,12 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     const path = schedulePath(nextView, nextPeriod);
     if (window.location.pathname !== path) window.history.pushState(null, "", path);
   };
+  // Chọn mục ở thanh điều hướng luôn mở lịch cá nhân ở ngày hôm nay. Các lối
+  // vào khác (bấm một ngày trong lịch tuần/tháng) giữ nguyên ngày đã chọn.
+  const openScheduleSection = (nextView: View) => {
+    if (nextView === "board" && view !== "board") setSelectedDate(iso(new Date()));
+    navigateSchedule(nextView);
+  };
   useEffect(() => {
     const onPopState = () => {
       const next = scheduleLocation();
@@ -909,7 +915,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <button key={item.id} type="button" onClick={() => navigateSchedule(item.id)} className={`ft-nav-item flex w-full items-center gap-3 rounded-xl border-l-4 px-3.5 py-3 text-left text-sm font-semibold transition ${view === item.id ? "ft-nav-item-active" : ""}`}>
+              <button key={item.id} type="button" onClick={() => openScheduleSection(item.id)} className={`ft-nav-item flex w-full items-center gap-3 rounded-xl border-l-4 px-3.5 py-3 text-left text-sm font-semibold transition ${view === item.id ? "ft-nav-item-active" : ""}`}>
                 <Icon className="h-4.5 w-4.5" />
                 {item.label}
               </button>
@@ -947,7 +953,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
           className="lg:hidden"
           onBack={onBackToWorkspace}
           activeId={view}
-          onSelect={(nextView) => navigateSchedule(nextView as View)}
+          onSelect={(nextView) => openScheduleSection(nextView as View)}
           items={navItems.map((item) => ({ id: item.id, label: item.label, icon: item.icon }))}
           ariaLabel="Điều hướng lịch làm việc"
         />
@@ -1099,6 +1105,9 @@ function BoardView({ tasks, selectedDate, setSelectedDate, userEmail, selectedId
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" disabled={!tasks.length} onClick={() => setSelectedIds(allSelected ? [] : tasks.map((task) => task.id))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 disabled:opacity-40">
             {allSelected ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+          </button>
+          <button type="button" disabled={isToday} onClick={() => setSelectedDate(iso(new Date()))} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:border-slate-200 disabled:bg-white disabled:text-slate-400">
+            Hôm nay
           </button>
           <div className="flex items-center rounded-xl border border-slate-200 bg-white p-1">
             <button onClick={() => setSelectedDate(iso(addDays(fromIso(selectedDate), -1)))} className="rounded-lg p-2 hover:bg-slate-100" aria-label="Ngày trước">

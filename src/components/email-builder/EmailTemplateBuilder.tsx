@@ -908,7 +908,7 @@ function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lạ
         <aside className="ft-module-sidebar fixed inset-y-0 left-0 hidden w-64 flex-col md:flex">
           <div className="ft-sidebar-brand flex items-center gap-3 text-left">
             <img src="/logo.png" alt="FermatTech" className="h-9 w-auto object-contain" />
-            <span><b>FermatTech</b><small>Bộ công cụ truyền thông</small></span>
+            <span><b>FermatTech</b><small>Bộ công cụ FermatTech</small></span>
           </div>
           <nav className="flex-1 space-y-1 overflow-y-auto p-4">
             <button type="button" className="ft-nav-item ft-nav-item-active flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold"><FileText className="h-5 w-5" />Kho mẫu Email</button>
@@ -942,7 +942,7 @@ function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lạ
         </aside>
 
         <main className="min-w-0 flex-1 overflow-y-auto md:ml-64">
-          <header className="ft-module-header sticky top-0 z-20 flex items-center justify-between border-b px-5 py-4 md:px-8"><div><p className="text-xs font-extrabold uppercase tracking-[.14em] text-blue-600">Bộ công cụ truyền thông</p><h1 className="text-lg font-extrabold text-slate-900">Trình quản lý mẫu Email</h1></div><AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar"/></header>
+          <header className="ft-module-header sticky top-0 z-20 flex items-center justify-between border-b px-5 py-4 md:px-8"><div><p className="text-xs font-extrabold uppercase tracking-[.14em] text-blue-600">Bộ công cụ FermatTech</p><h1 className="text-lg font-extrabold text-slate-900">Trình quản lý mẫu Email</h1></div><AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar"/></header>
           <ModuleMobileNav
             className="email-list-mobile-nav"
             onBack={onBackToWorkspace}

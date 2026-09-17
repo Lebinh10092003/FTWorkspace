@@ -1,6 +1,6 @@
 import React, { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { appDialog } from './components/AppDialog';
-import { ArrowLeft, BadgeDollarSign, CalendarCheck, CalendarDays, CalendarRange, ChartColumnBig, ClipboardList, ContactRound, FileCheck2, GraduationCap, Mail, Megaphone, Moon, QrCode, ShieldUser, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, BadgeDollarSign, CalendarCheck, CalendarDays, CalendarRange, ChartColumnBig, ClipboardList, ContactRound, FileCheck2, FileSignature, GraduationCap, Keyboard, Mail, Megaphone, Moon, QrCode, Presentation, ShieldUser, TriangleAlert } from 'lucide-react';
 
 import { Channel, UserRole } from './types';
 import Sidebar from './components/social-dashboard/Sidebar';
@@ -44,8 +44,10 @@ const TrainingAssessmentWorkspace = lazyWithRecovery(() => import('./components/
 const QRCodeGenerator = lazyWithRecovery(() => import('./components/QRCodeGenerator'));
 const Attendance = lazyWithRecovery(() => import('./components/Attendance'));
 const WorkSchedule = lazyWithRecovery(() => import('./components/WorkSchedule'));
+const CompetitionLandingManager = lazyWithRecovery(() => import('./components/examination/CompetitionLandingManager'));
+const CompetitionLandingPublic = lazyWithRecovery(() => import('./components/examination/CompetitionLandingPublic'));
 
-type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'attendance' | 'account-management';
+type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'competition-landing' | 'competition-landing-public' | 'attendance' | 'account-management';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -146,6 +148,7 @@ function userFromApi(value: any): AppUser {
 
 function getInitialViewMode(): ViewMode {
   const path = window.location.pathname;
+  if (path.startsWith('/cuoc-thi/')) return 'competition-landing-public';
   if (path.startsWith('/training-assessment/')) return 'training-assessment-public';
   if (path.startsWith('/training-assessments')) return 'training-assessments';
   if (path.startsWith('/digital-training')) return 'digital-training';
@@ -154,6 +157,7 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/communication-tools/email')) return 'email-builder';
   if (path.startsWith('/communication-tools/signature')) return 'signature-builder';
   if (path.startsWith('/communication-tools/qr')) return 'qr-generator';
+  if (path.startsWith('/communication-tools/competition-landing')) return 'competition-landing';
   if (path.startsWith('/communication-tools')) return 'communication-tools';
   if (path.startsWith('/finance-report')) return 'finance-report';
   if (path.startsWith('/signature-builder')) return 'signature-builder';
@@ -236,7 +240,7 @@ export default function App() {
   );
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
-  const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
+  const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
   const canAccessView = (mode: ViewMode) => { if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'work-schedule') return !isGuest; if (mode === 'communication-tools') return !isGuest && hasModuleAccess('email-builder'); if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
 
@@ -436,7 +440,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (authChecking || viewMode === 'workspace' || viewMode === 'training-assessment-public' || viewMode === 'qr-generator') return;
+    if (authChecking || viewMode === 'workspace' || viewMode === 'training-assessment-public' || viewMode === 'competition-landing-public' || viewMode === 'qr-generator') return;
     if (!canAccessView(viewMode)) {
       setViewModeState('workspace');
       window.history.replaceState(null, '', '/');
@@ -615,7 +619,7 @@ export default function App() {
       },
       {
         mode: 'communication-tools',
-        title: 'Bộ công cụ truyền thông',
+        title: 'Bộ công cụ FermatTech',
         description: 'Thiết kế Email, tạo chữ ký và mã QR trong một không gian công cụ chung.',
         gradient: 'from-[#FF0052] via-[#8B5CF6] to-[#0055DA]',
         icon: Megaphone,
@@ -755,23 +759,28 @@ export default function App() {
       { mode: 'email-builder' as ViewMode, title: 'Thiết kế Email', description: 'Tạo, quản lý mẫu Email và chữ ký dùng chung.', icon: Mail, color: 'from-pink-500 to-violet-600', allowed: canAccessView('email-builder') },
       { mode: 'signature-builder' as ViewMode, title: 'Tạo chữ ký Email', description: 'Tùy biến thông tin, mạng xã hội và sao chép chữ ký dùng cho Gmail hoặc Outlook.', icon: ContactRound, color: 'from-[#104581] to-[#1473D1]', allowed: canAccessView('signature-builder') },
       { mode: 'qr-generator' as ViewMode, title: 'Tạo mã QR', description: 'Tạo mã QR, kiểm tra đường dẫn và xuất poster truyền thông.', icon: QrCode, color: 'from-blue-600 to-cyan-500', allowed: canAccessView('qr-generator') },
+      { mode: 'competition-landing' as ViewMode, title: 'Trang giới thiệu cuộc thi', description: 'Dựng trang giới thiệu công khai cho cuộc thi, lịch thi và số liệu lấy từ Khảo thí.', icon: Presentation, color: 'from-[#001E40] to-[#0055DA]', allowed: canAccessView('competition-landing') },
     ].filter(tool => tool.allowed);
+    const upcomingTools = [
+      { key: 'official-dispatch-number', title: 'Trình tạo số Công văn', description: 'Cấp và tra cứu số công văn theo loại văn bản, đơn vị phát hành và năm.', icon: FileSignature, color: 'from-[#0055DA] to-[#00C68D]' },
+      { key: 'touch-typing', title: 'Trình luyện gõ 10 ngón', description: 'Bài luyện gõ tiếng Việt theo cấp độ, đo tốc độ và độ chính xác.', icon: Keyboard, color: 'from-[#001E40] to-[#0055DA]' },
+    ];
     return (
       <div className="ft-module-shell flex min-h-dvh bg-slate-50 font-sans">
         <aside className="ft-module-sidebar fixed inset-y-0 left-0 hidden w-64 flex-col md:flex">
-          <button type="button" onClick={() => setViewMode('workspace')} className="ft-sidebar-brand flex items-center gap-3 text-left"><img src="/logo.png" alt="FermatTech" className="h-9 object-contain" /><span><b className="block text-sm">FermatTech</b><small className="text-[10px] font-bold uppercase tracking-wider text-blue-500">Công cụ truyền thông</small></span></button>
+          <button type="button" onClick={() => setViewMode('workspace')} className="ft-sidebar-brand flex items-center gap-3 text-left"><img src="/logo.png" alt="FermatTech" className="h-9 object-contain" /><span><b className="block text-sm">FermatTech</b><small className="text-[10px] font-bold uppercase tracking-wider text-blue-500">Công cụ FermatTech</small></span></button>
           <nav className="flex-1 space-y-2 p-4">{tools.map(tool => { const Icon = tool.icon; return <button key={tool.mode} type="button" onClick={() => setViewMode(tool.mode)} className="ft-nav-item flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold"><Icon className="h-5 w-5" />{tool.title}</button>; })}</nav>
           <div className="ft-sidebar-footer border-t p-4"><button type="button" onClick={() => setViewMode('workspace')} className="ft-sidebar-back mb-3 flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm font-bold"><ArrowLeft className="h-5 w-5" />Quay lại Workspace</button><AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="sidebar" /></div>
         </aside>
-        <main className="min-w-0 flex-1 md:ml-64"><header className="ft-module-header sticky top-0 z-20 flex items-center justify-between border-b px-5 py-4 md:px-8"><div><p className="text-xs font-extrabold uppercase tracking-[.15em] text-blue-600">FermatTech Workspace</p><h1 className="text-xl font-extrabold text-slate-900">Bộ công cụ truyền thông</h1></div><AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" /></header>
+        <main className="min-w-0 flex-1 md:ml-64"><header className="ft-module-header sticky top-0 z-20 flex items-center justify-between border-b px-5 py-4 md:px-8"><div><p className="text-xs font-extrabold uppercase tracking-[.15em] text-blue-600">FermatTech Workspace</p><h1 className="text-xl font-extrabold text-slate-900">Bộ công cụ FermatTech</h1></div><AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" /></header>
           <ModuleMobileNav
             className="lg:hidden"
             onBack={() => setViewMode('workspace')}
             onSelect={(mode) => setViewMode(mode as ViewMode)}
             items={tools.map(tool => ({ id: tool.mode, label: tool.title, icon: tool.icon }))}
-            ariaLabel="Điều hướng bộ công cụ truyền thông"
+            ariaLabel="Điều hướng bộ công cụ FermatTech"
           />
-          <div className="ft-module-content mx-auto p-5 md:p-8"><div className="mb-7 max-w-2xl"><h2 className="text-3xl font-extrabold text-[#001e40]">Bạn muốn tạo gì?</h2><p className="mt-2 text-slate-500">Các công cụ phục vụ thiết kế và phân phối nội dung truyền thông được gom vào một nơi.</p></div><div className="grid max-w-5xl gap-5 md:grid-cols-2">{tools.map(tool => { const Icon = tool.icon; return <button key={tool.mode} type="button" onClick={() => setViewMode(tool.mode)} className="group rounded-3xl border border-slate-200 bg-white p-7 text-left shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl"><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white shadow-lg`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-900">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{tool.description}</p><span className="mt-6 block text-sm font-bold text-blue-600">Mở công cụ →</span></button>; })}</div></div>
+          <div className="ft-module-content mx-auto p-5 md:p-8"><div className="mb-7 max-w-2xl"><h2 className="text-3xl font-extrabold text-[#001e40]">Bạn muốn tạo gì?</h2><p className="mt-2 text-slate-500">Các công cụ phục vụ thiết kế và phân phối nội dung truyền thông được gom vào một nơi.</p></div><div className="grid max-w-5xl gap-5 md:grid-cols-2">{tools.map(tool => { const Icon = tool.icon; return <button key={tool.mode} type="button" onClick={() => setViewMode(tool.mode)} className="group rounded-3xl border border-slate-200 bg-white p-7 text-left shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl"><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white shadow-lg`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-900">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{tool.description}</p><span className="mt-6 block text-sm font-bold text-blue-600">Mở công cụ →</span></button>; })}{upcomingTools.map(tool => { const Icon = tool.icon; return <div key={tool.key} aria-disabled="true" className="relative rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 p-7 text-left"><span className="absolute right-5 top-5 rounded-full bg-amber-100 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-amber-700">Sắp ra mắt</span><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white opacity-60 shadow-inner`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-500">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-400">{tool.description}</p><span className="mt-6 block text-sm font-bold text-slate-400">Đang phát triển</span></div>; })}</div></div>
         </main>
       </div>
     );
@@ -834,6 +843,15 @@ export default function App() {
     );
   }
 
+  if (viewMode === 'competition-landing-public') {
+    const slug = window.location.pathname.replace(/^\/cuoc-thi\//, '').split('/')[0];
+    return (
+      <Suspense fallback={<div className="grid min-h-dvh place-items-center bg-slate-50 text-sm font-semibold text-slate-500">Đang mở trang giới thiệu...</div>}>
+        <CompetitionLandingPublic slug={slug} />
+      </Suspense>
+    );
+  }
+
   if (viewMode === 'training-assessment-public') {
     const slug = window.location.pathname.replace(/^\/training-assessment\//, '').split('/')[0];
     return (
@@ -878,10 +896,33 @@ export default function App() {
     );
   }
 
+  if (viewMode === 'competition-landing') {
+    return (
+      <div className="ft-module-shell min-h-dvh bg-slate-50 font-sans">
+        <header className="ft-module-header sticky top-0 z-20 flex items-center justify-between gap-3 border-b px-5 py-4 md:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <button type="button" onClick={() => setViewMode('communication-tools')} className="rounded-xl border border-slate-200 p-2 hover:bg-slate-100" aria-label="Quay lại Bộ công cụ FermatTech"><ArrowLeft className="h-5 w-5" /></button>
+            <div className="min-w-0">
+              <p className="text-xs font-extrabold uppercase tracking-[.15em] text-blue-600">Bộ công cụ FermatTech</p>
+              <h1 className="truncate text-xl font-extrabold text-slate-900">Trang giới thiệu cuộc thi</h1>
+            </div>
+          </div>
+          <AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />
+        </header>
+        <main className="ft-module-content mx-auto max-w-7xl p-5 md:p-8">
+          <Suspense fallback={<div className="py-16 text-center text-sm font-semibold text-slate-500">Đang nạp công cụ...</div>}>
+            <CompetitionLandingManager idToken={idToken || ''} />
+          </Suspense>
+        </main>
+        {loginModal}{profileModal}
+      </div>
+    );
+  }
+
   if (viewMode === 'qr-generator') {
     return (
       <Suspense fallback={<div className="grid h-screen place-items-center bg-[#f7f4ee]">Đang nạp Trình tạo mã QR...</div>}>
-        <QRCodeGenerator onBackToWorkspace={() => setViewMode('communication-tools')} backLabel="Bộ công cụ truyền thông" />
+        <QRCodeGenerator onBackToWorkspace={() => setViewMode('communication-tools')} backLabel="Bộ công cụ FermatTech" />
       </Suspense>
     );
   }
@@ -917,7 +958,7 @@ export default function App() {
         <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Trình tạo Email...</div>}>
           <EmailTemplateBuilder
             onBackToWorkspace={() => setViewMode('communication-tools')}
-            backLabel="Bộ công cụ truyền thông"
+            backLabel="Bộ công cụ FermatTech"
             onAccountClick={openAccount}
             onLogout={handleLogout}
             isGuest={isGuest}
