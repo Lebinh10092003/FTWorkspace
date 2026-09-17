@@ -134,7 +134,7 @@ class WorkScheduleSheetParserTests(TestCase):
                 Shift("direct", time(13, 30), time(18, 0)),
                 Shift("online", time(20, 0), time(23, 0)),
             ]),
-            "Trực tiếp: 09:30 - 12:00\nTrực tiếp: 13:30 - 18:00\nOnline: 20:00 - 23:00",
+            "Off: 09h30-12h00.\nOff: 13h30-18h00.\nOnl: 20h00-23h00.",
         )
         self.assertEqual(_attendance_value([Shift("direct", time(0), time(0), True)]), "")
 

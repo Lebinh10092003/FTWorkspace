@@ -364,14 +364,14 @@ def _group_values(items):
 
 
 def _attendance_value(entries):
-    """Render web timesheet rows exactly as the visible Sheet attendance cell."""
+    """Render the compact attendance format used in the work-schedule Sheet."""
     if not entries:
         return ""
     if any(entry.is_day_off for entry in entries):
         return ""
     return "\n".join(
-        f"{'Online' if entry.work_mode == 'online' else 'Trực tiếp'}: "
-        f"{entry.shift_start.strftime('%H:%M')} - {entry.shift_end.strftime('%H:%M')}"
+        f"{'Onl' if entry.work_mode == 'online' else 'Off'}: "
+        f"{entry.shift_start.strftime('%Hh%M')}-{entry.shift_end.strftime('%Hh%M')}."
         for entry in entries
     )
 
