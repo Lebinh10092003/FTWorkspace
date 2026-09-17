@@ -24,6 +24,7 @@ from .sheet_sync import (
     _insert_missing_rows_by_date,
     _row_hash,
     _row_employee_email,
+    _task_format_runs_from_cell,
     _row_task_emphasis,
     _reorder_misplaced_web_rows,
     _sheet_columns,
@@ -332,6 +333,68 @@ class WorkScheduleSheetParserTests(TestCase):
             [True, False],
         )
 
+    def test_sheet_rich_text_captures_italic_and_title_local_runs(self):
+        content = "1. Nhiệm vụ đậm\n2. Nhiệm vụ nghiêng\n3. Nhiệm vụ thường"
+        second_title = len("1. Nhiệm vụ đậm\n2. ")
+        second_italic_end = second_title + len("Nhiệm vụ nghiêng")
+        formats = _task_format_runs_from_cell({
+            "formattedValue": content,
+            "userEnteredFormat": {"textFormat": {"bold": False, "italic": False}},
+            "textFormatRuns": [
+                {"startIndex": len("1. "), "format": {"bold": True}},
+                {"startIndex": len("1. Nhiệm vụ đậm\n2. "), "format": {"bold": False}},
+                {"startIndex": second_title, "format": {"italic": True}},
+                {"startIndex": second_italic_end, "format": {"italic": False}},
+                {"startIndex": len("1. Nhiệm vụ đậm\n2. Nhiệm vụ nghiêng\n3. "), "format": {"bold": False, "italic": False}},
+            ],
+        })
+
+        self.assertEqual(formats[0], [{"startIndex": 0, "bold": True, "italic": False}])
+        self.assertEqual(formats[1][0], {"startIndex": 0, "bold": False, "italic": True})
+        self.assertEqual(formats[2], [])
+
+    def test_explicit_web_runs_reset_each_task_after_a_bold_first_task(self):
+        class Item:
+            def __init__(self, title, runs):
+                self.title = title
+                self.title_format_runs = runs
+
+        content = "1. 8h00: Nhiệm vụ đầu\n2. Nhiệm vụ hai\n3. Nhiệm vụ ba"
+        runs = _build_content_format_runs(content, [
+            Item("8h00: Nhiệm vụ đầu", [{"startIndex": 0, "bold": True, "italic": True}]),
+            Item("Nhiệm vụ hai", []),
+            Item("Nhiệm vụ ba", []),
+        ])
+
+        by_index = {run["startIndex"]: run["format"] for run in runs}
+        self.assertEqual(by_index[0], {"bold": False, "italic": False})
+        self.assertEqual(by_index[len("1. ")], {"bold": True, "italic": True})
+        self.assertEqual(by_index[len("1. 8h00: Nhiệm vụ đầu\n")], {"bold": False, "italic": False})
+        self.assertEqual(by_index[len("1. 8h00: Nhiệm vụ đầu\n2. Nhiệm vụ hai\n")], {"bold": False, "italic": False})
+
+    def test_sheet_format_runs_are_persisted_per_task_and_drive_priority(self):
+        from .sheet_sync import _ingest_row
+
+        UserProfile.objects.create(
+            email="rich-sheet@example.com", name="Rich Sheet", role="EMPLOYEE", access_modules=[]
+        )
+        row = [
+            "Ba", "15/09/2026", "38", "Rich Sheet",
+            "1. 8h00: Việc đậm\n2. Việc thường", "", "", "",
+            "REC-RICH-SHEET", "", "",
+        ]
+        _ingest_row(5001, row, date(2026, 9, 15), task_format_runs=[
+            [{"startIndex": 0, "bold": True, "italic": True}],
+            [],
+        ])
+
+        items = list(WorkItem.objects.filter(source_sheet_row=5001).order_by("daily_order"))
+        self.assertEqual(len(items), 2)
+        self.assertEqual((items[0].priority, items[0].title_format_runs), (
+            "high", [{"startIndex": 0, "bold": True, "italic": True}]
+        ))
+        self.assertEqual((items[1].priority, items[1].title_format_runs), ("medium", []))
+
     def test_sheet_emphasis_overrides_time_priority_and_survives_reingest(self):
         from .sheet_sync import _ingest_row
 
@@ -512,6 +575,29 @@ class WorkScheduleApiTests(TestCase):
             work_date="2026-09-07",
             status=WorkScheduleSheetChange.STATUS_PENDING,
         ).exists())
+
+    def test_web_grid_persists_and_returns_title_format_runs(self):
+        response = self.request(self.executor_token, "post", "/api/work-schedule/day", {
+            "date": "2026-09-07",
+            "items": [{
+                "title": "Nhiệm vụ đầu",
+                "progressNote": "",
+                "dailyOrder": 1,
+                "formatRuns": [{"startIndex": 0, "bold": True, "italic": False}],
+            }],
+        })
+        self.assertEqual(response.status_code, 200, response.data)
+        item = WorkItem.objects.get(executor=self.executor, work_date="2026-09-07")
+        self.assertEqual(item.title_format_runs, [{"startIndex": 0, "bold": True, "italic": False}])
+        self.assertEqual(response.json()["items"][0]["formatRuns"], item.title_format_runs)
+
+        cleared = self.request(self.executor_token, "post", "/api/work-schedule/day", {
+            "date": "2026-09-07",
+            "items": [{"id": item.pk, "title": item.title, "dailyOrder": 1, "formatRuns": []}],
+        })
+        self.assertEqual(cleared.status_code, 200, cleared.data)
+        item.refresh_from_db()
+        self.assertEqual(item.title_format_runs, [])
 
     def test_delete_requires_no_password_and_batch_status_is_supported(self):
         first = self.create_item()
@@ -1154,6 +1240,40 @@ class WorkScheduleApiTests(TestCase):
             _ingest_row(5001, row, date(2026, 9, 15))
         self.assertFalse(WorkItem.objects.filter(executor=self.executor, work_date="2026-09-15").exists())
 
+    def test_sheet_authoritative_edit_applies_even_when_snapshot_hash_is_unchanged(self):
+        from .sheet_sync import _ingest_row
+
+        item = WorkItem.objects.create(
+            creator=self.executor,
+            executor=self.executor,
+            work_date=date(2026, 9, 15),
+            title="Nội dung cũ",
+            source_sheet_row=5001,
+        )
+        WorkScheduleSheetChange.objects.create(
+            executor_email=self.executor.email,
+            work_date=item.work_date,
+            status=WorkScheduleSheetChange.STATUS_PENDING,
+        )
+        row = [
+            "", "15/09/2026", "38", self.executor.email, "1. Nội dung mới", "", "",
+            self.executor.email, "REC-WEB-TEST", f"1. {item.sync_uid}", "",
+        ]
+        row[10] = _row_hash(row[4], row[5], row[6], row[9])
+
+        _ingest_row(
+            5001,
+            row,
+            date(2026, 9, 15),
+            task_format_runs=[[]],
+            sheet_authoritative=True,
+        )
+
+        item.refresh_from_db()
+        self.assertEqual(item.title, "Nội dung mới")
+        self.assertEqual(item.title_format_runs, [])
+        self.assertEqual(item.sheet_emphasis, False)
+
     def test_grid_title_with_time_range_is_preserved_verbatim(self):
         # Users often write "7:30 - 12:30" (start–end) in the schedule grid. The
         # system must store this exactly; it must NOT split it into a start_time and
@@ -1666,18 +1786,18 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual(item.priority, "high")
         self.assertTrue(item.time_prefix_in_title)
 
-    @mock.patch("work_schedule.sheet_sync._row_task_emphasis", return_value=[False])
+    @mock.patch("work_schedule.sheet_sync._row_task_format_runs", return_value=[[]])
     @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
-    def test_unbold_sheet_row_clears_time_auto_priority(self, mock_service, mock_ensure, mock_push, mock_emphasis):
+    def test_unbold_sheet_row_clears_time_auto_priority(self, mock_service, mock_ensure, mock_push, mock_format_runs):
         values = self.row_values("8h: Gửi báo cáo")
         response = self.post({"event_id": "evt-unbold-priority", "row": self.ROW_NUMBER, "values": values})
 
         self.assertEqual(response.status_code, 200, response.content)
         item = WorkItem.objects.get(source_sheet_row=self.ROW_NUMBER)
         self.assertEqual((item.priority, item.sheet_emphasis), ("medium", False))
-        mock_emphasis.assert_called_once()
+        mock_format_runs.assert_called_once()
 
     @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")

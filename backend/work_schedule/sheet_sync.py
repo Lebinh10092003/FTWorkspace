@@ -19,6 +19,7 @@ from integrations.google_sheets import build_sheets_service, extract_spreadsheet
 
 from .models import WorkItem, WorkScheduleSheetChange, WorkScheduleSheetSyncLease
 from .retention import purge_expired_work_schedule, retained_from
+from .rich_text import format_state_at, normalize_format_runs, slice_format_runs, utf16_length
 from .sheet_parser import is_personal_task, without_task_tags, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
 from .signals import suppress_sheet_queue
 
@@ -402,11 +403,11 @@ def _unique_sheet_tasks(tasks):
     position. This targets the duplicated-line source without merging unrelated
     records that happen to share a title elsewhere in the application.
     """
-    return [task for task, _ in _unique_sheet_task_entries(tasks)]
+    return [task for task, _, _ in _unique_sheet_task_entries(tasks)]
 
 
-def _unique_sheet_task_entries(tasks, emphasis=None):
-    """Deduplicate parsed tasks while keeping the matching rich-text state."""
+def _unique_sheet_task_entries(tasks, emphasis=None, format_runs=None):
+    """Deduplicate parsed tasks while keeping their matching style state."""
     unique = []
     positions = {}
     for index, task in enumerate(tasks):
@@ -416,11 +417,15 @@ def _unique_sheet_task_entries(tasks, emphasis=None):
         emphasized = None
         if emphasis is not None and index < len(emphasis):
             emphasized = bool(emphasis[index]) if emphasis[index] is not None else None
+        task_runs = None
+        if format_runs is not None and index < len(format_runs):
+            task_runs = normalize_format_runs(format_runs[index], _sheet_text_length(task.title)) or []
+            emphasized = bool(format_state_at(task_runs, 0)["bold"])
         if key not in positions:
             positions[key] = len(unique)
-            unique.append((task, emphasized))
+            unique.append((task, emphasized, task_runs))
         elif task.start_time and not unique[positions[key]][0].start_time:
-            unique[positions[key]] = (task, emphasized)
+            unique[positions[key]] = (task, emphasized, task_runs)
     return unique
 
 
@@ -505,7 +510,17 @@ def _legacy_group_match(group_items, parsed_task, index, retained_ids):
     return order_matches[0] if len(order_matches) == 1 else None
 
 
-def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=None, task_emphasis=None):
+def _ingest_row(
+    offset,
+    row,
+    today,
+    *,
+    delete_missing=True,
+    retained_by_group=None,
+    task_emphasis=None,
+    task_format_runs=None,
+    sheet_authoritative=False,
+):
     """Parse one sheet row (A:K, same shape as `_rows()` yields) and upsert its WorkItems.
 
     Shared by `pull_from_sheet` (bulk, one row per iteration) and the realtime
@@ -554,7 +569,7 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
     # An unchanged Sheet row is an old snapshot while a web edit is queued.
     # Do not recreate deleted tasks or overwrite unsent titles during a full pull.
     live_hash = _row_hash(_cell(row, 4), _cell(row, 5), _cell(row, 6), _cell(row, 9))
-    if _cell(row, 10) == live_hash and WorkScheduleSheetChange.objects.filter(
+    if not sheet_authoritative and _cell(row, 10) == live_hash and WorkScheduleSheetChange.objects.filter(
         executor_email=email, work_date=work_date,
         status__in=[WorkScheduleSheetChange.STATUS_PENDING, WorkScheduleSheetChange.STATUS_PROCESSING, WorkScheduleSheetChange.STATUS_FAILED, WorkScheduleSheetChange.STATUS_CONFLICT],
     ).exists():
@@ -562,13 +577,24 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
             retained_by_group[(email, work_date)].update(item.pk for item in group_items)
         return created, updated, deleted, touched
     raw_tasks = parse_sheet_tasks(_cell(row, 4))
-    if task_emphasis is None:
+    if task_format_runs is not None:
+        task_entries = _unique_sheet_task_entries(
+            raw_tasks,
+            task_emphasis,
+            task_format_runs,
+        )
+        parsed = [task for task, _, _ in task_entries]
+        parsed_emphasis = [emphasis for _, emphasis, _ in task_entries]
+        parsed_format_runs = [runs for _, _, runs in task_entries]
+    elif task_emphasis is None:
         parsed = _unique_sheet_tasks(raw_tasks)
         parsed_emphasis = None
+        parsed_format_runs = None
     else:
         task_entries = _unique_sheet_task_entries(raw_tasks, task_emphasis)
-        parsed = [task for task, _ in task_entries]
-        parsed_emphasis = [emphasis for _, emphasis in task_entries]
+        parsed = [task for task, _, _ in task_entries]
+        parsed_emphasis = [emphasis for _, emphasis, _ in task_entries]
+        parsed_format_runs = None
     notes = assessment_notes(_cell(row, 5), len(parsed))
     leader_notes = leader_assessment_notes(_cell(row, 6), len(parsed))
     group_uids = {item.sync_uid for item in group_items}
@@ -607,6 +633,14 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
             if parsed_emphasis is not None and index <= len(parsed_emphasis)
             else None
         )
+        sheet_format_runs = (
+            normalize_format_runs(
+                parsed_format_runs[index - 1],
+                _sheet_text_length(parsed_task.title),
+            ) or []
+            if parsed_format_runs is not None and index <= len(parsed_format_runs)
+            else None
+        )
         # Web-origin tasks store raw user text as title (no time stripping). If the
         # sheet cell was generated from such a task, the parser may have extracted a
         # time prefix that was just part of the user's text (e.g. "7:30 - 12:30").
@@ -620,7 +654,11 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
         personal_task = is_personal_task(parsed_task.title)
         if item and personal_task and getattr(item, "sheet_emphasis", None) is not None:
             item.sheet_emphasis = False
-        if sheet_emphasized is not None:
+        if sheet_format_runs is not None:
+            # The beginning of the title is the line-level priority marker;
+            # partial bold/italic spans remain available to the web editor.
+            effective_sheet_emphasis = bool(format_state_at(sheet_format_runs, 0)["bold"]) and not personal_task
+        elif sheet_emphasized is not None:
             effective_sheet_emphasis = bool(sheet_emphasized) and not personal_task
         else:
             effective_sheet_emphasis = getattr(item, "sheet_emphasis", None) if item else None
@@ -640,6 +678,8 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
             item.source_sheet_row = offset
             item.source_task_index = index
             item.source_record_id = source_record_id
+            if sheet_format_runs is not None:
+                item.title_format_runs = sheet_format_runs
             had_time_prefix = item.time_prefix_in_title
             item.time_prefix_in_title = explicit_time
             if effective_sheet_emphasis is not None:
@@ -676,6 +716,7 @@ def _ingest_row(offset, row, today, *, delete_missing=True, retained_by_group=No
                 source_record_id=source_record_id,
                 time_prefix_in_title=explicit_time,
                 sheet_emphasis=effective_sheet_emphasis,
+                title_format_runs=sheet_format_runs,
                 sync_uid=sync_uid,
             )
             created += 1
@@ -743,7 +784,7 @@ def pull_from_sheet(service, start_date, end_date):
             if isinstance(cached_columns, dict)
             else None
         ) or LEGACY_COLUMNS
-        emphasis_by_row = _row_task_emphasis_map(
+        format_runs_by_row = _row_task_format_runs_map(
             service,
             [row_number for row_number, _ in candidate_rows],
             emphasis_columns,
@@ -755,7 +796,7 @@ def pull_from_sheet(service, start_date, end_date):
                 today,
                 delete_missing=False,
                 retained_by_group=retained_by_group,
-                task_emphasis=emphasis_by_row.get(offset),
+                task_format_runs=format_runs_by_row.get(offset),
             )
             created += row_created
             updated += row_updated
@@ -913,73 +954,134 @@ _TIME_LINE_RE = re.compile(
 
 def _sheet_text_length(value):
     """Return the UTF-16 length used by Google Sheets rich-text indexes."""
-    return len(str(value or "").encode("utf-16-le")) // 2
+    return utf16_length(value)
 
 
 def _build_content_format_runs(content, items=None):
-    """Build explicit rich-text runs for the Sheet task cell."""
+    """Build explicit rich-text runs for the Sheet task cell.
+
+    New/web-authored items use their stored title runs. Legacy items keep the
+    historical time/priority fallback until their formatting is captured from
+    the Sheet or explicitly edited in the web grid.
+    """
     # Sheets only accepts textFormatRuns for a literal, non-empty string cell.
     # Without this guard an empty schedule generated a run at index 0 and made
     # the entire sync fail with HTTP 400 during the formatting phase.
     if not content:
         return []
-    lines = content.split('\n')
+    lines = content.split("\n")
     runs = []
     offset = 0
-    prev_bold = None
     task_index = -1
-    current_bold = False
+    legacy_state = None
     ordered_items = list(items or [])
     parsed_items = parse_sheet_tasks(content)
-    for line in lines:
-        if re.match(r'^\s*\d+\s*[.,)]\s*', line):
-            task_index += 1
-            is_high_priority = (
-                task_index < len(ordered_items)
-                and ordered_items[task_index].priority == "high"
-            )
-            marker = re.match(r"^\s*\d+\s*[.,)]\s*", line)
-            time_line = marker.group(0) + without_task_tags(line[marker.end():])
-            title = parsed_items[task_index].title if task_index < len(parsed_items) else line[marker.end():]
-            item = ordered_items[task_index] if task_index < len(ordered_items) else None
-            sheet_emphasis = getattr(item, "sheet_emphasis", None) if item else None
-            # A Sheet editor's explicit choice wins over the automatic time or
-            # priority rule. Legacy callers without items retain time-based output.
-            important = (
-                bool(sheet_emphasis)
-                if sheet_emphasis is not None
-                else (is_high_priority if ordered_items else bool(_TIME_LINE_RE.match(time_line)))
-            )
-            current_bold = not is_personal_task(title) and important
-        is_bold = current_bold
-        if is_bold != prev_bold:
-            # Explicit false values are required. An empty run inherits the
-            # cell-level text style; that made every later line bold/italic in
-            # roster cells whose base style was already emphasized.
-            fmt = {
-                'bold': is_bold,
-                'italic': is_bold,
-                'foregroundColorStyle': {'rgbColor': {'red': 0.0, 'green': 0.0, 'blue': 0.0}},
+
+    def append_run(start_index, bold, italic, *, legacy=False):
+        fmt = {"bold": bool(bold), "italic": bool(italic)}
+        if legacy:
+            fmt["foregroundColorStyle"] = {
+                "rgbColor": {"red": 0.0, "green": 0.0, "blue": 0.0}
             }
-            runs.append({'startIndex': offset, 'format': fmt})
-            prev_bold = is_bold
+        if runs and runs[-1]["startIndex"] == start_index:
+            runs[-1]["format"].update(fmt)
+        else:
+            runs.append({"startIndex": start_index, "format": fmt})
+
+    for line in lines:
+        marker = re.match(r"^\s*\d+\s*[.,)]\s*", line)
+        if marker:
+            task_index += 1
+            item = ordered_items[task_index] if task_index < len(ordered_items) else None
+            title = parsed_items[task_index].title if task_index < len(parsed_items) else line[marker.end():]
+            item_runs = getattr(item, "title_format_runs", None) if item else None
+            if item is not None and item_runs is not None:
+                # Reset every numbered line before applying its title-local
+                # runs. This prevents a bold first task leaking into later
+                # tasks through the cell's base style.
+                append_run(offset, False, False)
+                title_start = offset + _sheet_text_length(marker.group(0))
+                normalized = normalize_format_runs(item_runs, _sheet_text_length(title)) or []
+                for run in normalized:
+                    state = format_state_at(normalized, run["startIndex"])
+                    append_run(
+                        title_start + run["startIndex"],
+                        state["bold"],
+                        state["italic"],
+                    )
+            else:
+                is_high_priority = (
+                    task_index < len(ordered_items)
+                    and ordered_items[task_index].priority == "high"
+                )
+                time_line = marker.group(0) + without_task_tags(line[marker.end():])
+                sheet_emphasis = getattr(item, "sheet_emphasis", None) if item else None
+                # A Sheet editor's explicit choice wins over the automatic time
+                # or priority rule. Legacy callers without items retain the
+                # historical time-based output.
+                important = (
+                    bool(sheet_emphasis)
+                    if sheet_emphasis is not None
+                    else (is_high_priority if ordered_items else bool(_TIME_LINE_RE.match(time_line)))
+                )
+                next_state = (
+                    not is_personal_task(title) and important,
+                    not is_personal_task(title) and important,
+                )
+                if next_state != legacy_state:
+                    append_run(offset, next_state[0], next_state[1], legacy=True)
+                    legacy_state = next_state
         offset += _sheet_text_length(line) + 1  # +1 for newline character
     return runs
 
 
-def _task_emphasis_from_cell(cell):
-    """Read the effective bold state at each numbered task in one Sheet cell."""
+def _content_task_ranges(content):
+    """Return title ranges inside a numbered cell in UTF-16 coordinates."""
+    ranges = []
+    current = None
+    offset = 0
+    for line in str(content or "").split("\n"):
+        marker = re.match(r"^\s*\d+\s*[.,)]\s*", line)
+        if marker and line[marker.end():].strip():
+            if current is not None:
+                current["endIndex"] = max(current["startIndex"], offset - 1)
+            current = {
+                "startIndex": offset + _sheet_text_length(marker.group(0)),
+                "endIndex": offset + _sheet_text_length(line),
+            }
+            ranges.append(current)
+        elif current is not None:
+            # Wrapped lines belong to the previous task. The newline before a
+            # following numbered line is excluded from that task's title.
+            current["endIndex"] = offset + _sheet_text_length(line)
+        offset += _sheet_text_length(line) + 1
+    return ranges
+
+
+def _cell_base_text_format(cell):
+    entered_format = cell.get("userEnteredFormat") or {}
+    effective_format = cell.get("effectiveFormat") or {}
+    entered = entered_format.get("textFormat", {}) if isinstance(entered_format, dict) else {}
+    effective = effective_format.get("textFormat", {}) if isinstance(effective_format, dict) else {}
+    if not isinstance(entered, dict):
+        entered = {}
+    if not isinstance(effective, dict):
+        effective = {}
+    return {
+        key: bool(entered[key]) if key in entered else bool(effective.get(key, False))
+        for key in ("bold", "italic")
+    }
+
+
+def _task_format_runs_from_cell(cell):
+    """Read title-local bold/italic transitions for each Sheet task."""
     if not isinstance(cell, dict):
         return None
     content = str(cell.get("formattedValue") or "")
     if not content:
         return []
-    effective_text_format = cell.get("effectiveFormat", {}).get("textFormat", {})
-    entered_text_format = cell.get("userEnteredFormat", {}).get("textFormat", {})
-    base_bold = bool(
-        effective_text_format.get("bold", entered_text_format.get("bold", False))
-    )
-    runs = []
+    base_format = _cell_base_text_format(cell)
+    raw_runs = []
     for raw_run in cell.get("textFormatRuns") or []:
         if not isinstance(raw_run, dict):
             continue
@@ -987,30 +1089,26 @@ def _task_emphasis_from_cell(cell):
             start_index = int(raw_run.get("startIndex", 0))
         except (TypeError, ValueError):
             continue
-        runs.append((start_index, raw_run.get("format") or {}))
-    runs.sort(key=lambda run: run[0])
-
-    emphasis = []
-    offset = 0
-    for line in content.split("\n"):
-        marker = re.match(r"^\s*\d+\s*[.,)]\s*", line)
-        if marker and line[marker.end():].strip():
-            task_offset = offset + _sheet_text_length(marker.group(0))
-            bold = base_bold
-            for start_index, fmt in runs:
-                if start_index > task_offset:
-                    break
-                # Omitted run fields keep the previous effective value; they
-                # do not mean that the property should reset to the cell.
-                if isinstance(fmt, dict) and "bold" in fmt:
-                    bold = bool(fmt["bold"])
-            emphasis.append(bold)
-        offset += _sheet_text_length(line) + 1
-    return emphasis
+        fmt = raw_run.get("format") or {}
+        if not isinstance(fmt, dict):
+            continue
+        raw_runs.append({
+            "startIndex": start_index,
+            **{
+                key: bool(fmt[key])
+                for key in ("bold", "italic")
+                if key in fmt and isinstance(fmt[key], (bool, int))
+            },
+        })
+    runs = normalize_format_runs(raw_runs, _sheet_text_length(content)) or []
+    return [
+        slice_format_runs(runs, task_range["startIndex"], task_range["endIndex"], base_format)
+        for task_range in _content_task_ranges(content)
+    ]
 
 
-def _row_task_emphasis_map(service, row_numbers, columns):
-    """Read rich-text emphasis for several Sheet rows in one API request."""
+def _row_task_format_runs_map(service, row_numbers, columns):
+    """Read rich-text runs for several Sheet rows in one API request."""
     requested_rows = sorted({int(row_number) for row_number in row_numbers})
     if not requested_rows:
         return {}
@@ -1021,8 +1119,9 @@ def _row_task_emphasis_map(service, row_numbers, columns):
         includeGridData=True,
         fields=(
             "sheets.data(startRow,rowData.values("
-            "formattedValue,effectiveFormat.textFormat.bold,userEnteredFormat.textFormat.bold,"
-            "textFormatRuns.startIndex,textFormatRuns.format.bold))"
+            "formattedValue,effectiveFormat.textFormat.bold,effectiveFormat.textFormat.italic,"
+            "userEnteredFormat.textFormat.bold,userEnteredFormat.textFormat.italic,"
+            "textFormatRuns.startIndex,textFormatRuns.format.bold,textFormatRuns.format.italic))"
         ),
     ).execute()
     if not isinstance(result, dict):
@@ -1030,7 +1129,7 @@ def _row_task_emphasis_map(service, row_numbers, columns):
     sheets = result.get("sheets")
     if not isinstance(sheets, list) or not sheets:
         return {}
-    emphasis_by_row = {}
+    format_runs_by_row = {}
     requested_set = set(requested_rows)
     for sheet in sheets:
         if not isinstance(sheet, dict):
@@ -1054,14 +1153,43 @@ def _row_task_emphasis_map(service, row_numbers, columns):
                     continue
                 values = row.get("values")
                 cell = values[0] if isinstance(values, list) and values else None
-                emphasis_by_row[row_number] = _task_emphasis_from_cell(cell)
-    return emphasis_by_row
+                format_runs_by_row[row_number] = _task_format_runs_from_cell(cell)
+    return format_runs_by_row
+
+
+def _row_task_format_runs(service, row_number, columns):
+    format_runs_by_row = _row_task_format_runs_map(service, [row_number], columns)
+    result = format_runs_by_row.get(row_number)
+    service.__dict__["_work_schedule_last_task_format_runs"] = result
+    return result
+
+
+def _task_emphasis_from_cell(cell):
+    """Read the bold state at the beginning of each task title."""
+    format_runs = _task_format_runs_from_cell(cell)
+    if format_runs is None:
+        return None
+    return [bool(format_state_at(runs, 0)["bold"]) for runs in format_runs]
+
+
+def _row_task_emphasis_map(service, row_numbers, columns):
+    """Compatibility wrapper returning only line-level bold state."""
+    format_runs_by_row = _row_task_format_runs_map(service, row_numbers, columns)
+    return {
+        row_number: None if runs is None else [
+            bool(format_state_at(task_runs, 0)["bold"])
+            for task_runs in runs
+        ]
+        for row_number, runs in format_runs_by_row.items()
+    }
 
 
 def _row_task_emphasis(service, row_number, columns):
     """Return whether each numbered task is bold in the edited Sheet cell."""
-    emphasis_by_row = _row_task_emphasis_map(service, [row_number], columns)
-    return emphasis_by_row.get(row_number)
+    format_runs = _row_task_format_runs(service, row_number, columns)
+    if format_runs is None:
+        return None
+    return [bool(format_state_at(runs, 0)["bold"]) for runs in format_runs]
 
 
 def _formula_content_rows(service, columns=None, start_row=2):
@@ -1214,12 +1342,14 @@ def push_groups_to_sheet(service, groups, force=False):
             'userEnteredFormat': {'textFormat': {'bold': False, 'italic': False}},
         }
         fields = 'userEnteredFormat.textFormat.bold,userEnteredFormat.textFormat.italic'
-        if runs:
-            cell['textFormatRuns'] = [
-                {'startIndex': run['startIndex'], 'format': run['format']}
-                for run in runs
-            ]
-            fields += ',textFormatRuns'
+        # Always replace the run list for literal cells. Leaving the old list
+        # behind is another way a previously bold first task can style later
+        # tasks after the content has been rewritten.
+        cell['textFormatRuns'] = [
+            {'startIndex': run['startIndex'], 'format': run['format']}
+            for run in runs
+        ]
+        fields += ',textFormatRuns'
         format_requests.append({
             'updateCells': {
                 'range': {

@@ -19,6 +19,7 @@ from authentication.permissions import IsAuthenticated
 
 from .models import WorkItem, WorkScheduleSheetInboundEvent
 from .retention import purge_expired_work_schedule, retained_from
+from .rich_text import normalize_format_runs, utf16_length
 from .training_sync import delete_training_for_work_item, sync_training_from_work_item
 from config.db_transactions import atomic_mutation
 
@@ -129,6 +130,7 @@ def _payload(item, user, role):
     if relation == "executor" and item.needs_revision and item.status != WorkItem.STATUS_REVIEWED:
         title_prefix = "Bổ sung: "
     can_manage = _can_manage(item, user, role)
+    title_format_runs = normalize_format_runs(item.title_format_runs, utf16_length(item.title))
     return {
         "id": item.id,
         "title": item.title,
@@ -142,6 +144,7 @@ def _payload(item, user, role):
         "displayStatus": display_status,
         "priority": item.priority,
         "timePrefixInTitle": item.time_prefix_in_title,
+        "formatRuns": title_format_runs,
         "label": item.label,
         "dailyOrder": item.daily_order,
         "trainingSessionId": item.training_session_id,
@@ -183,6 +186,11 @@ def _profiles(emails, field_label):
 def _apply_data(request, item, creating=False, allow_people=True, data_override=None):
     data = data_override if data_override is not None else (request.data or {})
     title = str(data.get("title", item.title if item else "") or "").strip()
+    previous_title = item.title if item else ""
+    format_runs_supplied = "formatRuns" in data
+    raw_format_runs = data.get("formatRuns")
+    if format_runs_supplied and raw_format_runs is not None and not isinstance(raw_format_runs, list):
+        return Response({"error": "Định dạng văn bản không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
     raw_date = data.get("date", item.work_date.isoformat() if item else "")
     work_date = parse_date(str(raw_date or ""))
     executor_email = str(data.get("executorEmail", item.executor_id if item else request.user.email) if allow_people else item.executor_id).strip().lower()
@@ -258,6 +266,12 @@ def _apply_data(request, item, creating=False, allow_people=True, data_override=
     previous_group = (item.executor_id, item.work_date) if item and item.pk else None
     next_group = (executor.email, work_date)
     item.title = title[:1000]
+    if format_runs_supplied:
+        item.title_format_runs = normalize_format_runs(raw_format_runs, utf16_length(item.title)) or []
+    elif creating or ("title" in data and item.title != previous_title):
+        # A plain web form has no character-level editor. Do not let runs from
+        # an older title accidentally apply to a newly written title.
+        item.title_format_runs = []
     item.description = str(data.get("description", item.description if item else "") or "").strip()
     item.progress_note = str(data.get("progressNote", item.progress_note if item else "") or "").strip()[:1000]
     item.work_date = work_date
@@ -423,11 +437,17 @@ def work_day_edit(request):
         row_status = str(row.get("status") or "").strip().lower() if "status" in row else None
         if row_status is not None and row_status not in VALID_STATUSES:
             return Response({"error": "Trạng thái nhiệm vụ không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
+        format_runs_supplied = "formatRuns" in row
+        raw_format_runs = row.get("formatRuns")
+        if format_runs_supplied and raw_format_runs is not None and not isinstance(raw_format_runs, list):
+            return Response({"error": "Định dạng văn bản của nhiệm vụ không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
         normalized = {
             "title": title[:1000],
             "progress_note": str(row.get("progressNote") or "").strip()[:1000],
             "status": row_status,
             "daily_order": row.get("dailyOrder", row_index),
+            "format_runs": normalize_format_runs(raw_format_runs, utf16_length(title[:1000])) or [] if format_runs_supplied else None,
+            "format_runs_supplied": format_runs_supplied,
         }
         from .sheet_parser import parse_sheet_tasks
         normalized["parsed_title"] = parse_sheet_tasks(f"1. {title}")[0]
@@ -468,7 +488,11 @@ def work_day_edit(request):
         item = visible[row["id"]]
         can_edit = _payload(item, request.user, request.user_role)["canEdit"]
         status_changed = row["status"] is not None and row["status"] != item.status
-        if (row["title"] != item.title or status_changed) and not can_edit:
+        format_changed = (
+            row["format_runs_supplied"]
+            and row["format_runs"] != normalize_format_runs(item.title_format_runs, utf16_length(item.title))
+        )
+        if (row["title"] != item.title or status_changed or format_changed) and not can_edit:
             return Response({"error": f"Bạn không có quyền sửa nội dung hoặc trạng thái nhiệm vụ số {item.daily_order}."}, status=status.HTTP_403_FORBIDDEN)
     for item_id in delete_ids:
         item = visible[item_id]
@@ -495,6 +519,7 @@ def work_day_edit(request):
                     time_prefix_in_title=row["parsed_title"].has_time_prefix,
                     priority="high" if row["parsed_title"].has_time_prefix else "medium",
                     priority_before_time="medium" if row["parsed_title"].has_time_prefix else None,
+                    title_format_runs=row["format_runs"] if row["format_runs_supplied"] else [],
                 )
                 if request.user_role == "MANAGER" and executor.email != request.user.email:
                     item.managers.add(request.user)
@@ -506,6 +531,9 @@ def work_day_edit(request):
                 if row["title"] != item.title:
                     item.title = row["title"]
                     update_fields.append("title")
+                    if not row["format_runs_supplied"]:
+                        item.title_format_runs = []
+                        update_fields.append("title_format_runs")
                     parsed_title = row["parsed_title"]
                     item.start_time = parsed_title.start_time
                     item.end_time = parsed_title.end_time
@@ -531,6 +559,9 @@ def work_day_edit(request):
                             item.priority_before_time = None
                         update_fields.append("priority")
                         update_fields.append("priority_before_time")
+                if row["format_runs_supplied"]:
+                    item.title_format_runs = row["format_runs"]
+                    update_fields.append("title_format_runs")
                 if row["status"] is not None and row["status"] != item.status:
                     item.status = row["status"]
                     update_fields.append("status")
@@ -657,6 +688,7 @@ def _review(item, request, action):
             end_time=item.end_time,
             status=WorkItem.STATUS_DOING,
             priority=item.priority,
+            title_format_runs=item.title_format_runs,
             label=item.label,
             daily_order=_next_daily_order(item.executor, item.work_date + timedelta(days=1)),
             needs_revision=True,
@@ -793,7 +825,7 @@ def work_schedule_sheet_webhook(request):
     instead of a user token, since Apps Script cannot hold a logged-in session."""
     from .sheet_sync import (
         _canonical_row, _ingest_row, _service, ensure_sync_columns,
-        _row_task_emphasis, full_two_way_sync, push_groups_to_sheet,
+        _row_task_format_runs, full_two_way_sync, push_groups_to_sheet,
     )
     from .signals import suppress_sheet_queue
 
@@ -930,11 +962,15 @@ def work_schedule_sheet_webhook(request):
             from .sheet_sync import LEGACY_COLUMNS
             columns = LEGACY_COLUMNS
         row = _canonical_row([str(value) for value in values], columns)
-        task_emphasis = _row_task_emphasis(service, row_number, columns)
+        task_format_runs = _row_task_format_runs(service, row_number, columns)
         with transaction.atomic():
             with suppress_sheet_queue():
                 created_count, updated_count, deleted_count, touched = _ingest_row(
-                    row_number, row, timezone.localdate(), task_emphasis=task_emphasis
+                    row_number,
+                    row,
+                    timezone.localdate(),
+                    task_format_runs=task_format_runs,
+                    sheet_authoritative=True,
                 )
             event.status = WorkScheduleSheetInboundEvent.STATUS_PROCESSED
             event.created_count = created_count

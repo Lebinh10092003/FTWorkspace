@@ -57,6 +57,10 @@ class WorkItem(models.Model):
     # ``None`` keeps the legacy/web-authored automatic priority behavior. A
     # boolean records an explicit bold/unbold choice made in the Sheet.
     sheet_emphasis = models.BooleanField(blank=True, null=True)
+    # UTF-16 indexed bold/italic transitions for the title text. ``None`` is
+    # retained for legacy rows whose rich formatting has not been captured;
+    # an empty list means the title is explicitly unformatted.
+    title_format_runs = models.JSONField(blank=True, null=True, default=None)
     sync_uid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     source_sync_hash = models.CharField(max_length=64, blank=True, default="")
     reviewed_by = models.ForeignKey(

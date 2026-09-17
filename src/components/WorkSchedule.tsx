@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDot, ClipboardCheck, ExternalLink, FileSpreadsheet, LayoutDashboard, ListChecks, Pencil, Plus, RefreshCw, Search, Tag, Trash2, UserCheck, X } from "lucide-react";
+import { ArrowLeft, Bold, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDot, ClipboardCheck, ExternalLink, FileSpreadsheet, Italic, LayoutDashboard, ListChecks, Pencil, Plus, RefreshCw, Search, Tag, Trash2, UserCheck, X } from "lucide-react";
 import AccountMenu from "./AccountMenu";
 import { appDialog } from "./AppDialog";
 import Time24Input from "./Time24Input";
@@ -8,12 +8,15 @@ import MonthlySheetLinkEditor from "./MonthlySheetLinkEditor";
 
 type WorkStatus = "todo" | "doing" | "completed" | "reviewed";
 type Priority = "low" | "medium" | "high";
+type TextFormatRun = { startIndex: number; bold?: boolean; italic?: boolean };
+type GridSaveItem = { id?: number; title: string; progressNote: string; status: WorkStatus; dailyOrder: number; formatRuns: TextFormatRun[] };
 type View = "board" | "week" | "team" | "sheet";
 type Person = { email: string; name: string };
 type TeamMember = Person & { employeeCode: string; department: string; jobTitle: string };
 type WorkTask = {
   id: number;
   title: string;
+  formatRuns?: TextFormatRun[] | null;
   displayTitle: string;
   description: string;
   progressNote: string;
@@ -65,7 +68,7 @@ type WorkDraft = {
   reviewPercent: number | null;
   reviewNote: string;
 };
-type InlineDayDraft = { content: string; selfAssessment: string; leaderAssessment: string };
+type InlineDayDraft = { content: string; formatRuns: TextFormatRun[]; selfAssessment: string; leaderAssessment: string };
 type TimesheetShift = { shiftStart: string; shiftEnd: string; workMode: "direct" | "online"; isDayOff: boolean };
 type TimesheetEditorShift = { start: string; end: string; workMode: "direct" | "online" };
 type TimesheetEditorState = { loadFailed?: boolean; date: string; isDayOff: boolean; shifts: TimesheetEditorShift[]; loading: boolean; saving: boolean; error: string };
@@ -261,6 +264,12 @@ const formatWorkHours = (minutes: number) => {
     rest = minutes % 60;
   return rest === 0 ? `${hours}h` : `${hours}h${String(rest).padStart(2, "0")}`;
 };
+const formatAttendanceClock = (value: string) => {
+  const match = /^(\d{1,2}):(\d{2})/.exec(String(value || "").trim());
+  return match ? `${String(Number(match[1])).padStart(2, "0")}h${match[2]}` : String(value || "").trim();
+};
+const attendanceLine = (shift: TimesheetShift) =>
+  `${shift.workMode === "online" ? "Onl" : "Off"}: ${formatAttendanceClock(shift.shiftStart)}-${formatAttendanceClock(shift.shiftEnd)}.`;
 const timesheetDaySummary = (date: string, shifts: TimesheetShift[] | undefined) => {
   if (shifts?.some((shift) => shift.isDayOff)) return "Ngày nghỉ";
   if (!shifts?.length) return isDefaultDayOff(date) ? "Ngày nghỉ" : "Chưa khai công ca";
@@ -406,7 +415,7 @@ function TaskCard({ task, displayOrder, selected, onSelect, onOpen, onDelete, on
           </button>
         )}
       </div>
-      <h3 className={`text-sm font-bold leading-5 text-slate-900 ${task.priority === "high" && !taskTags(task.title).personal ? "italic text-black" : ""}`}>
+      <h3 className="text-sm font-medium leading-5 text-slate-900">
         <span className="mr-1.5 text-blue-600">{displayOrder}.</span>
         <WorkTitle task={task} />
       </h3>
@@ -649,7 +658,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
       setSavingTask(false);
     }
   };
-  const saveInlineDay = async (date: string, items: Array<{ id?: number; title: string; progressNote: string; status: WorkStatus; dailyOrder: number }>, deleteIds: number[], executorEmail?: string, leaderAssessment?: string) => {
+  const saveInlineDay = async (date: string, items: GridSaveItem[], deleteIds: number[], executorEmail?: string, leaderAssessment?: string) => {
     const data = await mutationJson("/api/work-schedule/day", {
       method: "POST",
       body: JSON.stringify({ date, items, deleteIds, executorEmail, ...(leaderAssessment !== undefined ? { leaderAssessment, assessmentContext: "team" } : {}) }),
@@ -1333,7 +1342,7 @@ function WeekView({ tasks, userEmail, idToken, visibleDays, anchor, setAnchor, p
       <span className="font-bold text-slate-500">
         {displayOrder}. {task.startTime || "Cả ngày"}
       </span>
-      <b className={`mt-1 block leading-5 ${task.priority === "high" && !taskTags(task.title).personal ? "italic" : ""}`}><WorkTitle task={task} /></b>
+      <span className="mt-1 block font-medium leading-5"><WorkTitle task={task} /></span>
     </button>
   );
 
@@ -1437,9 +1446,181 @@ const splitNumberedCell = (value: string) => {
   });
   return entries.map((entry) => ({ number: entry.number, text: entry.text.join("\n").trim() }));
 };
+type IndexedNumberedEntry = { number: number; text: string; titleStartIndex: number; titleEndIndex: number };
+type FormatState = { bold: boolean; italic: boolean };
+
+const normalizeTextFormatRuns = (runs: TextFormatRun[] | null | undefined, textLength?: number): TextFormatRun[] => {
+  if (!Array.isArray(runs)) return [];
+  const maximum = textLength === undefined ? Number.POSITIVE_INFINITY : Math.max(0, textLength);
+  const byStart = new Map<number, TextFormatRun>();
+  runs.forEach((run) => {
+    if (!run || !Number.isFinite(Number(run.startIndex))) return;
+    const startIndex = Math.max(0, Math.min(maximum, Math.trunc(Number(run.startIndex))));
+    const next: TextFormatRun = { startIndex };
+    if (typeof run.bold === "boolean") next.bold = run.bold;
+    if (typeof run.italic === "boolean") next.italic = run.italic;
+    if (next.bold === undefined && next.italic === undefined) return;
+    byStart.set(startIndex, { ...(byStart.get(startIndex) || { startIndex }), ...next });
+  });
+  return [...byStart.values()].sort((a, b) => a.startIndex - b.startIndex);
+};
+
+const formatStateAt = (runs: TextFormatRun[] | null | undefined, index: number): FormatState => {
+  const state: FormatState = { bold: false, italic: false };
+  normalizeTextFormatRuns(runs).forEach((run) => {
+    if (run.startIndex > index) return;
+    if (typeof run.bold === "boolean") state.bold = run.bold;
+    if (typeof run.italic === "boolean") state.italic = run.italic;
+  });
+  return state;
+};
+
+const formatRunsFromStates = (states: FormatState[]): TextFormatRun[] => {
+  const runs: TextFormatRun[] = [];
+  let previous: FormatState = { bold: false, italic: false };
+  states.forEach((state, index) => {
+    if (state.bold === previous.bold && state.italic === previous.italic) return;
+    if (index > 0 || state.bold || state.italic) runs.push({ startIndex: index, bold: state.bold, italic: state.italic });
+    previous = state;
+  });
+  return runs;
+};
+
+const effectiveTaskFormatRuns = (task: Pick<WorkTask, "title" | "priority" | "formatRuns">): TextFormatRun[] => {
+  if (task.formatRuns !== null && task.formatRuns !== undefined) return task.formatRuns;
+  return task.priority === "high" && !taskTags(task.title).personal
+    ? [{ startIndex: 0, bold: true, italic: true }]
+    : [];
+};
+
+const sliceTextFormatRuns = (runs: TextFormatRun[] | null | undefined, startIndex: number, endIndex: number) => {
+  const start = Math.max(0, Math.trunc(startIndex));
+  const end = Math.max(start, Math.trunc(endIndex));
+  const states = Array.from({ length: end - start }, (_, index) => formatStateAt(runs, start + index));
+  return formatRunsFromStates(states);
+};
+
+function indexedSplitNumberedCell(value: string): IndexedNumberedEntry[] {
+  const normalized = String(value || "").replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const entries: IndexedNumberedEntry[] = [];
+  let current: { number: number; lines: string[]; titleStartIndex: number; titleEndIndex: number } | null = null;
+  let offset = 0;
+  const finish = () => {
+    if (!current) return;
+    const text = current.lines.join("\n").trim();
+    if (text) entries.push({ number: current.number, text, titleStartIndex: current.titleStartIndex, titleEndIndex: current.titleEndIndex });
+    current = null;
+  };
+  lines.forEach((line) => {
+    const marker = line.match(/^\s*\d{1,3}\s*[.,)]\s*/);
+    if (marker && line.slice(marker[0].length).trim()) {
+      finish();
+      const rawText = line.slice(marker[0].length);
+      const trimmed = rawText.trim();
+      const leading = rawText.length - rawText.trimStart().length;
+      const trailing = rawText.length - rawText.trimEnd().length;
+      current = {
+        number: Number(marker[0].match(/\d+/)?.[0] || 1),
+        lines: [trimmed],
+        titleStartIndex: offset + marker[0].length + leading,
+        titleEndIndex: offset + line.length - trailing,
+      };
+    } else if (current && line.trim()) {
+      const trimmed = line.trim();
+      const trailing = line.length - line.trimEnd().length;
+      current.lines.push(trimmed);
+      current.titleEndIndex = offset + line.length - trailing;
+    }
+    offset += line.length + 1;
+  });
+  finish();
+  return entries;
+}
+
+function buildGridFormatRuns(entries: Array<{ number: number; text: string; formatRuns?: TextFormatRun[] | null }>) {
+  const runs: TextFormatRun[] = [];
+  let offset = 0;
+  entries.forEach((entry, index) => {
+    offset += `${entry.number}. `.length;
+    normalizeTextFormatRuns(entry.formatRuns, entry.text.length).forEach((run) => {
+      const state = formatStateAt(entry.formatRuns, run.startIndex);
+      runs.push({ startIndex: offset + run.startIndex, bold: state.bold, italic: state.italic });
+    });
+    offset += entry.text.length;
+    if (index < entries.length - 1) offset += 1;
+  });
+  return normalizeTextFormatRuns(runs);
+}
+
+function writeEditableContent(element: HTMLDivElement, value: string, formatRuns: TextFormatRun[] | null | undefined) {
+  const fragment = document.createDocumentFragment();
+  const boundaries = new Set<number>([0, value.length]);
+  normalizeTextFormatRuns(formatRuns, value.length).forEach((run) => boundaries.add(run.startIndex));
+  const ordered = [...boundaries].sort((a, b) => a - b);
+  for (let index = 0; index < ordered.length - 1; index += 1) {
+    const start = ordered[index];
+    const end = ordered[index + 1];
+    if (start === end) continue;
+    const state = formatStateAt(formatRuns, start);
+    const span = document.createElement("span");
+    span.style.fontWeight = state.bold ? "700" : "500";
+    span.style.fontStyle = state.italic ? "italic" : "normal";
+    span.textContent = value.slice(start, end);
+    fragment.appendChild(span);
+  }
+  element.replaceChildren(fragment);
+}
+
+const editableBlockTags = new Set(["DIV", "P", "LI", "PRE", "BLOCKQUOTE"]);
+function readEditableContent(element: HTMLDivElement): { value: string; formatRuns: TextFormatRun[] } {
+  let value = "";
+  const states: FormatState[] = [];
+  const appendText = (text: string, state: FormatState) => {
+    for (let index = 0; index < text.length; index += 1) {
+      value += text[index];
+      states.push({ ...state });
+    }
+  };
+  const appendBreak = (state: FormatState) => {
+    if (!value || value.endsWith("\n")) return;
+    value += "\n";
+    states.push({ ...state });
+  };
+  const visit = (node: Node, inherited: FormatState) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      appendText(node.nodeValue || "", inherited);
+      return;
+    }
+    if (!(node instanceof HTMLElement)) {
+      node.childNodes.forEach((child) => visit(child, inherited));
+      return;
+    }
+    if (node.tagName === "BR") {
+      appendBreak(inherited);
+      return;
+    }
+    const isBlock = editableBlockTags.has(node.tagName);
+    if (isBlock) appendBreak(inherited);
+    const computed = window.getComputedStyle(node);
+    const weight = Number.parseInt(computed.fontWeight, 10);
+    const state: FormatState = {
+      bold: computed.fontWeight === "bold" || (Number.isFinite(weight) && weight >= 600),
+      italic: computed.fontStyle !== "normal",
+    };
+    node.childNodes.forEach((child) => visit(child, state));
+    if (isBlock) appendBreak(state);
+  };
+  element.childNodes.forEach((child) => visit(child, { bold: false, italic: false }));
+  while (value.endsWith("\n")) {
+    value = value.slice(0, -1);
+    states.pop();
+  }
+  return { value, formatRuns: formatRunsFromStates(states) };
+}
+
 const isCompletionNote = (value: string) => ["hoàn thành", "đã hoàn thành", "xong"].includes(value.trim().toLocaleLowerCase("vi-VN"));
 
-type GridSaveItem = { id?: number; title: string; progressNote: string; status: WorkStatus; dailyOrder: number };
 type ScheduleGridRow = { key: string; date: string; executorEmail: string; person?: TeamMember };
 
 const numberedGridCell = (values: Array<{ number: number; text: string }>) => values.map((value) => `${value.number}. ${value.text}`).join("\n");
@@ -1488,46 +1669,154 @@ function TaskBadges({ support, personal }: { support: boolean; personal: boolean
 function WorkTitle({ task }: { task: WorkTask }) {
   const tags = taskTags(task.title);
   const prefix = task.displayTitle.endsWith(task.title) ? task.displayTitle.slice(0, -task.title.length) : "";
-  return <><TaskBadges {...tags} />{prefix}{tags.content}</>;
+  const contentStart = task.title.length - tags.content.length;
+  const contentRuns = sliceTextFormatRuns(effectiveTaskFormatRuns(task), contentStart, task.title.length);
+  const boundaries = new Set<number>([0, tags.content.length]);
+  normalizeTextFormatRuns(contentRuns, tags.content.length).forEach((run) => boundaries.add(run.startIndex));
+  const ordered = [...boundaries].sort((a, b) => a - b);
+  return <><TaskBadges {...tags} />{prefix}{ordered.slice(0, -1).map((start, index) => {
+    const end = ordered[index + 1];
+    if (start === end) return null;
+    const state = formatStateAt(contentRuns, start);
+    return <span key={`${start}-${end}`} style={{ fontWeight: state.bold ? 700 : 500, fontStyle: state.italic ? "italic" : "normal" }}>{tags.content.slice(start, end)}</span>;
+  })}</>;
 }
 
-function ImportantWorkContentEditor({ value, tasks, className, onInput, onChange, onBlur }: {
+function ImportantWorkContentEditor({ value, formatRuns, className, onChange, onBlur }: {
   value: string;
-  tasks: WorkTask[];
+  formatRuns: TextFormatRun[] | null | undefined;
   className: string;
-  onInput: React.FormEventHandler<HTMLTextAreaElement>;
-  onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
-  onBlur: React.FocusEventHandler<HTMLTextAreaElement>;
+  onChange: (snapshot: { value: string; formatRuns: TextFormatRun[] }) => void;
+  onBlur: () => void;
 }) {
-  const [focused, setFocused] = useState(false);
-  const priorityByOrder = new Map(tasks.map((task) => [task.dailyOrder, task.priority]));
-  const personalByOrder = new Map(splitNumberedCell(value).map((entry) => [entry.number, taskTags(entry.text).personal]));
-  let currentImportant = false;
-  const renderedLines = value.split("\n").map((line, index) => {
-    const numbered = line.match(/^\s*(\d{1,3})\s*[.,)]\s*/);
-    if (numbered) {
-      currentImportant = !personalByOrder.get(Number(numbered[1])) && priorityByOrder.get(Number(numbered[1])) === "high";
+  const editorRef = useRef<HTMLDivElement>(null);
+  const focusedRef = useRef(false);
+  const savedRangeRef = useRef<Range | null>(null);
+  const [toolbar, setToolbar] = useState<{ top: number; left: number; bold: boolean; italic: boolean } | null>(null);
+
+  const selectionInsideEditor = () => {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    return !!editor && !!selection && selection.rangeCount > 0 && !selection.isCollapsed
+      && editor.contains(selection.anchorNode) && editor.contains(selection.focusNode);
+  };
+  const rememberSelection = () => {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection || selection.rangeCount === 0 || selection.isCollapsed
+      || !editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) {
+      setToolbar(null);
+      return;
     }
-    const marker = numbered?.[0] || "";
-    const taskText = numbered ? line.slice(marker.length) : line;
-    const tags = taskTags(taskText);
-    const tagged = !!numbered && (tags.support || tags.personal);
-    return <React.Fragment key={`${index}-${line}`}><span className={currentImportant ? "font-bold italic text-black" : "font-medium text-slate-900"}>{tagged ? <>{marker}<TaskBadges {...tags} />{tags.content}</> : line || " "}</span>{index < value.split("\n").length - 1 && "\n"}</React.Fragment>;
-  });
-  return <div className="relative">
-    {!!value && !focused && <div data-grid-cell-measure aria-hidden className="pointer-events-none absolute inset-0 whitespace-pre-wrap p-2 leading-5">{renderedLines}</div>}
-    <textarea
-      ref={resizeGridTextarea}
-      value={value}
-      onFocus={() => setFocused(true)}
-      onInput={onInput}
-      onChange={onChange}
-      onBlur={(event) => { setFocused(false); onBlur(event); }}
-      placeholder={'1. Nhập nội dung công việc\n2. Nhiệm vụ tiếp theo'}
-      className={`${className} font-medium ${value && !focused ? "text-transparent" : "text-slate-900"}`}
-    />
-  </div>;
+    const range = selection.getRangeAt(0).cloneRange();
+    savedRangeRef.current = range;
+    const rect = range.getBoundingClientRect();
+    const width = 92;
+    const left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.left + (rect.width - width) / 2));
+    const top = rect.top >= 48 ? rect.top - 44 : rect.bottom + 8;
+    let bold = false;
+    let italic = false;
+    try {
+      bold = document.queryCommandState("bold");
+      italic = document.queryCommandState("italic");
+    } catch {
+      // Some browsers disable queryCommandState outside a focused editor.
+    }
+    setToolbar({ top: Math.max(8, top), left, bold, italic });
+  };
+  const emitChange = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    onChange(readEditableContent(editor));
+    resizeGridEditor(editor);
+    rememberSelection();
+  };
+  const applyFormat = (command: "bold" | "italic") => {
+    const editor = editorRef.current;
+    const range = savedRangeRef.current;
+    if (!editor || !range || range.collapsed) return;
+    editor.focus();
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    try {
+      document.execCommand(command, false);
+    } catch {
+      return;
+    }
+    emitChange();
+  };
+
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || focusedRef.current) return;
+    writeEditableContent(editor, value, formatRuns);
+    resizeGridEditor(editor);
+  }, [value, formatRuns]);
+
+  useEffect(() => {
+    const updateSelection = () => {
+      if (focusedRef.current && selectionInsideEditor()) rememberSelection();
+    };
+    document.addEventListener("selectionchange", updateSelection);
+    return () => document.removeEventListener("selectionchange", updateSelection);
+  }, []);
+
+  return <>
+    <div className="relative">
+      {!value && <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 whitespace-pre-wrap p-2 leading-5 text-slate-400">1. Nhập nội dung công việc{`\n`}2. Nhiệm vụ tiếp theo</div>}
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-multiline="true"
+        data-grid-editor
+        spellCheck
+        onFocus={() => { focusedRef.current = true; rememberSelection(); }}
+        onInput={emitChange}
+        onKeyUp={rememberSelection}
+        onMouseUp={rememberSelection}
+        onContextMenu={(event) => {
+          if (selectionInsideEditor()) {
+            event.preventDefault();
+            rememberSelection();
+          }
+        }}
+        onBlur={() => {
+          emitChange();
+          focusedRef.current = false;
+          setToolbar(null);
+          onBlur();
+        }}
+        className={`${className} min-h-20 whitespace-pre-wrap font-medium text-slate-900`}
+      />
+    </div>
+    {toolbar && createPortal(
+      <div
+        role="toolbar"
+        aria-label="Định dạng văn bản"
+        className="fixed z-[10001] flex items-center gap-1 rounded-lg border border-slate-300 bg-white p-1 shadow-xl"
+        style={{ top: toolbar.top, left: toolbar.left }}
+        onMouseDown={(event) => event.preventDefault()}
+      >
+        <button type="button" onMouseDown={(event) => { event.preventDefault(); applyFormat("bold"); }} aria-label="Bôi đậm" aria-pressed={toolbar.bold} title="Bôi đậm" className={`grid h-8 w-8 place-items-center rounded-md ${toolbar.bold ? "bg-slate-200 text-slate-900" : "text-slate-600 hover:bg-slate-100"}`}><Bold className="h-4 w-4" /></button>
+        <button type="button" onMouseDown={(event) => { event.preventDefault(); applyFormat("italic"); }} aria-label="Bôi nghiêng" aria-pressed={toolbar.italic} title="Bôi nghiêng" className={`grid h-8 w-8 place-items-center rounded-md ${toolbar.italic ? "bg-slate-200 text-slate-900" : "text-slate-600 hover:bg-slate-100"}`}><Italic className="h-4 w-4" /></button>
+      </div>,
+      document.body,
+    )}
+  </>;
 }
+const resizeGridEditor = (element: HTMLElement | null) => {
+  if (!element) return;
+  const row = element.closest("tr");
+  const editors = row ? Array.from(row.querySelectorAll<HTMLElement>("[data-grid-editor]")) : [element];
+  const textareas = row ? Array.from(row.querySelectorAll<HTMLTextAreaElement>("textarea")) : [];
+  [...editors, ...textareas].forEach((editor) => { editor.style.height = "auto"; });
+  const height = Math.max(80, ...editors.map((editor) => editor.scrollHeight), ...textareas.map((editor) => editor.scrollHeight));
+  [...editors, ...textareas].forEach((editor) => { editor.style.height = `${height}px`; });
+};
 const resizeGridTextarea = (element: HTMLTextAreaElement | null) => {
   if (!element) return;
   const row = element.closest("tr");
@@ -1541,8 +1830,12 @@ const resizeGridTextarea = (element: HTMLTextAreaElement | null) => {
 const resizeAllGridRows = (table: HTMLTableElement | null) => {
   if (!table) return;
   table.querySelectorAll<HTMLTableRowElement>("tbody tr").forEach((row) => {
-    const editor = row.querySelector<HTMLTextAreaElement>("textarea");
-    if (editor) resizeGridTextarea(editor);
+    const richEditor = row.querySelector<HTMLElement>("[data-grid-editor]");
+    if (richEditor) resizeGridEditor(richEditor);
+    else {
+      const editor = row.querySelector<HTMLTextAreaElement>("textarea");
+      if (editor) resizeGridTextarea(editor);
+    }
   });
 };
 
@@ -1563,6 +1856,7 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
   const rowsFor = (row: ScheduleGridRow) => latestTasksRef.current.filter((task) => task.date === row.date && (!row.executorEmail || task.executor.email === row.executorEmail)).sort((a, b) => a.dailyOrder - b.dailyOrder);
   const makeDrafts = () => Object.fromEntries(gridRows.map((row) => {
     const workItems = rowsFor(row);
+    const contentEntries = workItems.map((task) => ({ number: task.dailyOrder, text: task.title, formatRuns: effectiveTaskFormatRuns(task) }));
     const allCompleted = workItems.length > 0 && workItems.every((task) => task.status === "completed" || task.status === "reviewed");
     const allReviewed = workItems.length > 0 && workItems.every((task) => task.status === "reviewed");
     const leaderAssessments = numberedGridCell(workItems
@@ -1570,7 +1864,8 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
       .map((task) => ({ number: task.dailyOrder, text: task.reviewPercent === 100 && task.reviewNote ? task.reviewNote : `${task.reviewPercent}%${task.reviewNote ? ` · ${task.reviewNote}` : ""}` })));
     const plainCompletion = allReviewed && workItems.every((task) => task.reviewPercent === 100 && (!task.reviewNote || task.reviewNote.toLocaleLowerCase() === "hoàn thành"));
     return [row.key, {
-      content: numberedGridCell(workItems.map((task) => ({ number: task.dailyOrder, text: task.title }))),
+      content: numberedGridCell(contentEntries),
+      formatRuns: buildGridFormatRuns(contentEntries),
       selfAssessment: allCompleted ? "Hoàn thành" : numberedGridCell(workItems.map((task) => ({ number: task.dailyOrder, text: displayedSelfAssessment(task) }))),
       leaderAssessment: plainCompletion ? "Hoàn thành" : leaderAssessments,
     }];
@@ -1735,7 +2030,7 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
       patch.selfAssessment = remap(previous.selfAssessment, false);
       patch.leaderAssessment = remap(previous.leaderAssessment, true);
     }
-    const nextDrafts = { ...draftsRef.current, [key]: { ...(draftsRef.current[key] || { content: "", selfAssessment: "", leaderAssessment: "" }), ...patch } };
+    const nextDrafts = { ...draftsRef.current, [key]: { ...(draftsRef.current[key] || { content: "", formatRuns: [], selfAssessment: "", leaderAssessment: "" }), ...patch } };
     draftsRef.current = nextDrafts;
     setDrafts(nextDrafts);
     if (!dirtyRowsRef.current.includes(key)) {
@@ -1775,11 +2070,22 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
         if (!reorder) return;
         nextDrafts = { ...nextDrafts };
         savingRows.forEach((key) => {
-          const content = splitNumberedCell(nextDrafts[key]?.content || "").filter((entry) => entry.text);
+          const indexedContent = indexedSplitNumberedCell(nextDrafts[key]?.content || "").filter((entry) => entry.text);
+          const content = indexedContent.map((entry) => ({ number: entry.number, text: entry.text }));
           const singleCompletion = isCompletionNote(nextDrafts[key]?.selfAssessment || "");
           const notes = splitNumberedCell(nextDrafts[key]?.selfAssessment || "");
+          const reordered = content.map((entry, index) => ({
+            number: index + 1,
+            text: entry.text,
+            formatRuns: sliceTextFormatRuns(
+              nextDrafts[key]?.formatRuns,
+              indexedContent[index].titleStartIndex,
+              indexedContent[index].titleEndIndex,
+            ),
+          }));
           nextDrafts[key] = {
-            content: numberedGridCell(content.map((entry, index) => ({ number: index + 1, text: entry.text }))),
+            content: numberedGridCell(reordered),
+            formatRuns: buildGridFormatRuns(reordered),
             selfAssessment: singleCompletion ? "Hoàn thành" : numberedGridCell(content.map((_, index) => ({ number: index + 1, text: notes[index]?.text || "" }))),
             leaderAssessment: nextDrafts[key]?.leaderAssessment || "",
           };
@@ -1790,7 +2096,8 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
       for (const key of savingRows) {
         const row = gridRows.find((item) => item.key === key)!;
         const original = rowsFor(row);
-        const content = splitNumberedCell(nextDrafts[key]?.content || "").filter((entry) => entry.text);
+        const indexedContent = indexedSplitNumberedCell(nextDrafts[key]?.content || "").filter((entry) => entry.text);
+        const content = indexedContent.map((entry) => ({ number: entry.number, text: entry.text }));
         const singleCompletion = isCompletionNote(nextDrafts[key]?.selfAssessment || "");
         const notes = splitNumberedCell(nextDrafts[key]?.selfAssessment || "");
         if (content.length > 100) throw new Error(`Ngày ${fullDate(row.date)} vượt quá 100 nhiệm vụ.`);
@@ -1802,7 +2109,14 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
           if (current) usedIds.add(current.id);
           const note = singleCompletion ? "Hoàn thành" : notes.find((item) => item.number === entry.number)?.text || notes[index]?.text || "";
           return {
-            ...(current ? { id: current.id } : {}), title: entry.text, progressNote: note,
+            ...(current ? { id: current.id } : {}),
+            title: entry.text,
+            formatRuns: sliceTextFormatRuns(
+              nextDrafts[key]?.formatRuns,
+              indexedContent[index].titleStartIndex,
+              indexedContent[index].titleEndIndex,
+            ),
+            progressNote: note,
             status: current?.status === "reviewed" ? "reviewed" : isCompletionNote(note) ? "completed" : current?.status || "todo",
             dailyOrder: entry.number,
           } as GridSaveItem;
@@ -1888,7 +2202,7 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
         <th className="border-b border-r border-slate-400 px-2 py-2 text-left">Nội dung công việc</th><th className="w-64 border-b border-r border-slate-400 px-2 py-2 text-left">Tự đánh giá / ghi chú</th>{!people && <th className="w-64 border-b border-r border-slate-400 px-2 py-2 text-left">Chấm công</th>}<th className="w-64 border-b border-slate-400 px-2 py-2 text-left">Lãnh đạo đánh giá</th>
       </tr></thead>
       <tbody>{gridRows.map((row) => {
-        const workItems = rowsFor(row), draft = drafts[row.key] || { content: "", selfAssessment: "", leaderAssessment: "" };
+        const workItems = rowsFor(row), draft = drafts[row.key] || { content: "", formatRuns: [], selfAssessment: "", leaderAssessment: "" };
         const attendanceIsFuture = row.date > iso(new Date());
         const canReviewDay = !!people?.length && workItems.some((task) => task.canAssess);
         const compactSelfAssessment = isCompletionNote(draft.selfAssessment);
@@ -1897,11 +2211,11 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
         return <tr key={row.key} className="align-top">
           <td className="border-b border-r border-slate-400 px-2 py-2 font-bold">{weekday(row.date)}</td><td className="border-b border-r border-slate-400 px-2 py-2">{fullDate(row.date)}</td><td className="border-b border-r border-slate-400 px-2 py-2 text-center font-semibold">{weekNumber(row.date)}</td>
           {people && <td className="border-b border-r border-slate-400 px-2 py-2"><b className="block">{row.person?.name}</b></td>}
-          <td className="border-b border-r border-slate-400 p-0"><ImportantWorkContentEditor value={draft.content} tasks={workItems} onInput={(event) => resizeGridTextarea(event.currentTarget)} onChange={(event) => updateCell(row.key, { content: event.target.value })} onBlur={() => void saveTable()} className={editorClass} /></td>
+          <td className="border-b border-r border-slate-400 p-0"><ImportantWorkContentEditor value={draft.content} formatRuns={draft.formatRuns} onChange={(snapshot) => updateCell(row.key, { content: snapshot.value, formatRuns: snapshot.formatRuns })} onBlur={() => void saveTable()} className={editorClass} /></td>
           <td className="border-b border-r border-slate-400 p-0"><textarea ref={resizeGridTextarea} value={draft.selfAssessment} onInput={(event) => resizeGridTextarea(event.currentTarget)} onChange={(event) => updateCell(row.key, { selfAssessment: event.target.value })} onBlur={() => void saveTable()} placeholder="1. Ghi chú tiến trình hiện tại" className={`${editorClass} text-xs ${compactSelfAssessment ? "content-center text-center font-bold text-emerald-700" : ""}`} /></td>
           {!people && <td onClick={() => void openAttendanceEditor(row.date)} role="button" tabIndex={attendanceIsFuture ? -1 : 0} aria-label={`Chỉnh sửa công ca ngày ${fullDate(row.date)}`} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); void openAttendanceEditor(row.date); } }} title={attendanceIsFuture ? "Không thể cập nhật công ca trong tương lai" : "Bấm để chỉnh sửa công ca"} className={`${attendanceIsFuture ? "cursor-not-allowed bg-slate-50/60" : "cursor-pointer hover:bg-emerald-50/60"} border-b border-r border-slate-400 px-3 py-2 align-middle text-xs leading-6 text-slate-700`}>
             {(attendanceByDate[row.date] || []).some((shift) => !shift.isDayOff)
-              ? (attendanceByDate[row.date] || []).filter((shift) => !shift.isDayOff).map((shift, index) => <div key={index} className="font-semibold">{`${shift.workMode === "online" ? "Online" : "Trực tiếp"}: ${shift.shiftStart} - ${shift.shiftEnd}`}</div>)
+              ? (attendanceByDate[row.date] || []).filter((shift) => !shift.isDayOff).map((shift, index) => <div key={index} className="font-semibold">{attendanceLine(shift)}</div>)
               : (attendanceByDate[row.date] || []).some((shift) => shift.isDayOff)
                 ? null
               : <span className="text-slate-300">—</span>}
