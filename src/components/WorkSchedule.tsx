@@ -1550,11 +1550,23 @@ function indexedSplitNumberedCell(value: string): IndexedNumberedEntry[] {
 function buildGridFormatRuns(entries: Array<{ number: number; text: string; formatRuns?: TextFormatRun[] | null }>) {
   const runs: TextFormatRun[] = [];
   let offset = 0;
+  const appendRun = (startIndex: number, state: FormatState) => {
+    const next = { startIndex, bold: state.bold, italic: state.italic };
+    const previous = runs[runs.length - 1];
+    if (previous?.startIndex === startIndex) {
+      runs[runs.length - 1] = next;
+    } else {
+      runs.push(next);
+    }
+  };
   entries.forEach((entry, index) => {
+    // Rich-text runs inherit their previous state. Reset at every numbered
+    // line so a bold/italic task cannot format all following tasks.
+    appendRun(offset, { bold: false, italic: false });
     offset += `${entry.number}. `.length;
     normalizeTextFormatRuns(entry.formatRuns, entry.text.length).forEach((run) => {
       const state = formatStateAt(entry.formatRuns, run.startIndex);
-      runs.push({ startIndex: offset + run.startIndex, bold: state.bold, italic: state.italic });
+      appendRun(offset + run.startIndex, state);
     });
     offset += entry.text.length;
     if (index < entries.length - 1) offset += 1;
