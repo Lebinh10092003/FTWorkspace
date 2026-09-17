@@ -151,20 +151,20 @@ export default function Posts({ idToken, channels }: PostsProps) {
       </div>
 
       {/* Filter and search bar */}
-      <form onSubmit={handleSearchSubmit} className="flex flex-wrap items-end gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
-        <div>
+      <form onSubmit={handleSearchSubmit} className="posts-filter flex flex-wrap items-end gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
+        <div className="min-w-0">
           <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nền tảng</label>
           <SearchableSelect value={platform} onChange={handlePlatformChange} options={[{ value: 'all', label: 'Tất cả nền tảng' }, { value: 'facebook', label: 'Facebook' }, { value: 'zalo', label: 'Zalo OA' }]} className="min-w-[170px]" />
         </div>
 
-        <div>
+        <div className="min-w-0">
           <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Trang</label>
           <SearchableSelect value={channelId} onChange={value => { setChannelId(value); setPage(1); }} options={[{ value: 'all', label: 'Tất cả trang' }, ...filteredChannels.map(chan => ({ value: chan.id, label: chan.name + ' (' + chan.platform.toUpperCase() + ')' }))]} className="min-w-[220px]" />
         </div>
 
-        <div>
+        <div className="posts-date-field min-w-0">
           <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Thời gian</label>
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+          <div className="posts-date-filter flex min-w-0 items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5">
             <Calendar className="w-3.5 h-3.5 text-slate-400" />
             <select value={datePreset} onChange={event => updatePreset(event.target.value as DatePreset)} className="text-xs font-medium text-slate-700 bg-transparent outline-none max-w-28">
               <option value="custom">Tùy chọn</option>

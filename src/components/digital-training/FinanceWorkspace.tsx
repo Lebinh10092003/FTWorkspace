@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, BadgeDollarSign } from "lucide-react";
 
 import AccountMenu from "../AccountMenu";
+import ModuleMobileNav from "../ModuleMobileNav";
 import FinanceReport, { type FinancePartner } from "./FinanceReport";
 
 export default function FinanceWorkspace({
@@ -83,6 +84,14 @@ export default function FinanceWorkspace({
           />
         </div>
       </aside>
+      <ModuleMobileNav
+        className="lg:hidden dt-mobile-nav"
+        onBack={onBackToWorkspace}
+        activeId="finance"
+        onSelect={() => undefined}
+        items={[{ id: "finance", label: "Báo cáo thu chi", icon: BadgeDollarSign }]}
+        ariaLabel="Điều hướng Tài chính"
+      />
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
           {loading ? (

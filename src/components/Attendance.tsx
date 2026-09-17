@@ -468,15 +468,16 @@ export default function Attendance({ onBackToWorkspace, idToken, userName, userE
 
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="sticky top-0 z-30 shrink-0 border-b bg-white/90 backdrop-blur-xl">
+        <header className="ft-module-header sticky top-0 z-30 shrink-0 border-b bg-white/90 backdrop-blur-xl">
           <div className="mx-auto flex h-24 max-w-[1400px] items-center justify-between px-5 sm:px-8">
-            {!isPrivileged && <button type="button" onClick={onBackToWorkspace} className="ft-btn ft-btn-secondary"><ArrowLeft className="h-4 w-4" />Workspace</button>}
-            <div className="flex items-center gap-3"><div className="grid h-14 w-14 place-items-center rounded-xl bg-emerald-700 text-white"><UserCheck className="h-8 w-8" /></div><span className="text-xl font-extrabold">Công ca{selectedEmpName ? ` — ${selectedEmpName}` : ''}</span></div>
+            {!isPrivileged ? <button type="button" onClick={onBackToWorkspace} className="ft-btn ft-btn-secondary shrink-0"><ArrowLeft className="h-4 w-4" />Workspace</button> : <button type="button" onClick={onBackToWorkspace} className="ft-btn ft-btn-secondary shrink-0 lg:hidden"><ArrowLeft className="h-4 w-4" />Workspace</button>}
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-700 text-white sm:h-14 sm:w-14"><UserCheck className="h-5 w-5 sm:h-8 sm:w-8" /></div><span className="min-w-0 truncate text-base font-extrabold sm:text-xl">Công ca{selectedEmpName ? ` — ${selectedEmpName}` : ''}</span></div>
             <div className="hidden text-right sm:block"><p className="text-xl font-extrabold text-slate-600">{new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(new Date())}</p></div>
           </div>
         </header>
 
         <main className="mx-auto w-full max-w-[1400px] flex-1 px-5 py-8 sm:px-8 sm:py-10">
+          {isPrivileged && <section className="mb-5 lg:hidden rounded-xl border border-emerald-200 bg-white p-4 shadow-sm"><label className="block"><span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-emerald-700">Bảng công cần xem</span><select value={selectedEmployee} onChange={event => setSelectedEmployee(event.target.value)} className="ft-input"><option value="">Bảng công của tôi</option>{filteredEmployees.map(emp => <option key={emp.email} value={emp.email}>{emp.name}{emp.department ? ` — ${emp.department}` : ''}</option>)}</select></label></section>}
           {/* Title row */}
           <section className="mb-7">
             <p className="text-xl font-extrabold uppercase tracking-wide text-emerald-700 sm:text-2xl">Xin chào, {userName}</p>

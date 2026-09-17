@@ -37,7 +37,7 @@ function onEditInstallable(e) {
   for (var offset = 0; offset < numRows; offset++) {
     var row = firstRow + offset;
     if (row < FIRST_DATA_ROW) continue; // skip header row edits
-    handleRowEdit_(sheet, row);
+    handleRowEdit_(sheet, row, e);
   }
 }
 
@@ -59,7 +59,7 @@ function onChangeInstallable(e) {
     var numRows = activeRange.getNumRows();
     for (var offset = 0; offset < numRows; offset++) {
       var row = firstRow + offset;
-      if (row >= FIRST_DATA_ROW) handleRowEdit_(sheet, row);
+      if (row >= FIRST_DATA_ROW) handleRowEdit_(sheet, row, e);
     }
     return;
   }
@@ -78,7 +78,7 @@ function onChangeInstallable(e) {
   markOutboxResult_(outboxRow, result);
 }
 
-function handleRowEdit_(sheet, row) {
+function handleRowEdit_(sheet, row, event) {
   // Keep the payload identical to the backend's Google Sheets read path
   // (valueRenderOption=FORMATTED_VALUE). getValues() turns date cells into
   // Date objects which JSON serializes as UTC and can shift the calendar day.
@@ -87,23 +87,47 @@ function handleRowEdit_(sheet, row) {
   // columns move to the right.
   var values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
   var eventId = Utilities.getUuid();
-  var outboxRow = appendToOutbox_(eventId, row, values);
-  var result = sendWebhook_(eventId, row, values);
+  var payload = {
+    row: row,
+    values: values,
+    edited_at: new Date().toISOString(),
+    editor_email: currentEditorEmail_(event),
+    sheet_name: SHEET_NAME,
+  };
+  var outboxRow = appendToOutbox_(eventId, row, payload);
+  var result = sendWebhook_(eventId, row, payload);
   markOutboxResult_(outboxRow, result);
 }
 
-function appendToOutbox_(eventId, row, values) {
+function appendToOutbox_(eventId, row, payload) {
   var outbox = ensureOutboxSheet_();
+  var editedAt = payload && payload.edited_at ? payload.edited_at : new Date().toISOString();
   outbox.appendRow([
     eventId,
     row,
-    new Date(),
-    JSON.stringify(values),
+    editedAt,
+    JSON.stringify(payload),
     'pending', // status: pending -> sent | error
     '', // response summary
     '', // processed_at
   ]);
   return outbox.getLastRow();
+}
+
+function currentEditorEmail_(event) {
+  try {
+    if (event && event.user && typeof event.user.getEmail === 'function') {
+      var eventEmail = String(event.user.getEmail() || '').trim().toLowerCase();
+      if (eventEmail) return eventEmail;
+    }
+  } catch (error) {
+    // Some domains hide the event user's email from installable triggers.
+  }
+  try {
+    return String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+  } catch (error) {
+    return '';
+  }
 }
 
 function markOutboxResult_(outboxRow, result) {
@@ -115,20 +139,29 @@ function markOutboxResult_(outboxRow, result) {
   ]]);
 }
 
-function sendWebhook_(eventId, row, values) {
+function sendWebhook_(eventId, row, payload) {
   var props = PropertiesService.getScriptProperties();
   var url = props.getProperty('WEBHOOK_URL');
   var secret = props.getProperty('WEBHOOK_SECRET');
   if (!url || !secret) {
     return { ok: false, summary: 'Thiếu WEBHOOK_URL/WEBHOOK_SECRET trong Script Properties.' };
   }
-  var payload = { event_id: eventId, row: row, values: values };
+  var requestPayload = {
+    event_id: eventId,
+    row: row,
+    values: Array.isArray(payload) ? payload : (payload && payload.values) || [],
+  };
+  if (payload && !Array.isArray(payload)) {
+    if (payload.edited_at) requestPayload.edited_at = payload.edited_at;
+    if (payload.editor_email) requestPayload.editor_email = payload.editor_email;
+    if (payload.sheet_name) requestPayload.sheet_name = payload.sheet_name;
+  }
   try {
     var response = UrlFetchApp.fetch(url, {
       method: 'post',
       contentType: 'application/json',
       headers: { 'X-Sheet-Webhook-Secret': secret },
-      payload: JSON.stringify(payload),
+      payload: JSON.stringify(requestPayload),
       muteHttpExceptions: true,
     });
     var code = response.getResponseCode();
@@ -182,6 +215,11 @@ function ensureOutboxSheet_() {
   return outbox;
 }
 
+// Compatibility no-op for the legacy time-driven trigger. The realtime
+// onEdit/onChange triggers now own synchronization; keep the old trigger
+// harmless until its owner removes it from the Apps Script project.
+function watchdogSheetChanges() {}
+
 /**
  * Manual retry helper: re-sends every outbox row still marked "error" or "pending".
  * Run this by hand from the Script Editor (Run -> retryFailedOutboxRows) after fixing
@@ -198,10 +236,10 @@ function retryFailedOutboxRows() {
     if (status === 'sent') continue;
     var eventId = rows[i][0];
     var row = rows[i][1];
-    var values = JSON.parse(rows[i][3]);
-    var result = values && values.event_type === 'full_sync'
-      ? sendFullSyncWebhook_(eventId, values.reason)
-      : sendWebhook_(eventId, row, values);
+    var payload = JSON.parse(rows[i][3]);
+    var result = payload && payload.event_type === 'full_sync'
+      ? sendFullSyncWebhook_(eventId, payload.reason)
+      : sendWebhook_(eventId, row, payload);
     markOutboxResult_(i + 2, result);
   }
 }

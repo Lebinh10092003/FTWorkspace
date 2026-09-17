@@ -86,7 +86,7 @@ export default function AccountMenu({ userName, photoURL, userRole, isGuest, onA
 
   const accountButtonClass = variant === 'sidebar'
     ? 'ft-sidebar-account flex w-full items-center gap-3 rounded-xl border p-2.5 text-left shadow-sm transition-colors hover:bg-sky-50'
-    : 'flex min-w-[190px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left shadow-sm transition-colors hover:border-blue-200 hover:bg-sky-50';
+    : 'workspace-account-button flex min-w-[190px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left shadow-sm transition-colors hover:border-blue-200 hover:bg-sky-50';
 
   return (
     <><div ref={rootRef} className={`relative ${variant === 'sidebar' ? 'mb-3' : ''}`}>

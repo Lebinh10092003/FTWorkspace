@@ -43,6 +43,7 @@ import { generateEmailHtml } from '../../lib/emailHtmlGenerator';
 import { copyEmailToClipboard, copyTextToClipboard } from '../../lib/emailClipboard';
 import { createBlankEmailTemplate, createEmailTemplateFromHtml, HtmlImportMode, isHtmlEmailFile } from '../../lib/emailTemplateFactory';
 import { prepareEmailIconsForDelivery } from '../../lib/emailIconDelivery';
+import ModuleMobileNav from '../ModuleMobileNav';
 import { splitEmailHtmlPreservingLayout } from '../../lib/emailHtmlSectionSplitter';
 
 import BlockLibrary from './BlockLibrary';
@@ -101,6 +102,7 @@ function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lạ
   const [showVarPicker, setShowVarPicker] = useState(false);
   const [insertedVar, setInsertedVar] = useState<{ blockId: string; varName: string } | null>(null);
   const canvasRef = useRef<EmailCanvasHandle>(null);
+  const listImportRef = useRef<HTMLInputElement>(null);
   const templatesRef = useRef<EmailTemplate[]>([]);
   const editorHistory = useRef<Record<string, { past: EmailTemplate[]; future: EmailTemplate[]; lastCommitAt: number; lastSignature: string }>>({});
   const pendingTemplateSaves = useRef<Record<string, { revision: number; saving: boolean; latest: EmailTemplate }>>({});
@@ -941,6 +943,41 @@ function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lạ
 
         <main className="min-w-0 flex-1 overflow-y-auto md:ml-64">
           <header className="ft-module-header sticky top-0 z-20 flex items-center justify-between border-b px-5 py-4 md:px-8"><div><p className="text-xs font-extrabold uppercase tracking-[.14em] text-blue-600">Bộ công cụ truyền thông</p><h1 className="text-lg font-extrabold text-slate-900">Trình quản lý mẫu Email</h1></div><AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar"/></header>
+          <ModuleMobileNav
+            className="email-list-mobile-nav"
+            onBack={onBackToWorkspace}
+            activeId="list"
+            onSelect={(id) => {
+              if (id === "create") handleCreateTemplate();
+              if (id === "import") listImportRef.current?.click();
+              if (id === "restore") handleRestoreDefaults();
+              if (id === "signature") onOpenSignatureBuilder();
+            }}
+            items={[
+              { id: "list", label: "Kho mẫu Email", icon: FileText },
+              { id: "create", label: "Tạo mẫu mới", icon: MailPlus },
+              { id: "import", label: "Tải tệp mẫu", icon: Upload },
+              { id: "restore", label: "Khôi phục mẫu gốc", icon: RotateCcw },
+              { id: "signature", label: "Trình tạo chữ ký", icon: ContactRound },
+            ]}
+            ariaLabel="Điều hướng kho mẫu Email"
+          />
+          <input
+            ref={listImportRef}
+            type="file"
+            accept=".json,.html,.htm,application/json,text/html"
+            onChange={async (event) => {
+              const input = event.currentTarget;
+              const file = input.files?.[0];
+              if (!file) return;
+              try {
+                await handleImportFile(file);
+              } finally {
+                input.value = "";
+              }
+            }}
+            className="hidden"
+          />
           <div className="ft-module-content mx-auto w-full max-w-6xl space-y-6 p-6 md:p-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
@@ -1082,7 +1119,7 @@ function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lạ
   }
 
   return (
-    <div className="relative flex h-screen flex-col overflow-hidden bg-[#f5f6f8] font-sans">
+    <div className="relative flex h-screen min-h-dvh flex-col overflow-hidden bg-[#f5f6f8] font-sans">
       
       {/* Toast Notification */}
       {toastMessage && (
@@ -1127,6 +1164,19 @@ function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lạ
         canRedo={canRedo}
       />
 
+      <ModuleMobileNav
+        className="email-editor-mobile-nav"
+        onBack={handleBackToList}
+        activeId={mobileActiveTab}
+        onSelect={(id) => setMobileActiveTab(id as 'library' | 'canvas' | 'settings')}
+        items={[
+          { id: 'library', label: 'Thư viện khối', icon: BookOpen },
+          { id: 'canvas', label: 'Canvas email', icon: Layout },
+          { id: 'settings', label: 'Cài đặt', icon: Settings },
+        ]}
+        ariaLabel="Điều hướng trình tạo Email"
+      />
+
       {/* Editor Layout Frame */}
       <div className="relative flex flex-1 overflow-hidden">
         
@@ -1134,13 +1184,13 @@ function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lạ
         <div className="flex flex-1 overflow-hidden">
           
           {/* Left Block Selection Library */}
-          <div className={`hidden md:flex ${mobileActiveTab === 'library' ? '!block absolute inset-0 z-40 bg-white md:relative md:inset-auto md:z-auto' : ''}`}>
+          <div className={`hidden lg:flex ${mobileActiveTab === 'library' ? '!block absolute inset-0 z-40 bg-white lg:relative lg:inset-auto lg:z-auto' : ''}`}>
             <BlockLibrary onAddBlock={handleAddBlock} width={leftPanelWidth} />
-             <div onPointerDown={(e) => resizePanel('left', e)} className="hidden md:block w-1.5 cursor-col-resize bg-transparent hover:bg-blue-400/50 active:bg-blue-500" aria-label="Kéo để đổi độ rộng thư viện" />
+             <div onPointerDown={(e) => resizePanel('left', e)} className="hidden lg:block w-1.5 cursor-col-resize bg-transparent hover:bg-blue-400/50 active:bg-blue-500" aria-label="Kéo để đổi độ rộng thư viện" />
           </div>
 
           {/* Middle Email Design Canvas */}
-          <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${mobileActiveTab === 'canvas' ? 'flex flex-col' : 'hidden md:flex'}`}>
+          <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${mobileActiveTab === 'canvas' ? 'flex flex-col' : 'hidden lg:flex'}`}>
             
             {/* Subject field editor */}
             <div className="flex shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-5 py-3">
@@ -1190,8 +1240,8 @@ function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lạ
           </div>
 
           {/* Right Parameters Settings Sidebar */}
-          <div onPointerDown={(e) => resizePanel('right', e)} className="hidden md:block w-1.5 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-400/50 active:bg-blue-500" aria-label="Kéo để đổi độ rộng bảng cài đặt" />
-           <div style={{ width: rightPanelWidth, maxWidth: '25vw', minWidth: 56 }} className={`flex shrink-0 flex-col border-l border-slate-200/80 bg-white ${mobileActiveTab === 'settings' ? 'absolute inset-0 z-40 block md:relative md:inset-auto md:z-auto' : 'hidden md:flex'}`}>
+          <div onPointerDown={(e) => resizePanel('right', e)} className="hidden lg:block w-1.5 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-400/50 active:bg-blue-500" aria-label="Kéo để đổi độ rộng bảng cài đặt" />
+           <div style={{ width: rightPanelWidth, maxWidth: '25vw', minWidth: 56 }} className={`flex shrink-0 flex-col border-l border-slate-200/80 bg-white ${mobileActiveTab === 'settings' ? 'absolute inset-0 z-40 block lg:relative lg:inset-auto lg:z-auto' : 'hidden lg:flex'}`}>
             <div className="border-b border-slate-200 bg-white p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

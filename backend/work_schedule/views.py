@@ -19,7 +19,7 @@ from authentication.permissions import IsAuthenticated
 
 from .models import WorkItem, WorkScheduleSheetInboundEvent
 from .retention import purge_expired_work_schedule, retained_from
-from .rich_text import normalize_format_runs, utf16_length
+from .rich_text import format_state_at, normalize_format_runs, utf16_length
 from .training_sync import delete_training_for_work_item, sync_training_from_work_item
 from config.db_transactions import atomic_mutation
 
@@ -225,14 +225,10 @@ def _apply_data(request, item, creating=False, allow_people=True, data_override=
 
     requested_status = str(data.get("status", item.status if item else WorkItem.STATUS_TODO) or "").lower()
     requested_priority = str(data.get("priority", item.priority if item else "medium") or "").lower()
-    priority_changed = bool(
-        item and item.pk and "priority" in data and requested_priority != item.priority
-    )
-    if priority_changed and getattr(item, "sheet_emphasis", None) is not None:
-        # A deliberate priority change in the web UI supersedes an earlier
-        # Sheet-only bold/unbold override.
-        item.sheet_emphasis = None
+    # A non-null value is an explicit Sheet decision. It remains authoritative
+    # for the lifetime of the item; a Web save must never silently clear it.
     sheet_emphasis = getattr(item, "sheet_emphasis", None) if item else None
+    sheet_format_locked = sheet_emphasis is not None
     if authored_time.has_time_prefix:
         if sheet_emphasis is False:
             requested_priority = "medium"
@@ -266,9 +262,9 @@ def _apply_data(request, item, creating=False, allow_people=True, data_override=
     previous_group = (item.executor_id, item.work_date) if item and item.pk else None
     next_group = (executor.email, work_date)
     item.title = title[:1000]
-    if format_runs_supplied:
+    if format_runs_supplied and not sheet_format_locked:
         item.title_format_runs = normalize_format_runs(raw_format_runs, utf16_length(item.title)) or []
-    elif creating or ("title" in data and item.title != previous_title):
+    elif (creating or ("title" in data and item.title != previous_title)) and not sheet_format_locked:
         # A plain web form has no character-level editor. Do not let runs from
         # an older title accidentally apply to a newly written title.
         item.title_format_runs = []
@@ -517,7 +513,15 @@ def work_day_edit(request):
                     start_time=row["parsed_title"].start_time,
                     end_time=row["parsed_title"].end_time,
                     time_prefix_in_title=row["parsed_title"].has_time_prefix,
-                    priority="high" if row["parsed_title"].has_time_prefix else "medium",
+                    priority=(
+                        "high"
+                        if row["parsed_title"].has_time_prefix
+                        or (
+                            row["format_runs_supplied"]
+                            and format_state_at(row["format_runs"], 0)["bold"]
+                        )
+                        else "medium"
+                    ),
                     priority_before_time="medium" if row["parsed_title"].has_time_prefix else None,
                     title_format_runs=row["format_runs"] if row["format_runs_supplied"] else [],
                 )
@@ -559,9 +563,23 @@ def work_day_edit(request):
                             item.priority_before_time = None
                         update_fields.append("priority")
                         update_fields.append("priority_before_time")
-                if row["format_runs_supplied"]:
+                sheet_format_locked = getattr(item, "sheet_emphasis", None) is not None
+                if row["format_runs_supplied"] and not sheet_format_locked:
                     item.title_format_runs = row["format_runs"]
                     update_fields.append("title_format_runs")
+                    # In the Web grid, an explicit line-level bold is the
+                    # manual "important" marker for an untimed task. A timed
+                    # task remains important because its time prefix is the
+                    # automatic marker. Sheet-originated overrides are left
+                    # untouched above and therefore cannot be overwritten by
+                    # a stale Web draft.
+                    if format_state_at(row["format_runs"], 0)["bold"]:
+                        item.priority = "high"
+                        update_fields.append("priority")
+                    elif not item.time_prefix_in_title:
+                        item.priority = "medium"
+                        item.priority_before_time = None
+                        update_fields.extend(["priority", "priority_before_time"])
                 if row["status"] is not None and row["status"] != item.status:
                     item.status = row["status"]
                     update_fields.append("status")
@@ -824,8 +842,9 @@ def work_schedule_sheet_webhook(request):
     one edited row (never a full-sheet scan). Authenticated by a shared secret header
     instead of a user token, since Apps Script cannot hold a logged-in session."""
     from .sheet_sync import (
-        _canonical_row, _ingest_row, _service, ensure_sync_columns,
-        _row_task_format_runs, full_two_way_sync, push_groups_to_sheet,
+        _canonical_row, _ingest_row, _parse_date, _parse_sheet_event_timestamp,
+        _row_employee_email, _row_task_format_runs, _service, ensure_sync_columns,
+        full_two_way_sync, push_sheet_row_metadata,
     )
     from .signals import suppress_sheet_queue
 
@@ -838,8 +857,14 @@ def work_schedule_sheet_webhook(request):
     event_type = str(request.data.get("event_type") or "row_update").strip().lower()
     if not event_id:
         return Response({"error": "Payload thiếu event_id hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
+    if len(event_id) > 64:
+        return Response({"error": "event_id không được vượt quá 64 ký tự."}, status=status.HTTP_400_BAD_REQUEST)
     if event_type not in {"row_update", "full_sync"}:
         return Response({"error": "event_type chỉ hỗ trợ row_update hoặc full_sync."}, status=status.HTTP_400_BAD_REQUEST)
+
+    edited_at_raw = request.data.get("edited_at", request.data.get("editedAt"))
+    edited_at = _parse_sheet_event_timestamp(edited_at_raw)
+    editor_email = str(request.data.get("editor_email", request.data.get("editorEmail", "")) or "").strip().lower()
 
     if event_type == "full_sync":
         sheet_name = str(request.data.get("sheet_name") or "Lịch công tác").strip()
@@ -863,7 +888,13 @@ def work_schedule_sheet_webhook(request):
         }
         event, created = WorkScheduleSheetInboundEvent.objects.get_or_create(
             event_id=event_id,
-            defaults={"row_number": 1, "payload": event_payload, "status": WorkScheduleSheetInboundEvent.STATUS_PROCESSING},
+            defaults={
+                "row_number": 1,
+                "payload": event_payload,
+                "edited_at": edited_at,
+                "editor_email": editor_email,
+                "status": WorkScheduleSheetInboundEvent.STATUS_PROCESSING,
+            },
         )
         if not created and event.status == WorkScheduleSheetInboundEvent.STATUS_PROCESSED:
             return Response({
@@ -892,7 +923,9 @@ def work_schedule_sheet_webhook(request):
             event.status = WorkScheduleSheetInboundEvent.STATUS_PROCESSING
             event.error = ""
             event.processed_at = None
-            event.save(update_fields=["row_number", "payload", "status", "error", "processed_at"])
+            event.edited_at = edited_at
+            event.editor_email = editor_email
+            event.save(update_fields=["row_number", "payload", "status", "error", "processed_at", "edited_at", "editor_email"])
         try:
             result = full_two_way_sync(None)
             if result.get("busy"):
@@ -931,12 +964,24 @@ def work_schedule_sheet_webhook(request):
 
     row_number = request.data.get("row")
     values = request.data.get("values")
-    if not isinstance(row_number, int) or row_number < 2 or not isinstance(values, list):
+    if not isinstance(row_number, int) or row_number < 3 or not isinstance(values, list):
         return Response({"error": "Payload thiếu event_id/row/values hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
 
+    event_payload = {
+        "row": row_number,
+        "values": values,
+        "edited_at": edited_at.isoformat() if edited_at else "",
+        "editor_email": editor_email,
+    }
     event, created = WorkScheduleSheetInboundEvent.objects.get_or_create(
         event_id=event_id,
-        defaults={"row_number": row_number, "payload": {"row": row_number, "values": values}, "status": WorkScheduleSheetInboundEvent.STATUS_PROCESSED},
+        defaults={
+            "row_number": row_number,
+            "payload": event_payload,
+            "edited_at": edited_at,
+            "editor_email": editor_email,
+            "status": WorkScheduleSheetInboundEvent.STATUS_PROCESSING,
+        },
     )
     if not created and event.status == WorkScheduleSheetInboundEvent.STATUS_PROCESSED:
         return Response({
@@ -945,14 +990,24 @@ def work_schedule_sheet_webhook(request):
             "createdCount": event.created_count,
             "updatedCount": event.updated_count,
         })
+    if not created and event.status == WorkScheduleSheetInboundEvent.STATUS_PROCESSING:
+        return Response({
+            "message": "Sự kiện đang được xử lý (bỏ qua request trùng lặp).",
+            "status": event.status,
+            "retryAfterSeconds": 30,
+        }, status=status.HTTP_202_ACCEPTED, headers={"Retry-After": "30"})
     if not created:
         # Previous attempt for this event_id failed (Apps Script retryFailedOutboxRows sends
         # the same event_id again) — refresh the snapshot and actually retry instead of
         # silently returning the stale failure as if it were a duplicate no-op.
         event.row_number = row_number
-        event.payload = {"row": row_number, "values": values}
+        event.payload = event_payload
+        event.edited_at = edited_at
+        event.editor_email = editor_email
         event.error = ""
-        event.save(update_fields=["row_number", "payload", "error"])
+        event.status = WorkScheduleSheetInboundEvent.STATUS_PROCESSING
+        event.processed_at = None
+        event.save(update_fields=["row_number", "payload", "edited_at", "editor_email", "error", "status", "processed_at"])
 
     service = None
     try:
@@ -971,6 +1026,9 @@ def work_schedule_sheet_webhook(request):
                     timezone.localdate(),
                     task_format_runs=task_format_runs,
                     sheet_authoritative=True,
+                    sheet_edited_at=edited_at,
+                    sheet_editor_email=editor_email,
+                    sheet_event_id=event_id,
                 )
             event.status = WorkScheduleSheetInboundEvent.STATUS_PROCESSED
             event.created_count = created_count
@@ -986,14 +1044,24 @@ def work_schedule_sheet_webhook(request):
         return Response({"error": f"Không thể xử lý sự kiện từ Sheet: {exc}"}, status=status.HTTP_502_BAD_GATEWAY)
 
     push_back_error = ""
+    metadata_result = None
     if touched:
         try:
+            sheet_email = _row_employee_email(row)
+            sheet_date = _parse_date(row[1])
+            current_items = list(
+                WorkItem.objects.filter(
+                    executor_id=sheet_email,
+                    work_date=sheet_date,
+                    source_sheet_row=row_number,
+                ).order_by("daily_order", "start_time", "created_at", "pk")
+            ) if sheet_email and sheet_date else []
             service = service or _service(None)
-            push_groups_to_sheet(service, touched, force=True)
+            metadata_result = push_sheet_row_metadata(service, row_number, row, current_items, columns)
         except Exception as exc:
             push_back_error = str(exc)
-            logger.exception("Ghi lại WEB_TASK_IDS lên Sheet thất bại sau webhook (event_id=%s).", event_id)
-            event.error = f"Ghi ngược task_id lên Sheet thất bại: {exc}"
+            logger.exception("Ghi metadata ẩn lên Sheet thất bại sau webhook (event_id=%s).", event_id)
+            event.error = f"Ghi metadata ẩn lên Sheet thất bại: {exc}"
             event.save(update_fields=["error"])
 
     return Response({
@@ -1003,4 +1071,5 @@ def work_schedule_sheet_webhook(request):
         "deletedCount": deleted_count,
         "groups": [[email, work_date.isoformat()] for email, work_date in touched],
         "pushBackError": push_back_error,
+        "metadataResult": metadata_result,
     })

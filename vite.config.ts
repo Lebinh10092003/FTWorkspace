@@ -37,9 +37,10 @@ export default defineConfig(() => {
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      // Khi chạy ở local, bỏ qua theo dõi thư mục server để tránh lặp reload khi database local (JSON) thay đổi.
+      // Khi chạy ở local, bỏ qua toàn bộ dữ liệu runtime của backend để tránh
+      // reload liên tục khi SQLite, upload hoặc file tạm thay đổi.
       watch: process.env.DISABLE_HMR === 'true' ? null : {
-        ignored: ['**/backend/db.sqlite3'],
+        ignored: ['**/backend/**', '**/.tmp/**'],
       },
     },
   };

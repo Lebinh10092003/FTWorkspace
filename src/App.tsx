@@ -8,6 +8,7 @@ import LoginModal from './components/LoginModal';
 import AccountProfileModal from './components/AccountProfileModal';
 import AccountMenu from './components/AccountMenu';
 import WorkspaceNotifications from './components/WorkspaceNotifications';
+import ModuleMobileNav from './components/ModuleMobileNav';
 import { readWorkspaceAppearance, WorkspaceAppearance } from './components/AppearanceSettings';
 
 const lazyWithRecovery = <T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) => lazy(async () => {
@@ -659,16 +660,18 @@ export default function App() {
     return (
       <div className={`workspace-theme workspace-theme-${appearance.theme} min-h-dvh liquid-bg flex flex-col font-sans relative overflow-x-hidden`} style={workspaceAppearanceStyle(appearance)}>
         <header className="sticky top-0 z-30 w-full glass-panel border-b border-white/50">
-          <div className="relative mx-auto flex max-w-[1600px] items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex shrink-0 items-center">
-              <img src="/logo.png" alt="FermatTech Logo" className="h-12 w-auto object-contain" />
+          <div className="workspace-header-inner relative mx-auto max-w-[1600px] px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex min-w-0 shrink-0 items-center">
+              <img src="/logo.png" alt="FermatTech Logo" className="workspace-brand-logo" />
             </div>
-            <div className="pointer-events-none absolute left-1/2 max-w-[48vw] -translate-x-1/2 truncate whitespace-nowrap text-center">
+            <div className="workspace-title-block">
+              <p className="workspace-title-eyebrow">Không gian làm việc</p>
               <h1 className="workspace-title text-sm font-extrabold tracking-tight sm:text-lg lg:text-2xl">
-                Không gian làm việc <span className="ft-gradient-text">FermatTech Workspace</span>
+                <span className="workspace-title-prefix">Không gian làm việc </span>
+                <span className="ft-gradient-text">FermatTech Workspace</span>
               </h1>
             </div>
-            <div className="flex items-center gap-2.5">
+            <div className="workspace-header-actions">
               {!isGuest && <WorkspaceNotifications token={idToken} />}
               <AccountMenu
                 userName={user.displayName}
@@ -761,6 +764,13 @@ export default function App() {
           <div className="ft-sidebar-footer border-t p-4"><button type="button" onClick={() => setViewMode('workspace')} className="ft-sidebar-back mb-3 flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm font-bold"><ArrowLeft className="h-5 w-5" />Quay lại Workspace</button><AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="sidebar" /></div>
         </aside>
         <main className="min-w-0 flex-1 md:ml-64"><header className="ft-module-header sticky top-0 z-20 flex items-center justify-between border-b px-5 py-4 md:px-8"><div><p className="text-xs font-extrabold uppercase tracking-[.15em] text-blue-600">FermatTech Workspace</p><h1 className="text-xl font-extrabold text-slate-900">Bộ công cụ truyền thông</h1></div><AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" /></header>
+          <ModuleMobileNav
+            className="lg:hidden"
+            onBack={() => setViewMode('workspace')}
+            onSelect={(mode) => setViewMode(mode as ViewMode)}
+            items={tools.map(tool => ({ id: tool.mode, label: tool.title, icon: tool.icon }))}
+            ariaLabel="Điều hướng bộ công cụ truyền thông"
+          />
           <div className="ft-module-content mx-auto p-5 md:p-8"><div className="mb-7 max-w-2xl"><h2 className="text-3xl font-extrabold text-[#001e40]">Bạn muốn tạo gì?</h2><p className="mt-2 text-slate-500">Các công cụ phục vụ thiết kế và phân phối nội dung truyền thông được gom vào một nơi.</p></div><div className="grid max-w-5xl gap-5 md:grid-cols-2">{tools.map(tool => { const Icon = tool.icon; return <button key={tool.mode} type="button" onClick={() => setViewMode(tool.mode)} className="group rounded-3xl border border-slate-200 bg-white p-7 text-left shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl"><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white shadow-lg`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-900">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{tool.description}</p><span className="mt-6 block text-sm font-bold text-blue-600">Mở công cụ →</span></button>; })}</div></div>
         </main>
       </div>

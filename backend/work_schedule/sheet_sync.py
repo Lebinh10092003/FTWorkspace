@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 from django.db import models, transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from authentication.models import SystemConfig, UserProfile
 from authentication.monthly_sheets import get_monthly_sheet_links
@@ -17,7 +18,12 @@ from attendance.models import TimesheetEntry
 from attendance.sheet_sync import push_groups_to_attendance_sheet
 from integrations.google_sheets import build_sheets_service, extract_spreadsheet_id
 
-from .models import WorkItem, WorkScheduleSheetChange, WorkScheduleSheetSyncLease
+from .models import (
+    WorkItem,
+    WorkScheduleSheetChange,
+    WorkScheduleSheetInboundEvent,
+    WorkScheduleSheetSyncLease,
+)
 from .retention import purge_expired_work_schedule, retained_from
 from .rich_text import format_state_at, normalize_format_runs, slice_format_runs, utf16_length
 from .sheet_parser import is_personal_task, without_task_tags, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
@@ -406,8 +412,8 @@ def _unique_sheet_tasks(tasks):
     return [task for task, _, _ in _unique_sheet_task_entries(tasks)]
 
 
-def _unique_sheet_task_entries(tasks, emphasis=None, format_runs=None):
-    """Deduplicate parsed tasks while keeping their matching style state."""
+def _unique_sheet_task_entries_with_indices(tasks, emphasis=None, format_runs=None):
+    """Deduplicate parsed tasks while retaining each task's source line index."""
     unique = []
     positions = {}
     for index, task in enumerate(tasks):
@@ -423,10 +429,33 @@ def _unique_sheet_task_entries(tasks, emphasis=None, format_runs=None):
             emphasized = bool(format_state_at(task_runs, 0)["bold"])
         if key not in positions:
             positions[key] = len(unique)
-            unique.append((task, emphasized, task_runs))
+            unique.append((task, emphasized, task_runs, index))
         elif task.start_time and not unique[positions[key]][0].start_time:
-            unique[positions[key]] = (task, emphasized, task_runs)
+            unique[positions[key]] = (task, emphasized, task_runs, index)
     return unique
+
+
+def _unique_sheet_task_entries(tasks, emphasis=None, format_runs=None):
+    """Deduplicate parsed tasks while keeping their matching style state."""
+    return [
+        (task, emphasized, task_runs)
+        for task, emphasized, task_runs, _ in _unique_sheet_task_entries_with_indices(
+            tasks, emphasis, format_runs
+        )
+    ]
+
+
+def _parse_sheet_event_timestamp(value):
+    """Parse an Apps Script ISO timestamp as an aware Django datetime."""
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = parse_datetime(str(value or "").strip())
+    if not parsed:
+        return None
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
 
 
 def ensure_sync_columns(service):
@@ -520,6 +549,9 @@ def _ingest_row(
     task_emphasis=None,
     task_format_runs=None,
     sheet_authoritative=False,
+    sheet_edited_at=None,
+    sheet_editor_email="",
+    sheet_event_id="",
 ):
     """Parse one sheet row (A:K, same shape as `_rows()` yields) and upsert its WorkItems.
 
@@ -529,6 +561,9 @@ def _ingest_row(
     """
     created = updated = deleted = 0
     touched = set()
+    sheet_edited_at = _parse_sheet_event_timestamp(sheet_edited_at)
+    sheet_editor_email = str(sheet_editor_email or "").strip().lower()
+    sheet_event_id = str(sheet_event_id or "").strip()[:64]
     work_date = _parse_date(_cell(row, 1))
     email = _row_employee_email(row)
     if not email or not work_date:
@@ -551,6 +586,12 @@ def _ingest_row(
             "id", "sync_uid", "executor_id", "work_date"
         )
     }
+    if len(supplied_uids) != len(set(supplied_uids)):
+        # A duplicated UUID is an identity conflict, not a request to update
+        # the same WorkItem twice. Reject the whole row so one pasted/corrupt
+        # line cannot delete or move the canonical task on the next pass.
+        logger.warning("Ignored Sheet row %s because a task UUID is repeated.", offset)
+        return created, updated, deleted, touched
     identity_conflicts = [
         item for item in existing_by_uid.values()
         if item.executor_id != email or item.work_date != work_date
@@ -565,7 +606,6 @@ def _ingest_row(
         )
         return created, updated, deleted, touched
     group_items = list(WorkItem.objects.filter(executor=executor, work_date=work_date))
-    touched.add((email, work_date))
     # An unchanged Sheet row is an old snapshot while a web edit is queued.
     # Do not recreate deleted tasks or overwrite unsent titles during a full pull.
     live_hash = _row_hash(_cell(row, 4), _cell(row, 5), _cell(row, 6), _cell(row, 9))
@@ -576,25 +616,56 @@ def _ingest_row(
         if retained_by_group is not None:
             retained_by_group[(email, work_date)].update(item.pk for item in group_items)
         return created, updated, deleted, touched
+    if sheet_edited_at:
+        latest_row_event = (
+            WorkScheduleSheetInboundEvent.objects.filter(
+                row_number=offset,
+                status=WorkScheduleSheetInboundEvent.STATUS_PROCESSED,
+                edited_at__isnull=False,
+            )
+            .exclude(event_id=sheet_event_id)
+            .order_by("-edited_at", "-pk")
+            .first()
+        )
+        if latest_row_event and latest_row_event.edited_at >= sheet_edited_at:
+            # Keep an ordering watermark even after a row was cleared and all
+            # of its WorkItems were deleted. This prevents a delayed old clear
+            # or edit from recreating tasks that a newer event removed.
+            logger.info("Ignored stale Sheet row %s event %s by row watermark.", offset, sheet_event_id)
+            return created, updated, deleted, touched
     raw_tasks = parse_sheet_tasks(_cell(row, 4))
+    duplicate_uid_keys = defaultdict(set)
+    for raw_index, parsed_task in enumerate(raw_tasks):
+        if raw_index < len(ids) and ids[raw_index]:
+            duplicate_uid_keys[_duplicate_title_key(parsed_task.title)].add(ids[raw_index])
+    if any(len(uids) > 1 for uids in duplicate_uid_keys.values()):
+        logger.warning(
+            "Ignored Sheet row %s because duplicate task titles have different UUIDs.",
+            offset,
+        )
+        return created, updated, deleted, touched
     if task_format_runs is not None:
-        task_entries = _unique_sheet_task_entries(
+        task_entries = _unique_sheet_task_entries_with_indices(
             raw_tasks,
             task_emphasis,
             task_format_runs,
         )
-        parsed = [task for task, _, _ in task_entries]
-        parsed_emphasis = [emphasis for _, emphasis, _ in task_entries]
-        parsed_format_runs = [runs for _, _, runs in task_entries]
+        parsed = [task for task, _, _, _ in task_entries]
+        parsed_emphasis = [emphasis for _, emphasis, _, _ in task_entries]
+        parsed_format_runs = [runs for _, _, runs, _ in task_entries]
+        parsed_source_indices = [source_index for _, _, _, source_index in task_entries]
     elif task_emphasis is None:
-        parsed = _unique_sheet_tasks(raw_tasks)
+        task_entries = _unique_sheet_task_entries_with_indices(raw_tasks)
+        parsed = [task for task, _, _, _ in task_entries]
         parsed_emphasis = None
         parsed_format_runs = None
+        parsed_source_indices = [source_index for _, _, _, source_index in task_entries]
     else:
-        task_entries = _unique_sheet_task_entries(raw_tasks, task_emphasis)
-        parsed = [task for task, _, _ in task_entries]
-        parsed_emphasis = [emphasis for _, emphasis, _ in task_entries]
+        task_entries = _unique_sheet_task_entries_with_indices(raw_tasks, task_emphasis)
+        parsed = [task for task, _, _, _ in task_entries]
+        parsed_emphasis = [emphasis for _, emphasis, _, _ in task_entries]
         parsed_format_runs = None
+        parsed_source_indices = [source_index for _, _, _, source_index in task_entries]
     notes = assessment_notes(_cell(row, 5), len(parsed))
     leader_notes = leader_assessment_notes(_cell(row, 6), len(parsed))
     group_uids = {item.sync_uid for item in group_items}
@@ -612,9 +683,20 @@ def _ingest_row(
         # canonical group's tasks. The push phase will refresh the canonical
         # row selected from the Sheet index.
         return created, updated, deleted, touched
+    if sheet_edited_at and any(
+        item.sheet_last_edited_at and item.sheet_last_edited_at >= sheet_edited_at
+        for item in group_items
+    ):
+        # Apps Script can deliver two valid events out of order. The newer row
+        # snapshot has already won for this employee/day, so an older snapshot
+        # must not roll back content, rich text, or deletions.
+        logger.info("Ignored stale Sheet row %s event %s.", offset, sheet_event_id)
+        return created, updated, deleted, touched
+    touched.add((email, work_date))
     retained_ids = set()
     for index, parsed_task in enumerate(parsed, 1):
-        supplied_uid = ids[index - 1] if index <= len(ids) else None
+        source_index = parsed_source_indices[index - 1] if index <= len(parsed_source_indices) else index - 1
+        supplied_uid = ids[source_index] if source_index < len(ids) else None
         item = existing_by_uid.get(supplied_uid) if supplied_uid else None
         if not item:
             item = _legacy_group_match(group_items, parsed_task, index, retained_ids)
@@ -678,8 +760,13 @@ def _ingest_row(
             item.source_sheet_row = offset
             item.source_task_index = index
             item.source_record_id = source_record_id
+            item.source_sync_hash = live_hash
             if sheet_format_runs is not None:
                 item.title_format_runs = sheet_format_runs
+            if sheet_edited_at:
+                item.sheet_last_edited_at = sheet_edited_at
+                item.sheet_last_editor_email = sheet_editor_email or item.sheet_last_editor_email
+                item.sheet_last_event_id = sheet_event_id
             had_time_prefix = item.time_prefix_in_title
             item.time_prefix_in_title = explicit_time
             if effective_sheet_emphasis is not None:
@@ -714,9 +801,13 @@ def _ingest_row(
                 label="Tập huấn" if is_training else "Công việc",
                 daily_order=index, source_sheet_row=offset, source_task_index=index,
                 source_record_id=source_record_id,
+                source_sync_hash=live_hash,
                 time_prefix_in_title=explicit_time,
                 sheet_emphasis=effective_sheet_emphasis,
                 title_format_runs=sheet_format_runs,
+                sheet_last_edited_at=sheet_edited_at,
+                sheet_last_editor_email=sheet_editor_email,
+                sheet_last_event_id=sheet_event_id,
                 sync_uid=sync_uid,
             )
             created += 1
@@ -1218,7 +1309,60 @@ def _formula_content_rows(service, columns=None, start_row=2):
     return rows
 
 
-def push_groups_to_sheet(service, groups, force=False):
+def push_sheet_row_metadata(service, row_number, row, items, columns=None):
+    """Write only hidden identity metadata after a Sheet-originated edit.
+
+    The visible content and all rich-text runs have just been read from the
+    Sheet and are authoritative. Writing the whole row here used to reapply a
+    stale Web snapshot and was the direct cause of bold formatting returning
+    after an unbold operation.
+    """
+    columns = columns or ensure_sync_columns(service)
+    if not isinstance(columns, dict):
+        columns = LEGACY_COLUMNS
+    content = _cell(row, 4)
+    self_notes = _cell(row, 5)
+    leader_notes = _cell(row, 6)
+    parsed_count = len(parse_sheet_tasks(content))
+    if parsed_count != len(items) and (parsed_count or items):
+        logger.warning(
+            "Skipped Sheet metadata write for row %s because task count changed during ingest.",
+            row_number,
+        )
+        return {
+            "row": row_number,
+            "updated": False,
+            "reason": "task_count_mismatch",
+        }
+    task_ids = _numbered([str(item.sync_uid) for item in items]) if items else ""
+    sync_hash = _row_hash(content, self_notes, leader_notes, task_ids)
+    updates = []
+    for name, value in (("task_ids", task_ids), ("sync_hash", sync_hash)):
+        column = _column_letter(columns[name])
+        if _cell(row, columns[name]) != value:
+            updates.append({
+                "range": f"'{SHEET_NAME}'!{column}{row_number}",
+                "values": [[value]],
+            })
+    if updates:
+        ensure_sheet_row_capacity(service, row_number)
+        service.spreadsheets().values().batchUpdate(
+            spreadsheetId=_spreadsheet_id(),
+            body={"valueInputOption": "RAW", "data": updates},
+        ).execute()
+    if items:
+        with suppress_sheet_queue():
+            WorkItem.objects.filter(pk__in=[item.pk for item in items]).update(
+                source_sync_hash=sync_hash,
+            )
+    return {
+        "row": row_number,
+        "updated": bool(updates),
+        "syncHash": sync_hash,
+    }
+
+
+def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=None):
     columns = ensure_sync_columns(service)
     if not isinstance(columns, dict):  # compatibility with isolated test/mocked callers
         columns = LEGACY_COLUMNS
@@ -1233,7 +1377,10 @@ def push_groups_to_sheet(service, groups, force=False):
     updates = []
     conflicts = []
     synced = []
+    metadata_synced = []
+    sheet_authority_skips = []
     update_rows = []
+    preserve_sheet_groups = set(preserve_sheet_groups or ())
     name_email_map = _sheet_name_email_map()
     row_index, uid_index = _sheet_row_indexes(rows, rows_start, name_email_map)
     items_by_group = defaultdict(list)
@@ -1299,6 +1446,33 @@ def push_groups_to_sheet(service, groups, force=False):
             continue
         content, self_notes, leader_notes, task_ids = _group_values(items) if items else ("", "", "", "")
         new_hash = _row_hash(content, self_notes, leader_notes, task_ids)
+        if current and (email, work_date) in preserve_sheet_groups:
+            # A full pull has just established the Sheet snapshot as the
+            # source of truth. Do not normalize duplicate lines, notes, or
+            # formatting back from the Web projection during that same pass.
+            visible_matches = (
+                _cell(current, 4) == content
+                and _cell(current, 5) == self_notes
+                and _cell(current, 6) == leader_notes
+                and len(parse_sheet_tasks(_cell(current, 4))) == len(items)
+            )
+            if not visible_matches:
+                sheet_authority_skips.append({
+                    "email": email,
+                    "date": work_date.isoformat(),
+                    "row": row_number,
+                    "reason": "sheet_snapshot_preserved",
+                })
+                continue
+            for name, value in (("task_ids", task_ids), ("sync_hash", new_hash)):
+                column = _column_letter(columns[name])
+                if _cell(current, columns[name]) != value:
+                    updates.append({
+                        "range": f"'{SHEET_NAME}'!{column}{row_number}",
+                        "values": [[value]],
+                    })
+            metadata_synced.append((email, work_date, row_number, new_hash, items))
+            continue
         for name, value in (
             ("content", content), ("self_notes", self_notes),
             ("leader_notes", leader_notes), ("task_ids", task_ids),
@@ -1370,12 +1544,17 @@ def push_groups_to_sheet(service, groups, force=False):
                 body={'requests': format_requests[start:start + 500]},
             ).execute()
     with suppress_sheet_queue():
-        for email, work_date, row_number, sync_hash, items in synced:
+        for email, work_date, row_number, sync_hash, items in synced + metadata_synced:
             for index, item in enumerate(items, 1):
                 WorkItem.objects.filter(pk=item.pk).update(
                     daily_order=index, source_sheet_row=row_number, source_task_index=index, source_sync_hash=sync_hash
                 )
-    return {"groups": len(synced), "tasks": sum(len(x[4]) for x in synced), "conflicts": conflicts}
+    return {
+        "groups": len(synced) + len(metadata_synced),
+        "tasks": sum(len(x[4]) for x in synced + metadata_synced),
+        "conflicts": conflicts,
+        "sheetAuthoritySkips": sheet_authority_skips,
+    }
 
 
 @contextmanager
@@ -1453,7 +1632,8 @@ def _two_way_sync(google_token, start, end):
     service = _service(google_token)
     ensure_sync_columns(service)
     pulled = pull_from_sheet(service, start, end)
-    groups = set(pulled["groups"])
+    pulled_groups = set(pulled["groups"])
+    groups = set(pulled_groups)
     groups.update(WorkItem.objects.filter(work_date__range=(start, end)).values_list("executor_id", "work_date"))
     # A deployment/full sync must also backfill attendance that already existed
     # before the dedicated monthly attendance workbook integration was enabled.
@@ -1462,7 +1642,16 @@ def _two_way_sync(google_token, start, end):
             "employee_id", "work_date"
         )
     )
-    pushed = push_groups_to_sheet(service, groups, force=True)
+    # Rows read from the Sheet remain authoritative for this pass. Only
+    # groups that exist solely in the Web projection may write visible content;
+    # pulled groups can receive hidden identity metadata but never a Web-style
+    # content or rich-text rewrite.
+    pushed = push_groups_to_sheet(
+        service,
+        groups,
+        force=False,
+        preserve_sheet_groups=pulled_groups,
+    )
     pushed["attendance"] = push_groups_to_attendance_sheet(service, groups)
     WorkScheduleSheetChange.objects.filter(executor_email__in=[g[0] for g in groups], work_date__range=(start, end), status__in=["pending", "failed", "conflict"]).update(status="done", processed_at=timezone.now(), last_error="")
     result = {"start": start.isoformat(), "end": end.isoformat(), "pulled": pulled, "pushed": pushed}

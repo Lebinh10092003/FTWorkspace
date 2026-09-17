@@ -17,6 +17,7 @@ import CandidateProfileDetail from "./examination/CandidateProfileDetail";
 import SessionRoster from "./examination/SessionRoster";
 import ConfirmModal from "./ConfirmModal";
 import AccountMenu from "./AccountMenu";
+import ModuleMobileNav from "./ModuleMobileNav";
 import SearchableSelect from "./SearchableSelect";
 import { matchesSearch } from "../lib/searchText";
 import { DateBadge, DeadlineLegend as Legend, Metric, SessionsTable, TimeField, dateValue, emptyDate, todayIso, sessionDisplayName, sessionTimelineLabel, sessionRecencyKey, formatGrade, BirthDateControl, LIST_PAGE_SIZE, TablePagination } from "./examination/ui";
@@ -1071,11 +1072,11 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
           <Metric label="Tổng số thí sinh" value={overviewSessions.reduce((sum, session) => sum + Number(session.candidates || 0), 0).toLocaleString("vi-VN")} icon={Users} onClick={() => go("candidates")} />
         </div>
       </section>
-      <div className="grid gap-6 xl:grid-cols-3">
-        <section className="ft-surface xl:col-span-2">
-          <div className="mb-5 flex justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-[#001e40]">Số thí sinh theo kỳ tổ chức</h2>
+      <div className="ft-examination-overview-grid grid min-w-0 gap-6 xl:grid-cols-3">
+        <section className="ft-examination-chart ft-surface min-w-0 xl:col-span-2">
+          <div className="mb-5 flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="min-w-0 text-xl font-bold text-[#001e40]">Số thí sinh theo kỳ tổ chức</h2>
               <p className="mt-1 text-sm text-slate-500">Chỉ tính các kỳ từ Tuyển sinh đến trước Hoàn thành đang được theo dõi.</p>
             </div>
             <BarChart3 className="h-6 w-6 text-[#0055DA]" />
@@ -1094,20 +1095,20 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
             </div>
           </div>
         </section>
-        <section className="ft-surface">
+        <section className="ft-examination-milestones ft-surface min-w-0">
           <h2 className="text-xl font-bold text-[#001e40]">Mốc cần chú ý</h2>
           <div className="mt-5 max-h-[304px] space-y-4 overflow-y-auto pr-1">
             {milestoneSessions.map((s) => {
               const milestone = nextMilestone(s);
               return (
-                <button key={s.id} onClick={() => select(s)} className="flex w-full items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-3 text-left transition hover:border-[#0055DA]/30 hover:bg-slate-100/50">
-                  <span>
+                <button key={s.id} onClick={() => select(s)} className="flex min-w-0 w-full items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-3 text-left transition hover:border-[#0055DA]/30 hover:bg-slate-100/50">
+                  <span className="min-w-0 flex-1">
                     <b className="block text-[#001e40]">
                       {s.code} · {sessionTimelineLabel(s)}
                     </b>
                     <small className="mt-0.5 block text-xs text-slate-500">{milestone.label}</small>
                   </span>
-                  <DateBadge label={milestone.dateLabel} date={milestone.date} />
+                  <span className="min-w-0 shrink-0 max-[420px]:max-w-[45%] max-[420px]:whitespace-normal"><DateBadge label={milestone.dateLabel} date={milestone.date} /></span>
                 </button>
               );
             })}
@@ -1149,8 +1150,8 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm theo tên kỳ, cuộc thi hoặc BTC..." />
           </label>
         </div>
-        <div className="grid gap-3 border-b bg-slate-50 p-4 md:grid-cols-2 xl:grid-cols-5">
-          <label>
+        <div className="ft-examination-session-filters grid min-w-0 gap-3 border-b bg-slate-50 p-4 md:grid-cols-2 xl:grid-cols-5">
+          <label className="min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500">Cuộc thi</span>
             <SearchableSelect
               multiple
@@ -1163,15 +1164,15 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
               placeholder="Tất cả cuộc thi"
             />
           </label>
-          <label>
+          <label className="min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500">BTC quốc tế</span>
             <SearchableSelect multiple value={sessionOrganizerFilter} onChange={setSessionOrganizerFilter} options={[...new Set(sessions.map((item) => item.organizer))].map((item) => ({ value: item, label: item }))} placeholder="Tất cả BTC" />
           </label>
-          <label>
+          <label className="min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500">Năm</span>
             <SearchableSelect multiple value={sessionYearFilter} onChange={setSessionYearFilter} options={[...new Set(sessions.map(sessionYear).filter(Boolean))].sort().map((item) => ({ value: item, label: item }))} placeholder="Tất cả năm" />
           </label>
-          <label>
+          <label className="min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500">Tháng / năm</span>
             <SearchableSelect
               multiple
@@ -1184,7 +1185,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
               placeholder="Tất cả thời gian"
             />
           </label>
-          <label>
+          <label className="min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500">Giai đoạn hiện tại</span>
             <div className="flex gap-2">
               <select value={sessionPhaseFilterMode} onChange={(event) => setSessionPhaseFilterMode(event.target.value as "include" | "exclude")} className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700" aria-label="Cách lọc giai đoạn">
@@ -2132,6 +2133,14 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
           <AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="sidebar" />
         </div>
       </aside>
+      <ModuleMobileNav
+        className="lg:hidden dt-mobile-nav"
+        onBack={onBackToWorkspace}
+        activeId={page}
+        onSelect={(nextPage) => go(nextPage as Page)}
+        items={nav.map((item) => ({ id: item.id, label: item.label, icon: item.icon }))}
+        ariaLabel="Điều hướng Khảo thí"
+      />
       <main className="md:ml-64">
         <header className="ft-module-header sticky top-0 z-10 flex h-16 items-center justify-between border-b px-5 md:px-8">
           <div className="flex items-center gap-2 text-sm text-slate-600">

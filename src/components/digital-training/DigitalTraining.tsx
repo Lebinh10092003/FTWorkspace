@@ -35,6 +35,7 @@ import FinanceReport from "./FinanceReport";
 import ProductManagement, { type ProductView, type ProductSubscription } from "./ProductManagement";
 import TrainingOverview from "./TrainingOverview";
 import Time24Input from "../Time24Input";
+import ModuleMobileNav from "../ModuleMobileNav";
 
 type Tab =
   | "overview"
@@ -4157,6 +4158,33 @@ export default function DigitalTraining({
           />
         </div>
       </aside>
+      <ModuleMobileNav
+        className="lg:hidden dt-mobile-nav"
+        onBack={onBackToWorkspace}
+        activeId={tab === "products" ? `products-${productView}` : tab}
+        onSelect={(nextTab) => {
+          if (nextTab.startsWith("products-")) {
+            goProduct(nextTab.replace("products-", "") as ProductView);
+          } else {
+            go(nextTab as Tab);
+          }
+        }}
+        items={[
+          { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
+          { id: "calendar", label: "Lịch", icon: CalendarDays },
+          { id: "sessions", label: "Báo cáo lịch", icon: ClipboardList },
+          { id: "partners", label: "Khách hàng", icon: Handshake },
+          { id: "leads", label: "Khách hàng mới", icon: Users },
+          { id: "partner-sessions", label: "Theo dõi tập huấn", icon: ClipboardList },
+          { id: "products-allocation", label: "KH hiện tại", icon: Handshake },
+          { id: "products-catalog", label: "Danh mục", icon: PackageSearch },
+          { id: "products-statistics", label: "Thống kê dùng", icon: ClipboardList },
+          ...(canViewFinance ? [{ id: "finance", label: "Tài chính", icon: BadgeDollarSign }] : []),
+          { id: "survey", label: "Khảo sát", icon: Users },
+          { id: "materials", label: "Tài liệu", icon: BookOpen },
+        ]}
+        ariaLabel="Điều hướng Đào tạo số"
+      />
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
           {loading ? (

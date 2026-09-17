@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ArrowLeft, FileCheck2, GraduationCap, Link2, Loader2 } from "lucide-react";
 
 import AccountMenu from "../AccountMenu";
+import ModuleMobileNav from "../ModuleMobileNav";
 import TrainingAssessmentsAdmin from "./TrainingAssessmentsAdmin";
 import QuestionBankSettings from "./QuestionBankSettings";
 
@@ -109,6 +110,22 @@ export default function TrainingAssessmentWorkspace({
           />
         </div>
       </aside>
+
+      <ModuleMobileNav
+        className="lg:hidden dt-mobile-nav"
+        onBack={onBackToWorkspace}
+        activeId={activeTab}
+        onSelect={(nextTab) => {
+          if (nextTab === "digital-training") onOpenDigitalTraining();
+          else setActiveTab(nextTab as "assessments" | "bank-settings");
+        }}
+        items={[
+          { id: "assessments", label: "Bài kiểm tra", icon: FileCheck2 },
+          ...(canManageQuestionBank ? [{ id: "bank-settings", label: "Ngân hàng đề", icon: Link2 }] : []),
+          { id: "digital-training", label: "Đào tạo số", icon: GraduationCap },
+        ]}
+        ariaLabel="Điều hướng Bài kiểm tra cuối khóa"
+      />
 
       <main className="md:ml-64">
         <header className="ft-module-header border-b px-5 py-4 md:px-8">

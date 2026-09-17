@@ -1140,7 +1140,7 @@ class WorkScheduleApiTests(TestCase):
         item.refresh_from_db()
         self.assertEqual((item.start_time, item.priority), (None, "medium"))
 
-    def test_sheet_unbold_override_survives_later_web_edits_until_priority_changes(self):
+    def test_sheet_unbold_override_survives_later_web_edits(self):
         item = WorkItem.objects.create(
             creator=self.executor,
             executor=self.executor,
@@ -1183,7 +1183,7 @@ class WorkScheduleApiTests(TestCase):
         })
         self.assertEqual(response.status_code, 200, response.data)
         item.refresh_from_db()
-        self.assertEqual((item.priority, item.sheet_emphasis), ("high", None))
+        self.assertEqual((item.priority, item.sheet_emphasis), ("medium", False))
 
     def test_manual_high_priority_without_time_is_preserved(self):
         item = WorkItem.objects.create(creator=self.executor, executor=self.executor,
@@ -1562,7 +1562,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         values[1] = "2026-09-07T17:00:00.000Z"
         with mock.patch("work_schedule.sheet_sync._service"), \
              mock.patch("work_schedule.sheet_sync.ensure_sync_columns"), \
-             mock.patch("work_schedule.sheet_sync.push_groups_to_sheet"):
+             mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True}):
             response = self.post({"event_id": "evt-iso-date", "row": self.ROW_NUMBER, "values": values})
 
         self.assertEqual(response.status_code, 200, response.content)
@@ -1570,7 +1570,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         item = WorkItem.objects.get(source_sheet_row=self.ROW_NUMBER, source_task_index=1)
         self.assertEqual(item.work_date.isoformat(), "2026-09-08")
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_repeated_task_lines_in_one_row_create_only_one_item(self, mock_service, mock_ensure, mock_push):
@@ -1583,7 +1583,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual(response.json()["createdCount"], 1)
         self.assertEqual(WorkItem.objects.filter(source_sheet_row=self.ROW_NUMBER).count(), 1)
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_clearing_row_content_deletes_tasks_previously_sourced_from_that_row(self, mock_service, mock_ensure, mock_push):
@@ -1600,7 +1600,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertFalse(WorkItem.objects.filter(source_sheet_row=self.ROW_NUMBER).exists())
         self.assertEqual(cleared.json()["groups"], [[self.EMPLOYEE_EMAIL, "2026-09-08"]])
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_rejects_request_without_correct_secret(self, mock_service, mock_ensure, mock_push):
@@ -1611,10 +1611,11 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertFalse(WorkItem.objects.filter(source_sheet_row=self.ROW_NUMBER).exists())
         mock_service.assert_not_called()
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_valid_edit_creates_work_item_and_writes_task_id_back_to_sheet(self, mock_service, mock_ensure, mock_push):
+        mock_push.return_value = {"updated": True}
         response = self.post({"event_id": "evt-2", "row": self.ROW_NUMBER, "values": self.row_values()})
         self.assertEqual(response.status_code, 200, response.content)
         body = response.json()
@@ -1625,10 +1626,10 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual(item.title, "Việc test webhook")
         self.assertEqual(item.work_date.isoformat(), "2026-09-08")
         mock_push.assert_called_once()
-        touched_groups = mock_push.call_args.args[1]
-        self.assertEqual(touched_groups, {(self.EMPLOYEE_EMAIL, item.work_date)})
+        self.assertEqual(mock_push.call_args.args[1], self.ROW_NUMBER)
+        self.assertEqual([row.pk for row in mock_push.call_args.args[3]], [item.pk])
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_row_move_without_task_id_keeps_the_same_work_item(self, mock_service, mock_ensure, mock_push):
@@ -1649,7 +1650,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual(item.source_sheet_row, self.ROW_NUMBER + 25)
         self.assertEqual(WorkItem.objects.filter(executor_id=self.EMPLOYEE_EMAIL, work_date="2026-09-08").count(), 1)
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_copied_task_id_cannot_move_work_to_another_person(self, mock_service, mock_ensure, mock_push):
@@ -1676,7 +1677,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual(response.json()["createdCount"], 0)
         mock_push.assert_not_called()
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_hidden_employee_identity_mismatch_rejects_entire_row(self, mock_service, mock_ensure, mock_push):
@@ -1694,7 +1695,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertFalse(WorkItem.objects.filter(title="Nội dung bị lệch cột ẩn").exists())
         mock_push.assert_not_called()
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_competing_duplicate_row_without_group_ids_cannot_overwrite_canonical_tasks(
@@ -1773,7 +1774,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual(result["duplicateGroups"][0]["selectedRow"], self.ROW_NUMBER)
         self.assertEqual(result["duplicateGroups"][0]["rows"], [self.ROW_NUMBER, self.ROW_NUMBER + 1])
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_time_prefixed_sheet_row_is_high_priority(self, mock_service, mock_ensure, mock_push):
@@ -1787,7 +1788,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertTrue(item.time_prefix_in_title)
 
     @mock.patch("work_schedule.sheet_sync._row_task_format_runs", return_value=[[]])
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_unbold_sheet_row_clears_time_auto_priority(self, mock_service, mock_ensure, mock_push, mock_format_runs):
@@ -1799,7 +1800,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual((item.priority, item.sheet_emphasis), ("medium", False))
         mock_format_runs.assert_called_once()
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_ingesting_from_sheet_does_not_queue_a_web_to_sheet_push_back(self, mock_service, mock_ensure, mock_push):
@@ -1807,7 +1808,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.post({"event_id": "evt-3", "row": self.ROW_NUMBER, "values": self.row_values()})
         self.assertEqual(WorkScheduleSheetChange.objects.count(), before)
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_duplicate_event_id_is_not_reprocessed(self, mock_service, mock_ensure, mock_push):
@@ -1822,7 +1823,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual(WorkItem.objects.get(source_sheet_row=self.ROW_NUMBER, source_task_index=1).title, "Việc gốc")
         self.assertEqual(WorkScheduleSheetInboundEvent.objects.filter(event_id="evt-4").count(), 1)
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_rejects_payload_missing_required_fields(self, mock_service, mock_ensure, mock_push):
@@ -1918,7 +1919,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_push_back_failure_does_not_fail_the_webhook_or_lose_the_ingested_item(self, mock_service, mock_ensure):
-        with mock.patch("work_schedule.sheet_sync.push_groups_to_sheet", side_effect=RuntimeError("Sheets API quota")):
+        with mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", side_effect=RuntimeError("Sheets API quota")):
             response = self.post({"event_id": "evt-6", "row": self.ROW_NUMBER, "values": self.row_values()})
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()["pushBackError"], "Sheets API quota")
@@ -1927,7 +1928,7 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual(event.status, WorkScheduleSheetInboundEvent.STATUS_PROCESSED)
         self.assertIn("Sheets API quota", event.error)
 
-    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
     @mock.patch("work_schedule.sheet_sync._service")
     def test_retrying_a_failed_event_id_actually_reprocesses_instead_of_no_opping(self, mock_service, mock_ensure, mock_push):
@@ -1956,3 +1957,145 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual(event.status, WorkScheduleSheetInboundEvent.STATUS_PROCESSED)
         self.assertTrue(WorkItem.objects.filter(source_sheet_row=self.ROW_NUMBER).exists())
         self.assertEqual(WorkScheduleSheetInboundEvent.objects.filter(event_id="evt-7").count(), 1)
+
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_sheet_editor_and_timestamp_are_recorded_on_each_item(self, mock_service, mock_ensure, mock_push):
+        mock_push.return_value = {"updated": True}
+        edited_at = "2026-09-17T09:10:11+07:00"
+
+        response = self.post({
+            "event_id": "evt-thuanld-edit",
+            "row": self.ROW_NUMBER,
+            "values": self.row_values("Nhiệm vụ do ThuanLD sửa"),
+            "edited_at": edited_at,
+            "editor_email": "ThuanLD@fermat.edu.vn",
+        })
+
+        self.assertEqual(response.status_code, 200, response.content)
+        item = WorkItem.objects.get(source_sheet_row=self.ROW_NUMBER, source_task_index=1)
+        event = WorkScheduleSheetInboundEvent.objects.get(event_id="evt-thuanld-edit")
+        self.assertEqual(item.sheet_last_editor_email, "thuanld@fermat.edu.vn")
+        self.assertEqual(item.sheet_last_event_id, "evt-thuanld-edit")
+        self.assertEqual(timezone.localtime(item.sheet_last_edited_at).isoformat(), edited_at)
+        self.assertEqual(event.editor_email, "thuanld@fermat.edu.vn")
+        self.assertEqual(timezone.localtime(event.edited_at).isoformat(), edited_at)
+
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_newer_sheet_event_wins_when_webhook_delivery_is_out_of_order(self, mock_service, mock_ensure, mock_push):
+        mock_push.return_value = {"updated": True}
+        newer_values = self.row_values("Nội dung mới nhất")
+        older_values = self.row_values("Nội dung cũ đến muộn")
+
+        first = self.post({
+            "event_id": "evt-newer",
+            "row": self.ROW_NUMBER,
+            "values": newer_values,
+            "edited_at": "2026-09-17T10:00:00+07:00",
+            "editor_email": "thuanld@fermat.edu.vn",
+        })
+        self.assertEqual(first.status_code, 200, first.content)
+
+        late = self.post({
+            "event_id": "evt-older",
+            "row": self.ROW_NUMBER,
+            "values": older_values,
+            "edited_at": "2026-09-17T09:59:00+07:00",
+            "editor_email": "thuanld@fermat.edu.vn",
+        })
+        self.assertEqual(late.status_code, 200, late.content)
+        self.assertEqual(late.json()["updatedCount"], 0)
+        self.assertEqual(late.json()["createdCount"], 0)
+        self.assertEqual(late.json()["deletedCount"], 0)
+
+        item = WorkItem.objects.get(source_sheet_row=self.ROW_NUMBER, source_task_index=1)
+        self.assertEqual(item.title, "Nội dung mới nhất")
+        self.assertEqual(item.sheet_last_event_id, "evt-newer")
+        self.assertEqual(WorkScheduleSheetInboundEvent.objects.get(event_id="evt-older").status, "processed")
+
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_older_sheet_event_cannot_recreate_tasks_after_a_newer_clear(self, mock_service, mock_ensure, mock_push):
+        mock_push.return_value = {"updated": True}
+        created = self.post({
+            "event_id": "evt-before-clear",
+            "row": self.ROW_NUMBER,
+            "values": self.row_values("Nhiệm vụ sẽ bị xóa"),
+            "edited_at": "2026-09-17T10:00:00+07:00",
+        })
+        self.assertEqual(created.status_code, 200, created.content)
+
+        cleared_values = self.row_values("")
+        cleared_values[4] = ""
+        cleared = self.post({
+            "event_id": "evt-clear-newer",
+            "row": self.ROW_NUMBER,
+            "values": cleared_values,
+            "edited_at": "2026-09-17T10:02:00+07:00",
+        })
+        self.assertEqual(cleared.status_code, 200, cleared.content)
+        self.assertFalse(WorkItem.objects.filter(source_sheet_row=self.ROW_NUMBER).exists())
+
+        late = self.post({
+            "event_id": "evt-recreate-old",
+            "row": self.ROW_NUMBER,
+            "values": self.row_values("Không được khôi phục"),
+            "edited_at": "2026-09-17T10:01:00+07:00",
+        })
+        self.assertEqual(late.status_code, 200, late.content)
+        self.assertEqual(late.json()["createdCount"], 0)
+        self.assertEqual(late.json()["deletedCount"], 0)
+        self.assertFalse(WorkItem.objects.filter(source_sheet_row=self.ROW_NUMBER).exists())
+
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_repeated_task_uuid_is_rejected_without_mutating_the_row(self, mock_service, mock_ensure, mock_push):
+        canonical = WorkItem.objects.create(
+            creator_id=self.EMPLOYEE_EMAIL,
+            executor_id=self.EMPLOYEE_EMAIL,
+            title="Nhiệm vụ chuẩn",
+            work_date="2026-09-08",
+            source_sheet_row=self.ROW_NUMBER,
+            source_task_index=1,
+        )
+        values = self.row_values()
+        values[4] = "1. Nhiệm vụ sao chép\n2. Nhiệm vụ khác"
+        values[9] = f"1. {canonical.sync_uid}\n2. {canonical.sync_uid}"
+
+        response = self.post({"event_id": "evt-duplicate-uuid", "row": self.ROW_NUMBER, "values": values})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["createdCount"], 0)
+        self.assertEqual(response.json()["updatedCount"], 0)
+        self.assertEqual(response.json()["deletedCount"], 0)
+        canonical.refresh_from_db()
+        self.assertEqual(canonical.title, "Nhiệm vụ chuẩn")
+        self.assertEqual(WorkItem.objects.filter(source_sheet_row=self.ROW_NUMBER).count(), 1)
+        mock_push.assert_not_called()
+
+    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_sheet_webhook_writes_only_metadata_and_never_full_rewrites_visible_content(
+        self, mock_service, mock_ensure, mock_metadata, mock_full_push
+    ):
+        mock_metadata.return_value = {"updated": True}
+
+        response = self.post({
+            "event_id": "evt-metadata-only",
+            "row": self.ROW_NUMBER,
+            "values": self.row_values("Sheet là bản chuẩn"),
+            "edited_at": "2026-09-17T10:05:00+07:00",
+            "editor_email": "thuanld@fermat.edu.vn",
+        })
+
+        self.assertEqual(response.status_code, 200, response.content)
+        mock_full_push.assert_not_called()
+        mock_metadata.assert_called_once()
+        self.assertEqual(mock_metadata.call_args.args[1], self.ROW_NUMBER)

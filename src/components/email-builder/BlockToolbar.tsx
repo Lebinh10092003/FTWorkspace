@@ -82,7 +82,7 @@ export default function BlockToolbar({
   };
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-2 shadow-sm" onMouseDown={keepSelection}>
+    <div className="email-block-toolbar mb-3 flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-2 shadow-sm" onMouseDown={keepSelection}>
       <button type="button" onClick={() => runCommand('bold')} title="In đậm" className="rounded-lg p-2 text-slate-600 hover:bg-slate-200"><Bold className="h-4 w-4" /></button>
       <button type="button" onClick={() => runCommand('italic')} title="In nghiêng" className="rounded-lg p-2 text-slate-600 hover:bg-slate-200"><Italic className="h-4 w-4" /></button>
       <button type="button" onClick={() => runCommand('underline')} title="Gạch chân" className="rounded-lg p-2 text-slate-600 hover:bg-slate-200"><Underline className="h-4 w-4" /></button>

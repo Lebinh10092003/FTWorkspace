@@ -61,6 +61,12 @@ class WorkItem(models.Model):
     # retained for legacy rows whose rich formatting has not been captured;
     # an empty list means the title is explicitly unformatted.
     title_format_runs = models.JSONField(blank=True, null=True, default=None)
+    # The Sheet is the authoritative editor for content and rich text. Keep
+    # the last Sheet edit on the item so an older webhook cannot roll back a
+    # newer edit when Apps Script deliveries arrive out of order.
+    sheet_last_edited_at = models.DateTimeField(blank=True, null=True, db_index=True)
+    sheet_last_editor_email = models.EmailField(blank=True, default="")
+    sheet_last_event_id = models.CharField(max_length=64, blank=True, default="")
     sync_uid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     source_sync_hash = models.CharField(max_length=64, blank=True, default="")
     reviewed_by = models.ForeignKey(
@@ -142,6 +148,8 @@ class WorkScheduleSheetInboundEvent(models.Model):
     event_id = models.CharField(max_length=64, unique=True, db_index=True)
     row_number = models.PositiveIntegerField()
     payload = models.JSONField()
+    edited_at = models.DateTimeField(blank=True, null=True, db_index=True)
+    editor_email = models.EmailField(blank=True, default="")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, db_index=True)
     created_count = models.PositiveSmallIntegerField(default=0)
     updated_count = models.PositiveSmallIntegerField(default=0)

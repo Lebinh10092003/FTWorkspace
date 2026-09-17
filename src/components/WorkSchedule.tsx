@@ -5,6 +5,7 @@ import AccountMenu from "./AccountMenu";
 import { appDialog } from "./AppDialog";
 import Time24Input from "./Time24Input";
 import MonthlySheetLinkEditor from "./MonthlySheetLinkEditor";
+import ModuleMobileNav from "./ModuleMobileNav";
 
 type WorkStatus = "todo" | "doing" | "completed" | "reviewed";
 type Priority = "low" | "medium" | "high";
@@ -942,6 +943,14 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
             </div>
           </div>
         </header>
+        <ModuleMobileNav
+          className="lg:hidden"
+          onBack={onBackToWorkspace}
+          activeId={view}
+          onSelect={(nextView) => navigateSchedule(nextView as View)}
+          items={navItems.map((item) => ({ id: item.id, label: item.label, icon: item.icon }))}
+          ariaLabel="Điều hướng lịch làm việc"
+        />
         <div className="ft-module-content mx-auto max-w-[1680px] p-4 sm:p-6 lg:p-8">
           {error && (
             <div className="mb-5 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">

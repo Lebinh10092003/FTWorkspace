@@ -118,10 +118,10 @@ export default function EmailBuilderHeader({
   const secondaryButtonClass = 'inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 active:bg-slate-100';
 
   return (
-    <header className="z-10 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 border-b border-slate-200/80 bg-white px-4 py-3 shadow-[0_1px_10px_rgba(0,0,0,0.01)] xl:grid-cols-[minmax(0,1fr)_auto_auto] xl:px-5">
+    <header className="email-builder-header z-10 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 border-b border-slate-200/80 bg-white px-4 py-3 shadow-[0_1px_10px_rgba(0,0,0,0.01)] xl:grid-cols-[minmax(0,1fr)_auto_auto] xl:px-5">
       
       {/* Left section: back & active template dropdown/editor */}
-      <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-3">
+      <div className="email-builder-header-left col-start-1 row-start-1 flex min-w-0 items-center gap-3">
         <img src="/logo.png" alt="Fermat" className="ft-module-logo hidden h-8 w-auto shrink-0 object-contain sm:block" />
         <button
           onClick={onBackToWorkspace}
@@ -172,12 +172,12 @@ export default function EmailBuilderHeader({
               <span title={`Mẫu chia sẻ · Chủ sở hữu: ${template.ownerName || template.createdBy || 'Bạn'}`} className="hidden shrink-0 rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-violet-700 sm:inline-flex">Đã chia sẻ</span>
             )}
           {/* Quick template selector dropdown */}
-          <div className="mt-1.5 flex items-center gap-2 text-xs">
+          <div className="email-builder-template-row mt-1.5 flex items-center gap-2 text-xs">
             <span className="text-slate-400 font-medium">Đang sửa:</span>
             <select
               value={template.id}
               onChange={e => onSelectTemplate(e.target.value)}
-              className="max-w-[210px] cursor-pointer truncate rounded-md border border-transparent bg-transparent px-1 py-0.5 font-bold text-slate-700 outline-none hover:border-slate-200 hover:text-blue-650 sm:max-w-[360px]"
+              className="email-builder-template-select max-w-[210px] cursor-pointer truncate rounded-md border border-transparent bg-transparent px-1 py-0.5 font-bold text-slate-700 outline-none hover:border-slate-200 hover:text-blue-650 sm:max-w-[360px]"
             >
               {templatesList.map(t => (
                 <option key={t.id} value={t.id}>{t.name}</option>
@@ -188,7 +188,7 @@ export default function EmailBuilderHeader({
       </div>
 
       {/* Right section: utility operations + COPY CTA */}
-      <div className="col-span-2 row-start-2 flex min-w-0 items-center justify-end gap-1.5 overflow-x-auto border-t border-slate-100 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:overflow-visible xl:border-t-0 xl:pt-0">
+      <div className="email-builder-header-actions col-span-2 row-start-2 flex min-w-0 items-center justify-end gap-1.5 overflow-x-auto border-t border-slate-100 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:overflow-visible xl:border-t-0 xl:pt-0">
         {/* Template admin controls */}
         <button
           onClick={onDuplicateTemplate}
@@ -313,7 +313,7 @@ export default function EmailBuilderHeader({
         </button>
       </div>
 
-      <div className="col-start-2 row-start-1 xl:col-start-3">
+      <div className="email-builder-account col-start-2 row-start-1 xl:col-start-3">
         <AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar"/>
       </div>
 

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { UserRole } from '../../types';
 import AccountMenu from '../AccountMenu';
+import ModuleMobileNav from '../ModuleMobileNav';
 
 interface SidebarProps {
   activeTab: string;
@@ -33,6 +34,7 @@ export default function Sidebar({ activeTab, setActiveTab, user, userRole, idTok
   ];
 
   return (
+    <>
     <div className="ft-module-sidebar hidden w-64 h-screen flex-col sticky top-0 border-r md:flex">
       {/* Brand logo & title */}
       <div className="ft-sidebar-brand p-5 border-b flex items-center gap-3">
@@ -85,5 +87,14 @@ export default function Sidebar({ activeTab, setActiveTab, user, userRole, idTok
         />
       </div>
     </div>
+    <ModuleMobileNav
+      className="lg:hidden social-mobile-nav"
+      onBack={onBackToWorkspace}
+      activeId={activeTab}
+      onSelect={setActiveTab}
+      items={menuItems}
+      ariaLabel="Điều hướng Truyền thông"
+    />
+    </>
   );
 }
