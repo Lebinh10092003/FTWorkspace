@@ -25,6 +25,9 @@
 var SHEET_NAME = 'Lịch công tác';
 var OUTBOX_SHEET_NAME = '_SYNC_OUTBOX';
 var FIRST_DATA_ROW = 3; // row 1 is the title and row 2 contains the column headers.
+var FORMAT_SELECTION_PROPERTY = 'LAST_SCHEDULE_FORMAT_SELECTION';
+var FORMAT_SELECTION_MAX_AGE_MS = 5 * 60 * 1000;
+var FORMAT_SELECTION_MAX_ROWS = 100;
 
 // Installable trigger entry point. Wire this up via Triggers -> Add Trigger -> On edit.
 function onEditInstallable(e) {
@@ -41,28 +44,71 @@ function onEditInstallable(e) {
   }
 }
 
+// Simple trigger. Google does not include a range in an installable onChange
+// event, so keep the last selected schedule range for a later FORMAT event.
+// Keep this handler deliberately lightweight: reading rich text here made
+// concurrent selection events race and allowed an older row to overwrite the
+// latest selection before the FORMAT event was processed.
+function onSelectionChange(e) {
+  if (!e || !e.range) return;
+  var range = e.range;
+  var sheet = range.getSheet();
+  if (sheet.getName() !== SHEET_NAME) return;
+
+  var firstRow = Math.max(FIRST_DATA_ROW, range.getRow());
+  var lastRow = range.getLastRow();
+  var numRows = lastRow - firstRow + 1;
+  if (numRows < 1 || numRows > FORMAT_SELECTION_MAX_ROWS) return;
+
+  var selection = {
+    sheet_id: sheet.getSheetId(),
+    first_row: firstRow,
+    num_rows: numRows,
+    recorded_at: Date.now(),
+    // The baseline is captured lazily by onChangeInstallable. A simple
+    // selection trigger should not perform an extra Sheets read.
+    fingerprint: '',
+  };
+  var lock = LockService.getDocumentLock();
+  try {
+    if (!lock.tryLock(1000)) return;
+    PropertiesService.getDocumentProperties().setProperty(
+      FORMAT_SELECTION_PROPERTY,
+      JSON.stringify(selection),
+    );
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (error) {
+      // The lock may not have been acquired before a transient trigger error.
+    }
+  }
+}
+
 // Structural row operations do not emit row-level onEdit events. Reconcile the
 // retained window after a real row insertion/deletion. Do not treat OTHER as a
 // structural edit: Google emits it for unrelated changes and it caused needless
 // full syncs while the backend was formatting or repairing rows.
 function onChangeInstallable(e) {
   if (!e || !e.source) return;
-  var sheet = e.source.getActiveSheet();
-  if (!sheet || sheet.getName() !== SHEET_NAME) return;
   var changeType = String(e.changeType || 'OTHER');
   if (changeType === 'FORMAT') {
-    // Formatting-only edits do not fire onEdit. Send the active rows so the
-    // backend can persist the explicit bold/unbold choice for each task.
-    var activeRange = sheet.getActiveRange();
-    if (!activeRange) return;
-    var firstRow = activeRange.getRow();
-    var numRows = activeRange.getNumRows();
+    // Formatting-only edits do not fire onEdit and onChange has no range.
+    // Resolve the last selected range from the schedule tab, even if the user
+    // has already switched to another tab while the trigger was queued.
+    var selection = rememberedFormatSelection_(e.source);
+    if (!selection) return;
+    var sheet = e.source.getSheetByName(SHEET_NAME);
+    var firstRow = selection.first_row;
+    var numRows = selection.num_rows;
     for (var offset = 0; offset < numRows; offset++) {
       var row = firstRow + offset;
       if (row >= FIRST_DATA_ROW) handleRowEdit_(sheet, row, e);
     }
     return;
   }
+  var sheet = e.source.getActiveSheet();
+  if (!sheet || sheet.getName() !== SHEET_NAME) return;
   if (['INSERT_ROW', 'REMOVE_ROW'].indexOf(changeType) === -1) return;
 
   var props = PropertiesService.getScriptProperties();
@@ -76,6 +122,70 @@ function onChangeInstallable(e) {
   var outboxRow = appendToOutbox_(eventId, 1, payload);
   var result = sendFullSyncWebhook_(eventId, changeType);
   markOutboxResult_(outboxRow, result);
+}
+
+function rememberedFormatSelection_(spreadsheet) {
+  var raw = PropertiesService.getDocumentProperties().getProperty(FORMAT_SELECTION_PROPERTY);
+  if (!raw) return null;
+
+  var selection;
+  try {
+    selection = JSON.parse(raw);
+  } catch (error) {
+    return null;
+  }
+  if (!selection || !selection.first_row || !selection.num_rows || !selection.recorded_at) return null;
+  if (Date.now() - Number(selection.recorded_at) > FORMAT_SELECTION_MAX_AGE_MS) return null;
+
+  var sheet = spreadsheet.getSheetByName(SHEET_NAME);
+  if (!sheet || Number(selection.sheet_id) !== sheet.getSheetId()) return null;
+  if (selection.first_row < FIRST_DATA_ROW || selection.num_rows > FORMAT_SELECTION_MAX_ROWS) return null;
+
+  var currentFingerprint = contentFormatFingerprint_(sheet, selection.first_row, selection.num_rows);
+  if (!currentFingerprint) return null;
+  if (selection.fingerprint && currentFingerprint === selection.fingerprint) return null;
+
+  // Advance the watermark before sending the row. If Google emits duplicate
+  // FORMAT events, the same format change must not create duplicate web writes.
+  selection.fingerprint = currentFingerprint;
+  selection.recorded_at = Date.now();
+  PropertiesService.getDocumentProperties().setProperty(
+    FORMAT_SELECTION_PROPERTY,
+    JSON.stringify(selection),
+  );
+  return selection;
+}
+
+function contentFormatFingerprint_(sheet, firstRow, numRows) {
+  try {
+    var contentColumn = contentColumn_(sheet);
+    var richValues = sheet.getRange(firstRow, contentColumn, numRows, 1).getRichTextValues();
+    return JSON.stringify(richValues.map(function(row) {
+      var richText = row && row[0];
+      if (!richText) return [];
+      return richText.getRuns().map(function(run) {
+        var style = run.getTextStyle();
+        return [
+          Number(run.getStartIndex() || 0),
+          String(run.getText() || ''),
+          !!(style && style.isBold && style.isBold() === true),
+          !!(style && style.isItalic && style.isItalic() === true),
+        ];
+      });
+    }));
+  } catch (error) {
+    return '';
+  }
+}
+
+function contentColumn_(sheet) {
+  var lastColumn = Math.max(sheet.getLastColumn(), 5);
+  var headers = sheet.getRange(2, 1, 1, lastColumn).getDisplayValues()[0];
+  for (var index = 0; index < headers.length; index++) {
+    var header = String(headers[index] || '').replace(/\s+/g, ' ').trim();
+    if (header === 'Nội dung công việc') return index + 1;
+  }
+  return 5;
 }
 
 function handleRowEdit_(sheet, row, event) {
