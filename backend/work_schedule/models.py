@@ -54,6 +54,9 @@ class WorkItem(models.Model):
     source_task_index = models.PositiveIntegerField(blank=True, null=True)
     source_record_id = models.CharField(max_length=100, blank=True, default="")
     time_prefix_in_title = models.BooleanField(default=False)
+    # ``None`` keeps the legacy/web-authored automatic priority behavior. A
+    # boolean records an explicit bold/unbold choice made in the Sheet.
+    sheet_emphasis = models.BooleanField(blank=True, null=True)
     sync_uid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     source_sync_hash = models.CharField(max_length=64, blank=True, default="")
     reviewed_by = models.ForeignKey(
@@ -75,8 +78,12 @@ class WorkItem(models.Model):
         if is_personal_task(self.title):
             self.priority = "medium"
             self.priority_before_time = "medium" if self.time_prefix_in_title else None
+            if self.sheet_emphasis is not None:
+                self.sheet_emphasis = False
             if kwargs.get("update_fields"):
-                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"priority", "priority_before_time"}
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {
+                    "priority", "priority_before_time", "sheet_emphasis"
+                }
         return super().save(*args, **kwargs)
 
     def __str__(self):

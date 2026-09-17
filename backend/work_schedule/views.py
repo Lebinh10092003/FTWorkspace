@@ -217,13 +217,29 @@ def _apply_data(request, item, creating=False, allow_people=True, data_override=
 
     requested_status = str(data.get("status", item.status if item else WorkItem.STATUS_TODO) or "").lower()
     requested_priority = str(data.get("priority", item.priority if item else "medium") or "").lower()
+    priority_changed = bool(
+        item and item.pk and "priority" in data and requested_priority != item.priority
+    )
+    if priority_changed and getattr(item, "sheet_emphasis", None) is not None:
+        # A deliberate priority change in the web UI supersedes an earlier
+        # Sheet-only bold/unbold override.
+        item.sheet_emphasis = None
+    sheet_emphasis = getattr(item, "sheet_emphasis", None) if item else None
     if authored_time.has_time_prefix:
-        if not item.time_prefix_in_title:
-            item.priority_before_time = requested_priority
-        requested_priority = "high"
+        if sheet_emphasis is False:
+            requested_priority = "medium"
+            item.priority_before_time = "medium"
+        else:
+            if not item.time_prefix_in_title:
+                item.priority_before_time = requested_priority
+            requested_priority = "high"
     elif item.time_prefix_in_title and "title" in data:
-        requested_priority = item.priority_before_time or "medium"
-        item.priority_before_time = None
+        if sheet_emphasis is not None:
+            requested_priority = "high" if sheet_emphasis else "medium"
+            item.priority_before_time = None
+        else:
+            requested_priority = item.priority_before_time or "medium"
+            item.priority_before_time = None
     if requested_status not in VALID_STATUSES or requested_status == WorkItem.STATUS_REVIEWED:
         return Response({"error": "Trạng thái công việc không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
     if requested_priority not in VALID_PRIORITIES:
@@ -496,15 +512,25 @@ def work_day_edit(request):
                     item.time_prefix_in_title = parsed_title.has_time_prefix
                     update_fields.extend(["start_time", "end_time", "time_prefix_in_title"])
                     if parsed_title.has_time_prefix:
-                        if not had_time_prefix:
-                            item.priority_before_time = item.priority
-                            update_fields.append("priority_before_time")
-                        item.priority = "high"
-                        update_fields.append("priority")
+                        if getattr(item, "sheet_emphasis", None) is False:
+                            item.priority = "medium"
+                            item.priority_before_time = "medium"
+                            update_fields.extend(["priority", "priority_before_time"])
+                        else:
+                            if not had_time_prefix:
+                                item.priority_before_time = item.priority
+                                update_fields.append("priority_before_time")
+                            item.priority = "high"
+                            update_fields.append("priority")
                     elif had_time_prefix:
-                        item.priority = item.priority_before_time or "medium"
-                        item.priority_before_time = None
-                        update_fields.extend(["priority", "priority_before_time"])
+                        if getattr(item, "sheet_emphasis", None) is not None:
+                            item.priority = "high" if item.sheet_emphasis else "medium"
+                            item.priority_before_time = None
+                        else:
+                            item.priority = item.priority_before_time or "medium"
+                            item.priority_before_time = None
+                        update_fields.append("priority")
+                        update_fields.append("priority_before_time")
                 if row["status"] is not None and row["status"] != item.status:
                     item.status = row["status"]
                     update_fields.append("status")
@@ -767,7 +793,7 @@ def work_schedule_sheet_webhook(request):
     instead of a user token, since Apps Script cannot hold a logged-in session."""
     from .sheet_sync import (
         _canonical_row, _ingest_row, _service, ensure_sync_columns,
-        full_two_way_sync, push_groups_to_sheet,
+        _row_task_emphasis, full_two_way_sync, push_groups_to_sheet,
     )
     from .signals import suppress_sheet_queue
 
@@ -904,9 +930,12 @@ def work_schedule_sheet_webhook(request):
             from .sheet_sync import LEGACY_COLUMNS
             columns = LEGACY_COLUMNS
         row = _canonical_row([str(value) for value in values], columns)
+        task_emphasis = _row_task_emphasis(service, row_number, columns)
         with transaction.atomic():
             with suppress_sheet_queue():
-                created_count, updated_count, deleted_count, touched = _ingest_row(row_number, row, timezone.localdate())
+                created_count, updated_count, deleted_count, touched = _ingest_row(
+                    row_number, row, timezone.localdate(), task_emphasis=task_emphasis
+                )
             event.status = WorkScheduleSheetInboundEvent.STATUS_PROCESSED
             event.created_count = created_count
             event.updated_count = updated_count

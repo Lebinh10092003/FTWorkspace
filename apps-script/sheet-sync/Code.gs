@@ -50,6 +50,19 @@ function onChangeInstallable(e) {
   var sheet = e.source.getActiveSheet();
   if (!sheet || sheet.getName() !== SHEET_NAME) return;
   var changeType = String(e.changeType || 'OTHER');
+  if (changeType === 'FORMAT') {
+    // Formatting-only edits do not fire onEdit. Send the active rows so the
+    // backend can persist the explicit bold/unbold choice for each task.
+    var activeRange = sheet.getActiveRange();
+    if (!activeRange) return;
+    var firstRow = activeRange.getRow();
+    var numRows = activeRange.getNumRows();
+    for (var offset = 0; offset < numRows; offset++) {
+      var row = firstRow + offset;
+      if (row >= FIRST_DATA_ROW) handleRowEdit_(sheet, row);
+    }
+    return;
+  }
   if (['INSERT_ROW', 'REMOVE_ROW'].indexOf(changeType) === -1) return;
 
   var props = PropertiesService.getScriptProperties();

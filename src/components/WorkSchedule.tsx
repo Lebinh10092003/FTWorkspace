@@ -1458,8 +1458,6 @@ function matchGridTasks(entries: Array<{ number: number; text: string }>, origin
     return candidate;
   });
 }
-const timePrefixedGridLine = /^\s*\d+\s*[.,)]\s*(?:\[\s*(?:hỗ\s+trợ|lịch\s+cá\s+nhân)\s*\]\s*)*\d{1,2}(?:\s*[hH]\s*\d{0,2}|\s*:\s*\d{2})(?=\s|[:;,.-])/i;
-
 const supportTag = /^\s*\[\s*hỗ\s+trợ\s*\]\s*/i;
 const personalTag = /^\s*\[\s*lịch\s+cá\s+nhân\s*\]\s*/i;
 const personalPhrase = /(?:^|[^\p{L}\p{N}])lịch\s+(?:cá\s+nhân|riêng)(?=$|[^\p{L}\p{N}])/iu;
@@ -1508,8 +1506,7 @@ function ImportantWorkContentEditor({ value, tasks, className, onInput, onChange
   const renderedLines = value.split("\n").map((line, index) => {
     const numbered = line.match(/^\s*(\d{1,3})\s*[.,)]\s*/);
     if (numbered) {
-      const task = tasks.find((item) => item.dailyOrder === Number(numbered[1]));
-      currentImportant = !personalByOrder.get(Number(numbered[1])) && (timePrefixedGridLine.test(line) || (priorityByOrder.get(Number(numbered[1])) === "high" && !task?.timePrefixInTitle));
+      currentImportant = !personalByOrder.get(Number(numbered[1])) && priorityByOrder.get(Number(numbered[1])) === "high";
     }
     const marker = numbered?.[0] || "";
     const taskText = numbered ? line.slice(marker.length) : line;

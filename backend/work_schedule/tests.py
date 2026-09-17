@@ -24,6 +24,7 @@ from .sheet_sync import (
     _insert_missing_rows_by_date,
     _row_hash,
     _row_employee_email,
+    _row_task_emphasis,
     _reorder_misplaced_web_rows,
     _sheet_columns,
     _unique_sheet_tasks,
@@ -308,7 +309,51 @@ class WorkScheduleSheetParserTests(TestCase):
             [Item("high"), Item("medium")],
         )
         self.assertTrue(priority_runs[0]["format"]["bold"])
-        self.assertEqual(priority_runs[1]["format"], {})
+        self.assertFalse(priority_runs[1]["format"]["bold"])
+        self.assertFalse(priority_runs[1]["format"]["italic"])
+
+    def test_sheet_rich_text_reads_bold_state_for_each_task(self):
+        first_line = "1. 17h00: Nhiệm vụ quan trọng"
+        content = first_line + "\n2. Nhiệm vụ thường"
+        service = mock.Mock()
+        service.spreadsheets.return_value.get.return_value.execute.return_value = {
+            "sheets": [{"data": [{"startRow": 5000, "rowData": [{"values": [{
+                "formattedValue": content,
+                "userEnteredFormat": {"textFormat": {"bold": True}},
+                "textFormatRuns": [
+                    {"startIndex": 0, "format": {"bold": True}},
+                    {"startIndex": len(first_line) + 1, "format": {"bold": False}},
+                ],
+            }]}]}]}]
+        }
+
+        self.assertEqual(
+            _row_task_emphasis(service, 5001, {"content": 4}),
+            [True, False],
+        )
+
+    def test_sheet_emphasis_overrides_time_priority_and_survives_reingest(self):
+        from .sheet_sync import _ingest_row
+
+        UserProfile.objects.create(
+            email="sheet-priority@example.com", name="Sheet Priority", role="EMPLOYEE", access_modules=[]
+        )
+        row = [
+            "Ba", "15/09/2026", "38", "Sheet Priority", "1. 8h00: Việc đã bỏ đậm",
+            "", "", "", "REC-SHEET-PRIORITY", "", "",
+        ]
+
+        _ingest_row(5001, row, date(2026, 9, 15), task_emphasis=[True])
+        item = WorkItem.objects.get(source_sheet_row=5001)
+        self.assertEqual((item.priority, item.sheet_emphasis), ("high", True))
+
+        _ingest_row(5001, row, date(2026, 9, 15), task_emphasis=[False])
+        item.refresh_from_db()
+        self.assertEqual((item.priority, item.sheet_emphasis), ("medium", False))
+
+        _ingest_row(5001, row, date(2026, 9, 15))
+        item.refresh_from_db()
+        self.assertEqual((item.priority, item.sheet_emphasis), ("medium", False))
 
     def test_future_roster_row_resolves_employee_without_hidden_id(self):
         from work_schedule.sheet_sync import _row_employee_email
@@ -1009,6 +1054,51 @@ class WorkScheduleApiTests(TestCase):
         item.refresh_from_db()
         self.assertEqual((item.start_time, item.priority), (None, "medium"))
 
+    def test_sheet_unbold_override_survives_later_web_edits_until_priority_changes(self):
+        item = WorkItem.objects.create(
+            creator=self.executor,
+            executor=self.executor,
+            work_date=date(2026, 9, 15),
+            title="8h00: Việc đã bỏ đậm",
+            start_time=time(8),
+            priority="medium",
+            priority_before_time="medium",
+            time_prefix_in_title=True,
+            sheet_emphasis=False,
+        )
+
+        response = self.request(self.executor_token, "patch", f"/api/work-schedule/items/{item.pk}", {
+            "title": item.title,
+            "date": "2026-09-15",
+            "executorEmail": self.executor.email,
+            "supporterEmails": [],
+            "managerEmails": [],
+            "priority": "medium",
+        })
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertEqual((item.priority, item.sheet_emphasis), ("medium", False))
+
+        response = self.request(self.executor_token, "post", "/api/work-schedule/day", {
+            "date": "2026-09-15",
+            "items": [{"id": item.pk, "title": "9h00: Việc vẫn bỏ đậm", "dailyOrder": 1}],
+        })
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertEqual((item.priority, item.sheet_emphasis), ("medium", False))
+
+        response = self.request(self.executor_token, "patch", f"/api/work-schedule/items/{item.pk}", {
+            "title": item.title,
+            "date": "2026-09-15",
+            "executorEmail": self.executor.email,
+            "supporterEmails": [],
+            "managerEmails": [],
+            "priority": "high",
+        })
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertEqual((item.priority, item.sheet_emphasis), ("high", None))
+
     def test_manual_high_priority_without_time_is_preserved(self):
         item = WorkItem.objects.create(creator=self.executor, executor=self.executor,
                                       work_date=date(2026, 9, 15), title="Quan trọng thủ công", priority="high")
@@ -1575,6 +1665,19 @@ class WorkScheduleSheetWebhookTests(TestCase):
         self.assertEqual(item.start_time.isoformat(timespec="minutes"), "08:00")
         self.assertEqual(item.priority, "high")
         self.assertTrue(item.time_prefix_in_title)
+
+    @mock.patch("work_schedule.sheet_sync._row_task_emphasis", return_value=[False])
+    @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_unbold_sheet_row_clears_time_auto_priority(self, mock_service, mock_ensure, mock_push, mock_emphasis):
+        values = self.row_values("8h: Gửi báo cáo")
+        response = self.post({"event_id": "evt-unbold-priority", "row": self.ROW_NUMBER, "values": values})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        item = WorkItem.objects.get(source_sheet_row=self.ROW_NUMBER)
+        self.assertEqual((item.priority, item.sheet_emphasis), ("medium", False))
+        mock_emphasis.assert_called_once()
 
     @mock.patch("work_schedule.sheet_sync.push_groups_to_sheet")
     @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
