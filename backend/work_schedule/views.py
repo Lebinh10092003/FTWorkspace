@@ -20,6 +20,7 @@ from authentication.permissions import IsAuthenticated
 from .models import WorkItem, WorkScheduleSheetInboundEvent
 from .retention import purge_expired_work_schedule, retained_from
 from .rich_text import format_state_at, normalize_format_runs, utf16_length
+from .sheet_parser import is_personal_task
 from .training_sync import delete_training_for_work_item, sync_training_from_work_item
 from config.db_transactions import atomic_mutation
 
@@ -225,10 +226,18 @@ def _apply_data(request, item, creating=False, allow_people=True, data_override=
 
     requested_status = str(data.get("status", item.status if item else WorkItem.STATUS_TODO) or "").lower()
     requested_priority = str(data.get("priority", item.priority if item else "medium") or "").lower()
-    # A non-null value is an explicit Sheet decision. It remains authoritative
-    # for the lifetime of the item; a Web save must never silently clear it.
+    # A non-null value is an explicit Sheet decision. It stays authoritative
+    # against saves that carry no formatting of their own; only a payload with
+    # its own rich-text runs (below) may replace it.
     sheet_emphasis = getattr(item, "sheet_emphasis", None) if item else None
     sheet_format_locked = sheet_emphasis is not None
+    if format_runs_supplied:
+        # Supplied runs decide emphasis for this save, so the priority rules
+        # below must read the new state rather than the stored Sheet one.
+        sheet_emphasis = (
+            bool(format_state_at(normalize_format_runs(raw_format_runs) or [], 0)["bold"])
+            and not is_personal_task(title)
+        )
     if authored_time.has_time_prefix:
         if sheet_emphasis is False:
             requested_priority = "medium"
@@ -262,8 +271,14 @@ def _apply_data(request, item, creating=False, allow_people=True, data_override=
     previous_group = (item.executor_id, item.work_date) if item and item.pk else None
     next_group = (executor.email, work_date)
     item.title = title[:1000]
-    if format_runs_supplied and not sheet_format_locked:
+    if format_runs_supplied:
+        # An explicit rich-text payload is the author's current decision and
+        # replaces the Sheet's, exactly as in the day grid.
         item.title_format_runs = normalize_format_runs(raw_format_runs, utf16_length(item.title)) or []
+        item.sheet_emphasis = (
+            bool(format_state_at(item.title_format_runs, 0)["bold"])
+            and not is_personal_task(item.title)
+        )
     elif (creating or ("title" in data and item.title != previous_title)) and not sheet_format_locked:
         # A plain web form has no character-level editor. Do not let runs from
         # an older title accidentally apply to a newly written title.
@@ -563,23 +578,24 @@ def work_day_edit(request):
                             item.priority_before_time = None
                         update_fields.append("priority")
                         update_fields.append("priority_before_time")
-                sheet_format_locked = getattr(item, "sheet_emphasis", None) is not None
-                if row["format_runs_supplied"] and not sheet_format_locked:
+                if row["format_runs_supplied"]:
                     item.title_format_runs = row["format_runs"]
                     update_fields.append("title_format_runs")
-                    # In the Web grid, an explicit line-level bold is the
-                    # manual "important" marker for an untimed task. A timed
-                    # task remains important because its time prefix is the
-                    # automatic marker. Sheet-originated overrides are left
-                    # untouched above and therefore cannot be overwritten by
-                    # a stale Web draft.
-                    if format_state_at(row["format_runs"], 0)["bold"]:
-                        item.priority = "high"
-                        update_fields.append("priority")
-                    elif not item.time_prefix_in_title:
-                        item.priority = "medium"
-                        item.priority_before_time = None
-                        update_fields.extend(["priority", "priority_before_time"])
+                    # The grid editor sends character-level runs a person just
+                    # chose while looking at the row, so it replaces an earlier
+                    # Sheet decision instead of being discarded by it. Keeping
+                    # the Sheet lock here made the toolbar look broken: the save
+                    # succeeded and the next reload returned the old bold text.
+                    # An explicit line-level bold is the manual "important"
+                    # marker; removing it clears the marker for timed tasks too.
+                    emphasized = (
+                        bool(format_state_at(row["format_runs"], 0)["bold"])
+                        and not is_personal_task(item.title)
+                    )
+                    item.sheet_emphasis = emphasized
+                    item.priority = "high" if emphasized else "medium"
+                    item.priority_before_time = item.priority if item.time_prefix_in_title else None
+                    update_fields.extend(["sheet_emphasis", "priority", "priority_before_time"])
                 if row["status"] is not None and row["status"] != item.status:
                     item.status = row["status"]
                     update_fields.append("status")

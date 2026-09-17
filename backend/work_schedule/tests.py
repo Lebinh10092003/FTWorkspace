@@ -1,5 +1,6 @@
 import os
 from datetime import date, time, timedelta
+from io import StringIO
 from types import SimpleNamespace
 from unittest import mock
 
@@ -312,6 +313,38 @@ class WorkScheduleSheetParserTests(TestCase):
         self.assertTrue(priority_runs[0]["format"]["bold"])
         self.assertFalse(priority_runs[1]["format"]["bold"])
         self.assertFalse(priority_runs[1]["format"]["italic"])
+
+    def test_manual_rich_text_does_not_leak_into_the_following_tasks(self):
+        class Item:
+            def __init__(self, priority="medium", runs=None):
+                self.priority = priority
+                self.title_format_runs = runs
+                self.sheet_emphasis = None
+
+        content = "\n".join([
+            "1. Việc thường một",
+            "2. Việc thường hai",
+            "3. Việc bôi đậm thủ công",
+            "4. Việc thường bốn",
+            "5. Việc thường năm",
+        ])
+        runs = _build_content_format_runs(content, [
+            Item(),
+            Item(),
+            Item("high", [{"startIndex": 0, "bold": True, "italic": True}]),
+            Item(),
+            Item(),
+        ])
+
+        fourth_line = content.index("4. Việc thường bốn")
+        reset = [run for run in runs if run["startIndex"] == fourth_line]
+        self.assertEqual(len(reset), 1, runs)
+        self.assertFalse(reset[0]["format"]["bold"])
+        self.assertFalse(reset[0]["format"]["italic"])
+        self.assertEqual(
+            [run["startIndex"] for run in runs if run["format"]["bold"]],
+            [content.index("Việc bôi đậm thủ công")],
+        )
 
     def test_sheet_rich_text_reads_bold_state_for_each_task(self):
         first_line = "1. 17h00: Nhiệm vụ quan trọng"
@@ -657,6 +690,86 @@ class WorkScheduleApiTests(TestCase):
         self.assertEqual(cleared.status_code, 200, cleared.data)
         item.refresh_from_db()
         self.assertEqual(item.title_format_runs, [])
+
+    def test_web_grid_can_clear_bold_that_originated_in_the_sheet(self):
+        item = WorkItem.objects.create(
+            creator=self.executor,
+            executor=self.executor,
+            title="Việc bị in đậm lây từ nhiệm vụ trước",
+            work_date="2026-09-07",
+            daily_order=1,
+            priority="high",
+            sheet_emphasis=True,
+            title_format_runs=[{"startIndex": 0, "bold": True, "italic": True}],
+        )
+
+        cleared = self.request(self.executor_token, "post", "/api/work-schedule/day", {
+            "date": "2026-09-07",
+            "items": [{"id": item.pk, "title": item.title, "dailyOrder": 1, "formatRuns": []}],
+        })
+
+        self.assertEqual(cleared.status_code, 200, cleared.data)
+        item.refresh_from_db()
+        self.assertEqual(item.title_format_runs, [])
+        self.assertEqual((item.sheet_emphasis, item.priority), (False, "medium"))
+        self.assertEqual(cleared.json()["items"][0]["formatRuns"], [])
+
+    def test_repair_command_clears_emphasis_inherited_from_the_previous_task(self):
+        from django.core.management import call_command
+
+        timed = WorkItem.objects.create(
+            creator=self.executor, executor=self.executor, title="8h00: Họp giao ban",
+            work_date="2026-09-14", daily_order=1, priority="high", start_time="08:00",
+            time_prefix_in_title=True, sheet_emphasis=True,
+            title_format_runs=[{"startIndex": 0, "bold": True, "italic": True}],
+        )
+        leaked = WorkItem.objects.create(
+            creator=self.executor, executor=self.executor, title="Soạn tài liệu",
+            work_date="2026-09-14", daily_order=2, priority="high", sheet_emphasis=True,
+            title_format_runs=[{"startIndex": 0, "bold": True, "italic": True}],
+        )
+        also_leaked = WorkItem.objects.create(
+            creator=self.executor, executor=self.executor, title="Gửi báo cáo",
+            work_date="2026-09-14", daily_order=3, priority="high", sheet_emphasis=True,
+            title_format_runs=[{"startIndex": 0, "bold": True, "italic": True}],
+        )
+
+        call_command("repair_leaked_task_emphasis", "--apply", stdout=StringIO())
+
+        for item in (timed, leaked, also_leaked):
+            item.refresh_from_db()
+        self.assertEqual(
+            (timed.priority, timed.sheet_emphasis, timed.title_format_runs),
+            ("high", True, [{"startIndex": 0, "bold": True, "italic": True}]),
+        )
+        for item in (leaked, also_leaked):
+            self.assertEqual(
+                (item.priority, item.sheet_emphasis, item.title_format_runs),
+                ("medium", None, []),
+            )
+
+    def test_repair_command_keeps_a_standalone_bold_task(self):
+        from django.core.management import call_command
+
+        plain = WorkItem.objects.create(
+            creator=self.executor, executor=self.executor, title="Việc thường",
+            work_date="2026-09-14", daily_order=1, priority="medium", title_format_runs=[],
+        )
+        bold = WorkItem.objects.create(
+            creator=self.executor, executor=self.executor, title="Việc quan trọng",
+            work_date="2026-09-14", daily_order=2, priority="high", sheet_emphasis=True,
+            title_format_runs=[{"startIndex": 0, "bold": True, "italic": True}],
+        )
+
+        call_command("repair_leaked_task_emphasis", "--apply", stdout=StringIO())
+
+        plain.refresh_from_db()
+        bold.refresh_from_db()
+        self.assertEqual(plain.priority, "medium")
+        self.assertEqual(
+            (bold.priority, bold.sheet_emphasis, bold.title_format_runs),
+            ("high", True, [{"startIndex": 0, "bold": True, "italic": True}]),
+        )
 
     def test_delete_requires_no_password_and_batch_status_is_supported(self):
         first = self.create_item()

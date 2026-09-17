@@ -1129,7 +1129,10 @@ def _build_content_format_runs(content, items=None):
     runs = []
     offset = 0
     task_index = -1
-    legacy_state = None
+    # State carried by the cell at the start of the next numbered line. A run
+    # stays in force until the following run, so both branches below must keep
+    # this in sync or one task's style silently formats every task after it.
+    current_state = None
     ordered_items = list(items or [])
     parsed_items = parse_sheet_tasks(content)
 
@@ -1165,6 +1168,8 @@ def _build_content_format_runs(content, items=None):
                         state["bold"],
                         state["italic"],
                     )
+                tail = format_state_at(normalized, _sheet_text_length(title))
+                current_state = (tail["bold"], tail["italic"])
             else:
                 is_high_priority = (
                     task_index < len(ordered_items)
@@ -1184,9 +1189,9 @@ def _build_content_format_runs(content, items=None):
                     not is_personal_task(title) and important,
                     not is_personal_task(title) and important,
                 )
-                if next_state != legacy_state:
+                if next_state != current_state:
                     append_run(offset, next_state[0], next_state[1], legacy=True)
-                    legacy_state = next_state
+                    current_state = next_state
         offset += _sheet_text_length(line) + 1  # +1 for newline character
     return runs
 
