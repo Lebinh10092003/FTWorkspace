@@ -90,9 +90,14 @@ class WorkItem(models.Model):
             self.priority_before_time = "medium" if self.time_prefix_in_title else None
             if self.sheet_emphasis is not None:
                 self.sheet_emphasis = False
+            if any(
+                isinstance(run, dict) and (run.get("bold") or run.get("italic"))
+                for run in (self.title_format_runs or [])
+            ):
+                self.title_format_runs = []
             if kwargs.get("update_fields"):
                 kwargs["update_fields"] = set(kwargs["update_fields"]) | {
-                    "priority", "priority_before_time", "sheet_emphasis"
+                    "priority", "priority_before_time", "sheet_emphasis", "title_format_runs"
                 }
         return super().save(*args, **kwargs)
 

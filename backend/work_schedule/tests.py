@@ -2271,3 +2271,249 @@ class WorkScheduleSheetWebhookTests(TestCase):
         mock_full_push.assert_not_called()
         mock_metadata.assert_called_once()
         self.assertEqual(mock_metadata.call_args.args[1], self.ROW_NUMBER)
+
+
+@mock.patch.dict(os.environ, {"SHEET_WEBHOOK_SECRET": "test-webhook-secret"})
+class WorkScheduleMoveToTodaySyncTests(TestCase):
+    """Moving unfinished tasks to today must reach the Sheet exactly as on the Web."""
+
+    EMPLOYEE_EMAIL = "sondc@fermat.edu.vn"
+    EMPLOYEE_ID = "EMP-ABD98A8B"
+    OLD_DATE = date(2026, 9, 17)
+    NEW_DATE = date(2026, 9, 18)
+    OLD_ROW = 5101
+    NEW_ROW = 5102
+
+    def setUp(self):
+        UserProfile.objects.filter(email=self.EMPLOYEE_EMAIL).delete()
+        self.executor = UserProfile.objects.create(
+            email=self.EMPLOYEE_EMAIL, name="Đặng Chí Sơn", role="EMPLOYEE", access_modules=[]
+        )
+        WorkItem.objects.filter(executor=self.executor).delete()
+        WorkScheduleSheetChange.objects.all().delete()
+
+    def sheet_row(self, work_date, items, sync_hash):
+        content, self_notes, leader_notes, task_ids = _group_values(items)
+        return [
+            "Năm", work_date.strftime("%d/%m/%Y"), "38", "Đặng Chí Sơn",
+            content, self_notes, leader_notes, self.EMPLOYEE_ID, "", task_ids, sync_hash,
+        ]
+
+    def live_hash(self, row):
+        return _row_hash(*(row[index] for index in (4, 5, 6, 9)))
+
+    def synced_item(self, title, work_date, row, order, status="todo"):
+        return WorkItem.objects.create(
+            creator=self.executor, executor=self.executor, title=title, work_date=work_date,
+            daily_order=order, status=status, source_sheet_row=row, source_task_index=order,
+        )
+
+    def push(self, rows_by_number, groups):
+        from .sheet_sync import push_groups_to_sheet
+
+        first = min(rows_by_number)
+        rows = [rows_by_number.get(number, []) for number in range(first, max(rows_by_number) + 1)]
+        service = mock.MagicMock()
+        columns = dict(
+            weekday=0, date=1, week=2, staff=3, content=4, self_notes=5, leader_notes=6,
+            employee_id=7, record_id=8, task_ids=9, sync_hash=10,
+        )
+        with mock.patch("work_schedule.sheet_sync.ensure_sync_columns", return_value=columns), \
+             mock.patch("work_schedule.sheet_sync._retained_sheet_start_row", return_value=first), \
+             mock.patch("work_schedule.sheet_sync._rows", return_value=rows), \
+             mock.patch("work_schedule.sheet_sync._reorder_misplaced_web_rows", return_value=0), \
+             mock.patch("work_schedule.sheet_sync._sheet_name_email_map", return_value={}), \
+             mock.patch("work_schedule.sheet_sync.ensure_sheet_row_capacity"), \
+             mock.patch("work_schedule.sheet_sync._formula_content_rows", return_value=set()), \
+             mock.patch("work_schedule.sheet_sync._sheet_properties", return_value={"sheetId": 1}), \
+             mock.patch("work_schedule.sheet_sync.retained_from", return_value=date(2026, 1, 1)):
+            result = push_groups_to_sheet(service, groups)
+        writes = {}
+        for call in service.spreadsheets.return_value.values.return_value.batchUpdate.call_args_list:
+            body = call.kwargs["body"]
+            for entry in body["data"]:
+                writes[entry["range"]] = (body["valueInputOption"], entry["values"][0][0])
+        return result, writes
+
+    def test_move_reaches_sheet_even_when_stored_hash_was_turned_into_a_number(self):
+        done = self.synced_item("Đã xong", self.OLD_DATE, self.OLD_ROW, 1, status="completed")
+        moved = self.synced_item("Dự thảo hồ sơ thanh toán", self.OLD_DATE, self.OLD_ROW, 2)
+        # The real Sheet showed "6,23E+07" in WEB_SYNC_HASH for this row.
+        old_row = self.sheet_row(self.OLD_DATE, [done, moved], "6,23E+07")
+        WorkItem.objects.filter(pk__in=[done.pk, moved.pk]).update(source_sync_hash=self.live_hash(old_row))
+        today = self.synced_item("Việc hôm nay", self.NEW_DATE, self.NEW_ROW, 1)
+        new_row = self.sheet_row(self.NEW_DATE, [today], "")
+        new_row[10] = self.live_hash(new_row)
+        WorkItem.objects.filter(pk=today.pk).update(source_sync_hash=new_row[10])
+
+        from .views import _detach_from_sheet_row
+        moved.refresh_from_db()
+        moved.work_date = self.NEW_DATE
+        moved.daily_order = 2
+        _detach_from_sheet_row(moved)
+        moved.save()
+
+        result, writes = self.push(
+            {self.OLD_ROW: old_row, self.NEW_ROW: new_row},
+            {(self.EMPLOYEE_EMAIL, self.OLD_DATE), (self.EMPLOYEE_EMAIL, self.NEW_DATE)},
+        )
+
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(writes[f"'Lịch công tác'!E{self.OLD_ROW}"][1], "1. Đã xong")
+        self.assertEqual(
+            writes[f"'Lịch công tác'!E{self.NEW_ROW}"][1],
+            "1. Việc hôm nay\n2. Dự thảo hồ sơ thanh toán",
+        )
+        # Hidden metadata is written verbatim so Sheets cannot turn it into a number.
+        self.assertEqual(writes[f"'Lịch công tác'!K{self.OLD_ROW}"][0], "RAW")
+        self.assertEqual(writes[f"'Lịch công tác'!J{self.NEW_ROW}"][0], "RAW")
+
+    def test_row_edited_in_sheet_but_not_yet_ingested_is_still_a_conflict(self):
+        item = self.synced_item("Việc cũ", self.OLD_DATE, self.OLD_ROW, 1)
+        row = self.sheet_row(self.OLD_DATE, [item], "")
+        row[10] = self.live_hash(row)
+        WorkItem.objects.filter(pk=item.pk).update(source_sync_hash=row[10])
+        row[4] = "1. Việc cũ\n2. Việc vừa gõ trên Sheet"
+
+        result, writes = self.push({self.OLD_ROW: row}, {(self.EMPLOYEE_EMAIL, self.OLD_DATE)})
+
+        self.assertEqual(len(result["conflicts"]), 1)
+        self.assertNotIn(f"'Lịch công tác'!E{self.OLD_ROW}", writes)
+
+    def test_batch_move_detaches_tasks_until_they_are_written_to_the_new_row(self):
+        user = get_user_model().objects.create_user(
+            username=self.EMPLOYEE_EMAIL, email=self.EMPLOYEE_EMAIL, password="StrongPassword9921"
+        )
+        token = Token.objects.create(user=user).key
+        moved = self.synced_item("Việc chưa xong", self.OLD_DATE, self.OLD_ROW, 1)
+
+        response = self.client.post(
+            "/api/work-schedule/items/batch",
+            {"ids": [moved.pk], "action": "date", "date": self.NEW_DATE.isoformat()},
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        moved.refresh_from_db()
+        self.assertEqual(moved.work_date, self.NEW_DATE)
+        self.assertIsNone(moved.source_sheet_row)
+        self.assertEqual(
+            set(WorkScheduleSheetChange.objects.values_list("work_date", flat=True)),
+            {self.OLD_DATE, self.NEW_DATE},
+        )
+
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_sheet_edit_of_the_new_day_does_not_delete_a_task_not_yet_exported(self, *_):
+        today = self.synced_item("Việc hôm nay", self.NEW_DATE, self.NEW_ROW, 1)
+        moved = WorkItem.objects.create(
+            creator=self.executor, executor=self.executor, title="Việc chuyển sang",
+            work_date=self.NEW_DATE, daily_order=2, source_sheet_row=None,
+        )
+        values = self.sheet_row(self.NEW_DATE, [today], "")
+        values[5] = "1. Hoàn thành"
+
+        response = self.client.post(
+            "/api/work-schedule/sheet-webhook",
+            {"event_id": "evt-new-day-edit", "row": self.NEW_ROW, "values": values},
+            content_type="application/json", HTTP_X_SHEET_WEBHOOK_SECRET="test-webhook-secret",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(WorkItem.objects.filter(pk=moved.pk).exists())
+
+    @mock.patch("work_schedule.sheet_sync.push_sheet_row_metadata", return_value={"updated": True})
+    @mock.patch("work_schedule.sheet_sync.ensure_sync_columns")
+    @mock.patch("work_schedule.sheet_sync._service")
+    def test_editing_old_row_that_still_lists_moved_tasks_keeps_the_edit(self, *_):
+        moved = self.synced_item("Việc đã chuyển", self.OLD_DATE, self.OLD_ROW, 1)
+        remaining = self.synced_item("Việc ở lại", self.OLD_DATE, self.OLD_ROW, 2)
+        values = self.sheet_row(self.OLD_DATE, [moved, remaining], "")
+        values[5] = "2. Hoàn thành"
+        from .views import _detach_from_sheet_row
+        moved.work_date = self.NEW_DATE
+        _detach_from_sheet_row(moved)
+        moved.save()
+        WorkScheduleSheetChange.objects.all().delete()
+
+        response = self.client.post(
+            "/api/work-schedule/sheet-webhook",
+            {"event_id": "evt-old-row-edit", "row": self.OLD_ROW, "values": values},
+            content_type="application/json", HTTP_X_SHEET_WEBHOOK_SECRET="test-webhook-secret",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        moved.refresh_from_db()
+        remaining.refresh_from_db()
+        self.assertEqual(moved.work_date, self.NEW_DATE)
+        self.assertEqual(remaining.status, WorkItem.STATUS_COMPLETED)
+        self.assertEqual(
+            WorkItem.objects.filter(executor=self.executor, work_date=self.OLD_DATE).count(), 1
+        )
+        # The old row is queued for a rewrite that drops the moved line and id.
+        self.assertTrue(WorkScheduleSheetChange.objects.filter(
+            executor_email=self.EMPLOYEE_EMAIL, work_date=self.OLD_DATE,
+        ).exists())
+
+    def test_conflicts_are_retried_instead_of_being_dropped_forever(self):
+        from .sheet_sync import sync_to_sheet
+
+        change = WorkScheduleSheetChange.objects.create(
+            executor_email=self.EMPLOYEE_EMAIL, work_date=self.OLD_DATE,
+            status=WorkScheduleSheetChange.STATUS_CONFLICT, attempts=1,
+        )
+        WorkScheduleSheetChange.objects.filter(pk=change.pk).update(
+            processed_at=timezone.now() - timedelta(minutes=10)
+        )
+        with mock.patch("work_schedule.sheet_sync._service"), \
+             mock.patch("work_schedule.sheet_sync.ensure_sync_columns"), \
+             mock.patch("work_schedule.sheet_sync.push_groups_to_sheet", return_value={"conflicts": []}) as pushed, \
+             mock.patch("work_schedule.sheet_sync.push_groups_to_attendance_sheet", return_value={}):
+            sync_to_sheet()
+
+        self.assertIn((self.EMPLOYEE_EMAIL, self.OLD_DATE), pushed.call_args.args[1])
+        change.refresh_from_db()
+        self.assertEqual(change.status, WorkScheduleSheetChange.STATUS_DONE)
+
+
+class WorkSchedulePersonalTaskEmphasisTests(TestCase):
+    def test_viec_ca_nhan_is_a_personal_task_in_any_unicode_form(self):
+        import unicodedata
+
+        from .sheet_parser import is_personal_task
+
+        for title in (
+            "(Việc cá nhân) Đi dạy cả ngày",
+            "Đi công tác cả ngày (việc cá nhân);",
+            "[Việc cá nhân] 8h00: Đi dạy",
+            unicodedata.normalize("NFD", "(Việc cá nhân) Đi dạy cả ngày"),
+        ):
+            with self.subTest(title=title):
+                self.assertTrue(is_personal_task(title))
+        self.assertFalse(is_personal_task("Phân công việc cho cá nhân phụ trách"))
+
+    def test_personal_task_is_never_bold_in_the_sheet_even_with_bold_runs(self):
+        items = [
+            SimpleNamespace(title="Phối hợp đề thi", priority="medium", sheet_emphasis=None, title_format_runs=[]),
+            SimpleNamespace(
+                title="(Việc cá nhân) Đi dạy cả ngày", priority="high", sheet_emphasis=None,
+                title_format_runs=[{"startIndex": 0, "bold": True, "italic": True}],
+            ),
+        ]
+        content = "1. Phối hợp đề thi\n2. (Việc cá nhân) Đi dạy cả ngày"
+        runs = _build_content_format_runs(content, items)
+        second_line = len("1. Phối hợp đề thi\n")
+        self.assertFalse([run for run in runs if run["startIndex"] <= second_line][-1]["format"]["bold"])
+        self.assertFalse(any(run["format"].get("bold") for run in runs))
+
+    def test_saving_a_personal_task_drops_stored_emphasis(self):
+        profile = UserProfile.objects.create(email="dung@example.com", name="Dũng", role="EMPLOYEE", access_modules=[])
+        item = WorkItem.objects.create(
+            creator=profile, executor=profile, title="(Việc cá nhân) Đi dạy cả ngày",
+            work_date=date(2026, 9, 18), priority="high",
+            title_format_runs=[{"startIndex": 0, "bold": True}],
+        )
+        item.refresh_from_db()
+        self.assertEqual(item.priority, "medium")
+        self.assertEqual(item.title_format_runs, [])

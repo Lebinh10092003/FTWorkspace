@@ -1505,8 +1505,9 @@ const formatRunsFromStates = (states: FormatState[]): TextFormatRun[] => {
 };
 
 const effectiveTaskFormatRuns = (task: Pick<WorkTask, "title" | "priority" | "formatRuns">): TextFormatRun[] => {
+  if (taskTags(task.title).personal) return [];
   if (task.formatRuns !== null && task.formatRuns !== undefined) return task.formatRuns;
-  return task.priority === "high" && !taskTags(task.title).personal
+  return task.priority === "high"
     ? [{ startIndex: 0, bold: true, italic: true }]
     : [];
 };
@@ -1670,12 +1671,12 @@ function matchGridTasks(entries: Array<{ number: number; text: string }>, origin
   });
 }
 const supportTag = /^\s*\[\s*hỗ\s+trợ\s*\]\s*/i;
-const personalTag = /^\s*\[\s*lịch\s+cá\s+nhân\s*\]\s*/i;
-const personalPhrase = /(?:^|[^\p{L}\p{N}])lịch\s+(?:cá\s+nhân|riêng)(?=$|[^\p{L}\p{N}])/iu;
+const personalTag = /^\s*\[\s*(?:lịch|việc)\s+cá\s+nhân\s*\]\s*/i;
+const personalPhrase = /(?:^|[^\p{L}\p{N}])(?:lịch|việc)\s+(?:cá\s+nhân|riêng)(?=$|[^\p{L}\p{N}])/iu;
 function taskTags(title: string) {
   let content = title;
   let support = false;
-  let personal = personalPhrase.test(title);
+  let personal = personalPhrase.test(title.normalize("NFC"));
   while (supportTag.test(content) || personalTag.test(content)) {
     if (supportTag.test(content)) {
       support = true;

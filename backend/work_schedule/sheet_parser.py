@@ -1,14 +1,19 @@
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
 
-TASK_TAGS = re.compile(r"^\s*(?:\[\s*(?:hỗ\s+trợ|lịch\s+cá\s+nhân)\s*\]\s*)+", re.IGNORECASE)
-PERSONAL_PHRASE = re.compile(r"(?<!\w)lịch\s+(?:cá\s+nhân|riêng)(?!\w)", re.IGNORECASE)
+TASK_TAGS = re.compile(r"^\s*(?:\[\s*(?:hỗ\s+trợ|(?:lịch|việc)\s+cá\s+nhân)\s*\]\s*)+", re.IGNORECASE)
+# Staff write both "lịch cá nhân" and "việc cá nhân" (often in parentheses);
+# both mark a personal task that must never be emphasized.
+PERSONAL_PHRASE = re.compile(r"(?<!\w)(?:lịch|việc)\s+(?:cá\s+nhân|riêng)(?!\w)", re.IGNORECASE)
 
 
 def is_personal_task(value: str) -> bool:
-    return bool(PERSONAL_PHRASE.search(str(value or "")))
+    # Some keyboards emit decomposed Vietnamese (e.g. "a" + U+0301), which
+    # would otherwise slip past the precomposed pattern above.
+    return bool(PERSONAL_PHRASE.search(unicodedata.normalize("NFC", str(value or ""))))
 
 
 def without_task_tags(value: str) -> str:

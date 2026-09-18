@@ -64,6 +64,8 @@ SHEET_STAFF_EMAILS = {
 WEEKDAYS = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]
 INCREMENTAL_SYNC_LEASE_SECONDS = 300
 TWO_WAY_SYNC_LEASE_SECONDS = 1800
+CONFLICT_RETRY_MINUTES = 5
+CONFLICT_MAX_ATTEMPTS = 5
 SHEET_COLUMN_ALIASES = {
     "weekday": ("thứ",),
     "date": ("ngày",),
@@ -589,7 +591,7 @@ def _ingest_row(
     existing_by_uid = {
         item.sync_uid: item
         for item in WorkItem.objects.filter(sync_uid__in=supplied_uids).only(
-            "id", "sync_uid", "executor_id", "work_date"
+            "id", "sync_uid", "executor_id", "work_date", "source_sheet_row"
         )
     }
     if len(supplied_uids) != len(set(supplied_uids)):
@@ -602,6 +604,15 @@ def _ingest_row(
         item for item in existing_by_uid.values()
         if item.executor_id != email or item.work_date != work_date
     ]
+    # Tasks the Web has just moved to another day of the same person carry no
+    # source row until the export rewrites both rows. Until then this row is
+    # merely a stale copy of them: skip those lines, keep the editor's other
+    # changes, and queue a rewrite that removes their lines and hidden ids.
+    moved_away_uids = {
+        item.sync_uid for item in identity_conflicts
+        if item.executor_id == email and item.source_sheet_row is None
+    }
+    identity_conflicts = [item for item in identity_conflicts if item.sync_uid not in moved_away_uids]
     if identity_conflicts:
         # Hidden task UUIDs are identity, not a move instruction. Reject the
         # whole row before mutating anything: accepting part of a row used to
@@ -640,6 +651,22 @@ def _ingest_row(
             logger.info("Ignored stale Sheet row %s event %s by row watermark.", offset, sheet_event_id)
             return created, updated, deleted, touched
     raw_tasks = parse_sheet_tasks(_cell(row, 4))
+    kept_raw_indices = None
+    raw_task_count = len(raw_tasks)
+    if moved_away_uids:
+        kept_raw_indices = [
+            index for index in range(len(raw_tasks))
+            if not (index < len(ids) and ids[index] in moved_away_uids)
+        ]
+        raw_tasks = [raw_tasks[index] for index in kept_raw_indices]
+        ids = [ids[index] if index < len(ids) else None for index in kept_raw_indices]
+        if task_format_runs is not None:
+            task_format_runs = _TaskFormatCapture(
+                [task_format_runs[index] if index < len(task_format_runs) else None for index in kept_raw_indices],
+                cell_style_ambiguous=getattr(task_format_runs, "cell_style_ambiguous", False),
+            )
+        if task_emphasis is not None:
+            task_emphasis = [task_emphasis[index] if index < len(task_emphasis) else None for index in kept_raw_indices]
     duplicate_uid_keys = defaultdict(set)
     for raw_index, parsed_task in enumerate(raw_tasks):
         if raw_index < len(ids) and ids[raw_index]:
@@ -673,8 +700,16 @@ def _ingest_row(
         parsed_format_runs = None
         parsed_source_indices = [source_index for _, _, _, source_index in task_entries]
     cell_style_ambiguous = bool(getattr(task_format_runs, "cell_style_ambiguous", False))
-    notes = assessment_notes(_cell(row, 5), len(parsed))
-    leader_notes = leader_assessment_notes(_cell(row, 6), len(parsed))
+    if kept_raw_indices is None:
+        notes = assessment_notes(_cell(row, 5), len(parsed))
+        leader_notes = leader_assessment_notes(_cell(row, 6), len(parsed))
+    else:
+        # Note numbers refer to the lines as they appear in the cell, which
+        # still include the skipped moved-away lines.
+        raw_notes = assessment_notes(_cell(row, 5), raw_task_count)
+        raw_leader_notes = leader_assessment_notes(_cell(row, 6), raw_task_count)
+        notes = [raw_notes[kept_raw_indices[index]] for index in parsed_source_indices]
+        leader_notes = [raw_leader_notes[kept_raw_indices[index]] for index in parsed_source_indices]
     group_uids = {item.sync_uid for item in group_items}
     has_group_uid = any(sync_uid in group_uids for sync_uid in ids if sync_uid)
     has_same_source_row = any(item.source_sheet_row == offset for item in group_items)
@@ -868,6 +903,11 @@ def _ingest_row(
         retained_ids.add(item.pk)
     if retained_by_group is not None:
         retained_by_group[(email, work_date)].update(retained_ids)
+    if moved_away_uids:
+        WorkScheduleSheetChange.objects.create(executor_email=email, work_date=work_date)
+        from .signals import launch_sheet_sync_worker
+
+        transaction.on_commit(launch_sheet_sync_worker, robust=True)
     stale_items = [item for item in group_items if item.pk not in retained_ids and item.source_sheet_row]
     if delete_missing and stale_items:
         from .training_sync import delete_training_for_work_item
@@ -1154,7 +1194,13 @@ def _build_content_format_runs(content, items=None):
             item = ordered_items[task_index] if task_index < len(ordered_items) else None
             title = parsed_items[task_index].title if task_index < len(parsed_items) else line[marker.end():]
             item_runs = getattr(item, "title_format_runs", None) if item else None
-            if item is not None and item_runs is not None:
+            if is_personal_task(title):
+                # A personal task is never important, whatever runs it
+                # carries (e.g. bold inherited from the line above in the
+                # web editor, or a stale Sheet capture).
+                append_run(offset, False, False)
+                current_state = (False, False)
+            elif item is not None and item_runs is not None:
                 # Reset every numbered line before applying its title-local
                 # runs. This prevents a bold first task leaking into later
                 # tasks through the cell's base style.
@@ -1547,6 +1593,35 @@ def push_sheet_row_metadata(service, row_number, row, items, columns=None, *, re
     return result
 
 
+_HASH_RE = re.compile(r"^[0-9a-f]{8}$")
+
+
+def _known_row_hashes(current, items):
+    """Hashes proving a Sheet row still holds content this system wrote or read.
+
+    The hidden hash cell alone is not reliable: older pushes let Sheets turn
+    some hashes into numbers, and a Sheet edit whose task count changed leaves
+    it stale. Every WorkItem also remembers the hash of the row it was last
+    synchronized with, including tasks just moved away from this row on the
+    Web, so the row is safe to overwrite when its live content matches any of
+    them. A row edited in the Sheet whose webhook has not been processed yet
+    matches none and is still reported as a conflict.
+    """
+    stored = _cell(current, 10)
+    known = {stored} if _HASH_RE.match(stored) else set()
+    # A row holding no tasks or notes (e.g. prepared by hand with only the
+    # name and date) has nothing a Web push could overwrite.
+    known.add(_row_hash("", "", "", ""))
+    row_uids = [uid for uid in _task_uids(_cell(current, 9)) if uid]
+    known.update(item.source_sync_hash for item in items if item.source_sync_hash)
+    if row_uids:
+        known.update(
+            value for value in WorkItem.objects.filter(sync_uid__in=row_uids)
+            .values_list("source_sync_hash", flat=True) if value
+        )
+    return known
+
+
 def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=None):
     columns = ensure_sync_columns(service)
     if not isinstance(columns, dict):  # compatibility with isolated test/mocked callers
@@ -1559,7 +1634,11 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
         rows_start = _retained_sheet_start_row(service, retention_start)
         rows = _rows(service, rows_start)
     groups = {(email, work_date) for email, work_date in groups if work_date >= retention_start}
+    # Hidden metadata and free text must be written verbatim. With
+    # USER_ENTERED a hex hash such as "06234e04" became the number 6.23E+07,
+    # so the next Web push saw a "changed" row and silently skipped it.
     updates = []
+    raw_updates = []
     conflicts = []
     synced = []
     metadata_synced = []
@@ -1622,11 +1701,14 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
         update_rows.append(row_number)
         if "attendance" in columns:
             column = _column_letter(columns["attendance"])
-            updates.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[_attendance_value(attendance)]]})
+            raw_updates.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[_attendance_value(attendance)]]})
         live_values = (_cell(current, 4), _cell(current, 5), _cell(current, 6), _cell(current, 9))
         live_hash = _row_hash(*live_values)
-        stored_hash = _cell(current, 10)
-        if current and (not stored_hash or stored_hash != live_hash) and not force:
+        if current and not force and live_hash not in _known_row_hashes(current, items):
+            logger.warning(
+                "Skipped Sheet row %s (%s, %s): its content changed outside this system.",
+                row_number, email, work_date.isoformat(),
+            )
             conflicts.append({"email": email, "date": work_date.isoformat(), "row": row_number})
             continue
         content, self_notes, leader_notes, task_ids = _group_values(items) if items else ("", "", "", "")
@@ -1652,7 +1734,7 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
             for name, value in (("task_ids", task_ids), ("sync_hash", new_hash)):
                 column = _column_letter(columns[name])
                 if _cell(current, columns[name]) != value:
-                    updates.append({
+                    raw_updates.append({
                         "range": f"'{SHEET_NAME}'!{column}{row_number}",
                         "values": [[value]],
                     })
@@ -1664,7 +1746,7 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
             ("sync_hash", new_hash),
         ):
             column = _column_letter(columns[name])
-            updates.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[value]]})
+            raw_updates.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[value]]})
         if not current:
             profile = profiles.get(email)
             iso_week = work_date.isocalendar().week
@@ -1678,15 +1760,17 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
                 ("record_id", record_id),
             ):
                 column = _column_letter(columns[name])
-                updates.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[value]]})
+                target = updates if name in {"weekday", "date", "week"} else raw_updates
+                target.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[value]]})
         synced.append((email, work_date, row_number, new_hash, items))
-    if updates:
+    if updates or raw_updates:
         ensure_sheet_row_capacity(service, max(update_rows))
-        for start in range(0, len(updates), 500):
-            service.spreadsheets().values().batchUpdate(
-                spreadsheetId=_spreadsheet_id(),
-                body={"valueInputOption": "USER_ENTERED", "data": updates[start:start + 500]},
-            ).execute()
+        for input_option, batch in (("USER_ENTERED", updates), ("RAW", raw_updates)):
+            for start in range(0, len(batch), 500):
+                service.spreadsheets().values().batchUpdate(
+                    spreadsheetId=_spreadsheet_id(),
+                    body={"valueInputOption": input_option, "data": batch[start:start + 500]},
+                ).execute()
     # Reset the cell-level style as well as each run. Otherwise a previously
     # bold cell can keep making newly written, untimed tasks appear bold.
     format_requests = []
@@ -1758,9 +1842,16 @@ def sync_to_sheet(google_token=None, force=False):
         if not acquired:
             return {"busy": True, "message": "Một lượt đồng bộ khác đang chạy."}
         retry_before = timezone.now() - timedelta(minutes=1)
+        conflict_retry_before = timezone.now() - timedelta(minutes=CONFLICT_RETRY_MINUTES)
         stale_before = timezone.now() - timedelta(seconds=TWO_WAY_SYNC_LEASE_SECONDS)
         pending = list(WorkScheduleSheetChange.objects.filter(
             models.Q(status=WorkScheduleSheetChange.STATUS_PENDING)
+            # A conflict used to be final, so a Web change (e.g. moving tasks
+            # to today) could silently never reach the Sheet. Retry a few
+            # times: a late webhook or a later push often resolves it.
+            | (models.Q(status=WorkScheduleSheetChange.STATUS_CONFLICT)
+               & models.Q(attempts__lt=CONFLICT_MAX_ATTEMPTS)
+               & models.Q(processed_at__lte=conflict_retry_before))
             | (models.Q(status=WorkScheduleSheetChange.STATUS_FAILED) & (
                 models.Q(processed_at__lte=retry_before) | models.Q(processed_at__isnull=True)
             ))

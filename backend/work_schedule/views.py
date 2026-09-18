@@ -116,6 +116,18 @@ def _normalize_daily_order(executor_id, work_date):
             WorkItem.objects.filter(pk=row.pk).update(daily_order=order)
 
 
+def _detach_from_sheet_row(item):
+    """Mark a task moved on the Web as not yet present in any Sheet row.
+
+    Until the export writes it into its new row, an edit of that destination
+    row in the Sheet must not treat it as a line the editor deleted. Sheet
+    ingest only removes tasks that carry a source row. ``source_sync_hash`` is
+    kept: it still proves the old row holds content this system wrote.
+    """
+    item.source_sheet_row = None
+    item.source_task_index = None
+
+
 def _payload(item, user, role):
     relation = _viewer_relation(item, user)
     can_view_review = role == "ADMIN" or relation in {"manager", "creator"} or item.executor.manager_id == user.email
@@ -298,6 +310,8 @@ def _apply_data(request, item, creating=False, allow_people=True, data_override=
     item.executor = executor
     if creating or previous_group != next_group:
         item.daily_order = _next_daily_order(executor, work_date, item.pk)
+    if previous_group and previous_group != next_group:
+        _detach_from_sheet_row(item)
     item.save()
     item.supporters.set(supporters)
     item.managers.set(managers)
@@ -822,7 +836,10 @@ def work_items_batch(request):
                     continue
                 item.work_date = work_date
                 item.daily_order = _next_daily_order(item.executor, work_date, item.pk)
-                item.save(update_fields=["work_date", "daily_order", "updated_at"])
+                _detach_from_sheet_row(item)
+                item.save(update_fields=[
+                    "work_date", "daily_order", "source_sheet_row", "source_task_index", "updated_at",
+                ])
                 sync_training_from_work_item(item)
             for group in old_groups:
                 _normalize_daily_order(*group)
