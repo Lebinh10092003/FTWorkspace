@@ -10,6 +10,7 @@ import {
   ClipboardList,
   ContactRound,
   FileCheck2,
+  FileClock,
   FileSpreadsheet,
   FileText,
   FolderTree,
@@ -74,7 +75,7 @@ export type WorkspaceArea = {
 export const WORKSPACE_AREAS: WorkspaceArea[] = [
   {
     id: 'workspace',
-    label: 'Trang chủ Workspace',
+    label: 'Trang chủ',
     shortLabel: 'Trang chủ',
     description: 'Danh sách ứng dụng của FT Workspace.',
     icon: LayoutGrid,
@@ -134,7 +135,7 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     id: 'finance-report',
     label: 'Báo cáo thu chi',
     shortLabel: 'Thu chi',
-    description: 'Tổng thu, tổng chi, công nợ, chứng từ và đối soát khảo thí.',
+    description: 'Tổng thu, tổng chi, công nợ, đối soát khảo thí và hạn hợp đồng.',
     icon: BadgeDollarSign,
     path: '/finance-report',
   },
@@ -315,6 +316,7 @@ export const SOCIAL_DASHBOARD_NAV: ModuleNavItem[] = [
 export const FINANCE_NAV: ModuleNavItem[] = [
   { id: 'report', label: 'Báo cáo thu chi', icon: BadgeDollarSign },
   { id: 'examination-billing', label: 'Đối soát khảo thí', icon: ReceiptText },
+  { id: 'contracts', label: 'Hạn hợp đồng', icon: FileClock },
 ];
 
 /** Horizontal menu of "Bài kiểm tra cuối khóa tập huấn". */

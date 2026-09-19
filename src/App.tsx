@@ -1,6 +1,6 @@
 import React, { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { appDialog } from './components/AppDialog';
-import { ArrowLeft, BadgeDollarSign, CalendarCheck, CalendarDays, CalendarRange, ChartColumnBig, ClipboardList, ContactRound, FileCheck2, FileSignature, GraduationCap, Keyboard, Mail, Megaphone, Moon, QrCode, Presentation, ShieldUser, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, BadgeDollarSign, CalendarCheck, CalendarDays, CalendarRange, ChartColumnBig, ClipboardList, ContactRound, FileCheck2, FileSignature, GraduationCap, Mail, Megaphone, Moon, QrCode, Presentation, ShieldUser, TriangleAlert } from 'lucide-react';
 
 import { Channel, UserRole } from './types';
 import LoginModal from './components/LoginModal';
@@ -775,7 +775,6 @@ export default function App() {
     ].filter(tool => tool.allowed);
     const upcomingTools = [
       { key: 'official-dispatch-number', title: 'Trình tạo số Công văn', description: 'Cấp và tra cứu số công văn theo loại văn bản, đơn vị phát hành và năm.', icon: FileSignature, color: 'from-[#0055DA] to-[#00C68D]' },
-      { key: 'touch-typing', title: 'Trình luyện gõ 10 ngón', description: 'Bài luyện gõ tiếng Việt theo cấp độ, đo tốc độ và độ chính xác.', icon: Keyboard, color: 'from-[#001E40] to-[#0055DA]' },
     ];
     return (
       <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans">
@@ -794,7 +793,7 @@ export default function App() {
               <h2 className="text-3xl font-extrabold text-[#001e40]">Bạn muốn tạo gì?</h2>
               <p className="mt-2 text-slate-500">Các công cụ phục vụ thiết kế và phân phối nội dung truyền thông được gom vào một nơi.</p>
             </div>
-            <div className="grid max-w-5xl gap-5 md:grid-cols-2">
+            <div className="grid max-w-6xl gap-5 sm:grid-cols-2 xl:grid-cols-3">
               {tools.map(tool => { const Icon = tool.icon; return <button key={tool.mode} type="button" onClick={() => setViewMode(tool.mode)} className="group rounded-3xl border border-slate-200 bg-white p-7 text-left shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl"><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white shadow-lg`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-900">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{tool.description}</p><span className="mt-6 block text-sm font-bold text-blue-600">Mở công cụ →</span></button>; })}
               {upcomingTools.map(tool => { const Icon = tool.icon; return <div key={tool.key} aria-disabled="true" className="relative rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 p-7 text-left"><span className="absolute right-5 top-5 rounded-full bg-amber-100 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-amber-700">Sắp ra mắt</span><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white opacity-60 shadow-inner`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-500">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-400">{tool.description}</p><span className="mt-6 block text-sm font-bold text-slate-400">Đang phát triển</span></div>; })}
             </div>

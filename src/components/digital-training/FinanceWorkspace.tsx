@@ -3,16 +3,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AccountMenu from "../AccountMenu";
 import ModuleShellHeader from "../layout/ModuleShellHeader";
 import { FINANCE_NAV, withNavBadges } from "../../config/workspaceNavigation";
+import ContractExpiryReview from "../finance/ContractExpiryReview";
 import ExaminationBillingReview from "../finance/ExaminationBillingReview";
 import examinationBillingService, { type ExaminationBillingStats } from "../finance/examinationBillingService";
 import FinanceReport, { type FinancePartner } from "./FinanceReport";
 
-type FinanceTab = "report" | "examination-billing";
+type FinanceTab = "report" | "examination-billing" | "contracts";
 
-const financeRouteTab = (): FinanceTab =>
-  window.location.pathname.replace(/^\/+|\/+$/g, "").split("/")[1] === "examination-billing"
-    ? "examination-billing"
-    : "report";
+const financeRouteTab = (): FinanceTab => {
+  const segment = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/")[1];
+  return segment === "examination-billing" || segment === "contracts" ? segment : "report";
+};
 
 export default function FinanceWorkspace({
   onBackToWorkspace,
@@ -38,6 +39,7 @@ export default function FinanceWorkspace({
   const [notice, setNotice] = useState("");
   const [tab, setTab] = useState<FinanceTab>(financeRouteTab);
   const [billingStats, setBillingStats] = useState<ExaminationBillingStats | null>(null);
+  const [contractCounts, setContractCounts] = useState<{ expiring: number; expired: number } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -86,16 +88,20 @@ export default function FinanceWorkspace({
 
   const goTab = (next: FinanceTab) => {
     setTab(next);
-    const path = next === "report" ? "/finance-report" : "/finance-report/examination-billing";
+    const path = next === "report" ? "/finance-report" : `/finance-report/${next}`;
     if (window.location.pathname !== path) window.history.pushState(null, "", path);
   };
 
   const navItems = useMemo(
-    () => withNavBadges(FINANCE_NAV, { "examination-billing": billingStats?.newCandidates || 0 }),
-    [billingStats],
+    () => withNavBadges(FINANCE_NAV, {
+      "examination-billing": billingStats?.newCandidates || 0,
+      contracts: (contractCounts?.expiring || 0) + (contractCounts?.expired || 0),
+    }),
+    [billingStats, contractCounts],
   );
 
   const handleBillingStats = useCallback((stats: ExaminationBillingStats) => setBillingStats(stats), []);
+  const handleContractCounts = useCallback((counts: { expiring: number; expired: number }) => setContractCounts(counts), []);
 
   return (
     <div className="ft-module-shell flex min-h-screen flex-col text-slate-800">
@@ -120,7 +126,9 @@ export default function FinanceWorkspace({
       />
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
-          {tab === "examination-billing" ? (
+          {tab === "contracts" ? (
+            <ContractExpiryReview idToken={idToken} onCountsChange={handleContractCounts} />
+          ) : tab === "examination-billing" ? (
             <ExaminationBillingReview
               idToken={idToken}
               actorName={userName || "Kế toán"}
