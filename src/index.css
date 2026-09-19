@@ -10,6 +10,12 @@
 }
 
 :root {
+  /* Typography — `--ft-font-vn` is Vietnamese-first and used wherever
+     diacritics must render cleanly, such as module names. */
+  --ft-font-sans:    "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+  --ft-font-display: "Plus Jakarta Sans", "Be Vietnam Pro", system-ui, sans-serif;
+  --ft-font-vn:      "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+
   /* Brand */
   --ft-primary:         #1E40AF;  /* Blue-800 */
   --ft-primary-hover:   #1D4ED8;  /* Blue-700 */
@@ -1463,9 +1469,14 @@ body { overflow-x: hidden; }
 
 .workspace-brand-logo {
   width: auto;
-  max-width: 10rem;
-  height: 3rem;
+  max-width: 11rem;
+  height: 3.5rem;
   object-fit: contain;
+  border: 1px solid #e3eff9;
+  border-radius: .85rem;
+  background: #fff;
+  padding: .35rem .6rem;
+  box-shadow: 0 1px 3px rgba(23, 91, 150, .06);
 }
 
 .workspace-title-block {
@@ -2021,12 +2032,17 @@ body { overflow-x: hidden; }
   align-items: center;
   justify-content: center;
   gap: .6rem;
-  border-bottom: 1px solid #e3eff9;
-  padding-bottom: .6rem;
-  margin-bottom: .2rem;
-  min-height: 2.9rem;
+  border: 1px solid #e3eff9;
+  border-radius: .85rem;
+  background: #fff;
+  padding: .5rem .6rem;
+  margin-bottom: .45rem;
+  min-height: 3.6rem;
+  box-shadow: 0 1px 3px rgba(23, 91, 150, .06);
 }
-.ft-app-rail-brand img { height: 1.9rem; object-fit: contain; }
+.ft-app-rail-brand img { height: 2.6rem; max-width: 100%; object-fit: contain; }
+.ft-app-rail.is-compact .ft-app-rail-brand { padding: .4rem .25rem; min-height: 3rem; }
+.ft-app-rail.is-compact .ft-app-rail-brand img { height: 2rem; }
 .ft-app-rail-brand span {
   font-family: var(--ft-font-display, sans-serif);
   font-size: .8rem;
@@ -2182,7 +2198,7 @@ body { overflow-x: hidden; }
 }
 .ft-module-bar-title h1 {
   margin-top: .15rem;
-  font-family: var(--ft-font-display, sans-serif);
+  font-family: var(--ft-font-vn);
   font-size: 1.2rem;
   font-weight: 800;
   line-height: 1.2;
@@ -2308,8 +2324,8 @@ body { overflow-x: hidden; }
     border-bottom: 1px solid #d9e9f7;
     padding: .45rem .7rem;
   }
-  .ft-app-rail-brand { border-bottom: 0; border-right: 1px solid #e3eff9; padding: 0 .6rem 0 0; margin: 0; min-height: 0; }
-  .ft-app-rail-brand img { height: 1.6rem; }
+  .ft-app-rail-brand { flex: 0 0 auto; padding: .25rem .45rem; margin: 0; min-height: 0; }
+  .ft-app-rail-brand img { height: 1.9rem; }
   .ft-app-rail-brand span { display: none; }
   .ft-app-rail-items { flex-direction: row; overflow-x: auto; overflow-y: hidden; }
   .ft-app-rail .ft-app-rail-item,
