@@ -680,6 +680,9 @@ export default function App() {
       <div className={`workspace-theme workspace-theme-${appearance.theme} min-h-dvh liquid-bg flex flex-col font-sans relative overflow-x-hidden`} style={workspaceAppearanceStyle(appearance)}>
         <header className="sticky top-0 z-30 w-full glass-panel border-b border-white/50">
           <div className="workspace-header-inner relative mx-auto max-w-[1600px] px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex min-w-0 shrink-0 items-center">
+              <img src="/logo.png" alt="FermatTech Logo" className="workspace-brand-logo" />
+            </div>
             <div className="workspace-title-block">
               <p className="workspace-title-eyebrow">Không gian làm việc</p>
               <h1 className="workspace-title text-sm font-extrabold tracking-tight sm:text-lg lg:text-2xl">
@@ -1103,10 +1106,11 @@ export default function App() {
   );
   };
 
-  // Public landing pages and the session splash stay chrome-free; every other
+  // The launcher already lists every application, so it carries no rail; public
+  // landing pages and the session splash stay chrome-free too. Every other
   // screen gets the shared vertical rail so modules are one click apart.
   const content = renderContent();
-  const chromeLessViews: ViewMode[] = ['competition-landing-public', 'training-assessment-public'];
+  const chromeLessViews: ViewMode[] = ['workspace', 'competition-landing-public', 'training-assessment-public'];
   if (authChecking || chromeLessViews.includes(viewMode)) return content;
   return (
     <WorkspaceAreaFrame

@@ -1454,10 +1454,9 @@ body { overflow-x: hidden; }
 .ft-module-content { width: 100%; }
 .overflow-x-auto, [data-drag-scroll] { touch-action: pan-x pan-y; }
 
-/* The logo lives in the shared rail, so the launcher header is title + actions. */
 .workspace-header-inner {
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: .75rem;
 }
