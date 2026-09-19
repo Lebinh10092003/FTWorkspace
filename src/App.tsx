@@ -779,7 +779,6 @@ export default function App() {
     return (
       <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans">
         <ModuleShellHeader
-          eyebrow="FermatTech Workspace"
           title="Bộ công cụ FermatTech"
           items={communicationToolsNav}
           activeId="communication-tools"
@@ -1056,7 +1055,6 @@ export default function App() {
   return (
     <div className="ft-module-shell flex h-screen flex-col overflow-hidden font-sans">
       <ModuleShellHeader
-        eyebrow="FermatTech Workspace"
         title="Truyền thông"
         items={filterModuleNav(SOCIAL_DASHBOARD_NAV, { member: !isGuest })}
         activeId={activeTab}

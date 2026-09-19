@@ -44,7 +44,6 @@ export default function WorkspaceAppRail({ activeAreaId, canAccess, onSelect }: 
     >
       <div className="ft-app-rail-brand">
         <img src="/logo.png" alt="FermatTech" />
-        {!compact && <span>FT Workspace</span>}
       </div>
       <div className="ft-app-rail-items">
         {visibleAreas.map(area => {

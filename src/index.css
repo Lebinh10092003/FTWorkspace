@@ -1474,6 +1474,9 @@ body { overflow-x: hidden; }
   text-align: center;
 }
 
+/* The eyebrow already says "Không gian làm việc", so the title does not. */
+.workspace-title-prefix { display: none; }
+
 .workspace-title-eyebrow {
   color: var(--workspace-muted, #64748b);
   font-size: .625rem;
@@ -2017,7 +2020,7 @@ body { overflow-x: hidden; }
 .ft-app-rail-brand {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: .6rem;
   border-bottom: 1px solid #e3eff9;
   padding-bottom: .6rem;
@@ -2032,7 +2035,6 @@ body { overflow-x: hidden; }
   color: #0b4275;
   white-space: nowrap;
 }
-.ft-app-rail.is-compact .ft-app-rail-brand { justify-content: center; }
 
 .ft-app-rail-items {
   display: flex;

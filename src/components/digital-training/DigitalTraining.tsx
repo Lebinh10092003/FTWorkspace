@@ -4029,7 +4029,6 @@ export default function DigitalTraining({
   return (
     <div className="ft-module-shell flex min-h-screen flex-col text-slate-800">
       <ModuleShellHeader
-        eyebrow="FermatTech Workspace"
         title="Công nghệ & đào tạo số"
         items={moduleNavItems}
         activeId={moduleNavActiveId}

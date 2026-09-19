@@ -903,7 +903,6 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
   return (
     <div className="ft-module-shell flex min-h-dvh flex-col text-slate-900">
       <ModuleShellHeader
-        eyebrow="Không gian làm việc"
         title="Lịch làm việc"
         items={navItems}
         activeId={view}

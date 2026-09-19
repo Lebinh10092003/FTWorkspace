@@ -106,7 +106,6 @@ export default function FinanceWorkspace({
   return (
     <div className="ft-module-shell flex min-h-screen flex-col text-slate-800">
       <ModuleShellHeader
-        eyebrow="FermatTech Workspace"
         title="Báo cáo thu chi"
         items={navItems}
         activeId={tab}
