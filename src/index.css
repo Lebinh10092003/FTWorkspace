@@ -1984,8 +1984,8 @@ body { overflow-x: hidden; }
    between domains without returning to the Workspace launcher.
    ========================================================================= */
 :root {
-  --ft-rail-width: 4.75rem;
-  --ft-rail-width-expanded: 15rem;
+  --ft-rail-width: 13rem;
+  --ft-rail-width-compact: 4.75rem;
 }
 
 .ft-workspace-frame {
@@ -1993,7 +1993,7 @@ body { overflow-x: hidden; }
   padding-left: var(--ft-rail-width);
   transition: padding-left var(--ft-duration-base, .2s) var(--ft-ease, ease);
 }
-.ft-workspace-frame:has(.ft-app-rail.is-expanded) { padding-left: var(--ft-rail-width-expanded); }
+.ft-workspace-frame:has(.ft-app-rail.is-compact) { padding-left: var(--ft-rail-width-compact); }
 .ft-workspace-frame-body { min-width: 0; }
 
 .ft-app-rail {
@@ -2009,15 +2009,15 @@ body { overflow-x: hidden; }
   background: rgba(255, 255, 255, .95);
   box-shadow: 2px 0 16px rgba(23, 91, 150, .07);
   backdrop-filter: blur(14px);
-  padding: .6rem .5rem .75rem;
+  padding: .7rem .7rem .8rem;
   transition: width var(--ft-duration-base, .2s) var(--ft-ease, ease);
 }
-.ft-app-rail.is-expanded { width: var(--ft-rail-width-expanded); padding-inline: .7rem; }
+.ft-app-rail.is-compact { width: var(--ft-rail-width-compact); padding-inline: .5rem; }
 
 .ft-app-rail-brand {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: .6rem;
   border-bottom: 1px solid #e3eff9;
   padding-bottom: .6rem;
@@ -2032,7 +2032,7 @@ body { overflow-x: hidden; }
   color: #0b4275;
   white-space: nowrap;
 }
-.ft-app-rail.is-expanded .ft-app-rail-brand { justify-content: flex-start; }
+.ft-app-rail.is-compact .ft-app-rail-brand { justify-content: center; }
 
 .ft-app-rail-items {
   display: flex;
@@ -2050,13 +2050,13 @@ body { overflow-x: hidden; }
   align-items: center;
   gap: .65rem;
   width: 100%;
-  min-height: 2.9rem;
+  min-height: 2.85rem;
   border: 1px solid transparent;
   border-radius: .8rem;
   background: transparent;
   color: #37516b;
-  padding: .4rem .5rem;
-  font-size: .72rem;
+  padding: .45rem .65rem;
+  font-size: .78rem;
   font-weight: 700;
   text-align: left;
   cursor: pointer;
@@ -2074,8 +2074,17 @@ body { overflow-x: hidden; }
 .ft-app-rail-item.is-active svg { color: #0875c1; }
 .ft-app-rail-item:focus-visible { outline: 2px solid #1681c5; outline-offset: 1px; }
 
+/* Long area names wrap onto a second line instead of being cut off. */
+.ft-app-rail-label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.25;
+}
+
 /* Collapsed rail: icon above a short label, with a hover tooltip for the full name. */
-.ft-app-rail:not(.is-expanded) .ft-app-rail-item {
+.ft-app-rail.is-compact .ft-app-rail-item {
   flex-direction: column;
   justify-content: center;
   gap: .18rem;
@@ -2083,16 +2092,16 @@ body { overflow-x: hidden; }
   min-height: 3.4rem;
   text-align: center;
 }
-.ft-app-rail:not(.is-expanded) .ft-app-rail-label {
+.ft-app-rail.is-compact .ft-app-rail-label {
   font-size: .56rem;
   line-height: 1.15;
   letter-spacing: .01em;
+  white-space: normal;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
-.ft-app-rail.is-expanded .ft-app-rail-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .ft-app-rail-tooltip {
   position: absolute;
@@ -2136,7 +2145,7 @@ body { overflow-x: hidden; }
 /* Module sidebars that position themselves against the viewport must start
    after the rail instead of underneath it. */
 .ft-workspace-frame .ft-module-sidebar.fixed { left: var(--ft-rail-width); }
-.ft-workspace-frame:has(.ft-app-rail.is-expanded) .ft-module-sidebar.fixed { left: var(--ft-rail-width-expanded); }
+.ft-workspace-frame:has(.ft-app-rail.is-compact) .ft-module-sidebar.fixed { left: var(--ft-rail-width-compact); }
 
 /* One module bar: name, horizontal menu, module actions, account. The logo is
    not repeated here - it belongs to the shared rail on the left. */
@@ -2282,11 +2291,11 @@ body { overflow-x: hidden; }
 /* Phones: the rail becomes a horizontal strip so the screen keeps its width. */
 @media (max-width: 767px) {
   .ft-workspace-frame { padding-left: 0; }
-  .ft-workspace-frame:has(.ft-app-rail.is-expanded) { padding-left: 0; }
+  .ft-workspace-frame:has(.ft-app-rail.is-compact) { padding-left: 0; }
   .ft-workspace-frame .ft-module-sidebar.fixed,
-  .ft-workspace-frame:has(.ft-app-rail.is-expanded) .ft-module-sidebar.fixed { left: 0; }
+  .ft-workspace-frame:has(.ft-app-rail.is-compact) .ft-module-sidebar.fixed { left: 0; }
   .ft-app-rail,
-  .ft-app-rail.is-expanded {
+  .ft-app-rail.is-compact {
     position: sticky;
     top: 0;
     inset-block: auto;
@@ -2302,8 +2311,8 @@ body { overflow-x: hidden; }
   .ft-app-rail-brand img { height: 1.6rem; }
   .ft-app-rail-brand span { display: none; }
   .ft-app-rail-items { flex-direction: row; overflow-x: auto; overflow-y: hidden; }
-  .ft-app-rail:not(.is-expanded) .ft-app-rail-item,
-  .ft-app-rail.is-expanded .ft-app-rail-item {
+  .ft-app-rail .ft-app-rail-item,
+  .ft-app-rail.is-compact .ft-app-rail-item {
     flex-direction: row;
     gap: .4rem;
     min-height: 2.2rem;

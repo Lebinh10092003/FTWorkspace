@@ -2,11 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { WORKSPACE_AREAS, WorkspaceArea, WorkspaceAreaId } from '../../config/workspaceNavigation';
 
-const EXPANDED_STORAGE_KEY = 'ft-workspace-rail-expanded';
+const COMPACT_STORAGE_KEY = 'ft-workspace-rail-compact';
 
-function readExpanded() {
+function readCompact() {
   try {
-    return localStorage.getItem(EXPANDED_STORAGE_KEY) === '1';
+    return localStorage.getItem(COMPACT_STORAGE_KEY) === '1';
   } catch {
     return false;
   }
@@ -21,30 +21,30 @@ export type WorkspaceAppRailProps = {
 
 /**
  * Vertical navigation shared by every FT Workspace module: one entry per
- * business domain. It stays compact (icon + tooltip) and can be expanded to
- * show labels; the choice is remembered per browser.
+ * business domain. It shows full labels by default and can be collapsed to an
+ * icon rail with tooltips; the choice is remembered per browser.
  */
 export default function WorkspaceAppRail({ activeAreaId, canAccess, onSelect }: WorkspaceAppRailProps) {
-  const [expanded, setExpanded] = useState(readExpanded);
+  const [compact, setCompact] = useState(readCompact);
   const visibleAreas = WORKSPACE_AREAS.filter(canAccess);
 
   useEffect(() => {
     try {
-      localStorage.setItem(EXPANDED_STORAGE_KEY, expanded ? '1' : '0');
+      localStorage.setItem(COMPACT_STORAGE_KEY, compact ? '1' : '0');
     } catch {
-      /* Private browsing keeps the default collapsed rail. */
+      /* Private browsing keeps the default wide rail. */
     }
-  }, [expanded]);
+  }, [compact]);
 
   return (
     <nav
-      className={`ft-app-rail${expanded ? ' is-expanded' : ''}`}
+      className={`ft-app-rail${compact ? ' is-compact' : ''}`}
       aria-label="Điều hướng lĩnh vực FT Workspace"
-      data-expanded={expanded ? 'true' : 'false'}
+      data-compact={compact ? 'true' : 'false'}
     >
       <div className="ft-app-rail-brand">
         <img src="/logo.png" alt="FermatTech" />
-        {expanded && <span>FT Workspace</span>}
+        {!compact && <span>FT Workspace</span>}
       </div>
       <div className="ft-app-rail-items">
         {visibleAreas.map(area => {
@@ -57,11 +57,11 @@ export default function WorkspaceAppRail({ activeAreaId, canAccess, onSelect }: 
               onClick={() => onSelect(area)}
               className={`ft-app-rail-item${isActive ? ' is-active' : ''}`}
               aria-current={isActive ? 'page' : undefined}
-              title={expanded ? undefined : area.label}
+              title={area.label}
             >
               <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-              <span className="ft-app-rail-label">{expanded ? area.label : area.shortLabel}</span>
-              {!expanded && <span className="ft-app-rail-tooltip" role="tooltip">{area.label}</span>}
+              <span className="ft-app-rail-label">{compact ? area.shortLabel : area.label}</span>
+              {compact && <span className="ft-app-rail-tooltip" role="tooltip">{area.label}</span>}
             </button>
           );
         })}
@@ -69,12 +69,12 @@ export default function WorkspaceAppRail({ activeAreaId, canAccess, onSelect }: 
       <button
         type="button"
         className="ft-app-rail-toggle"
-        onClick={() => setExpanded(value => !value)}
-        aria-expanded={expanded}
-        title={expanded ? 'Thu gọn menu lĩnh vực' : 'Mở rộng menu lĩnh vực'}
+        onClick={() => setCompact(value => !value)}
+        aria-expanded={!compact}
+        title={compact ? 'Mở rộng menu lĩnh vực' : 'Thu gọn menu lĩnh vực'}
       >
-        {expanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-        {expanded && <span>Thu gọn</span>}
+        {compact ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+        {!compact && <span>Thu gọn</span>}
       </button>
     </nav>
   );
