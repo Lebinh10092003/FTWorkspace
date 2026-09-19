@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   ClipboardList,
   ExternalLink,
+  FolderTree,
   GraduationCap,
   Handshake,
   LayoutDashboard,
@@ -35,11 +36,15 @@ import FinanceReport from "./FinanceReport";
 import ProductManagement, { type ProductView, type ProductSubscription } from "./ProductManagement";
 import TrainingOverview from "./TrainingOverview";
 import Time24Input from "../Time24Input";
-import ModuleMobileNav from "../ModuleMobileNav";
+import ModuleTopNav from "../layout/ModuleTopNav";
+import { DIGITAL_TRAINING_NAV } from "../../config/workspaceNavigation";
+
+const BndcWorkspace = React.lazy(() => import("./bndc/BndcWorkspace"));
 
 type Tab =
   | "overview"
   | "calendar"
+  | "bndc"
   | "sessions"
   | "partner-sessions"
   | "partners"
@@ -402,6 +407,7 @@ const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "finance", label: "Báo cáo thu chi", icon: BadgeDollarSign },
   { id: "survey", label: "Khảo sát", icon: Users },
   { id: "materials", label: "Tài liệu", icon: BookOpen },
+  { id: "bndc", label: "Quản lý BNDC", icon: FolderTree },
 ];
 const localDateKey = (value: Date) =>
   String(value.getFullYear()) +
@@ -3996,198 +4002,86 @@ export default function DigitalTraining({
       setNotice(error.message);
     }
   };
-  return (
-    <div className="ft-module-shell flex min-h-screen text-slate-800">
-      <aside className="dt-sidebar ft-module-sidebar sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r">
-        <div className="ft-sidebar-brand flex items-center gap-3 border-b p-5">
-          <img src="/logo.png" className="h-8 object-contain" />
-          <div className="border-l pl-3">
-            <b>Fermat</b>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-cyan-600">
-              Công nghệ & đào tạo số
-            </p>
-          </div>
-        </div>
-        <nav className="flex-1 space-y-1 px-4 pt-5">
-          <button
-            onClick={() => go("overview")}
-            className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold ${tab === "overview" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-          >
-            <LayoutDashboard className="h-4 w-4" />
-            Tổng quan
-          </button>
-          <button
-            onClick={() => setScheduleOpen(!scheduleOpen)}
-            className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold ${tab === "calendar" || tab === "sessions" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-          >
-            <ClipboardList className="h-4 w-4" />
-            Lịch gặp khách hàng
-            <ChevronDown className={`ml-auto h-4 w-4 transition-transform ${scheduleOpen ? "rotate-180" : ""}`} />
-          </button>
-          {scheduleOpen && (
-            <div className="space-y-1">
-              <button
-                onClick={() => go("calendar")}
-                className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold ${tab === "calendar" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-              >
-                <CalendarDays className="h-3.5 w-3.5" />
-                Lịch
-              </button>
-              <button
-                onClick={() => go("sessions")}
-                className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold ${tab === "sessions" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-              >
-                <ClipboardList className="h-3.5 w-3.5" />
-                Báo cáo lịch công tác
-              </button>
-            </div>
-          )}
-          <button
-            onClick={() => setCustomerOpen(!customerOpen)}
-            className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold ${tab === "partners" || tab === "leads" || tab === "partner-sessions" || (tab === "products" && productView === "allocation") ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-          >
-            <Handshake className="h-4 w-4" />
-            Khách hàng
-            <ChevronDown className={`ml-auto h-4 w-4 transition-transform ${customerOpen ? "rotate-180" : ""}`} />
-          </button>
-          {customerOpen && (
-            <div className="space-y-1">
-              <button
-                onClick={() => goProduct("allocation")}
-                className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold ${tab === "products" && productView === "allocation" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-              >
-                <Handshake className="h-3.5 w-3.5" />
-                Khách hàng hiện tại
-              </button>
-              <button
-                onClick={() => go("leads")}
-                className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold ${tab === "leads" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-              >
-                <Users className="h-3.5 w-3.5" />
-                Khách hàng mới
-              </button>
-              <button
-                onClick={() => go("partner-sessions")}
-                className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold ${tab === "partner-sessions" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-              >
-                <ClipboardList className="h-3.5 w-3.5" />
-                Theo dõi tập huấn
-              </button>
-            </div>
-          )}
-          <button
-            onClick={() => setProductsOpen(!productsOpen)}
-            className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold ${tab === "products" && productView !== "allocation" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-          >
-            <PackageSearch className="h-4 w-4" />
-            Sản phẩm & dịch vụ
-            <ChevronDown className={`ml-auto h-4 w-4 transition-transform ${productsOpen ? "rotate-180" : ""}`} />
-          </button>
-          {productsOpen && (
-            <div className="space-y-1">
-              <button onClick={() => goProduct("catalog")} className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold ${tab === "products" && productView === "catalog" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}>
-                <PackageSearch className="h-3.5 w-3.5" />Danh mục
-              </button>
+  // The vertical rail owns application switching, so this module only lists its
+  // own tasks - horizontally, above the content.
+  const moduleNavItems = useMemo(
+    () => DIGITAL_TRAINING_NAV.filter((item) => item.requires !== "finance" || canViewFinance),
+    [canViewFinance],
+  );
+  const moduleNavActiveId =
+    tab === "products"
+      ? `products-${productView}`
+      : tab === "partners"
+        ? "products-allocation"
+        : tab;
+  const selectModuleNav = (id: string) => {
+    if (id === "training-assessments") {
+      onOpenTrainingAssessment();
+      return;
+    }
+    if (id.startsWith("products-")) {
+      goProduct(id.replace("products-", "") as ProductView);
+      return;
+    }
+    go(id as Tab);
+  };
 
-              <button onClick={() => goProduct("statistics")} className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold ${tab === "products" && productView === "statistics" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}>
-                <ClipboardList className="h-3.5 w-3.5" />Thống kê sử dụng
-              </button>
+  return (
+    <div className="ft-module-shell flex min-h-screen flex-col text-slate-800">
+      <div className="sticky top-0 z-30">
+        <header className="ft-module-header flex items-center justify-between gap-3 border-b px-4 py-3 md:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <img src="/logo.png" alt="FermatTech" className="h-8 shrink-0 object-contain" />
+            <div className="min-w-0">
+              <p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-sky-600">
+                FermatTech Workspace
+              </p>
+              <h1 className="truncate text-lg font-extrabold text-[#0b4275]">
+                Công nghệ &amp; đào tạo số
+              </h1>
             </div>
-          )}
-          {canViewFinance && (
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
             <button
-              onClick={() => go("finance")}
-              className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold ${tab === "finance" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
+              type="button"
+              onClick={onBackToWorkspace}
+              className="ft-btn ft-btn-secondary hidden text-xs sm:inline-flex"
             >
-              <BadgeDollarSign className="h-4 w-4" />
-              Báo cáo thu chi
+              <ArrowLeft className="h-4 w-4" />
+              Workspace
             </button>
-          )}
-          <button
-            onClick={() => setSurveyOpen(!surveyOpen)}
-            className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold ${tab === "survey" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-          >
-            <Users className="h-4 w-4" />
-            Khảo sát
-            <ChevronDown
-              className={`ml-auto h-4 w-4 transition-transform ${surveyOpen ? "rotate-180" : ""}`}
+            <AccountMenu
+              userName={userName}
+              userRole={userRole}
+              photoURL={photoURL}
+              isGuest={isGuest}
+              onAccountClick={onAccountClick}
+              onLogout={onLogout}
+              variant="avatar"
             />
-          </button>
-          {surveyOpen && (
-            <div className="space-y-1">
-              <button
-                onClick={() => go("survey")}
-                className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold ${tab === "survey" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-              >
-                <ClipboardList className="h-3.5 w-3.5" />
-                Khảo sát cuối buổi
-              </button>
-              <button
-                onClick={onOpenTrainingAssessment}
-                className="ft-nav-item ml-4 flex w-[calc(100%-1rem)] items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold"
-              >
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Bài kiểm tra cuối khóa tập huấn
-              </button>
-            </div>
-          )}
-          <button
-            onClick={() => go("materials")}
-            className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold ${tab === "materials" ? "ft-nav-item ft-nav-item-active" : "ft-nav-item"}`}
-          >
-            <BookOpen className="h-4 w-4" />
-            Tài liệu
-          </button>
-        </nav>
-        <div className="ft-sidebar-footer border-t p-4">
-          <button
-            onClick={onBackToWorkspace}
-            className="ft-sidebar-back mb-3 flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Quay lại Workspace
-          </button>
-          <AccountMenu
-            userName={userName}
-            userRole={userRole}
-            photoURL={photoURL}
-            isGuest={isGuest}
-            onAccountClick={onAccountClick}
-            onLogout={onLogout}
-            variant="sidebar"
-          />
-        </div>
-      </aside>
-      <ModuleMobileNav
-        className="lg:hidden dt-mobile-nav"
-        onBack={onBackToWorkspace}
-        activeId={tab === "products" ? `products-${productView}` : tab}
-        onSelect={(nextTab) => {
-          if (nextTab.startsWith("products-")) {
-            goProduct(nextTab.replace("products-", "") as ProductView);
-          } else {
-            go(nextTab as Tab);
-          }
-        }}
-        items={[
-          { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
-          { id: "calendar", label: "Lịch", icon: CalendarDays },
-          { id: "sessions", label: "Báo cáo lịch", icon: ClipboardList },
-          { id: "partners", label: "Khách hàng", icon: Handshake },
-          { id: "leads", label: "Khách hàng mới", icon: Users },
-          { id: "partner-sessions", label: "Theo dõi tập huấn", icon: ClipboardList },
-          { id: "products-allocation", label: "KH hiện tại", icon: Handshake },
-          { id: "products-catalog", label: "Danh mục", icon: PackageSearch },
-          { id: "products-statistics", label: "Thống kê dùng", icon: ClipboardList },
-          ...(canViewFinance ? [{ id: "finance", label: "Tài chính", icon: BadgeDollarSign }] : []),
-          { id: "survey", label: "Khảo sát", icon: Users },
-          { id: "materials", label: "Tài liệu", icon: BookOpen },
-        ]}
-        ariaLabel="Điều hướng Đào tạo số"
-      />
+          </div>
+        </header>
+        <ModuleTopNav
+          items={moduleNavItems}
+          activeId={moduleNavActiveId}
+          onSelect={selectModuleNav}
+          ariaLabel="Điều hướng Công nghệ & đào tạo số"
+        />
+      </div>
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
-          {loading ? (
+          {/* BNDC loads its own data, so it does not wait for the module fetch. */}
+          {tab === "bndc" ? (
+            <React.Suspense
+              fallback={
+                <p className="py-16 text-center text-sm font-semibold text-slate-500">
+                  Đang nạp Quản lý BNDC...
+                </p>
+              }
+            >
+              <BndcWorkspace userRole={userRole} idToken={idToken} />
+            </React.Suspense>
+          ) : loading ? (
             <div className="py-20 text-center text-sm text-slate-500">
               Đang tải dữ liệu...
             </div>

@@ -10,6 +10,9 @@ import AccountMenu from './components/AccountMenu';
 import WorkspaceNotifications from './components/WorkspaceNotifications';
 import ModuleMobileNav from './components/ModuleMobileNav';
 import { readWorkspaceAppearance, WorkspaceAppearance } from './components/AppearanceSettings';
+import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
+import ModuleTopNav from './components/layout/ModuleTopNav';
+import { areaForView, COMMUNICATION_TOOLS_NAV, WorkspaceArea } from './config/workspaceNavigation';
 
 const lazyWithRecovery = <T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) => lazy(async () => {
   const retryKey = `ft-workspace-lazy-reload:${window.location.pathname}`;
@@ -458,6 +461,13 @@ export default function App() {
     }
   }, [activeTab, authChecking, canViewFinance, isGuest, user.accessModules, userRole, viewMode]);
 
+  // The rail lists business domains; the Workspace launcher is always reachable.
+  const canAccessArea = (area: WorkspaceArea) => area.id === 'workspace' || canAccessView(area.id as ViewMode);
+  const openArea = (area: WorkspaceArea) => {
+    if (area.id === 'workspace') { setViewMode('workspace'); return; }
+    openProtectedView(area.id as ViewMode, area.id === 'social-dashboard' ? 'dashboard' : undefined);
+  };
+
   const openProtectedView = (mode: ViewMode, tab?: string) => {
     if (!canAccessView(mode)) {
       if (isGuest) { setAuthError('Vui lòng đăng nhập để truy cập mô-đun.'); setShowLoginModal(true); }
@@ -576,6 +586,7 @@ export default function App() {
   const profileModal = (
     <AccountProfileModal open={showProfile} user={user} idToken={idToken} onClose={() => setShowProfile(false)} onSaved={handleProfileSaved} onTokenChanged={handlePasswordChanged}/>
   );
+  const renderContent = (): React.ReactNode => {
   if (authChecking) {
     return (
       <div className="grid min-h-screen place-items-center bg-slate-50">
@@ -766,22 +777,38 @@ export default function App() {
       { key: 'touch-typing', title: 'Trình luyện gõ 10 ngón', description: 'Bài luyện gõ tiếng Việt theo cấp độ, đo tốc độ và độ chính xác.', icon: Keyboard, color: 'from-[#001E40] to-[#0055DA]' },
     ];
     return (
-      <div className="ft-module-shell flex min-h-dvh bg-slate-50 font-sans">
-        <aside className="ft-module-sidebar fixed inset-y-0 left-0 hidden w-64 flex-col md:flex">
-          <button type="button" onClick={() => setViewMode('workspace')} className="ft-sidebar-brand flex items-center gap-3 text-left"><img src="/logo.png" alt="FermatTech" className="h-9 object-contain" /><span><b className="block text-sm">FermatTech</b><small className="text-[10px] font-bold uppercase tracking-wider text-blue-500">Công cụ FermatTech</small></span></button>
-          <nav className="flex-1 space-y-2 p-4">{tools.map(tool => { const Icon = tool.icon; return <button key={tool.mode} type="button" onClick={() => setViewMode(tool.mode)} className="ft-nav-item flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold"><Icon className="h-5 w-5" />{tool.title}</button>; })}</nav>
-          <div className="ft-sidebar-footer border-t p-4"><button type="button" onClick={() => setViewMode('workspace')} className="ft-sidebar-back mb-3 flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm font-bold"><ArrowLeft className="h-5 w-5" />Quay lại Workspace</button><AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="sidebar" /></div>
-        </aside>
-        <main className="min-w-0 flex-1 md:ml-64"><header className="ft-module-header sticky top-0 z-20 flex items-center justify-between border-b px-5 py-4 md:px-8"><div><p className="text-xs font-extrabold uppercase tracking-[.15em] text-blue-600">FermatTech Workspace</p><h1 className="text-xl font-extrabold text-slate-900">Bộ công cụ FermatTech</h1></div><AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" /></header>
-          <ModuleMobileNav
-            className="lg:hidden"
-            onBack={() => setViewMode('workspace')}
-            onSelect={(mode) => setViewMode(mode as ViewMode)}
-            items={tools.map(tool => ({ id: tool.mode, label: tool.title, icon: tool.icon }))}
+      <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans">
+        <div className="sticky top-0 z-30">
+          <header className="ft-module-header flex items-center justify-between gap-3 border-b px-4 py-3 md:px-6">
+            <div className="flex min-w-0 items-center gap-3">
+              <img src="/logo.png" alt="FermatTech" className="h-8 shrink-0 object-contain" />
+              <div className="min-w-0">
+                <p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-blue-600">FermatTech Workspace</p>
+                <h1 className="truncate text-lg font-extrabold text-[#0b4275]">Bộ công cụ FermatTech</h1>
+              </div>
+            </div>
+            <AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />
+          </header>
+          <ModuleTopNav
+            items={COMMUNICATION_TOOLS_NAV.filter(item => item.id === 'communication-tools' || canAccessView(item.id as ViewMode))}
+            activeId="communication-tools"
+            onSelect={id => setViewMode(id as ViewMode)}
             ariaLabel="Điều hướng bộ công cụ FermatTech"
           />
-          <div className="ft-module-content mx-auto p-5 md:p-8"><div className="mb-7 max-w-2xl"><h2 className="text-3xl font-extrabold text-[#001e40]">Bạn muốn tạo gì?</h2><p className="mt-2 text-slate-500">Các công cụ phục vụ thiết kế và phân phối nội dung truyền thông được gom vào một nơi.</p></div><div className="grid max-w-5xl gap-5 md:grid-cols-2">{tools.map(tool => { const Icon = tool.icon; return <button key={tool.mode} type="button" onClick={() => setViewMode(tool.mode)} className="group rounded-3xl border border-slate-200 bg-white p-7 text-left shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl"><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white shadow-lg`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-900">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{tool.description}</p><span className="mt-6 block text-sm font-bold text-blue-600">Mở công cụ →</span></button>; })}{upcomingTools.map(tool => { const Icon = tool.icon; return <div key={tool.key} aria-disabled="true" className="relative rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 p-7 text-left"><span className="absolute right-5 top-5 rounded-full bg-amber-100 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-amber-700">Sắp ra mắt</span><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white opacity-60 shadow-inner`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-500">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-400">{tool.description}</p><span className="mt-6 block text-sm font-bold text-slate-400">Đang phát triển</span></div>; })}</div></div>
+        </div>
+        <main className="min-w-0 flex-1">
+          <div className="ft-module-content mx-auto p-5 md:p-8">
+            <div className="mb-7 max-w-2xl">
+              <h2 className="text-3xl font-extrabold text-[#001e40]">Bạn muốn tạo gì?</h2>
+              <p className="mt-2 text-slate-500">Các công cụ phục vụ thiết kế và phân phối nội dung truyền thông được gom vào một nơi.</p>
+            </div>
+            <div className="grid max-w-5xl gap-5 md:grid-cols-2">
+              {tools.map(tool => { const Icon = tool.icon; return <button key={tool.mode} type="button" onClick={() => setViewMode(tool.mode)} className="group rounded-3xl border border-slate-200 bg-white p-7 text-left shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl"><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white shadow-lg`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-900">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{tool.description}</p><span className="mt-6 block text-sm font-bold text-blue-600">Mở công cụ →</span></button>; })}
+              {upcomingTools.map(tool => { const Icon = tool.icon; return <div key={tool.key} aria-disabled="true" className="relative rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 p-7 text-left"><span className="absolute right-5 top-5 rounded-full bg-amber-100 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-amber-700">Sắp ra mắt</span><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white opacity-60 shadow-inner`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-500">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-400">{tool.description}</p><span className="mt-6 block text-sm font-bold text-slate-400">Đang phát triển</span></div>; })}
+            </div>
+          </div>
         </main>
+        {loginModal}{profileModal}
       </div>
     );
   }
@@ -1080,5 +1107,21 @@ export default function App() {
       </main>
       {loginModal}{profileModal}
     </div>
+  );
+  };
+
+  // Public landing pages and the session splash stay chrome-free; every other
+  // screen gets the shared vertical rail so modules are one click apart.
+  const content = renderContent();
+  const chromeLessViews: ViewMode[] = ['competition-landing-public', 'training-assessment-public'];
+  if (authChecking || chromeLessViews.includes(viewMode)) return content;
+  return (
+    <WorkspaceAreaFrame
+      activeAreaId={areaForView(viewMode)}
+      canAccess={canAccessArea}
+      onSelect={openArea}
+    >
+      {content}
+    </WorkspaceAreaFrame>
   );
 }
