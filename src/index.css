@@ -1454,9 +1454,10 @@ body { overflow-x: hidden; }
 .ft-module-content { width: 100%; }
 .overflow-x-auto, [data-drag-scroll] { touch-action: pan-x pan-y; }
 
+/* The logo lives in the shared rail, so the launcher header is title + actions. */
 .workspace-header-inner {
   display: grid !important;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: .75rem;
 }
@@ -2137,14 +2138,56 @@ body { overflow-x: hidden; }
 .ft-workspace-frame .ft-module-sidebar.fixed { left: var(--ft-rail-width); }
 .ft-workspace-frame:has(.ft-app-rail.is-expanded) .ft-module-sidebar.fixed { left: var(--ft-rail-width-expanded); }
 
-/* Horizontal module menu (tasks of the selected area). */
-.ft-module-topnav {
+/* One module bar: name, horizontal menu, module actions, account. The logo is
+   not repeated here - it belongs to the shared rail on the left. */
+.ft-module-bar {
   position: sticky;
   top: 0;
-  z-index: 25;
+  z-index: 30;
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+  min-height: 5.25rem;
   border-bottom: 1px solid #d9e9f7;
   background: rgba(255, 255, 255, .96);
-  backdrop-filter: blur(14px);
+  box-shadow: 0 1px 0 rgba(14, 116, 144, .05);
+  backdrop-filter: blur(16px);
+  padding: .6rem 1.1rem;
+}
+.ft-module-bar-title {
+  display: flex;
+  flex: 0 0 auto;
+  max-width: 17rem;
+  flex-direction: column;
+  justify-content: center;
+  border-right: 1px solid #e3eff9;
+  padding-right: 1rem;
+}
+.ft-module-bar-eyebrow {
+  font-size: .625rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #1681c5;
+}
+.ft-module-bar-title h1 {
+  margin-top: .15rem;
+  font-family: var(--ft-font-display, sans-serif);
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: #0b4275;
+}
+.ft-module-bar-nav { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; }
+.ft-module-bar-nav > .ft-module-topnav { width: 100%; }
+.ft-module-bar-actions { display: flex; flex: 0 0 auto; align-items: center; gap: .5rem; }
+.ft-module-bar-account { display: flex; flex: 0 0 auto; align-items: center; padding-left: .25rem; }
+
+/* Horizontal module menu (tasks of the selected area). */
+.ft-module-topnav {
+  position: relative;
+  border-bottom: 0;
+  background: transparent;
 }
 .ft-module-topnav-scroll {
   display: flex;
@@ -2153,21 +2196,20 @@ body { overflow-x: hidden; }
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
-  padding: .5rem .9rem;
+  padding: .2rem .1rem;
 }
-.ft-module-topnav-group { position: relative; flex: 0 0 auto; }
 .ft-module-topnav-item {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   gap: .45rem;
-  min-height: 2.35rem;
+  min-height: 2.9rem;
   border: 1px solid transparent;
-  border-radius: .7rem;
+  border-radius: .75rem;
   background: transparent;
   color: #41627e;
-  padding: .4rem .75rem;
-  font-size: .78rem;
+  padding: .45rem .8rem;
+  font-size: .82rem;
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
@@ -2185,17 +2227,31 @@ body { overflow-x: hidden; }
 .ft-module-topnav-item.is-active svg { color: #0875c1; }
 .ft-module-topnav-item:focus-visible { outline: 2px solid #1681c5; outline-offset: 1px; }
 
+.ft-module-topnav-badge {
+  display: inline-grid;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  place-items: center;
+  border-radius: 999px;
+  background: #e11d48;
+  color: #fff;
+  padding: 0 .3rem;
+  font-size: .625rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Rendered through a portal: the scrolling strip would otherwise clip it. */
 .ft-module-topnav-menu {
-  position: absolute;
-  left: 0;
-  top: calc(100% + .3rem);
-  z-index: 40;
+  position: fixed;
+  z-index: 60;
   min-width: 15rem;
   border: 1px solid #d9e9f7;
   border-radius: .85rem;
   background: #fff;
   box-shadow: 0 14px 34px rgba(8, 74, 130, .16);
   padding: .35rem;
+  animation: fade-in-fast .12s ease forwards;
 }
 .ft-module-topnav-menu-item {
   display: flex;
@@ -2205,8 +2261,8 @@ body { overflow-x: hidden; }
   border-radius: .6rem;
   background: transparent;
   color: #37516b;
-  padding: .5rem .65rem;
-  font-size: .76rem;
+  padding: .55rem .7rem;
+  font-size: .78rem;
   font-weight: 700;
   text-align: left;
   cursor: pointer;
@@ -2214,6 +2270,14 @@ body { overflow-x: hidden; }
 .ft-module-topnav-menu-item svg { color: #6b8aa6; }
 .ft-module-topnav-menu-item:hover { background: #f0f8ff; color: #075da7; }
 .ft-module-topnav-menu-item.is-active { background: #e6f4ff; color: #075da7; }
+
+@media (max-width: 900px) {
+  .ft-module-bar { flex-wrap: wrap; gap: .5rem; min-height: 0; }
+  .ft-module-bar-title { max-width: none; flex: 1 1 auto; border-right: 0; padding-right: 0; }
+  .ft-module-bar-nav { order: 3; flex: 1 1 100%; }
+  .ft-module-bar-actions { order: 2; }
+  .ft-module-bar-account { order: 2; }
+}
 
 /* Phones: the rail becomes a horizontal strip so the screen keeps its width. */
 @media (max-width: 767px) {
@@ -2355,11 +2419,14 @@ body.workspace-app-theme .ft-app-rail-tooltip {
   background: var(--workspace-card);
   color: var(--workspace-text);
 }
-body.workspace-app-theme .ft-module-topnav {
+body.workspace-app-theme .ft-module-bar {
   border-color: color-mix(in srgb, var(--workspace-accent) 18%, transparent) !important;
   background: var(--workspace-panel) !important;
   color: var(--workspace-text);
 }
+body.workspace-app-theme .ft-module-bar-title { border-color: color-mix(in srgb, var(--workspace-accent) 18%, transparent); }
+body.workspace-app-theme .ft-module-bar-title h1 { color: var(--workspace-text); }
+body.workspace-app-theme .ft-module-bar-eyebrow { color: var(--workspace-accent); }
 body.workspace-app-theme .ft-module-topnav-item { color: color-mix(in srgb, var(--workspace-text) 82%, transparent); }
 body.workspace-app-theme .ft-module-topnav-item svg { color: var(--workspace-accent); }
 body.workspace-app-theme .ft-module-topnav-item:hover,
@@ -2380,7 +2447,7 @@ body.workspace-app-theme.workspace-theme-dark .ft-app-rail {
 }
 body.workspace-app-theme.workspace-theme-dark .ft-app-rail-item.is-active { color: var(--workspace-surface-text) !important; }
 body.workspace-app-theme.workspace-theme-dark .ft-app-rail-item.is-active svg { color: #2563eb !important; }
-body.workspace-app-theme.workspace-theme-dark .ft-module-topnav { background: var(--workspace-panel) !important; }
+body.workspace-app-theme.workspace-theme-dark .ft-module-bar { background: var(--workspace-panel) !important; }
 body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-item.is-active { color: var(--workspace-surface-text) !important; }
 
 body.workspace-app-theme .bndc-stat,

@@ -2,6 +2,7 @@ import type React from 'react';
 import {
   BadgeDollarSign,
   BookOpen,
+  Bot,
   CalendarCheck,
   CalendarDays,
   CalendarRange,
@@ -9,17 +10,29 @@ import {
   ClipboardList,
   ContactRound,
   FileCheck2,
+  FileSpreadsheet,
+  FileText,
   FolderTree,
   GraduationCap,
   Handshake,
+  Layers3,
   LayoutDashboard,
   LayoutGrid,
+  Link2,
   Mail,
   Megaphone,
   PackageSearch,
   Presentation,
   QrCode,
+  Radio,
+  ReceiptText,
+  RefreshCw,
+  School,
+  Settings,
   ShieldUser,
+  Trophy,
+  UploadCloud,
+  UserCheck,
   Users,
 } from 'lucide-react';
 
@@ -49,7 +62,7 @@ export type WorkspaceArea = {
   /** Matches the App view mode so the rail can drive routing directly. */
   id: WorkspaceAreaId;
   label: string;
-  /** Shown inside the collapsed rail tooltip and on narrow screens. */
+  /** Shown inside the collapsed rail and in the tooltip. */
   shortLabel: string;
   description: string;
   icon: React.ElementType;
@@ -70,7 +83,7 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
   {
     id: 'work-schedule',
     label: 'Lịch làm việc',
-    shortLabel: 'Lịch làm việc',
+    shortLabel: 'Lịch việc',
     description: 'Lập lịch cá nhân, quản lý nhiệm vụ và theo dõi công việc đội nhóm.',
     icon: CalendarRange,
     path: '/work-schedule',
@@ -121,7 +134,7 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     id: 'finance-report',
     label: 'Báo cáo thu chi',
     shortLabel: 'Thu chi',
-    description: 'Theo dõi tổng thu, tổng chi, công nợ và chứng từ.',
+    description: 'Tổng thu, tổng chi, công nợ, chứng từ và đối soát khảo thí.',
     icon: BadgeDollarSign,
     path: '/finance-report',
   },
@@ -149,15 +162,37 @@ export type ModuleNavItem = {
   icon: React.ElementType;
   /** Optional sub-tasks rendered as a dropdown under the horizontal entry. */
   children?: ModuleNavItem[];
-  /** Feature flag key evaluated by the module before rendering. */
+  /** Capability key the module evaluates before showing the entry. */
   requires?: string;
+  /** Small counter rendered next to the label (pending work, alerts...). */
+  badge?: number | string;
 };
 
 /**
- * Horizontal menu of "Công nghệ & Đào tạo số".
- * Ids match the tab / product-view identifiers already used by the module, so
- * existing routes keep working unchanged.
+ * Removes entries whose `requires` key is not granted, including inside
+ * dropdowns, and drops a group that ends up with no reachable child.
  */
+export function filterModuleNav(items: ModuleNavItem[], granted: Record<string, boolean>): ModuleNavItem[] {
+  const allowed = (item: ModuleNavItem) => !item.requires || granted[item.requires] === true;
+  return items.filter(allowed).map(item => {
+    if (!item.children) return item;
+    return { ...item, children: item.children.filter(allowed) };
+  }).filter(item => !item.children || item.children.length > 0);
+}
+
+/** Applies badge counts by leaf id, including entries inside dropdowns. */
+export function withNavBadges(items: ModuleNavItem[], badges: Record<string, number>): ModuleNavItem[] {
+  const badgeFor = (item: ModuleNavItem) => (badges[item.id] ? { ...item, badge: badges[item.id] } : item);
+  return items.map(item => {
+    const next = badgeFor(item);
+    if (!item.children) return next;
+    const children = item.children.map(badgeFor);
+    const total = children.reduce((sum, child) => sum + (typeof child.badge === 'number' ? child.badge : 0), 0);
+    return { ...next, children, badge: next.badge || (total || undefined) };
+  });
+}
+
+/** Horizontal menu of "Công nghệ & Đào tạo số". Ids match the module tabs. */
 export const DIGITAL_TRAINING_NAV: ModuleNavItem[] = [
   { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
   {
@@ -178,7 +213,7 @@ export const DIGITAL_TRAINING_NAV: ModuleNavItem[] = [
       { id: 'leads', label: 'Khách hàng mới', icon: Users },
     ],
   },
-  { id: 'bndc', label: 'Quản lý BNDC', icon: FolderTree },
+  { id: 'quanlybndc', label: 'Quản lý BNDC', icon: FolderTree },
   {
     id: 'training',
     label: 'Đào tạo & tập huấn',
@@ -209,6 +244,84 @@ export const COMMUNICATION_TOOLS_NAV: ModuleNavItem[] = [
   { id: 'signature-builder', label: 'Tạo chữ ký Email', icon: ContactRound },
   { id: 'qr-generator', label: 'Tạo mã QR', icon: QrCode },
   { id: 'competition-landing', label: 'Trang giới thiệu cuộc thi', icon: Presentation },
+];
+
+/** Horizontal menu of "Lịch làm việc". Ids match the module views. */
+export const WORK_SCHEDULE_NAV: ModuleNavItem[] = [
+  { id: 'board', label: 'Công việc theo ngày', icon: LayoutDashboard },
+  { id: 'week', label: 'Lịch tuần / tháng', icon: CalendarDays },
+  { id: 'team', label: 'Quản lý nhân sự', icon: UserCheck, requires: 'team' },
+  { id: 'sheet', label: 'Liên kết Google Sheets', icon: FileSpreadsheet, requires: 'admin' },
+];
+
+/** Horizontal menu of "Khảo thí". Ids match the module pages. */
+export const EXAMINATION_NAV: ModuleNavItem[] = [
+  { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
+  {
+    id: 'competition-group',
+    label: 'Cuộc thi',
+    icon: Trophy,
+    children: [
+      { id: 'sessions', label: 'Các kỳ tổ chức', icon: CalendarDays },
+      { id: 'competitions', label: 'Thông tin các cuộc thi', icon: Trophy },
+    ],
+  },
+  { id: 'candidates', label: 'Thí sinh', icon: Users },
+  { id: 'partners', label: 'Đối tác', icon: Handshake },
+  {
+    id: 'class-group',
+    label: 'Lớp ôn tập',
+    icon: GraduationCap,
+    children: [
+      { id: 'classes', label: 'Các lớp ôn tập', icon: School },
+      { id: 'teachers', label: 'Thông tin giáo viên', icon: Users },
+    ],
+  },
+  {
+    id: 'paper-group',
+    label: 'Đề thi',
+    icon: FileText,
+    children: [
+      { id: 'papers', label: 'Ngân hàng đề thi', icon: FileText },
+      { id: 'blueprints', label: 'Ma trận đề', icon: Layers3 },
+      { id: 'ai-config', label: 'Cấu hình AI', icon: Bot, requires: 'edit' },
+    ],
+  },
+  { id: 'import', label: 'Nhập dữ liệu', icon: UploadCloud, requires: 'member' },
+];
+
+/** Maps an examination detail page back to the menu entry that owns it. */
+export const EXAMINATION_PAGE_TO_NAV: Record<string, string> = {
+  'competition-detail': 'competitions',
+  'session-detail': 'sessions',
+  'candidate-detail': 'candidates',
+  'class-detail': 'classes',
+  'teacher-detail': 'teachers',
+  'paper-detail': 'papers',
+  'paper-create': 'papers',
+  'blueprint-detail': 'blueprints',
+};
+
+/** Horizontal menu of "Truyền thông". Ids match the social dashboard tabs. */
+export const SOCIAL_DASHBOARD_NAV: ModuleNavItem[] = [
+  { id: 'dashboard', label: 'Biểu đồ tổng quan', icon: LayoutDashboard },
+  { id: 'media', label: 'Báo cáo tổng hợp', icon: Radio },
+  { id: 'posts', label: 'Bài đăng', icon: FileText },
+  { id: 'sync', label: 'Đồng bộ dữ liệu', icon: RefreshCw, requires: 'member' },
+  { id: 'config', label: 'Cấu hình hệ thống', icon: Settings, requires: 'member' },
+];
+
+/** Horizontal menu of "Báo cáo thu chi". */
+export const FINANCE_NAV: ModuleNavItem[] = [
+  { id: 'report', label: 'Báo cáo thu chi', icon: BadgeDollarSign },
+  { id: 'examination-billing', label: 'Đối soát khảo thí', icon: ReceiptText },
+];
+
+/** Horizontal menu of "Bài kiểm tra cuối khóa tập huấn". */
+export const TRAINING_ASSESSMENT_NAV: ModuleNavItem[] = [
+  { id: 'assessments', label: 'Bài kiểm tra cuối khóa', icon: FileCheck2 },
+  { id: 'bank-settings', label: 'Set up ngân hàng đề thi', icon: Link2, requires: 'questionBank' },
+  { id: 'digital-training', label: 'Mở Đào tạo số', icon: GraduationCap },
 ];
 
 /** Returns the top-level horizontal entry that owns a given leaf id. */

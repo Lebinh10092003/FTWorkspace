@@ -44,6 +44,8 @@ import { copyEmailToClipboard, copyTextToClipboard } from '../../lib/emailClipbo
 import { createBlankEmailTemplate, createEmailTemplateFromHtml, HtmlImportMode, isHtmlEmailFile } from '../../lib/emailTemplateFactory';
 import { prepareEmailIconsForDelivery } from '../../lib/emailIconDelivery';
 import ModuleMobileNav from '../ModuleMobileNav';
+import ModuleShellHeader from '../layout/ModuleShellHeader';
+import type { ModuleNavItem } from '../../config/workspaceNavigation';
 import { splitEmailHtmlPreservingLayout } from '../../lib/emailHtmlSectionSplitter';
 
 import BlockLibrary from './BlockLibrary';
@@ -70,6 +72,9 @@ interface EmailTemplateBuilderProps {
   photoURL?: string | null;
   userEmail?: string | null;
   onOpenSignatureBuilder: () => void;
+  /** Horizontal menu of the tools area, supplied by the shell. */
+  navItems?: ModuleNavItem[];
+  onNavSelect?: (id: string) => void;
 }
 
 function sortEmailTemplates(templates: EmailTemplate[]): EmailTemplate[] {
@@ -85,7 +90,7 @@ export default function EmailTemplateBuilder(props: EmailTemplateBuilderProps) {
   return <EmailBuilderDialogProvider><EmailTemplateBuilderContent {...props} /></EmailBuilderDialogProvider>;
 }
 
-function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lại Workspace', onAccountClick, onLogout, isGuest, userName, userRole, photoURL, userEmail, onOpenSignatureBuilder }: EmailTemplateBuilderProps) {
+function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lại Workspace', onAccountClick, onLogout, isGuest, userName, userRole, photoURL, userEmail, onOpenSignatureBuilder, navItems = [], onNavSelect }: EmailTemplateBuilderProps) {
   const dialog = useEmailBuilderDialog();
   // 1. Storage & State Management
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -905,62 +910,40 @@ function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lạ
           </div>
         )}
 
-        <aside className="ft-module-sidebar fixed inset-y-0 left-0 hidden w-64 flex-col md:flex">
-          <div className="ft-sidebar-brand flex items-center gap-3 text-left">
-            <img src="/logo.png" alt="FermatTech" className="h-9 w-auto object-contain" />
-            <span><b>FermatTech</b><small>Bộ công cụ FermatTech</small></span>
-          </div>
-          <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-            <button type="button" className="ft-nav-item ft-nav-item-active flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold"><FileText className="h-5 w-5" />Kho mẫu Email</button>
-            <button type="button" onClick={handleCreateTemplate} className="ft-nav-item flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold"><MailPlus className="h-5 w-5" />Tạo mẫu mới</button>
-            <label className="ft-nav-item flex w-full cursor-pointer items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold" title="Nhập mẫu từ tệp JSON hoặc HTML">
-              <Upload className="h-5 w-5" />
-              <input
-                type="file"
-                accept=".json,.html,.htm,application/json,text/html"
-                onChange={async e => {
-                  const input = e.currentTarget;
-                  const file = input.files?.[0];
-                  if (!file) return;
-                  try {
-                    await handleImportFile(file);
-                  } finally {
-                    input.value = '';
-                  }
-                }}
-                className="hidden"
-              />
-              Tải tệp mẫu
-            </label>
-            <button type="button" onClick={handleRestoreDefaults} className="ft-nav-item flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold"><RotateCcw className="h-5 w-5" />Khôi phục mẫu gốc</button>
-            <button type="button" onClick={onOpenSignatureBuilder} className="ft-nav-item flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold"><ContactRound className="h-5 w-5" />Trình tạo chữ ký</button>
-          </nav>
-          <div className="ft-sidebar-footer border-t p-4">
-            <button type="button" onClick={onBackToWorkspace} className="ft-sidebar-back mb-3 flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm font-bold"><ArrowLeft className="h-5 w-5" />{backLabel}</button>
-            <AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="sidebar"/>
-          </div>
-        </aside>
-
-        <main className="min-w-0 flex-1 overflow-y-auto md:ml-64">
-          <header className="ft-module-header sticky top-0 z-20 flex items-center justify-between border-b px-5 py-4 md:px-8"><div><p className="text-xs font-extrabold uppercase tracking-[.14em] text-blue-600">Bộ công cụ FermatTech</p><h1 className="text-lg font-extrabold text-slate-900">Trình quản lý mẫu Email</h1></div><AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar"/></header>
-          <ModuleMobileNav
-            className="email-list-mobile-nav"
-            onBack={onBackToWorkspace}
-            activeId="list"
-            onSelect={(id) => {
-              if (id === "create") handleCreateTemplate();
-              if (id === "import") listImportRef.current?.click();
-              if (id === "restore") handleRestoreDefaults();
-              if (id === "signature") onOpenSignatureBuilder();
-            }}
-            items={[
-              { id: "list", label: "Kho mẫu Email", icon: FileText },
-              { id: "create", label: "Tạo mẫu mới", icon: MailPlus },
-              { id: "import", label: "Tải tệp mẫu", icon: Upload },
-              { id: "restore", label: "Khôi phục mẫu gốc", icon: RotateCcw },
-              { id: "signature", label: "Trình tạo chữ ký", icon: ContactRound },
-            ]}
-            ariaLabel="Điều hướng kho mẫu Email"
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+          <ModuleShellHeader
+            eyebrow="Bộ công cụ FermatTech"
+            title="Trình quản lý mẫu Email"
+            items={navItems}
+            activeId="email-builder"
+            onSelect={(id) => (onNavSelect ? onNavSelect(id) : onBackToWorkspace())}
+            ariaLabel="Điều hướng bộ công cụ FermatTech"
+            actions={(
+              <>
+                <button type="button" onClick={handleCreateTemplate} className="ft-btn ft-btn-primary text-xs"><MailPlus className="h-4 w-4" />Tạo mẫu mới</button>
+                <label className="ft-btn ft-btn-secondary cursor-pointer text-xs" title="Nhập mẫu từ tệp JSON hoặc HTML">
+                  <Upload className="h-4 w-4" />
+                  <input
+                    type="file"
+                    accept=".json,.html,.htm,application/json,text/html"
+                    onChange={async e => {
+                      const input = e.currentTarget;
+                      const file = input.files?.[0];
+                      if (!file) return;
+                      try {
+                        await handleImportFile(file);
+                      } finally {
+                        input.value = '';
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <span className="hidden lg:inline">Tải tệp mẫu</span>
+                </label>
+                <button type="button" onClick={handleRestoreDefaults} className="ft-btn ft-btn-secondary text-xs" title="Khôi phục mẫu gốc"><RotateCcw className="h-4 w-4" /></button>
+              </>
+            )}
+            account={<AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar"/>}
           />
           <input
             ref={listImportRef}

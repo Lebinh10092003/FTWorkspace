@@ -9,13 +9,13 @@ import { ConnectionStatusChip, EmptyState, OrganizationStatusChip, StatCard, for
 
 const DETAIL_TABS: BndcDetailTab[] = ['overview', 'folders', 'users', 'permissions', 'requests', 'alerts', 'logs'];
 
-const BNDC_BASE_PATH = '/digital-training/bndc';
+const BNDC_BASE_PATH = '/digital-training/quanlybndc';
 
 type BndcRoute = { organizationId: string | null; tab: BndcDetailTab };
 
 function readRoute(): BndcRoute {
   const segments = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/');
-  // /digital-training/bndc/<organizationId>/<tab>
+  // /digital-training/quanlybndc/<organizationId>/<tab>
   const organizationId = segments[2] || null;
   const tab = (DETAIL_TABS as string[]).includes(segments[3] || '') ? (segments[3] as BndcDetailTab) : 'overview';
   return { organizationId, tab };

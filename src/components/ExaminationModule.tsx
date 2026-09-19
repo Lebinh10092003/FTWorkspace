@@ -17,7 +17,8 @@ import CandidateProfileDetail from "./examination/CandidateProfileDetail";
 import SessionRoster from "./examination/SessionRoster";
 import ConfirmModal from "./ConfirmModal";
 import AccountMenu from "./AccountMenu";
-import ModuleMobileNav from "./ModuleMobileNav";
+import ModuleShellHeader from "./layout/ModuleShellHeader";
+import { EXAMINATION_NAV, EXAMINATION_PAGE_TO_NAV, filterModuleNav } from "../config/workspaceNavigation";
 import SearchableSelect from "./SearchableSelect";
 import { matchesSearch } from "../lib/searchText";
 import { DateBadge, DeadlineLegend as Legend, Metric, SessionsTable, TimeField, dateValue, emptyDate, todayIso, sessionDisplayName, sessionTimelineLabel, sessionRecencyKey, formatGrade, BirthDateControl, LIST_PAGE_SIZE, TablePagination } from "./examination/ui";
@@ -2038,122 +2039,26 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     ),
     "teacher-detail": teacherDetail,
   };
+  const examinationNavItems = filterModuleNav(EXAMINATION_NAV, { edit: canEdit, member: !isGuest });
+  const examinationNavActiveId = EXAMINATION_PAGE_TO_NAV[page] || page;
   return (
-    <div className="ft-module-shell min-h-screen font-sans text-[#121c2a]">
-      <aside className="ft-module-sidebar fixed inset-y-0 left-0 hidden w-[280px] flex-col text-white md:flex">
-        <div className="ft-sidebar-brand flex items-center gap-3">
-          <img src="/logo.png" alt="Fermat" className="h-9 w-auto object-contain" />
-          <div className="min-w-0 border-l border-sky-100 pl-3">
-            <b className="block text-xl font-extrabold leading-none">Fermat</b>
-            <p className="mt-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-blue-200">Khảo thí</p>
-          </div>
-        </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-          <button onClick={() => go("overview")} className={`flex w-full items-center gap-3 rounded-md border-l-4 px-4 py-3 text-left text-sm font-bold ${page === "overview" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-            <LayoutDashboard className="h-5 w-5" />
-            Tổng quan
-          </button>
-          <button onClick={() => setCompOpen(!compOpen)} className={`flex w-full items-center gap-3 rounded-md border-l-4 px-4 py-3 text-left text-sm font-bold ${page === "sessions" || page === "session-detail" || page === "competitions" || page === "competition-detail" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-            <Trophy className="h-5 w-5" />
-            Cuộc thi
-            <ChevronDown className={`ml-auto h-4 w-4 ${compOpen ? "rotate-180" : ""}`} />
-          </button>
-          {compOpen && (
-            <div className="space-y-1">
-              <button onClick={() => go("sessions")} className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 whitespace-nowrap rounded border-l-4 px-3 py-2 text-left text-[13px] font-semibold ${page === "sessions" || page === "session-detail" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-                <CalendarDays className="h-4 w-4 shrink-0" />
-                Các kỳ tổ chức
-              </button>
-              <button onClick={() => go("competitions")} className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 whitespace-nowrap rounded border-l-4 px-3 py-2 text-left text-[13px] font-semibold ${page === "competitions" || page === "competition-detail" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-                <Trophy className="h-4 w-4 shrink-0" />
-                Thông tin các cuộc thi
-              </button>
-            </div>
-          )}
-          <button onClick={() => go("candidates")} className={`flex w-full items-center gap-3 rounded-md border-l-4 px-4 py-3 text-left text-sm font-bold ${page === "candidates" || page === "candidate-detail" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-            <Users className="h-5 w-5" />
-            Thí sinh
-          </button>
-          <button onClick={() => go("partners")} className={`flex w-full items-center gap-3 rounded-md border-l-4 px-4 py-3 text-left text-sm font-bold ${page === "partners" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-            <Handshake className="h-5 w-5" />
-            Đối tác
-          </button>
-          <button onClick={() => setClassOpen(!classOpen)} className={`flex w-full items-center gap-3 rounded-md border-l-4 px-4 py-3 text-left text-sm font-bold ${page === "classes" || page === "class-detail" || page === "teachers" || page === "teacher-detail" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-            <GraduationCap className="h-5 w-5" />
-            Lớp ôn tập
-            <ChevronDown className={`ml-auto h-4 w-4 ${classOpen ? "rotate-180" : ""}`} />
-          </button>
-          {classOpen && (
-            <div className="space-y-1">
-              <button onClick={() => go("classes")} className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 whitespace-nowrap rounded border-l-4 px-3 py-2 text-left text-[13px] font-semibold ${page === "classes" || page === "class-detail" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-                <School className="h-4 w-4 shrink-0" />
-                Các lớp ôn tập
-              </button>
-              <button onClick={() => go("teachers")} className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 whitespace-nowrap rounded border-l-4 px-3 py-2 text-left text-[13px] font-semibold ${page === "teachers" || page === "teacher-detail" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-                <Users className="h-4 w-4 shrink-0" />
-                Thông tin giáo viên
-              </button>
-            </div>
-          )}
-          <button onClick={() => setPaperOpen(!paperOpen)} className={`flex w-full items-center gap-3 rounded-md border-l-4 px-4 py-3 text-left text-sm font-bold ${page === "papers" || page === "paper-create" || page === "paper-detail" || page === "blueprints" || page === "blueprint-detail" || page === "ai-config" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-            <FileText className="h-5 w-5" />
-            Đề thi
-            <ChevronDown className={`ml-auto h-4 w-4 ${paperOpen ? "rotate-180" : ""}`} />
-          </button>
-          {paperOpen && (
-            <div className="space-y-1">
-              <button onClick={() => go("papers")} className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 whitespace-nowrap rounded border-l-4 px-3 py-2 text-left text-[13px] font-semibold ${page === "papers" || page === "paper-create" || page === "paper-detail" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-                <FileText className="h-4 w-4 shrink-0" />
-                Ngân hàng đề thi
-              </button>
-              <button onClick={() => go("blueprints")} className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 whitespace-nowrap rounded border-l-4 px-3 py-2 text-left text-[13px] font-semibold ${page === "blueprints" || page === "blueprint-detail" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-                <Layers3 className="h-4 w-4 shrink-0" />
-                Ma trận đề
-              </button>
-              {canEdit && (
-                <button onClick={() => go("ai-config")} className={`ml-4 flex w-[calc(100%-1rem)] items-center gap-2 whitespace-nowrap rounded border-l-4 px-3 py-2 text-left text-[13px] font-semibold ${page === "ai-config" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-                  <Bot className="h-4 w-4 shrink-0" />
-                  Cấu hình AI
-                </button>
-              )}
-            </div>
-          )}
-          {!isGuest && (
-            <button onClick={() => go("import")} className={`flex w-full items-center gap-3 rounded-md border-l-4 px-4 py-3 text-left text-sm font-bold ${page === "import" ? "ft-nav-item-active" : "ft-nav-item"}`}>
-              <UploadCloud className="h-5 w-5" />
-              Nhập dữ liệu
-            </button>
-          )}
-        </nav>
-        <div className="ft-sidebar-footer border-t p-4">
-          <button onClick={onBackToWorkspace} className="ft-sidebar-back mb-3 flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm font-bold">
-            <ArrowLeft className="h-5 w-5" />
-            Quay lại Workspace
-          </button>
-          <AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="sidebar" />
-        </div>
-      </aside>
-      <ModuleMobileNav
-        className="lg:hidden dt-mobile-nav"
-        onBack={onBackToWorkspace}
-        activeId={page}
+    <div className="ft-module-shell flex min-h-screen flex-col font-sans text-[#121c2a]">
+      <ModuleShellHeader
+        eyebrow={page === "competition-detail" ? "Chi tiết cuộc thi" : page === "session-detail" ? "Chi tiết kỳ tổ chức" : page === "candidate-detail" ? "Hồ sơ thí sinh" : page === "paper-detail" ? "Chi tiết đề thi" : page === "blueprint-detail" ? "Chi tiết ma trận đề" : page === "blueprints" ? "Ma trận đề" : page === "paper-create" ? "Tạo đề mới" : page === "papers" ? "Đề thi" : page === "ai-config" ? "Cấu hình AI" : nav.find((x) => x.id === page)?.label || "Tổng quan"}
+        title="Khảo thí"
+        items={examinationNavItems}
+        activeId={examinationNavActiveId}
         onSelect={(nextPage) => go(nextPage as Page)}
-        items={nav.map((item) => ({ id: item.id, label: item.label, icon: item.icon }))}
         ariaLabel="Điều hướng Khảo thí"
+        actions={
+          <>
+            <Bell className="hidden h-5 w-5 text-slate-500 sm:block" />
+            <CircleHelp className="hidden h-5 w-5 text-slate-500 sm:block" />
+          </>
+        }
+        account={<AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar" />}
       />
-      <main className="md:ml-64">
-        <header className="ft-module-header sticky top-0 z-10 flex h-16 items-center justify-between border-b px-5 md:px-8">
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <span>Khảo thí</span>
-            <ChevronRight className="h-4 w-4" />
-            <b>{page === "competition-detail" ? "Chi tiết cuộc thi" : page === "session-detail" ? "Chi tiết kỳ tổ chức" : page === "candidate-detail" ? "Hồ sơ thí sinh" : page === "paper-detail" ? "Chi tiết đề thi" : page === "blueprint-detail" ? "Chi tiết ma trận đề" : page === "blueprints" ? "Ma trận đề" : page === "paper-create" ? "Tạo đề mới" : page === "papers" ? "Đề thi" : page === "ai-config" ? "Cấu hình AI" : nav.find((x) => x.id === page)?.label}</b>
-          </div>
-          <div className="flex items-center gap-5">
-            <Bell className="h-5 w-5" />
-            <CircleHelp className="h-5 w-5" />
-            <AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar" />
-          </div>
-        </header>
+      <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-8">
           {bootstrapError && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{bootstrapError}</div>}
           {sessions === initialSessions && !bootstrapError ? (

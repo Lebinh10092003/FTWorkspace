@@ -5,7 +5,8 @@ import AccountMenu from "./AccountMenu";
 import { appDialog } from "./AppDialog";
 import Time24Input from "./Time24Input";
 import MonthlySheetLinkEditor from "./MonthlySheetLinkEditor";
-import ModuleMobileNav from "./ModuleMobileNav";
+import ModuleShellHeader from "./layout/ModuleShellHeader";
+import { WORK_SCHEDULE_NAV, filterModuleNav } from "../config/workspaceNavigation";
 
 type WorkStatus = "todo" | "doing" | "completed" | "reviewed";
 type Priority = "low" | "medium" | "high";
@@ -897,66 +898,32 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
       if (pendingMutationCountRef.current === 0) void load(true);
     }
   };
-  const navItems: Array<{ id: View; label: string; icon: React.ElementType }> = [
-    { id: "board", label: "Công việc theo ngày", icon: LayoutDashboard },
-    { id: "week", label: "Lịch tuần / tháng", icon: CalendarDays },
-    ...(showTeamMenu ? [{ id: "team" as View, label: "Quản lý nhân sự", icon: UserCheck }] : []),
-    ...(userRole === "ADMIN" ? [{ id: "sheet" as View, label: "Liên kết Google Sheets", icon: FileSpreadsheet }] : []),
-  ];
+  const navItems = filterModuleNav(WORK_SCHEDULE_NAV, { team: showTeamMenu, admin: userRole === "ADMIN" });
 
   return (
-    <div className="ft-module-shell flex min-h-dvh text-slate-900">
-      <aside className="dt-sidebar ft-module-sidebar sticky top-0 flex h-dvh w-64 shrink-0 flex-col border-r">
-        <button type="button" onClick={onBackToWorkspace} className="ft-sidebar-brand mx-3 mt-3 flex items-center gap-3 text-left">
-          <img src="/logo.png" alt="FermatTech" className="h-9 object-contain" />
-          <div className="min-w-0 border-l border-sky-100 pl-3"><b className="block text-xl font-extrabold leading-none">FermatTech</b><p className="mt-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-blue-200">Lịch làm việc</p></div>
-        </button>
-        <nav className="flex-1 space-y-1 p-3">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button key={item.id} type="button" onClick={() => openScheduleSection(item.id)} className={`ft-nav-item flex w-full items-center gap-3 rounded-xl border-l-4 px-3.5 py-3 text-left text-sm font-semibold transition ${view === item.id ? "ft-nav-item-active" : ""}`}>
-                <Icon className="h-4.5 w-4.5" />
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-        <div className="ft-sidebar-footer border-t p-3">
-          <button type="button" onClick={onBackToWorkspace} className="ft-sidebar-back mb-3 flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm font-bold">
-            <ArrowLeft className="h-4 w-4" />
-            Quay lại Workspace
-          </button>
-          <AccountMenu userName={userName} photoURL={photoURL} userRole={userRole} isGuest={false} onAccountClick={onAccountClick} onLogout={onLogout} variant="sidebar" />
-        </div>
-      </aside>
+    <div className="ft-module-shell flex min-h-dvh flex-col text-slate-900">
+      <ModuleShellHeader
+        eyebrow="Không gian làm việc"
+        title="Lịch làm việc"
+        items={navItems}
+        activeId={view}
+        onSelect={(nextView) => openScheduleSection(nextView as View)}
+        ariaLabel="Điều hướng Lịch làm việc"
+        actions={view !== "team" ? (
+          <>
+            <label className="relative hidden md:block">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm công việc..." className="w-48 rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400" />
+            </label>
+            <button type="button" onClick={() => setEditing(blankDraft(userEmail, selectedDate))} className="inline-flex items-center gap-2 rounded-xl bg-[#0055da] px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Công việc mới</span>
+            </button>
+          </>
+        ) : null}
+        account={<AccountMenu userName={userName} photoURL={photoURL} userRole={userRole} isGuest={false} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar" />}
+      />
       <main className="min-w-0 flex-1">
-        <header className="ft-module-header sticky top-0 z-20 border-b px-4 py-3 sm:px-6 lg:px-8">
-          <div className="mx-auto flex max-w-[1680px] flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[.16em] text-blue-600">Không gian làm việc</p>
-              <h1 className="text-xl font-extrabold tracking-tight text-[#001e40]">{navItems.find((item) => item.id === view)?.label}</h1>
-            </div>
-            <div className="flex items-center gap-2">
-              {view !== "team" && <label className="relative hidden md:block">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm công việc..." className="w-56 rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400" />
-              </label>}
-              {view !== "team" && <button type="button" onClick={() => setEditing(blankDraft(userEmail, selectedDate))} className="inline-flex items-center gap-2 rounded-xl bg-[#0055da] px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200">
-                <Plus className="h-4 w-4" />
-                Công việc mới
-              </button>}
-            </div>
-          </div>
-        </header>
-        <ModuleMobileNav
-          className="lg:hidden"
-          onBack={onBackToWorkspace}
-          activeId={view}
-          onSelect={(nextView) => openScheduleSection(nextView as View)}
-          items={navItems.map((item) => ({ id: item.id, label: item.label, icon: item.icon }))}
-          ariaLabel="Điều hướng lịch làm việc"
-        />
         <div className="ft-module-content mx-auto max-w-[1680px] p-4 sm:p-6 lg:p-8">
           {error && (
             <div className="mb-5 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">

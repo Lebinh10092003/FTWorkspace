@@ -122,7 +122,6 @@ export default function EmailBuilderHeader({
       
       {/* Left section: back & active template dropdown/editor */}
       <div className="email-builder-header-left col-start-1 row-start-1 flex min-w-0 items-center gap-3">
-        <img src="/logo.png" alt="Fermat" className="ft-module-logo hidden h-8 w-auto shrink-0 object-contain sm:block" />
         <button
           onClick={onBackToWorkspace}
           className="flex items-center justify-center p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200/60 transition-all cursor-pointer hover:text-slate-800"

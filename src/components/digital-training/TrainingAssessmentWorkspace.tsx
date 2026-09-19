@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { ArrowLeft, FileCheck2, GraduationCap, Link2, Loader2 } from "lucide-react";
 
 import AccountMenu from "../AccountMenu";
-import ModuleMobileNav from "../ModuleMobileNav";
+import ModuleShellHeader from "../layout/ModuleShellHeader";
+import { filterModuleNav, TRAINING_ASSESSMENT_NAV } from "../../config/workspaceNavigation";
 import TrainingAssessmentsAdmin from "./TrainingAssessmentsAdmin";
 import QuestionBankSettings from "./QuestionBankSettings";
 
@@ -64,41 +65,18 @@ export default function TrainingAssessmentWorkspace({
   }, [idToken]);
 
   return (
-    <div className="ft-module-shell min-h-screen bg-slate-50 font-sans">
-      <aside className="dt-sidebar ft-module-sidebar fixed inset-y-0 left-0 hidden w-64 flex-col md:flex">
-        {/* Brand */}
-        <div className="ft-sidebar-brand flex items-center gap-3">
-          <img src="/logo.png" alt="FermatTech" className="h-9 w-auto object-contain" />
-          <div className="min-w-0 border-l border-sky-100 pl-3">
-            <b className="block text-xl font-extrabold leading-none">Fermat</b>
-            <p className="mt-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-blue-200">
-              Bài kiểm tra cuối khóa tập huấn
-            </p>
-          </div>
-        </div>
-        {/* Nav */}
-        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-          <button onClick={() => setActiveTab("assessments")} className={`ft-nav-item flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold ${activeTab === "assessments" ? "ft-nav-item-active" : ""}`}>
-            <FileCheck2 className="h-5 w-5 shrink-0" />
-            Bài kiểm tra cuối khóa tập huấn
-          </button>
-          {canManageQuestionBank && <button onClick={() => setActiveTab("bank-settings")} className={`ft-nav-item flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold ${activeTab === "bank-settings" ? "ft-nav-item-active" : ""}`}>
-            <Link2 className="h-5 w-5 shrink-0" />
-            Set up ngân hàng đề thi
-          </button>}
-          <button onClick={onOpenDigitalTraining} className="ft-nav-item flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-bold">
-            <GraduationCap className="h-5 w-5 shrink-0" />
-            Mở Đào tạo số
-          </button>
-        </nav>        {/* Footer */}
-        <div className="ft-sidebar-footer border-t p-4">
-          <button
-            onClick={onBackToWorkspace}
-            className="ft-sidebar-back mb-3 flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm font-bold"
-          >
-            <ArrowLeft className="h-5 w-5" />
-            Quay lại Workspace
-          </button>
+    <div className="ft-module-shell flex min-h-screen flex-col bg-slate-50 font-sans">
+      <ModuleShellHeader
+        eyebrow="Liên kết dữ liệu với Đào tạo số"
+        title="Bài kiểm tra cuối khóa tập huấn"
+        items={filterModuleNav(TRAINING_ASSESSMENT_NAV, { questionBank: canManageQuestionBank })}
+        activeId={activeTab}
+        onSelect={(id) => {
+          if (id === "digital-training") onOpenDigitalTraining();
+          else setActiveTab(id as "assessments" | "bank-settings");
+        }}
+        ariaLabel="Điều hướng Bài kiểm tra cuối khóa"
+        account={(
           <AccountMenu
             userName={userName}
             userRole={userRole}
@@ -106,44 +84,11 @@ export default function TrainingAssessmentWorkspace({
             isGuest={false}
             onAccountClick={onAccountClick}
             onLogout={onLogout}
-            variant="sidebar"
+            variant="avatar"
           />
-        </div>
-      </aside>
-
-      <ModuleMobileNav
-        className="lg:hidden dt-mobile-nav"
-        onBack={onBackToWorkspace}
-        activeId={activeTab}
-        onSelect={(nextTab) => {
-          if (nextTab === "digital-training") onOpenDigitalTraining();
-          else setActiveTab(nextTab as "assessments" | "bank-settings");
-        }}
-        items={[
-          { id: "assessments", label: "Bài kiểm tra", icon: FileCheck2 },
-          ...(canManageQuestionBank ? [{ id: "bank-settings", label: "Ngân hàng đề", icon: Link2 }] : []),
-          { id: "digital-training", label: "Đào tạo số", icon: GraduationCap },
-        ]}
-        ariaLabel="Điều hướng Bài kiểm tra cuối khóa"
+        )}
       />
-
-      <main className="md:ml-64">
-        <header className="ft-module-header border-b px-5 py-4 md:px-8">
-          <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-blue-600">
-                Liên kết dữ liệu với Đào tạo số
-              </p>
-              <h1 className="mt-1 text-2xl font-extrabold text-[#001e40]">
-                {activeTab === "bank-settings" ? "Set up ngân hàng đề thi" : "Bài kiểm tra cuối khóa tập huấn"}
-              </h1>
-            </div>
-            <button onClick={onBackToWorkspace} className="ft-btn ft-btn-secondary md:hidden">
-              <ArrowLeft className="h-4 w-4" />
-              Workspace
-            </button>
-          </div>
-        </header>
+      <main className="min-w-0 flex-1">
         <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
           {notice && (
             <p className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">

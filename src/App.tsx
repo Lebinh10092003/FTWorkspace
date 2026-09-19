@@ -3,7 +3,6 @@ import { appDialog } from './components/AppDialog';
 import { ArrowLeft, BadgeDollarSign, CalendarCheck, CalendarDays, CalendarRange, ChartColumnBig, ClipboardList, ContactRound, FileCheck2, FileSignature, GraduationCap, Keyboard, Mail, Megaphone, Moon, QrCode, Presentation, ShieldUser, TriangleAlert } from 'lucide-react';
 
 import { Channel, UserRole } from './types';
-import Sidebar from './components/social-dashboard/Sidebar';
 import LoginModal from './components/LoginModal';
 import AccountProfileModal from './components/AccountProfileModal';
 import AccountMenu from './components/AccountMenu';
@@ -11,8 +10,8 @@ import WorkspaceNotifications from './components/WorkspaceNotifications';
 import ModuleMobileNav from './components/ModuleMobileNav';
 import { readWorkspaceAppearance, WorkspaceAppearance } from './components/AppearanceSettings';
 import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
-import ModuleTopNav from './components/layout/ModuleTopNav';
-import { areaForView, COMMUNICATION_TOOLS_NAV, WorkspaceArea } from './config/workspaceNavigation';
+import ModuleShellHeader from './components/layout/ModuleShellHeader';
+import { areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
 
 const lazyWithRecovery = <T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) => lazy(async () => {
   const retryKey = `ft-workspace-lazy-reload:${window.location.pathname}`;
@@ -317,6 +316,7 @@ export default function App() {
 
   useEffect(() => {
     const legacyRoutes: Array<[string, string]> = [
+      ['/digital-training/bndc', '/digital-training/quanlybndc'],
       ['/email-builder', '/communication-tools/email'],
       ['/signature-builder', '/communication-tools/signature'],
       ['/qr-generator', '/communication-tools/qr'],
@@ -467,6 +467,10 @@ export default function App() {
     if (area.id === 'workspace') { setViewMode('workspace'); return; }
     openProtectedView(area.id as ViewMode, area.id === 'social-dashboard' ? 'dashboard' : undefined);
   };
+
+  // The tools area shares one horizontal menu across all of its screens.
+  const communicationToolsNav = COMMUNICATION_TOOLS_NAV
+    .filter(item => item.id === 'communication-tools' || canAccessView(item.id as ViewMode));
 
   const openProtectedView = (mode: ViewMode, tab?: string) => {
     if (!canAccessView(mode)) {
@@ -676,9 +680,6 @@ export default function App() {
       <div className={`workspace-theme workspace-theme-${appearance.theme} min-h-dvh liquid-bg flex flex-col font-sans relative overflow-x-hidden`} style={workspaceAppearanceStyle(appearance)}>
         <header className="sticky top-0 z-30 w-full glass-panel border-b border-white/50">
           <div className="workspace-header-inner relative mx-auto max-w-[1600px] px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex min-w-0 shrink-0 items-center">
-              <img src="/logo.png" alt="FermatTech Logo" className="workspace-brand-logo" />
-            </div>
             <div className="workspace-title-block">
               <p className="workspace-title-eyebrow">Không gian làm việc</p>
               <h1 className="workspace-title text-sm font-extrabold tracking-tight sm:text-lg lg:text-2xl">
@@ -778,24 +779,15 @@ export default function App() {
     ];
     return (
       <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans">
-        <div className="sticky top-0 z-30">
-          <header className="ft-module-header flex items-center justify-between gap-3 border-b px-4 py-3 md:px-6">
-            <div className="flex min-w-0 items-center gap-3">
-              <img src="/logo.png" alt="FermatTech" className="h-8 shrink-0 object-contain" />
-              <div className="min-w-0">
-                <p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-blue-600">FermatTech Workspace</p>
-                <h1 className="truncate text-lg font-extrabold text-[#0b4275]">Bộ công cụ FermatTech</h1>
-              </div>
-            </div>
-            <AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />
-          </header>
-          <ModuleTopNav
-            items={COMMUNICATION_TOOLS_NAV.filter(item => item.id === 'communication-tools' || canAccessView(item.id as ViewMode))}
-            activeId="communication-tools"
-            onSelect={id => setViewMode(id as ViewMode)}
-            ariaLabel="Điều hướng bộ công cụ FermatTech"
-          />
-        </div>
+        <ModuleShellHeader
+          eyebrow="FermatTech Workspace"
+          title="Bộ công cụ FermatTech"
+          items={communicationToolsNav}
+          activeId="communication-tools"
+          onSelect={id => setViewMode(id as ViewMode)}
+          ariaLabel="Điều hướng bộ công cụ FermatTech"
+          account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />}
+        />
         <main className="min-w-0 flex-1">
           <div className="ft-module-content mx-auto p-5 md:p-8">
             <div className="mb-7 max-w-2xl">
@@ -925,17 +917,16 @@ export default function App() {
 
   if (viewMode === 'competition-landing') {
     return (
-      <div className="ft-module-shell min-h-dvh bg-slate-50 font-sans">
-        <header className="ft-module-header sticky top-0 z-20 flex items-center justify-between gap-3 border-b px-5 py-4 md:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <button type="button" onClick={() => setViewMode('communication-tools')} className="rounded-xl border border-slate-200 p-2 hover:bg-slate-100" aria-label="Quay lại Bộ công cụ FermatTech"><ArrowLeft className="h-5 w-5" /></button>
-            <div className="min-w-0">
-              <p className="text-xs font-extrabold uppercase tracking-[.15em] text-blue-600">Bộ công cụ FermatTech</p>
-              <h1 className="truncate text-xl font-extrabold text-slate-900">Trang giới thiệu cuộc thi</h1>
-            </div>
-          </div>
-          <AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />
-        </header>
+      <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans">
+        <ModuleShellHeader
+          eyebrow="Bộ công cụ FermatTech"
+          title="Trang giới thiệu cuộc thi"
+          items={communicationToolsNav}
+          activeId="competition-landing"
+          onSelect={id => setViewMode(id as ViewMode)}
+          ariaLabel="Điều hướng bộ công cụ FermatTech"
+          account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />}
+        />
         <main className="ft-module-content mx-auto max-w-7xl p-5 md:p-8">
           <Suspense fallback={<div className="py-16 text-center text-sm font-semibold text-slate-500">Đang nạp công cụ...</div>}>
             <CompetitionLandingManager idToken={idToken || ''} />
@@ -949,7 +940,12 @@ export default function App() {
   if (viewMode === 'qr-generator') {
     return (
       <Suspense fallback={<div className="grid h-screen place-items-center bg-[#f7f4ee]">Đang nạp Trình tạo mã QR...</div>}>
-        <QRCodeGenerator onBackToWorkspace={() => setViewMode('communication-tools')} backLabel="Bộ công cụ FermatTech" />
+        <QRCodeGenerator
+          onBackToWorkspace={() => setViewMode('communication-tools')}
+          backLabel="Bộ công cụ FermatTech"
+          navItems={communicationToolsNav}
+          onNavSelect={id => setViewMode(id as ViewMode)}
+        />
       </Suspense>
     );
   }
@@ -994,6 +990,8 @@ export default function App() {
             photoURL={user.photoURL}
             userEmail={user.email}
             onOpenSignatureBuilder={() => setViewMode('signature-builder')}
+            navItems={communicationToolsNav}
+            onNavSelect={id => setViewMode(id as ViewMode)}
           />
         </Suspense>
         {loginModal}{profileModal}
@@ -1057,17 +1055,15 @@ export default function App() {
   if (isGuest && (activeTab === 'sync' || activeTab === 'config')) return null;
 
   return (
-    <div className="ft-module-shell flex h-screen overflow-hidden font-sans">
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setSocialTab}
-        user={user}
-        userRole={userRole}
-        idToken={idToken || ''}
-        onLogout={handleLogout}
-        onLogin={() => { setAuthError(''); setShowLoginModal(true); }}
-        onAccountClick={openAccount}
-        onBackToWorkspace={() => setViewMode('workspace')}
+    <div className="ft-module-shell flex h-screen flex-col overflow-hidden font-sans">
+      <ModuleShellHeader
+        eyebrow="FermatTech Workspace"
+        title="Truyền thông"
+        items={filterModuleNav(SOCIAL_DASHBOARD_NAV, { member: !isGuest })}
+        activeId={activeTab}
+        onSelect={setSocialTab}
+        ariaLabel="Điều hướng Truyền thông"
+        account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogin={() => { setAuthError(''); setShowLoginModal(true); }} onLogout={handleLogout} variant="avatar" />}
       />
       <main className="flex-1 overflow-y-auto"><div className="ft-module-content px-5 py-6 md:px-7 md:py-7">
         {loading ? (

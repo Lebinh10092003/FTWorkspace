@@ -1,9 +1,18 @@
-import { useEffect, useState } from "react";
-import { ArrowLeft, BadgeDollarSign } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AccountMenu from "../AccountMenu";
-import ModuleMobileNav from "../ModuleMobileNav";
+import ModuleShellHeader from "../layout/ModuleShellHeader";
+import { FINANCE_NAV, withNavBadges } from "../../config/workspaceNavigation";
+import ExaminationBillingReview from "../finance/ExaminationBillingReview";
+import examinationBillingService, { type ExaminationBillingStats } from "../finance/examinationBillingService";
 import FinanceReport, { type FinancePartner } from "./FinanceReport";
+
+type FinanceTab = "report" | "examination-billing";
+
+const financeRouteTab = (): FinanceTab =>
+  window.location.pathname.replace(/^\/+|\/+$/g, "").split("/")[1] === "examination-billing"
+    ? "examination-billing"
+    : "report";
 
 export default function FinanceWorkspace({
   onBackToWorkspace,
@@ -27,6 +36,8 @@ export default function FinanceWorkspace({
   const [partners, setPartners] = useState<FinancePartner[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
+  const [tab, setTab] = useState<FinanceTab>(financeRouteTab);
+  const [billingStats, setBillingStats] = useState<ExaminationBillingStats | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -52,27 +63,50 @@ export default function FinanceWorkspace({
     };
   }, [idToken]);
 
+  // The unread count is the accountant's notification that Khảo thí registered
+  // new candidates, so it is fetched even while the report tab is open.
+  useEffect(() => {
+    let active = true;
+    examinationBillingService
+      .getStats({ idToken })
+      .then((stats) => {
+        if (active) setBillingStats(stats);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [idToken]);
+
+  useEffect(() => {
+    const syncFromLocation = () => setTab(financeRouteTab());
+    window.addEventListener("popstate", syncFromLocation);
+    return () => window.removeEventListener("popstate", syncFromLocation);
+  }, []);
+
+  const goTab = (next: FinanceTab) => {
+    setTab(next);
+    const path = next === "report" ? "/finance-report" : "/finance-report/examination-billing";
+    if (window.location.pathname !== path) window.history.pushState(null, "", path);
+  };
+
+  const navItems = useMemo(
+    () => withNavBadges(FINANCE_NAV, { "examination-billing": billingStats?.newCandidates || 0 }),
+    [billingStats],
+  );
+
+  const handleBillingStats = useCallback((stats: ExaminationBillingStats) => setBillingStats(stats), []);
+
   return (
-    <div className="ft-module-shell flex min-h-screen text-slate-800">
-      <aside className="dt-sidebar ft-module-sidebar sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r">
-        <div className="ft-sidebar-brand flex items-center gap-3 border-b p-5">
-          <img src="/logo.png" alt="FermatTech" className="h-8 object-contain" />
-          <div className="border-l pl-3">
-            <b>FermatTech</b>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-cyan-600">Tài chính</p>
-          </div>
-        </div>
-        <nav className="flex-1 px-4 pt-5">
-          <div className="ft-nav-item ft-nav-item-active flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold">
-            <BadgeDollarSign className="h-4 w-4" />
-            Báo cáo thu chi
-          </div>
-        </nav>
-        <div className="ft-sidebar-footer border-t p-4">
-          <button onClick={onBackToWorkspace} className="ft-sidebar-back mb-3 flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold">
-            <ArrowLeft className="h-4 w-4" />
-            Quay lại Workspace
-          </button>
+    <div className="ft-module-shell flex min-h-screen flex-col text-slate-800">
+      <ModuleShellHeader
+        eyebrow="FermatTech Workspace"
+        title="Báo cáo thu chi"
+        items={navItems}
+        activeId={tab}
+        onSelect={(id) => goTab(id as FinanceTab)}
+        ariaLabel="Điều hướng Báo cáo thu chi"
+        account={(
           <AccountMenu
             userName={userName}
             userRole={userRole}
@@ -80,21 +114,20 @@ export default function FinanceWorkspace({
             isGuest={false}
             onAccountClick={onAccountClick}
             onLogout={onLogout}
-            variant="sidebar"
+            variant="avatar"
           />
-        </div>
-      </aside>
-      <ModuleMobileNav
-        className="lg:hidden dt-mobile-nav"
-        onBack={onBackToWorkspace}
-        activeId="finance"
-        onSelect={() => undefined}
-        items={[{ id: "finance", label: "Báo cáo thu chi", icon: BadgeDollarSign }]}
-        ariaLabel="Điều hướng Tài chính"
+        )}
       />
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
-          {loading ? (
+          {tab === "examination-billing" ? (
+            <ExaminationBillingReview
+              idToken={idToken}
+              actorName={userName || "Kế toán"}
+              canEdit={canEdit}
+              onStatsChange={handleBillingStats}
+            />
+          ) : loading ? (
             <div className="py-20 text-center text-sm text-slate-500">Đang tải Báo cáo thu chi...</div>
           ) : notice ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700">{notice}</div>
