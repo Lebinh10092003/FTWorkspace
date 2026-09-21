@@ -1,0 +1,112 @@
+name: Examination data tasks
+
+# One-off, operator-driven jobs against the production examination data. Every
+# job lists what it would change and writes nothing unless "apply" is ticked.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Việc cần chạy'
+        type: choice
+        options:
+          - sync-work-schedule
+          - rename-sco-competitions
+          - set-round-date
+        required: true
+        default: sync-work-schedule
+      only:
+        description: 'rename-sco: chỉ đổi các mã này, cách nhau bằng dấu phẩy. Bỏ trống là tất cả.'
+        required: false
+        default: ''
+      session:
+        description: 'set-round-date: mã kỳ tổ chức, ví dụ fieo-2026-2027'
+        required: false
+        default: ''
+      round:
+        description: 'set-round-date: mã vòng, ví dụ round-national'
+        required: false
+        default: ''
+      batch:
+        description: 'set-round-date: đợt thứ mấy (mặc định 1)'
+        required: false
+        default: '1'
+      date:
+        description: 'set-round-date: ngày mới, YYYY-MM-DD'
+        required: false
+        default: ''
+      apply:
+        description: 'Ghi thay đổi. Bỏ trống để chỉ liệt kê.'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: workspace-production-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Configure VPS SSH access
+        env:
+          VPS_HOST: ${{ secrets.DEPLOY_HOST }}
+          VPS_PORT: ${{ secrets.DEPLOY_PORT }}
+          VPS_USERNAME: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -Eeuo pipefail
+          : "${VPS_HOST:?Missing repository secret DEPLOY_HOST}"
+          : "${VPS_PORT:?Missing repository secret DEPLOY_PORT}"
+          : "${VPS_USERNAME:?Missing repository secret DEPLOY_USER}"
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -qq -o Acquire::Retries=3
+          sudo apt-get install -y -qq sshpass
+          install -d -m 700 ~/.ssh
+          ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Build the command
+        id: build
+        env:
+          TASK: ${{ inputs.task }}
+          ONLY: ${{ inputs.only }}
+          SESSION: ${{ inputs.session }}
+          ROUND: ${{ inputs.round }}
+          BATCH: ${{ inputs.batch }}
+          DATE: ${{ inputs.date }}
+          APPLY: ${{ inputs.apply }}
+        run: |
+          set -Eeuo pipefail
+          FLAG=""
+          if [ "$APPLY" = "true" ]; then FLAG="--apply"; fi
+          case "$TASK" in
+            sync-work-schedule)
+              CMD="sync_examination_work_schedule $FLAG" ;;
+            rename-sco-competitions)
+              CMD="rename_sco_competitions $FLAG"
+              if [ -n "$ONLY" ]; then CMD="$CMD --only '$ONLY'"; fi ;;
+            set-round-date)
+              : "${SESSION:?Cần nhập session}"; : "${ROUND:?Cần nhập round}"; : "${DATE:?Cần nhập date}"
+              CMD="set_exam_round_date --session '$SESSION' --round '$ROUND' --batch '${BATCH:-1}' --date '$DATE' $FLAG" ;;
+            *) echo "Không biết việc $TASK" >&2; exit 1 ;;
+          esac
+          echo "cmd=$CMD" >> "$GITHUB_OUTPUT"
+          echo "Sẽ chạy: manage.py $CMD"
+
+      - name: Run on the VPS
+        env:
+          VPS_HOST: ${{ secrets.DEPLOY_HOST }}
+          VPS_PORT: ${{ secrets.DEPLOY_PORT }}
+          VPS_USERNAME: ${{ secrets.DEPLOY_USER }}
+          SSHPASS: ${{ secrets.DEPLOY_PASSWORD }}
+          CMD: ${{ steps.build.outputs.cmd }}
+        run: |
+          set -Eeuo pipefail
+          : "${SSHPASS:?Missing repository secret DEPLOY_PASSWORD}"
+          INNER="cd /var/www/ft-workspace/backend && DJANGO_DB_PATH=/home/workspace/ft-workspace-data/workspace.sqlite3 PYTHONIOENCODING=utf-8 ../.venv/bin/python manage.py $CMD"
+          sshpass -e ssh -p "$VPS_PORT" -o BatchMode=no -o StrictHostKeyChecking=yes \
+            "$VPS_USERNAME@$VPS_HOST" \
+            "if [ \"\$(id -u)\" -eq 0 ]; then exec sudo -u workspace -H bash -lc '$INNER'; else bash -lc '$INNER'; fi"
