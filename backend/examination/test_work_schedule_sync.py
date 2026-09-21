@@ -71,6 +71,15 @@ class ExaminationScheduleTitleTests(TestCase):
                            "label": "", "date": "", "slots": []}])
         self.assertEqual(planned_entries(), [])
 
+    def test_a_session_named_after_its_competition_is_not_repeated(self):
+        a_competition("aysbc", "AYSBC", "Asia Young Scientist Badge Competition")
+        a_session(session_id="aysbc", competition="aysbc", name="AYSBC",
+                  rounds=[{"id": "round-region", "name": "Vòng Khu vực",
+                           "label": "", "date": "2026-10-31", "slots": []}])
+        titles = [entry["title"] for entry in planned_entries()]
+        self.assertIn("Tổ chức Vòng Khu vực Cuộc thi AYSBC", titles)
+        self.assertNotIn("Tổ chức Vòng Khu vực Cuộc thi AYSBC – AYSBC", titles)
+
     def test_each_entry_has_a_stable_identity(self):
         a_session(rounds=[{"id": "round-final", "name": "Vòng Chung kết Quốc gia",
                            "label": "", "date": "2027-05-02", "slots": []}])

@@ -82,7 +82,9 @@ def _competition_label(session, competitions):
 def _title(round_name, competition, session_name, batch=None):
     parts = [f"Tổ chức {round_name}".strip(), f"Cuộc thi {competition}".strip()]
     title = " ".join(parts)
-    if session_name:
+    # Some kỳ tổ chức are named after the competition itself, which would read
+    # "Cuộc thi AYSBC – AYSBC". Say it once.
+    if session_name and _normalise(session_name) != _normalise(competition):
         title = f"{title} – {session_name}"
     if batch:
         title = f"{title} (Đợt {batch})"
