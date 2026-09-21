@@ -1,5 +1,7 @@
 from datetime import date
 from io import StringIO
+from pathlib import Path
+from unittest import mock
 
 from django.core.management import call_command
 from django.test import TestCase
@@ -189,6 +191,34 @@ class ExaminationScheduleSyncTests(TestCase):
         call_command("sync_examination_work_schedule", "--apply", stdout=out)
         self.assertIn("Đã ghi thay đổi.", out.getvalue())
         self.assertEqual(self.items().count(), 1)
+
+
+class ExaminationSessionHooksTests(TestCase):
+    """Saving a kỳ tổ chức must reach the schedule without waiting for 05:30."""
+
+    def setUp(self):
+        clear_seeded_exam_data()
+        self.department = Department.objects.create(name="Khảo thí", code="EXAMINATION")
+        self.staff = UserProfile.objects.create(email="exam@example.com", name="Exam Staff",
+                                                role="EMPLOYEE", access_modules=[])
+        self.staff.departments.add(self.department)
+        a_competition("fieo", "FIEO", "Fermat - International English Olympiad")
+
+    def refresh_calls(self):
+        return mock.patch("examination.views.sync_examination_work_schedule")
+
+    def test_the_helper_is_wired_into_create_update_and_delete(self):
+        source = (Path(__file__).resolve().parent / "views.py").read_text(encoding="utf-8")
+        # One definition plus the three save paths.
+        self.assertEqual(source.count("_refresh_examination_work_schedule"), 4, source.count(
+            "_refresh_examination_work_schedule"))
+
+    def test_a_failure_does_not_break_the_exam_save(self):
+        with mock.patch("examination.work_schedule_sync.sync_examination_work_schedule",
+                        side_effect=RuntimeError("sheet down")):
+            # The helper swallows the failure; the caller carries on.
+            from examination.views import _refresh_examination_work_schedule
+            _refresh_examination_work_schedule()
 
 
 class RenameScoCompetitionsTests(TestCase):

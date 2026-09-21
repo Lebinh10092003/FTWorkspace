@@ -22,6 +22,21 @@ from .sheet_scheduler import output_sheet_has_unreviewed_changes
 
 logger = logging.getLogger(__name__)
 
+
+def _refresh_examination_work_schedule():
+    """Mirror the exam calendar onto the Khảo thí schedule after a change.
+
+    Best effort: a schedule that cannot be written must never stop a kỳ tổ chức
+    from being saved, so a failure here is swallowed and the nightly command
+    picks the change up instead.
+    """
+    try:
+        from .work_schedule_sync import sync_examination_work_schedule
+        sync_examination_work_schedule()
+    except Exception:  # noqa: BLE001 - the exam edit itself already succeeded
+        logger.exception("Không đồng bộ được lịch thi sang lịch làm việc Khảo thí.")
+
+
 from .sync import (
     sync_session_candidate_totals,
     sync_examination_from_google_sheet,
@@ -1514,21 +1529,8 @@ def session_create(request):
         message=f'{audit_actor(request)} đã tạo kỳ tổ chức {sess.name}.',
         action_url=f'/examination/sessions/{sess.id}',
     )
+    _refresh_examination_work_schedule()
     return Response(serialize_session(sess), status=status.HTTP_201_CREATED)
-
-def _refresh_examination_work_schedule():
-    """Mirror the exam calendar onto the Khảo thí schedule after a change.
-
-    Best effort: a schedule that cannot be written must never stop a kỳ tổ chức
-    from being saved, so a failure here is swallowed and the nightly command
-    picks the change up instead.
-    """
-    try:
-        from .work_schedule_sync import sync_examination_work_schedule
-        sync_examination_work_schedule()
-    except Exception:  # noqa: BLE001 - the exam edit itself already succeeded
-        logger.exception("Không đồng bộ được lịch thi sang lịch làm việc Khảo thí.")
-
 
 @api_view(['PUT', 'DELETE'])
 @permission_classes([IsManagerOrAdmin])
@@ -1621,6 +1623,7 @@ def session_detail(request, pk):
         append_competition_scope_audit(sess, f'Xóa kỳ tổ chức {sess.name}.', request)
         sess.delete()
         sync_session_candidate_totals()
+        _refresh_examination_work_schedule()
         return Response({'success': True})
 
 
