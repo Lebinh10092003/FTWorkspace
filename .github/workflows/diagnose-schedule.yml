@@ -24,3 +24,4 @@ jobs:
           ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" > ~/.ssh/known_hosts
           sshpass -e ssh -p "$VPS_PORT" -o StrictHostKeyChecking=yes "$VPS_USERNAME@$VPS_HOST" 'cd /var/www/ft-workspace/backend && sudo -u workspace -H ../.venv/bin/python manage.py shell' < backend/scripts/diagnose_schedule_saves.py
           sshpass -e ssh -p "$VPS_PORT" -o StrictHostKeyChecking=yes "$VPS_USERNAME@$VPS_HOST" 'cd /var/www/ft-workspace/backend && ../.venv/bin/python -' < backend/scripts/diagnose_schedule_journal.py
+          sshpass -e ssh -p "$VPS_PORT" -o StrictHostKeyChecking=yes "$VPS_USERNAME@$VPS_HOST" 'cd /var/www/ft-workspace/backend && sudo -u workspace -H DJANGO_DB_PATH=/home/workspace/ft-workspace-data/workspace.sqlite3 PYTHONIOENCODING=utf-8 ../.venv/bin/python -' < backend/scripts/diagnose_sheet_latency.py
