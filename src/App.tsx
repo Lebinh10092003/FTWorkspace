@@ -782,7 +782,9 @@ export default function App() {
       { mode: 'document-number' as ViewMode, title: 'Trình tạo số Công văn', description: 'Lấy số văn bản mới nhất theo loại và ghi thẳng vào sổ trên Google Sheets.', icon: FileSignature, color: 'from-[#0055DA] to-[#00C68D]', allowed: canAccessView('document-number') },
       { mode: 'competition-landing' as ViewMode, title: 'Trang giới thiệu cuộc thi', description: 'Dựng trang giới thiệu công khai cho cuộc thi, lịch thi và số liệu lấy từ Khảo thí.', icon: Presentation, color: 'from-[#001E40] to-[#0055DA]', allowed: canAccessView('competition-landing') },
     ].filter(tool => tool.allowed);
-    const upcomingTools: Array<{ key: string; title: string; description: string; icon: typeof QrCode; color: string }> = [];
+    const upcomingTools: Array<{ key: string; title: string; description: string; icon: typeof QrCode; color: string }> = [
+      { key: 'weekly-report', title: 'Trình tạo báo cáo cuối tuần', description: 'Mỗi 17h thứ Sáu, tự tổng hợp nhiệm vụ trong tuần của từng nhân viên: việc đã hoàn thành và việc của tuần sau.', icon: ClipboardList, color: 'from-amber-500 to-orange-600' },
+    ];
     return (
       <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans">
         <ModuleShellHeader
