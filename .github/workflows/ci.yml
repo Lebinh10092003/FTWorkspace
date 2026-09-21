@@ -39,7 +39,7 @@ jobs:
       - run: pip install -r backend/requirements.txt
       - run: python backend/manage.py migrate --noinput
       - run: python backend/manage.py check
-      - run: python backend/manage.py test digital_training.test_assessment_maintenance work_schedule attendance config.tests --noinput
+      - run: python backend/manage.py test digital_training.test_assessment_maintenance work_schedule attendance documents config.tests --noinput
       - run: python backend/manage.py makemigrations --check --dry-run
 
   deploy:

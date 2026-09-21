@@ -1,6 +1,6 @@
 import React, { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { appDialog } from './components/AppDialog';
-import { ArrowLeft, BadgeDollarSign, CalendarCheck, CalendarDays, CalendarRange, ChartColumnBig, ClipboardList, ContactRound, FileCheck2, FileSignature, GraduationCap, Mail, Megaphone, Moon, QrCode, Presentation, ShieldUser, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, BadgeDollarSign, CalendarCheck, CalendarDays, CalendarRange, ChartColumnBig, ClipboardList, ContactRound, FileCheck2, FileSignature, ReceiptText, GraduationCap, Mail, Megaphone, Moon, QrCode, Presentation, ShieldUser, TriangleAlert } from 'lucide-react';
 
 import { Channel, UserRole } from './types';
 import LoginModal from './components/LoginModal';
@@ -45,11 +45,13 @@ const TrainingAssessmentPublic = lazyWithRecovery(() => import('./components/dig
 const TrainingAssessmentWorkspace = lazyWithRecovery(() => import('./components/digital-training/TrainingAssessmentWorkspace'));
 const QRCodeGenerator = lazyWithRecovery(() => import('./components/QRCodeGenerator'));
 const Attendance = lazyWithRecovery(() => import('./components/Attendance'));
+const FundingProposalBuilder = lazyWithRecovery(() => import('./components/documents/FundingProposalBuilder'));
+const DocumentNumberGenerator = lazyWithRecovery(() => import('./components/documents/DocumentNumberGenerator'));
 const WorkSchedule = lazyWithRecovery(() => import('./components/WorkSchedule'));
 const CompetitionLandingManager = lazyWithRecovery(() => import('./components/examination/CompetitionLandingManager'));
 const CompetitionLandingPublic = lazyWithRecovery(() => import('./components/examination/CompetitionLandingPublic'));
 
-type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'competition-landing' | 'competition-landing-public' | 'attendance' | 'account-management';
+type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'competition-landing' | 'competition-landing-public' | 'attendance' | 'account-management';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -159,6 +161,8 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/communication-tools/email')) return 'email-builder';
   if (path.startsWith('/communication-tools/signature')) return 'signature-builder';
   if (path.startsWith('/communication-tools/qr')) return 'qr-generator';
+  if (path.startsWith('/communication-tools/funding-proposal')) return 'funding-proposal';
+  if (path.startsWith('/communication-tools/document-number')) return 'document-number';
   if (path.startsWith('/communication-tools/competition-landing')) return 'competition-landing';
   if (path.startsWith('/communication-tools')) return 'communication-tools';
   if (path.startsWith('/finance-report')) return 'finance-report';
@@ -243,7 +247,7 @@ export default function App() {
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
   const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
-  const canAccessView = (mode: ViewMode) => { if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'work-schedule') return !isGuest; if (mode === 'communication-tools') return !isGuest && hasModuleAccess('email-builder'); if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
+  const canAccessView = (mode: ViewMode) => { if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'work-schedule') return !isGuest; if (mode === 'communication-tools') return !isGuest && hasModuleAccess('email-builder'); if (mode === 'funding-proposal' || mode === 'document-number') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
 
   const persistSession = (token: string, nextUser: AppUser, role: UserRole) => {
@@ -774,11 +778,11 @@ export default function App() {
       { mode: 'email-builder' as ViewMode, title: 'Thiết kế Email', description: 'Tạo, quản lý mẫu Email và chữ ký dùng chung.', icon: Mail, color: 'from-pink-500 to-violet-600', allowed: canAccessView('email-builder') },
       { mode: 'signature-builder' as ViewMode, title: 'Tạo chữ ký Email', description: 'Tùy biến thông tin, mạng xã hội và sao chép chữ ký dùng cho Gmail hoặc Outlook.', icon: ContactRound, color: 'from-[#104581] to-[#1473D1]', allowed: canAccessView('signature-builder') },
       { mode: 'qr-generator' as ViewMode, title: 'Tạo mã QR', description: 'Tạo mã QR, kiểm tra đường dẫn và xuất poster truyền thông.', icon: QrCode, color: 'from-blue-600 to-cyan-500', allowed: canAccessView('qr-generator') },
+      { mode: 'funding-proposal' as ViewMode, title: 'Phiếu đề xuất kinh phí', description: 'Nhập dự toán, xem trước bản in A4 và tải phiếu Word để trình ký.', icon: ReceiptText, color: 'from-emerald-600 to-teal-500', allowed: canAccessView('funding-proposal') },
+      { mode: 'document-number' as ViewMode, title: 'Trình tạo số Công văn', description: 'Lấy số văn bản mới nhất theo loại và ghi thẳng vào sổ trên Google Sheets.', icon: FileSignature, color: 'from-[#0055DA] to-[#00C68D]', allowed: canAccessView('document-number') },
       { mode: 'competition-landing' as ViewMode, title: 'Trang giới thiệu cuộc thi', description: 'Dựng trang giới thiệu công khai cho cuộc thi, lịch thi và số liệu lấy từ Khảo thí.', icon: Presentation, color: 'from-[#001E40] to-[#0055DA]', allowed: canAccessView('competition-landing') },
     ].filter(tool => tool.allowed);
-    const upcomingTools = [
-      { key: 'official-dispatch-number', title: 'Trình tạo số Công văn', description: 'Cấp và tra cứu số công văn theo loại văn bản, đơn vị phát hành và năm.', icon: FileSignature, color: 'from-[#0055DA] to-[#00C68D]' },
-    ];
+    const upcomingTools: Array<{ key: string; title: string; description: string; icon: typeof QrCode; color: string }> = [];
     return (
       <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans">
         <ModuleShellHeader
@@ -958,6 +962,48 @@ export default function App() {
           onNavSelect={id => setViewMode(id as ViewMode)}
         />
       </Suspense>
+    );
+  }
+
+  if (viewMode === 'funding-proposal' && !canAccessView('funding-proposal')) return null;
+
+  if (viewMode === 'funding-proposal') {
+    return (
+      <>
+        <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Phiếu đề xuất kinh phí...</div>}>
+          <FundingProposalBuilder
+            idToken={idToken || ''}
+            userName={user.displayName}
+            userRole={userRole}
+            photoURL={user.photoURL}
+            onAccountClick={openAccount}
+            onLogout={handleLogout}
+            onNavSelect={id => setViewMode(id as ViewMode)}
+          />
+        </Suspense>
+        {loginModal}{profileModal}
+      </>
+    );
+  }
+
+  if (viewMode === 'document-number' && !canAccessView('document-number')) return null;
+
+  if (viewMode === 'document-number') {
+    return (
+      <>
+        <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Trình tạo số Công văn...</div>}>
+          <DocumentNumberGenerator
+            idToken={idToken || ''}
+            userName={user.displayName}
+            userRole={userRole}
+            photoURL={user.photoURL}
+            onAccountClick={openAccount}
+            onLogout={handleLogout}
+            onNavSelect={id => setViewMode(id as ViewMode)}
+          />
+        </Suspense>
+        {loginModal}{profileModal}
+      </>
     );
   }
 

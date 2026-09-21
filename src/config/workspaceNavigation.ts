@@ -11,6 +11,7 @@ import {
   ContactRound,
   FileCheck2,
   FileClock,
+  FileSignature,
   FileSpreadsheet,
   FileText,
   FolderTree,
@@ -244,6 +245,8 @@ export const COMMUNICATION_TOOLS_NAV: ModuleNavItem[] = [
   { id: 'email-builder', label: 'Thiết kế Email', icon: Mail },
   { id: 'signature-builder', label: 'Tạo chữ ký Email', icon: ContactRound },
   { id: 'qr-generator', label: 'Tạo mã QR', icon: QrCode },
+  { id: 'funding-proposal', label: 'Phiếu đề xuất kinh phí', icon: ReceiptText },
+  { id: 'document-number', label: 'Trình tạo số Công văn', icon: FileSignature },
   { id: 'competition-landing', label: 'Trang giới thiệu cuộc thi', icon: Presentation },
 ];
 

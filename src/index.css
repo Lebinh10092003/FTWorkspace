@@ -2471,6 +2471,62 @@ body.workspace-app-theme .bndc-stat b,
 body.workspace-app-theme .bndc-tree-name { color: var(--workspace-surface-text); }
 
 /* ============================================================================
+   Phiếu đề xuất kinh phí — A4 print preview
+   The page is drawn at real A4 width so what the editor shows matches the
+   .docx the backend renders; the viewport scales it down to fit the column.
+   ========================================================================= */
+.fp-viewport {
+  overflow: auto;
+  max-height: calc(100dvh - 12rem);
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #eef2f7;
+  padding: 1rem;
+}
+.fp-scale { transform-origin: top left; }
+
+.fp-page {
+  box-sizing: border-box;
+  width: 21cm;
+  min-height: 29.7cm;
+  margin: 0 auto;
+  border: 1px solid #d8e1ec;
+  background: #fff;
+  padding: 1.6cm 2cm 1.6cm 2.5cm;
+  box-shadow: 0 6px 24px rgba(15, 55, 95, .12);
+  color: #111827;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 13pt;
+  line-height: 1.35;
+}
+.fp-letterhead { width: 100%; border-collapse: collapse; }
+.fp-letterhead td { padding: 2px 4px; text-align: center; vertical-align: middle; font-size: 12pt; }
+.fp-letterhead tr:first-child td { padding-bottom: 6px; }
+.fp-letterhead td:first-child { width: 38%; }
+
+.fp-title { margin: 14px 0 2px; text-align: center; font-size: 16pt; font-weight: 700; }
+.fp-subtitle { margin: 0 0 10px; text-align: center; font-size: 12pt; font-style: italic; }
+.fp-section { margin: 12px 0 4px; font-size: 13pt; font-weight: 700; }
+.fp-line { margin: 0 0 3px; }
+.fp-note { margin: 0 0 4px; font-size: 12pt; font-style: italic; }
+.fp-box { white-space: nowrap; margin-right: .5rem; }
+
+.fp-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 12pt; }
+.fp-table th,
+.fp-table td { border: 1px solid #111827; padding: 3px 5px; vertical-align: top; }
+.fp-table th { text-align: center; font-weight: 700; }
+.fp-center { text-align: center; }
+.fp-right { text-align: right; }
+
+.fp-signatures { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.fp-signatures td { width: 25%; padding: 4px; text-align: center; vertical-align: top; font-size: 12pt; }
+.fp-sign-space { height: 56px; }
+
+/* The sheet of paper stays white in dark mode: it is a print preview. */
+body.workspace-theme-dark .fp-viewport { border-color: var(--ftd-border); background: #0d1524; }
+body.workspace-theme-dark .fp-page { border-color: #2b3c58; background: #fff; color: #111827; }
+
+/* ============================================================================
    DARK MODE
    ----------------------------------------------------------------------------
    The previous dark theme only darkened the chrome and kept every business
