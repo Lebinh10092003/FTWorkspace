@@ -665,6 +665,30 @@ html { scrollbar-width: thin; scrollbar-color: #94a3b8 #e2e8f0; }
 .ws-input { width: 100%; border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; padding: .7rem .8rem; font-size: .875rem; color: #0f172a; outline: none; transition: border-color .15s ease, box-shadow .15s ease; }
 .ws-input:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
 .ws-bulk-btn { display: inline-flex; align-items: center; gap: .35rem; border: 1px solid #e2e8f0; border-radius: .6rem; background: #fff; padding: .45rem .7rem; font-size: .75rem; font-weight: 700; }
+
+/* Schedule-grid tag chip. Kept at 1rem tall so a cell is exactly as high
+   whether it shows the chip or the raw "[Hỗ trợ] " text it stands for. */
+.ws-grid-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: .2rem;
+  height: 1rem;
+  border: 1px solid;
+  border-radius: .3rem;
+  padding: 0 .3rem;
+  /* The tag prefix swallows its trailing space, so the chip carries its own. */
+  margin-right: .3rem;
+  font-size: .66rem;
+  font-weight: 800;
+  font-style: normal;
+  line-height: 1;
+  vertical-align: middle;
+  white-space: nowrap;
+  user-select: none;
+}
+.ws-grid-tag svg { width: .7rem; height: .7rem; }
+.ws-grid-tag-support { border-color: #fdba74; background: #fff7ed; color: #c2410c; }
+.ws-grid-tag-personal { border-color: #f0abfc; background: #fdf4ff; color: #a21caf; }
 .ft-overview-header + section > div:first-child {
   display: none;
 }
@@ -1310,45 +1334,6 @@ body.workspace-app-theme #root select,
 body.workspace-app-theme #root textarea {
   border-color: color-mix(in srgb, var(--workspace-accent) 20%, #cbd5e1);
 }
-body.workspace-app-theme.workspace-theme-dark .ft-module-sidebar {
-  background: linear-gradient(180deg, #202d45, #182235) !important;
-}
-body.workspace-app-theme.workspace-theme-dark .ft-nav-item-active {
-  color: var(--workspace-surface-text) !important;
-}
-body.workspace-app-theme.workspace-theme-dark .ft-nav-item-active svg { color: #2563eb !important; }
-body.workspace-app-theme.workspace-theme-dark .ft-module-header,
-body.workspace-app-theme.workspace-theme-dark .ft-mobile-nav {
-  background: var(--workspace-panel) !important;
-  color: var(--workspace-text) !important;
-}
-body.workspace-app-theme.workspace-theme-dark .ft-module-sidebar .ft-sidebar-brand,
-body.workspace-app-theme.workspace-theme-dark .ft-sidebar-account,
-body.workspace-app-theme.workspace-theme-dark .ft-sidebar-back,
-body.workspace-app-theme.workspace-theme-dark .ft-surface,
-body.workspace-app-theme.workspace-theme-dark .ft-page-header,
-body.workspace-app-theme.workspace-theme-dark .ft-toolbar,
-body.workspace-app-theme.workspace-theme-dark .ft-module-shell .bg-white,
-body.workspace-app-theme.workspace-theme-dark .ft-module-shell .bg-slate-50,
-body.workspace-app-theme.workspace-theme-dark .ft-module-shell .bg-slate-100,
-body.workspace-app-theme.workspace-theme-dark .workspace-module-canvas .bg-white,
-body.workspace-app-theme.workspace-theme-dark .workspace-module-canvas .bg-slate-50,
-body.workspace-app-theme.workspace-theme-dark .workspace-module-canvas .bg-slate-100 {
-  background: var(--workspace-card) !important;
-  color: var(--workspace-surface-text) !important;
-}
-body.workspace-app-theme.workspace-theme-dark .workspace-module-canvas input,
-body.workspace-app-theme.workspace-theme-dark .workspace-module-canvas select,
-body.workspace-app-theme.workspace-theme-dark .workspace-module-canvas textarea,
-body.workspace-app-theme.workspace-theme-dark .workspace-module-canvas .bg-\[\#fbfaf7\],
-body.workspace-app-theme.workspace-theme-dark .workspace-module-canvas .bg-\[\#f7f8f6\] {
-  background: rgba(255,255,255,.94) !important;
-  color: var(--workspace-surface-text) !important;
-}
-body.workspace-app-theme.workspace-theme-dark .ft-table { color: var(--workspace-surface-text); }
-body.workspace-app-theme.workspace-theme-dark .ft-table tbody tr { background: rgba(255,255,255,.96) !important; }
-body.workspace-app-theme.workspace-theme-dark .ft-table tbody tr:nth-child(even) { background: #f1f5f9 !important; }
-body.workspace-app-theme.workspace-theme-dark .ft-table td { color: var(--workspace-surface-text) !important; }
 
 /* Module logos use one large rectangular identity frame in every theme. */
 body.workspace-app-theme .ft-module-shell img[src="/logo.png"],
@@ -1405,10 +1390,6 @@ body.workspace-app-theme.workspace-theme-light .ft-module-sidebar .ft-nav-item-a
 body.workspace-app-theme.workspace-theme-light .ft-module-sidebar .ft-nav-item-active svg { color: #0055da !important; }
 body.workspace-app-theme.workspace-theme-light .ft-sidebar-footer { border-color: rgba(255,255,255,.22) !important; }
 
-/* Dark mode keeps business frames light so semantic colors and table text remain intact. */
-.workspace-theme-dark .glass-card { color: var(--workspace-surface-text); }
-.workspace-theme-dark .glass-card .ft-heading { color: var(--workspace-surface-text); }
-.workspace-theme-dark .glass-card .workspace-muted { color: var(--workspace-surface-muted); }
 .workspace-theme > header img[src="/logo.png"] {
   box-sizing: content-box;
   border: 1px solid #d9e2f0;
@@ -2471,13 +2452,6 @@ body.workspace-app-theme .ft-module-topnav-menu {
 }
 body.workspace-app-theme .ft-module-topnav-menu-item { color: var(--workspace-surface-text); }
 
-body.workspace-app-theme.workspace-theme-dark .ft-app-rail {
-  background: linear-gradient(180deg, #202d45, #182235) !important;
-}
-body.workspace-app-theme.workspace-theme-dark .ft-app-rail-item.is-active { color: var(--workspace-surface-text) !important; }
-body.workspace-app-theme.workspace-theme-dark .ft-app-rail-item.is-active svg { color: #2563eb !important; }
-body.workspace-app-theme.workspace-theme-dark .ft-module-bar { background: var(--workspace-panel) !important; }
-body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-item.is-active { color: var(--workspace-surface-text) !important; }
 
 body.workspace-app-theme .bndc-stat,
 body.workspace-app-theme .bndc-tree-row.is-active {
@@ -2487,3 +2461,766 @@ body.workspace-app-theme .bndc-tree-row.is-active {
 }
 body.workspace-app-theme .bndc-stat b,
 body.workspace-app-theme .bndc-tree-name { color: var(--workspace-surface-text); }
+
+/* ============================================================================
+   DARK MODE
+   ----------------------------------------------------------------------------
+   The previous dark theme only darkened the chrome and kept every business
+   frame white, which read as a light app in a dark picture frame. This section
+   makes the whole surface dark instead, in three passes:
+
+     1. tokens        — one dark scale, plus the shared --ft-* design tokens
+                        remapped onto it so every component that already speaks
+                        in tokens (.ft-btn, .ft-input, .ft-surface, ...) follows
+                        with no rule of its own;
+     2. utility remap — the Tailwind neutrals and pastel tints the modules are
+                        built from. Generated from the classes the app actually
+                        uses; regenerate with scripts/gen-dark-utilities.py;
+     3. components    — the hand-written .ft-/.ws-/.dt-/.bndc- classes that
+                        hard-code light literals.
+
+   Everything here sits outside @layer, so it wins over Tailwind utilities
+   without !important. Rules that have to beat an existing !important rule in
+   this file carry one too and are marked.
+   ========================================================================= */
+
+body.workspace-theme-dark {
+  --ftd-canvas:        #080d16;
+  --ftd-surface:       #141d2e;  /* cards, modals, anything that was bg-white */
+  --ftd-surface-2:     #1a2437;  /* bg-slate-50  */
+  --ftd-surface-3:     #202c42;  /* bg-slate-100 */
+  --ftd-surface-4:     #28364f;  /* bg-slate-200 */
+  --ftd-border-soft:   #1f2c42;
+  --ftd-border:        #2a3a56;
+  --ftd-border-strong: #3a4d6e;
+  --ftd-text:          #e9eff8;  /* slate-800..950 */
+  --ftd-text-2:        #cbd8e8;  /* slate-700 */
+  --ftd-text-3:        #9db0c8;  /* slate-500 */
+  --ftd-text-4:        #7d92ad;  /* slate-400 */
+  --ftd-text-5:        #5f7491;  /* slate-300, placeholders */
+  --ftd-accent:        #5b9dff;
+
+  /* Shared design tokens follow the dark scale. */
+  --ft-bg:               var(--ftd-canvas);
+  --ft-surface:          var(--ftd-surface);
+  --ft-surface-2:        var(--ftd-surface-2);
+  --ft-surface-3:        var(--ftd-surface-3);
+  --ft-border:           var(--ftd-border);
+  --ft-border-strong:    var(--ftd-border-strong);
+  --ft-border-focus:     var(--ftd-accent);
+  --ft-text-primary:     var(--ftd-text);
+  --ft-text-secondary:   var(--ftd-text-2);
+  --ft-text-muted:       var(--ftd-text-4);
+  --ft-text-placeholder: var(--ftd-text-5);
+  --ft-primary:          #2f7fe0;
+  --ft-primary-hover:    #4a93ec;
+  --ft-primary-light:    #16263f;
+  --ft-accent:           var(--ftd-accent);
+
+  /* Shadows read as depth only if they are darker than the surface. */
+  --ft-shadow-xs:   0 1px 2px rgba(0,0,0,.5);
+  --ft-shadow-sm:   0 2px 8px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.35);
+  --ft-shadow-md:   0 4px 16px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.35);
+  --ft-shadow-lg:   0 8px 32px rgba(0,0,0,.6), 0 4px 12px rgba(0,0,0,.4);
+  --ft-shadow-xl:   0 20px 48px rgba(0,0,0,.65), 0 8px 20px rgba(0,0,0,.45);
+  --ft-shadow-glow: 0 0 0 3px rgba(91,157,255,.28);
+
+  /* Native date/month pickers, select popups, autofill and scrollbars. */
+  color-scheme: dark;
+  color: var(--ftd-text);
+}
+
+/* Tailwind v4 leaves a bare `border` at currentColor, which would draw a
+   near-white hairline on dark. It goes in @layer base so it beats Tailwind's
+   own preflight default but loses to every explicit border-* utility. */
+@layer base {
+  :where(body.workspace-theme-dark) :where(*, ::before, ::after) {
+    border-color: var(--ftd-border);
+  }
+}
+
+/* Tailwind's box-shadow utilities are tuned for light backgrounds. */
+body.workspace-theme-dark .shadow-sm { box-shadow: var(--ft-shadow-xs); }
+body.workspace-theme-dark .shadow { box-shadow: var(--ft-shadow-sm); }
+body.workspace-theme-dark .shadow-md { box-shadow: var(--ft-shadow-sm); }
+body.workspace-theme-dark .shadow-lg { box-shadow: var(--ft-shadow-md); }
+body.workspace-theme-dark .shadow-xl { box-shadow: var(--ft-shadow-lg); }
+body.workspace-theme-dark .shadow-2xl { box-shadow: var(--ft-shadow-xl); }
+body.workspace-theme-dark .shadow-inner { box-shadow: inset 0 2px 4px rgba(0,0,0,.35); }
+
+/* ---- Canvas and launcher ------------------------------------------------ */
+body.workspace-theme-dark .liquid-bg {
+  background: linear-gradient(150deg, #080d16 0%, #0b1220 40%, #0e1728 70%, #121a2e 100%);
+}
+body.workspace-theme-dark .glass-panel {
+  border-color: var(--ftd-border);
+  background: rgba(20, 29, 46, .82);
+  box-shadow: var(--ft-shadow-sm), inset 0 1px 0 rgba(255,255,255,.04);
+}
+body.workspace-theme-dark .glass-card {
+  border-color: var(--ftd-border);
+  background: rgba(20, 29, 46, .76);
+  box-shadow: var(--ft-shadow-sm), inset 0 1px 0 rgba(255,255,255,.04);
+  color: var(--ftd-text);
+}
+body.workspace-theme-dark .glass-card:hover {
+  border-color: rgba(91,157,255,.42);
+  box-shadow: var(--ft-shadow-lg);
+}
+body.workspace-theme-dark .glass-card .ft-heading,
+body.workspace-theme-dark .glass-card .workspace-title { color: var(--ftd-text); }
+body.workspace-theme-dark .glass-card .workspace-muted { color: var(--ftd-text-3); }
+body.workspace-theme-dark .premium-card { border-color: var(--ftd-border); background: var(--ftd-surface); }
+
+body.workspace-theme-dark ::selection { background: rgba(91,157,255,.32); color: #fff; }
+/* `body.workspace-app-theme` puts the theme gradient in `background-color`,
+   which is invalid for a gradient, so the colour resolves to transparent and
+   the white page canvas shows through behind and around the shell. Give the
+   document and the body a real dark colour underneath. */
+:root:has(body.workspace-theme-dark) { background-color: var(--ftd-canvas, #080d16); }
+body.workspace-app-theme.workspace-theme-dark { background-color: var(--ftd-canvas) !important; }
+
+/* The document scrollbar lives on <html>, which never carries the theme class. */
+:root:has(body.workspace-theme-dark) { scrollbar-color: #3f5374 #131c2c; }
+:root:has(body.workspace-theme-dark) ::-webkit-scrollbar-track { background: #131c2c; }
+:root:has(body.workspace-theme-dark) ::-webkit-scrollbar-thumb { background: #3f5374; border-color: #131c2c; }
+body.workspace-theme-dark { scrollbar-color: #3f5374 #131c2c; }
+body.workspace-theme-dark ::-webkit-scrollbar-track { background: #131c2c; }
+body.workspace-theme-dark ::-webkit-scrollbar-thumb { background: #3f5374; border-color: #131c2c; }
+body.workspace-theme-dark ::-webkit-scrollbar-thumb:hover { background: #55698c; }
+
+/* ---- Shell chrome: vertical rail + horizontal module bar ----------------- */
+body.workspace-app-theme.workspace-theme-dark .ft-app-rail {
+  border-color: #22324b !important;
+  background: linear-gradient(180deg, #101a2b 0%, #0a1119 100%) !important;
+  box-shadow: 2px 0 18px rgba(0,0,0,.45);
+  color: var(--ftd-text);
+}
+body.workspace-app-theme.workspace-theme-dark .ft-app-rail-brand {
+  border-color: #22324b;
+  background: #0e1726;
+  box-shadow: none;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-app-rail-brand span { color: #cfe0f5; }
+body.workspace-app-theme.workspace-theme-dark .ft-app-rail-item { color: #a9bcd6; }
+body.workspace-app-theme.workspace-theme-dark .ft-app-rail-item svg { color: #7f9dc4; }
+body.workspace-app-theme.workspace-theme-dark .ft-app-rail-item:hover {
+  border-color: #2e405e;
+  background: #182339;
+  color: #e9eff8;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-app-rail-item.is-active {
+  border-color: #33578f !important;
+  background: #16294a !important;
+  color: #dceafc !important;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-app-rail-item.is-active svg { color: #6fb0ff !important; }
+body.workspace-app-theme.workspace-theme-dark .ft-app-rail-toggle,
+body.workspace-app-theme.workspace-theme-dark .ft-app-rail-tooltip {
+  border-color: #2b3c58;
+  background: #162033;
+  color: #cfdcec;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-app-rail-toggle:hover { background: #1d2a42; color: #e9eff8; }
+
+body.workspace-app-theme.workspace-theme-dark .ft-module-bar {
+  border-color: #22324b !important;
+  background: rgba(13, 20, 33, .96) !important;
+  box-shadow: 0 1px 0 rgba(0,0,0,.4);
+  color: var(--ftd-text);
+}
+body.workspace-app-theme.workspace-theme-dark .ft-module-bar-title { border-color: #22324b; }
+body.workspace-app-theme.workspace-theme-dark .ft-module-bar-title h1 { color: #e3edfb; }
+body.workspace-app-theme.workspace-theme-dark .ft-module-bar-eyebrow { color: #6fb0ff; }
+body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-item { color: #a9bcd6; }
+body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-item svg { color: #7f9dc4; }
+body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-item:hover {
+  border-color: #2e405e;
+  background: #182339;
+  color: #e9eff8;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-item.is-active {
+  border-color: #33578f !important;
+  background: #16294a !important;
+  color: #dceafc !important;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-item.is-active svg { color: #6fb0ff; }
+body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-menu {
+  border-color: #2b3c58;
+  background: #162033;
+  box-shadow: var(--ft-shadow-lg);
+}
+body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-menu-item { color: #cfdcec; }
+body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-menu-item:hover,
+body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-menu-item.is-active {
+  background: #1d2a42;
+  color: #e9eff8;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-module-topnav-badge {
+  background: #2a3f63;
+  color: #cfe3ff;
+}
+
+/* Older module chrome (sidebar layouts that have not moved to the rail yet). */
+body.workspace-app-theme.workspace-theme-dark .ft-module-sidebar {
+  border-color: #22324b !important;
+  background: linear-gradient(180deg, #101a2b, #0a1119) !important;
+  box-shadow: 4px 0 20px rgba(0,0,0,.45);
+  color: var(--ftd-text) !important;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-module-sidebar .ft-sidebar-brand {
+  border-color: #22324b !important;
+  background: #0e1726 !important;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-module-sidebar .ft-sidebar-brand .text-slate-900,
+body.workspace-app-theme.workspace-theme-dark .ft-sidebar-brand b,
+body.workspace-app-theme.workspace-theme-dark .ft-sidebar-brand h1 { color: #e3edfb !important; }
+body.workspace-app-theme.workspace-theme-dark .ft-sidebar-account,
+body.workspace-app-theme.workspace-theme-dark .ft-sidebar-back {
+  border-color: #2b3c58 !important;
+  background: #162033 !important;
+  color: #cfdcec !important;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-sidebar-account:hover,
+body.workspace-app-theme.workspace-theme-dark .ft-sidebar-back:hover { background: #1d2a42 !important; }
+body.workspace-app-theme.workspace-theme-dark .ft-sidebar-footer { border-color: #22324b !important; }
+body.workspace-app-theme.workspace-theme-dark .ft-nav-item { color: #a9bcd6 !important; }
+body.workspace-app-theme.workspace-theme-dark .ft-module-sidebar .ft-nav-item svg,
+body.workspace-app-theme.workspace-theme-dark .ft-nav-item svg { color: #7f9dc4 !important; }
+body.workspace-app-theme.workspace-theme-dark .ft-nav-item:hover {
+  border-left-color: #6fb0ff !important;
+  background: #182339 !important;
+  color: #e9eff8 !important;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-nav-item-active {
+  border-left-color: #6fb0ff !important;
+  background: #16294a !important;
+  color: #dceafc !important;
+  box-shadow: none !important;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-nav-item-active svg { color: #6fb0ff !important; }
+body.workspace-app-theme.workspace-theme-dark .ft-module-sidebar .text-cyan-600,
+body.workspace-app-theme.workspace-theme-dark .ft-module-sidebar .text-slate-500 { color: #93aac6 !important; }
+body.workspace-app-theme.workspace-theme-dark .ft-module-sidebar .border-slate-100,
+body.workspace-app-theme.workspace-theme-dark .ft-module-sidebar .border-slate-200 { border-color: #22324b !important; }
+
+body.workspace-app-theme.workspace-theme-dark .ft-module-header,
+body.workspace-app-theme.workspace-theme-dark .ft-mobile-nav,
+body.workspace-app-theme.workspace-theme-dark .workspace-module-canvas > header {
+  border-color: #22324b !important;
+  background: rgba(13, 20, 33, .96) !important;
+  color: var(--ftd-text) !important;
+}
+body.workspace-app-theme.workspace-theme-dark .ft-mobile-nav button[aria-current="page"] {
+  background: #16294a;
+  color: #dceafc;
+}
+
+/* The logo plate stays light: the mark itself is deep blue artwork. */
+body.workspace-app-theme.workspace-theme-dark .ft-module-shell img[src="/logo.png"],
+body.workspace-app-theme.workspace-theme-dark .workspace-module-canvas img[src="/logo.png"],
+body.workspace-app-theme.workspace-theme-dark img.ft-module-logo {
+  border-color: #2b3c58;
+  background: #eef4fb !important;
+}
+
+/* ---- Panels, tables and forms ------------------------------------------- */
+body.workspace-app-theme.workspace-theme-dark .ft-surface,
+body.workspace-app-theme.workspace-theme-dark .ft-page-header,
+body.workspace-app-theme.workspace-theme-dark .ft-toolbar {
+  border-color: var(--ftd-border) !important;
+  background: var(--ftd-surface) !important;
+  color: var(--ftd-text);
+  box-shadow: var(--ft-shadow-xs);
+}
+body.workspace-theme-dark .ft-dialog-panel {
+  border-color: var(--ftd-border);
+  background: var(--ftd-surface);
+}
+
+body.workspace-theme-dark .ft-table { background: transparent; backdrop-filter: none; color: var(--ftd-text-2); }
+body.workspace-theme-dark .ft-table th {
+  border-color: var(--ftd-border);
+  background: linear-gradient(to bottom, #1d2940, #182237);
+  color: #a9bcd6;
+}
+body.workspace-theme-dark .ft-table td { border-color: var(--ftd-border-soft); color: var(--ftd-text-2); }
+body.workspace-theme-dark .ft-table tbody tr { background: transparent; }
+body.workspace-theme-dark .ft-table tbody tr:hover { background: #1b2740; }
+
+@layer components {
+  body.workspace-app-theme.workspace-theme-dark .ft-input,
+  body.workspace-app-theme.workspace-theme-dark .ws-input,
+  body.workspace-app-theme.workspace-theme-dark #root input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  body.workspace-app-theme.workspace-theme-dark #root select,
+  body.workspace-app-theme.workspace-theme-dark #root textarea {
+    border-color: var(--ftd-border);
+    background: #101a2a;
+    color: var(--ftd-text);
+  }
+  body.workspace-app-theme.workspace-theme-dark #root input::placeholder,
+  body.workspace-app-theme.workspace-theme-dark #root textarea::placeholder { color: var(--ftd-text-5); }
+  body.workspace-app-theme.workspace-theme-dark .ft-input:focus,
+  body.workspace-app-theme.workspace-theme-dark #root input:focus,
+  body.workspace-app-theme.workspace-theme-dark #root select:focus,
+  body.workspace-app-theme.workspace-theme-dark #root textarea:focus {
+    border-color: var(--ftd-accent);
+    box-shadow: 0 0 0 3px rgba(91,157,255,.2);
+  }
+body.workspace-app-theme.workspace-theme-dark #root option { background: #162033; color: var(--ftd-text); }
+  body.workspace-app-theme.workspace-theme-dark .ft-input-wrap {
+    border-color: var(--ftd-border);
+    background: #101a2a;
+  }
+}
+body.workspace-theme-dark .ft-btn-danger { border-color: #5d2733; background: #2a1520; color: #ff9aa6; }
+body.workspace-theme-dark .ft-btn-danger:hover { border-color: #7a3444; background: #351a27; }
+
+body.workspace-theme-dark .ft-badge-green  { border-color: #1f5142; background: #10261f; color: #6ee7b7; }
+body.workspace-theme-dark .ft-badge-blue   { border-color: #24456f; background: #11203a; color: #93c5fd; }
+body.workspace-theme-dark .ft-badge-amber  { border-color: #5c4420; background: #2a2010; color: #fcd34d; }
+body.workspace-theme-dark .ft-badge-slate  { border-color: var(--ftd-border-strong); background: var(--ftd-surface-2); color: var(--ftd-text-3); }
+body.workspace-theme-dark .ft-badge-purple { border-color: #3f2f6b; background: #1d1733; color: #c4b5fd; }
+body.workspace-theme-dark .ft-toast { border-color: #2b3c58; background: rgba(10,16,27,.95); }
+
+/* ---- Work-schedule module ----------------------------------------------- */
+body.workspace-theme-dark .ws-stat {
+  border-color: var(--ftd-border);
+  background: var(--ftd-surface);
+  box-shadow: var(--ft-shadow-xs);
+}
+body.workspace-theme-dark .ws-stat div span { color: var(--ftd-text-3); }
+body.workspace-theme-dark .ws-stat div b { color: var(--ftd-text); }
+body.workspace-theme-dark .ws-label { color: var(--ftd-text-3); }
+body.workspace-theme-dark .ws-input { border-color: var(--ftd-border); background: #101a2a; color: var(--ftd-text); }
+body.workspace-theme-dark .ws-input:focus { border-color: var(--ftd-accent); box-shadow: 0 0 0 3px rgba(91,157,255,.18); }
+body.workspace-theme-dark .ws-bulk-btn { border-color: var(--ftd-border); background: var(--ftd-surface-2); color: var(--ftd-text-2); }
+body.workspace-theme-dark .ws-grid-tag-support { border-color: #6b3c1b; background: #2a1a0e; color: #fdba74; }
+body.workspace-theme-dark .ws-grid-tag-personal { border-color: #5f2a63; background: #26132a; color: #f0abfc; }
+
+/* ---- Đào tạo số calendars ------------------------------------------------ */
+body.workspace-theme-dark .dt-calendar { border-color: var(--ftd-border); background: var(--ftd-surface); }
+body.workspace-theme-dark .dt-calendar-toolbar { border-color: var(--ftd-border); background: #101a2a; }
+body.workspace-theme-dark .dt-calendar-period > button,
+body.workspace-theme-dark .dt-calendar-range > button {
+  border-color: var(--ftd-border); background: var(--ftd-surface-2); color: #8ec3f0;
+}
+body.workspace-theme-dark .dt-calendar-period > button:hover,
+body.workspace-theme-dark .dt-calendar-range > button:hover { border-color: #3d6f9d; background: #18273e; }
+body.workspace-theme-dark .dt-calendar-range input { border-color: var(--ftd-border); background: #101a2a; color: var(--ftd-text); }
+body.workspace-theme-dark .dt-calendar-range-error { border-color: #5d2733; background: #2a1520; color: #ff9aa6; }
+body.workspace-theme-dark .dt-calendar-head { border-color: var(--ftd-border); background: var(--ftd-surface); color: var(--ftd-text-3); }
+body.workspace-theme-dark .dt-calendar-head strong { color: var(--ftd-text); }
+body.workspace-theme-dark .dt-calendar-hour { border-color: var(--ftd-border-soft); border-right-color: var(--ftd-border); color: var(--ftd-text-4); }
+body.workspace-theme-dark .dt-calendar-cell { border-right-color: var(--ftd-border); border-bottom-color: var(--ftd-border-soft); background: var(--ftd-surface); }
+body.workspace-theme-dark .dt-calendar-cell:hover { background: #1b2740; }
+body.workspace-theme-dark .dt-calendar-event { border-color: #2f5f8c; background: #12253c; color: #9fcdf3; }
+body.workspace-theme-dark .dt-calendar-event.is-completed { background: #102520; color: #7fdcae; }
+body.workspace-theme-dark .dt-calendar-event.is-cancelled { background: #2a1520; color: #ffa5ae; }
+body.workspace-theme-dark .dt-month-head { border-color: var(--ftd-border); background: #101a2a; color: var(--ftd-text-3); }
+body.workspace-theme-dark .dt-month-day { border-right-color: var(--ftd-border); border-bottom-color: var(--ftd-border-soft); background: var(--ftd-surface); }
+body.workspace-theme-dark .dt-month-day:hover:not(:has(.dt-month-event:hover)) { background: #1b2740; }
+body.workspace-theme-dark .dt-month-day.is-outside { background: #111a29; color: var(--ftd-text-4); }
+body.workspace-theme-dark .dt-month-day.is-placeholder,
+body.workspace-theme-dark .dt-month-day.is-placeholder:hover { background: #111a29; }
+body.workspace-theme-dark .dt-month-number { color: var(--ftd-text); }
+body.workspace-theme-dark .dt-month-event { background: #12253c; color: #9fcdf3; }
+body.workspace-theme-dark .dt-month-event.is-completed { background: #102520; color: #7fdcae; }
+body.workspace-theme-dark .dt-month-event.is-cancelled { background: #2a1520; color: #ffa5ae; }
+body.workspace-theme-dark .dt-month-more { color: #6fb0ff; }
+body.workspace-theme-dark .dt-calendar-multi-month { background: #0d1524; }
+body.workspace-theme-dark .dt-calendar-range-month { border-bottom-color: #0a1018; background: var(--ftd-surface); }
+body.workspace-theme-dark .dt-calendar-month-title { border-color: var(--ftd-border); background: #16294a; color: #cfe3ff; }
+body.workspace-theme-dark .dt-session-completed { background: #102520; color: #7fdcae; }
+body.workspace-theme-dark .dt-session-planned { background: #12253c; color: #9fcdf3; }
+body.workspace-theme-dark .dt-session-unscheduled,
+body.workspace-theme-dark .dt-session-missing { background: var(--ftd-surface-2); color: var(--ftd-text-3); }
+body.workspace-theme-dark .dt-session-cancelled { background: #2a1520; color: #ffa5ae; }
+
+/* ---- BNDC module --------------------------------------------------------- */
+body.workspace-app-theme.workspace-theme-dark .bndc-stat,
+body.workspace-app-theme.workspace-theme-dark .bndc-tree-row.is-active {
+  border-color: var(--ftd-border);
+  background: var(--ftd-surface-2);
+  color: var(--ftd-text);
+}
+body.workspace-app-theme.workspace-theme-dark .bndc-stat b,
+body.workspace-app-theme.workspace-theme-dark .bndc-tree-name { color: var(--ftd-text); }
+body.workspace-theme-dark .bndc-tree-row:hover { background: #1b2740; }
+body.workspace-theme-dark .bndc-tree-meta { color: var(--ftd-text-4); }
+body.workspace-theme-dark .bndc-tree-toggle:hover { background: #18273e; color: #8ec3f0; }
+body.workspace-theme-dark .bndc-chip-green  { border-color: #1f5142; background: #10261f; color: #6ee7b7; }
+body.workspace-theme-dark .bndc-chip-blue   { border-color: #24456f; background: #11203a; color: #93c5fd; }
+body.workspace-theme-dark .bndc-chip-amber  { border-color: #5c4420; background: #2a2010; color: #fcd34d; }
+body.workspace-theme-dark .bndc-chip-rose   { border-color: #5d2733; background: #2a1520; color: #fda4af; }
+body.workspace-theme-dark .bndc-chip-slate  { border-color: var(--ftd-border-strong); background: var(--ftd-surface-2); color: var(--ftd-text-3); }
+body.workspace-theme-dark .bndc-chip-violet { border-color: #3f2f6b; background: #1d1733; color: #c4b5fd; }
+
+/* ---- Grading view scrollbars -------------------------------------------- */
+body.workspace-theme-dark .assessment-grading .grading-scroll { scrollbar-color: #3f5374 #131c2c; }
+body.workspace-theme-dark .assessment-grading .grading-scroll::-webkit-scrollbar-track { background: #131c2c; }
+body.workspace-theme-dark .assessment-grading .grading-scroll::-webkit-scrollbar-thumb { border-color: #131c2c; background: #3f5374; }
+body.workspace-theme-dark .assessment-grading .grading-scroll::-webkit-scrollbar-thumb:hover { background: #55698c; }
+
+
+/* ---- Utility remap (generated) ------------------------------------------ */
+body.workspace-theme-dark .active\:bg-slate-100:active { background-color: var(--ftd-surface-3); }
+body.workspace-theme-dark .bg-\[\#e5f4e8\] { background-color: var(--ftd-surface-3); }
+body.workspace-theme-dark .bg-\[\#eef3f9\] { background-color: var(--ftd-surface); }
+body.workspace-theme-dark .bg-\[\#f3f5f1\] { background-color: var(--ftd-surface); }
+body.workspace-theme-dark .bg-\[\#f5f6f8\] { background-color: var(--ftd-surface); }
+body.workspace-theme-dark .bg-\[\#f7f4ee\] { background-color: var(--ftd-surface); }
+body.workspace-theme-dark .bg-\[\#fbfaf7\] { background-color: var(--ftd-surface); }
+body.workspace-theme-dark .bg-\[\#fff5ed\] { background-color: var(--ftd-surface-3); }
+body.workspace-theme-dark .bg-amber-100 { background-color: color-mix(in oklab, oklch(76.9% .188 70.08) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-amber-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-amber-200 { background-color: color-mix(in oklab, oklch(76.9% .188 70.08) 26%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-amber-50 { background-color: color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-amber-50\/40 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 40%, transparent); }
+body.workspace-theme-dark .bg-amber-50\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-amber-50\/70 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 70%, transparent); }
+body.workspace-theme-dark .bg-blue-100 { background-color: color-mix(in oklab, oklch(62.3% .214 259.815) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-blue-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-blue-50 { background-color: color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-blue-50\/20 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 20%, transparent); }
+body.workspace-theme-dark .bg-blue-50\/40 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 40%, transparent); }
+body.workspace-theme-dark .bg-blue-50\/5 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 5%, transparent); }
+body.workspace-theme-dark .bg-blue-50\/50 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .bg-blue-50\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-blue-50\/70 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 70%, transparent); }
+body.workspace-theme-dark .bg-blue-50\/80 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 80%, transparent); }
+body.workspace-theme-dark .bg-blue-50\/90 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 90%, transparent); }
+body.workspace-theme-dark .bg-cyan-100 { background-color: color-mix(in oklab, oklch(71.5% .143 215.221) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-cyan-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(71.5% .143 215.221) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-cyan-50 { background-color: color-mix(in oklab, oklch(71.5% .143 215.221) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-cyan-50\/40 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(71.5% .143 215.221) 10%, var(--ftd-surface)) 40%, transparent); }
+body.workspace-theme-dark .bg-emerald-100 { background-color: color-mix(in oklab, oklch(69.6% .17 162.48) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-emerald-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(69.6% .17 162.48) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-emerald-200 { background-color: color-mix(in oklab, oklch(69.6% .17 162.48) 26%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-emerald-50 { background-color: color-mix(in oklab, oklch(69.6% .17 162.48) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-emerald-50\/40 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(69.6% .17 162.48) 10%, var(--ftd-surface)) 40%, transparent); }
+body.workspace-theme-dark .bg-emerald-50\/50 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(69.6% .17 162.48) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .bg-emerald-50\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(69.6% .17 162.48) 10%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-emerald-50\/70 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(69.6% .17 162.48) 10%, var(--ftd-surface)) 70%, transparent); }
+body.workspace-theme-dark .bg-emerald-50\/80 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(69.6% .17 162.48) 10%, var(--ftd-surface)) 80%, transparent); }
+body.workspace-theme-dark .bg-fuchsia-100 { background-color: color-mix(in oklab, oklch(66.7% .295 322.15) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-fuchsia-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(66.7% .295 322.15) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-indigo-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(58.5% .233 277.117) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-indigo-50 { background-color: color-mix(in oklab, oklch(58.5% .233 277.117) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-indigo-50\/40 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(58.5% .233 277.117) 10%, var(--ftd-surface)) 40%, transparent); }
+body.workspace-theme-dark .bg-orange-100 { background-color: color-mix(in oklab, oklch(70.5% .213 47.604) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-orange-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(70.5% .213 47.604) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-orange-50 { background-color: color-mix(in oklab, oklch(70.5% .213 47.604) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-orange-50\/40 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(70.5% .213 47.604) 10%, var(--ftd-surface)) 40%, transparent); }
+body.workspace-theme-dark .bg-pink-50 { background-color: color-mix(in oklab, oklch(65.6% .241 354.308) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-purple-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.7% .265 303.9) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-red-100 { background-color: color-mix(in oklab, oklch(63.7% .237 25.331) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-red-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(63.7% .237 25.331) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-red-50 { background-color: color-mix(in oklab, oklch(63.7% .237 25.331) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-rose-100 { background-color: color-mix(in oklab, oklch(64.5% .246 16.439) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-rose-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(64.5% .246 16.439) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-rose-50 { background-color: color-mix(in oklab, oklch(64.5% .246 16.439) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-rose-50\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(64.5% .246 16.439) 10%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-rose-50\/70 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(64.5% .246 16.439) 10%, var(--ftd-surface)) 70%, transparent); }
+body.workspace-theme-dark .bg-sky-100 { background-color: color-mix(in oklab, oklch(68.5% .169 237.323) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-sky-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(68.5% .169 237.323) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-sky-50 { background-color: color-mix(in oklab, oklch(68.5% .169 237.323) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-sky-50\/50 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(68.5% .169 237.323) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .bg-slate-100 { background-color: var(--ftd-surface-3); }
+body.workspace-theme-dark .bg-slate-100\/80 { background-color: color-mix(in oklab, var(--ftd-surface-3) 80%, transparent); }
+body.workspace-theme-dark .bg-slate-200 { background-color: var(--ftd-surface-4); }
+body.workspace-theme-dark .bg-slate-200\/50 { background-color: color-mix(in oklab, var(--ftd-surface-4) 50%, transparent); }
+body.workspace-theme-dark .bg-slate-200\/60 { background-color: color-mix(in oklab, var(--ftd-surface-4) 60%, transparent); }
+body.workspace-theme-dark .bg-slate-400 { background-color: #3e506e; }
+body.workspace-theme-dark .bg-slate-50 { background-color: var(--ftd-surface-2); }
+body.workspace-theme-dark .bg-slate-50\/40 { background-color: color-mix(in oklab, var(--ftd-surface-2) 40%, transparent); }
+body.workspace-theme-dark .bg-slate-50\/50 { background-color: color-mix(in oklab, var(--ftd-surface-2) 50%, transparent); }
+body.workspace-theme-dark .bg-slate-50\/60 { background-color: color-mix(in oklab, var(--ftd-surface-2) 60%, transparent); }
+body.workspace-theme-dark .bg-slate-50\/70 { background-color: color-mix(in oklab, var(--ftd-surface-2) 70%, transparent); }
+body.workspace-theme-dark .bg-slate-50\/80 { background-color: color-mix(in oklab, var(--ftd-surface-2) 80%, transparent); }
+body.workspace-theme-dark .bg-teal-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(70.4% .14 182.503) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-teal-50 { background-color: color-mix(in oklab, oklch(70.4% .14 182.503) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-violet-100 { background-color: color-mix(in oklab, oklch(60.6% .25 292.717) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-violet-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(60.6% .25 292.717) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-violet-50 { background-color: color-mix(in oklab, oklch(60.6% .25 292.717) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-violet-50\/40 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(60.6% .25 292.717) 10%, var(--ftd-surface)) 40%, transparent); }
+body.workspace-theme-dark .bg-violet-50\/50 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(60.6% .25 292.717) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .bg-violet-50\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(60.6% .25 292.717) 10%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .bg-violet-50\/80 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(60.6% .25 292.717) 10%, var(--ftd-surface)) 80%, transparent); }
+body.workspace-theme-dark .bg-white { background-color: var(--ftd-surface); }
+body.workspace-theme-dark .bg-white\/50 { background-color: color-mix(in oklab, var(--ftd-surface) 50%, transparent); }
+body.workspace-theme-dark .bg-white\/60 { background-color: color-mix(in oklab, var(--ftd-surface) 60%, transparent); }
+body.workspace-theme-dark .bg-white\/70 { background-color: color-mix(in oklab, var(--ftd-surface) 70%, transparent); }
+body.workspace-theme-dark .bg-white\/90 { background-color: color-mix(in oklab, var(--ftd-surface) 90%, transparent); }
+body.workspace-theme-dark .bg-white\/95 { background-color: color-mix(in oklab, var(--ftd-surface) 95%, transparent); }
+body.workspace-theme-dark .bg-zinc-100 { background-color: var(--ftd-surface-3); }
+body.workspace-theme-dark .border-\[\#001e40\] { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .border-\[\#003366\] { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .border-\[\#0055DA\] { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .border-\[\#0055da\] { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .border-\[\#0F3A72\] { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .border-\[\#102A43\] { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .border-\[\#1f4fc9\] { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .border-\[\#aa3000\] { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .border-amber-100 { border-color: color-mix(in oklab, oklch(76.9% .188 70.08) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-amber-200 { border-color: color-mix(in oklab, oklch(76.9% .188 70.08) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-amber-200\/50 { border-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 30%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .border-amber-200\/60 { border-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 30%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .border-amber-300 { border-color: color-mix(in oklab, oklch(76.9% .188 70.08) 42%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-blue-100 { border-color: color-mix(in oklab, oklch(62.3% .214 259.815) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-blue-100\/30 { border-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 22%, var(--ftd-surface)) 30%, transparent); }
+body.workspace-theme-dark .border-blue-200 { border-color: color-mix(in oklab, oklch(62.3% .214 259.815) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-blue-300 { border-color: color-mix(in oklab, oklch(62.3% .214 259.815) 42%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-cyan-100 { border-color: color-mix(in oklab, oklch(71.5% .143 215.221) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-cyan-200 { border-color: color-mix(in oklab, oklch(71.5% .143 215.221) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-emerald-100 { border-color: color-mix(in oklab, oklch(69.6% .17 162.48) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-emerald-200 { border-color: color-mix(in oklab, oklch(69.6% .17 162.48) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-emerald-300 { border-color: color-mix(in oklab, oklch(69.6% .17 162.48) 42%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-gray-300 { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .border-indigo-100 { border-color: color-mix(in oklab, oklch(58.5% .233 277.117) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-indigo-200 { border-color: color-mix(in oklab, oklch(58.5% .233 277.117) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-orange-100 { border-color: color-mix(in oklab, oklch(70.5% .213 47.604) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-orange-200 { border-color: color-mix(in oklab, oklch(70.5% .213 47.604) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-red-100 { border-color: color-mix(in oklab, oklch(63.7% .237 25.331) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-red-200 { border-color: color-mix(in oklab, oklch(63.7% .237 25.331) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-red-300 { border-color: color-mix(in oklab, oklch(63.7% .237 25.331) 42%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-rose-100 { border-color: color-mix(in oklab, oklch(64.5% .246 16.439) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-rose-200 { border-color: color-mix(in oklab, oklch(64.5% .246 16.439) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-rose-300 { border-color: color-mix(in oklab, oklch(64.5% .246 16.439) 42%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-sky-100 { border-color: color-mix(in oklab, oklch(68.5% .169 237.323) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-sky-200 { border-color: color-mix(in oklab, oklch(68.5% .169 237.323) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-sky-300 { border-color: color-mix(in oklab, oklch(68.5% .169 237.323) 42%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-slate-100 { border-color: var(--ftd-border-soft); }
+body.workspace-theme-dark .border-slate-200 { border-color: var(--ftd-border); }
+body.workspace-theme-dark .border-slate-200\/60 { border-color: color-mix(in oklab, var(--ftd-border) 60%, transparent); }
+body.workspace-theme-dark .border-slate-200\/70 { border-color: color-mix(in oklab, var(--ftd-border) 70%, transparent); }
+body.workspace-theme-dark .border-slate-200\/80 { border-color: color-mix(in oklab, var(--ftd-border) 80%, transparent); }
+body.workspace-theme-dark .border-slate-300 { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .border-slate-400 { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .border-slate-50 { border-color: var(--ftd-border-soft); }
+body.workspace-theme-dark .border-slate-700 { border-color: #3a4b69; }
+body.workspace-theme-dark .border-slate-800 { border-color: #31405b; }
+body.workspace-theme-dark .border-teal-100 { border-color: color-mix(in oklab, oklch(70.4% .14 182.503) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-violet-100 { border-color: color-mix(in oklab, oklch(60.6% .25 292.717) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-violet-200 { border-color: color-mix(in oklab, oklch(60.6% .25 292.717) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-violet-300 { border-color: color-mix(in oklab, oklch(60.6% .25 292.717) 42%, var(--ftd-surface)); }
+body.workspace-theme-dark .border-white { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .decoration-\[\#de6b35\] { text-decoration-color: hsl(19 55% 78%); }
+body.workspace-theme-dark .disabled\:bg-slate-100:disabled { background-color: var(--ftd-surface-3); }
+body.workspace-theme-dark .disabled\:bg-slate-50:disabled { background-color: var(--ftd-surface-2); }
+body.workspace-theme-dark .disabled\:bg-white:disabled { background-color: var(--ftd-surface); }
+body.workspace-theme-dark .disabled\:border-slate-200:disabled { border-color: var(--ftd-border); }
+body.workspace-theme-dark .disabled\:hover\:bg-white:disabled:hover { background-color: var(--ftd-surface); }
+body.workspace-theme-dark .disabled\:hover\:border-slate-200:disabled:hover { border-color: var(--ftd-border); }
+body.workspace-theme-dark .disabled\:hover\:text-slate-400:disabled:hover { color: var(--ftd-text-4); }
+body.workspace-theme-dark .disabled\:hover\:text-slate-600:disabled:hover { color: #b4c5da; }
+body.workspace-theme-dark .disabled\:text-slate-400:disabled { color: var(--ftd-text-4); }
+body.workspace-theme-dark .divide-slate-100 > :not(:last-child) { border-color: var(--ftd-border-soft); }
+body.workspace-theme-dark .fill-fuchsia-500 { fill: oklch(74% .238 322.16); }
+body.workspace-theme-dark .fill-orange-500 { fill: oklch(75% .183 55.934); }
+body.workspace-theme-dark .focus-within\:bg-cyan-50:focus-within { background-color: color-mix(in oklab, oklch(71.5% .143 215.221) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .focus\:bg-blue-50:focus { background-color: color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .focus\:bg-slate-50:focus { background-color: var(--ftd-surface-2); }
+body.workspace-theme-dark .focus\:bg-white:focus { background-color: var(--ftd-surface); }
+body.workspace-theme-dark .focus\:border-\[\#0055DA\]:focus { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .focus\:border-\[\#1f4fc9\]:focus { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .focus\:border-\[\#aa3000\]:focus { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .group-hover\:text-amber-700:is(:where(.group):hover *) { color: oklch(82.8% .189 84.429); }
+body.workspace-theme-dark .group-hover\:text-blue-600:is(:where(.group):hover *) { color: oklch(70.7% .165 254.624); }
+body.workspace-theme-dark .group-hover\:text-blue-700:is(:where(.group):hover *) { color: oklch(70.7% .165 254.624); }
+body.workspace-theme-dark .group-hover\:text-cyan-700:is(:where(.group):hover *) { color: oklch(78.9% .154 211.53); }
+body.workspace-theme-dark .group-hover\:text-emerald-700:is(:where(.group):hover *) { color: oklch(76.5% .177 163.223); }
+body.workspace-theme-dark .group-hover\:text-fuchsia-700:is(:where(.group):hover *) { color: oklch(74% .238 322.16); }
+body.workspace-theme-dark .group-hover\:text-indigo-700:is(:where(.group):hover *) { color: oklch(67.3% .182 276.935); }
+body.workspace-theme-dark .group-hover\:text-orange-700:is(:where(.group):hover *) { color: oklch(75% .183 55.934); }
+body.workspace-theme-dark .group-hover\:text-purple-700:is(:where(.group):hover *) { color: oklch(71.4% .203 305.504); }
+body.workspace-theme-dark .group-hover\:text-red-700:is(:where(.group):hover *) { color: oklch(70.4% .191 22.216); }
+body.workspace-theme-dark .group-hover\:text-rose-700:is(:where(.group):hover *) { color: oklch(71.2% .194 13.428); }
+body.workspace-theme-dark .group-hover\:text-sky-700:is(:where(.group):hover *) { color: oklch(74.6% .16 232.661); }
+body.workspace-theme-dark .group-hover\:text-slate-700:is(:where(.group):hover *) { color: var(--ftd-text-2); }
+body.workspace-theme-dark .group-hover\:text-slate-800:is(:where(.group):hover *) { color: var(--ftd-text); }
+body.workspace-theme-dark .group-hover\:text-teal-700:is(:where(.group):hover *) { color: oklch(77.7% .152 181.912); }
+body.workspace-theme-dark .group-hover\:text-violet-700:is(:where(.group):hover *) { color: oklch(70.2% .183 293.541); }
+body.workspace-theme-dark .hover\:bg-amber-100:hover { background-color: color-mix(in oklab, oklch(76.9% .188 70.08) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-amber-50:hover { background-color: color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-amber-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-blue-100:hover { background-color: color-mix(in oklab, oklch(62.3% .214 259.815) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-blue-100\/60:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 17%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .hover\:bg-blue-50:hover { background-color: color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-blue-50\/20:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 20%, transparent); }
+body.workspace-theme-dark .hover\:bg-blue-50\/30:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 30%, transparent); }
+body.workspace-theme-dark .hover\:bg-blue-50\/40:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 40%, transparent); }
+body.workspace-theme-dark .hover\:bg-blue-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.3% .214 259.815) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-cyan-50:hover { background-color: color-mix(in oklab, oklch(71.5% .143 215.221) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-cyan-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(71.5% .143 215.221) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-emerald-100:hover { background-color: color-mix(in oklab, oklch(69.6% .17 162.48) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-emerald-50:hover { background-color: color-mix(in oklab, oklch(69.6% .17 162.48) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-emerald-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(69.6% .17 162.48) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-emerald-50\/60:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(69.6% .17 162.48) 10%, var(--ftd-surface)) 60%, transparent); }
+body.workspace-theme-dark .hover\:bg-fuchsia-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(66.7% .295 322.15) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-indigo-50:hover { background-color: color-mix(in oklab, oklch(58.5% .233 277.117) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-indigo-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(58.5% .233 277.117) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-orange-100:hover { background-color: color-mix(in oklab, oklch(70.5% .213 47.604) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-orange-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(70.5% .213 47.604) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-purple-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(62.7% .265 303.9) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-red-200:hover { background-color: color-mix(in oklab, oklch(63.7% .237 25.331) 26%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-red-50:hover { background-color: color-mix(in oklab, oklch(63.7% .237 25.331) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-red-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(63.7% .237 25.331) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-rose-100:hover { background-color: color-mix(in oklab, oklch(64.5% .246 16.439) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-rose-50:hover { background-color: color-mix(in oklab, oklch(64.5% .246 16.439) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-rose-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(64.5% .246 16.439) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-sky-100:hover { background-color: color-mix(in oklab, oklch(68.5% .169 237.323) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-sky-200:hover { background-color: color-mix(in oklab, oklch(68.5% .169 237.323) 26%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-sky-50:hover { background-color: color-mix(in oklab, oklch(68.5% .169 237.323) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-sky-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(68.5% .169 237.323) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-slate-100:hover { background-color: var(--ftd-surface-3); }
+body.workspace-theme-dark .hover\:bg-slate-100\/50:hover { background-color: color-mix(in oklab, var(--ftd-surface-3) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-slate-100\/70:hover { background-color: color-mix(in oklab, var(--ftd-surface-3) 70%, transparent); }
+body.workspace-theme-dark .hover\:bg-slate-100\/75:hover { background-color: color-mix(in oklab, var(--ftd-surface-3) 75%, transparent); }
+body.workspace-theme-dark .hover\:bg-slate-200:hover { background-color: var(--ftd-surface-4); }
+body.workspace-theme-dark .hover\:bg-slate-50:hover { background-color: var(--ftd-surface-2); }
+body.workspace-theme-dark .hover\:bg-slate-50\/50:hover { background-color: color-mix(in oklab, var(--ftd-surface-2) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-slate-50\/70:hover { background-color: color-mix(in oklab, var(--ftd-surface-2) 70%, transparent); }
+body.workspace-theme-dark .hover\:bg-teal-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(70.4% .14 182.503) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-violet-100:hover { background-color: color-mix(in oklab, oklch(60.6% .25 292.717) 17%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-violet-50:hover { background-color: color-mix(in oklab, oklch(60.6% .25 292.717) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:bg-violet-50\/50:hover { background-color: color-mix(in oklab, color-mix(in oklab, oklch(60.6% .25 292.717) 10%, var(--ftd-surface)) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-white:hover { background-color: var(--ftd-surface); }
+body.workspace-theme-dark .hover\:bg-white\/50:hover { background-color: color-mix(in oklab, var(--ftd-surface) 50%, transparent); }
+body.workspace-theme-dark .hover\:bg-white\/60:hover { background-color: color-mix(in oklab, var(--ftd-surface) 60%, transparent); }
+body.workspace-theme-dark .hover\:border-\[\#001e40\]:hover { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .hover\:border-\[\#0055DA\]:hover { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .hover\:border-\[\#aa3000\]:hover { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .hover\:border-amber-200:hover { border-color: color-mix(in oklab, oklch(76.9% .188 70.08) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-blue-100:hover { border-color: color-mix(in oklab, oklch(62.3% .214 259.815) 22%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-blue-200:hover { border-color: color-mix(in oklab, oklch(62.3% .214 259.815) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-blue-300:hover { border-color: color-mix(in oklab, oklch(62.3% .214 259.815) 42%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-cyan-200:hover { border-color: color-mix(in oklab, oklch(71.5% .143 215.221) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-emerald-200:hover { border-color: color-mix(in oklab, oklch(69.6% .17 162.48) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-fuchsia-200:hover { border-color: color-mix(in oklab, oklch(66.7% .295 322.15) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-indigo-200:hover { border-color: color-mix(in oklab, oklch(58.5% .233 277.117) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-orange-200:hover { border-color: color-mix(in oklab, oklch(70.5% .213 47.604) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-purple-200:hover { border-color: color-mix(in oklab, oklch(62.7% .265 303.9) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-red-200:hover { border-color: color-mix(in oklab, oklch(63.7% .237 25.331) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-rose-200:hover { border-color: color-mix(in oklab, oklch(64.5% .246 16.439) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-sky-200:hover { border-color: color-mix(in oklab, oklch(68.5% .169 237.323) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-sky-300:hover { border-color: color-mix(in oklab, oklch(68.5% .169 237.323) 42%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-slate-200:hover { border-color: var(--ftd-border); }
+body.workspace-theme-dark .hover\:border-slate-300:hover { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .hover\:border-slate-400:hover { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .hover\:border-teal-200:hover { border-color: color-mix(in oklab, oklch(70.4% .14 182.503) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-violet-200:hover { border-color: color-mix(in oklab, oklch(60.6% .25 292.717) 30%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-violet-300:hover { border-color: color-mix(in oklab, oklch(60.6% .25 292.717) 42%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:border-zinc-300:hover { border-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .hover\:outline-blue-300:hover { outline-color: color-mix(in oklab, oklch(62.3% .214 259.815) 42%, var(--ftd-surface)); }
+body.workspace-theme-dark .hover\:outline-slate-300:hover { outline-color: var(--ftd-border-strong); }
+body.workspace-theme-dark .hover\:text-\[\#0055DA\]:hover { color: hsl(217 55% 82%); }
+body.workspace-theme-dark .hover\:text-\[\#1f4fc9\]:hover { color: hsl(223 55% 78%); }
+body.workspace-theme-dark .hover\:text-\[\#7c3218\]:hover { color: hsl(16 55% 82%); }
+body.workspace-theme-dark .hover\:text-amber-700:hover { color: oklch(82.8% .189 84.429); }
+body.workspace-theme-dark .hover\:text-blue-600:hover { color: oklch(70.7% .165 254.624); }
+body.workspace-theme-dark .hover\:text-blue-700:hover { color: oklch(70.7% .165 254.624); }
+body.workspace-theme-dark .hover\:text-blue-800:hover { color: oklch(80.9% .105 251.813); }
+body.workspace-theme-dark .hover\:text-blue-900:hover { color: oklch(80.9% .105 251.813); }
+body.workspace-theme-dark .hover\:text-emerald-700:hover { color: oklch(76.5% .177 163.223); }
+body.workspace-theme-dark .hover\:text-red-500:hover { color: oklch(70.4% .191 22.216); }
+body.workspace-theme-dark .hover\:text-red-600:hover { color: oklch(70.4% .191 22.216); }
+body.workspace-theme-dark .hover\:text-red-700:hover { color: oklch(70.4% .191 22.216); }
+body.workspace-theme-dark .hover\:text-rose-600:hover { color: oklch(71.2% .194 13.428); }
+body.workspace-theme-dark .hover\:text-rose-700:hover { color: oklch(71.2% .194 13.428); }
+body.workspace-theme-dark .hover\:text-sky-700:hover { color: oklch(74.6% .16 232.661); }
+body.workspace-theme-dark .hover\:text-sky-900:hover { color: oklch(82.8% .111 230.318); }
+body.workspace-theme-dark .hover\:text-slate-600:hover { color: #b4c5da; }
+body.workspace-theme-dark .hover\:text-slate-700:hover { color: var(--ftd-text-2); }
+body.workspace-theme-dark .hover\:text-slate-800:hover { color: var(--ftd-text); }
+body.workspace-theme-dark .hover\:text-slate-900:hover { color: var(--ftd-text); }
+body.workspace-theme-dark .hover\:text-violet-700:hover { color: oklch(70.2% .183 293.541); }
+body.workspace-theme-dark .text-\[\#001E40\] { color: hsl(212 55% 82%); }
+body.workspace-theme-dark .text-\[\#001e40\] { color: hsl(212 55% 82%); }
+body.workspace-theme-dark .text-\[\#003366\] { color: hsl(210 55% 82%); }
+body.workspace-theme-dark .text-\[\#003d9e\] { color: hsl(217 55% 82%); }
+body.workspace-theme-dark .text-\[\#0055DA\] { color: hsl(217 55% 82%); }
+body.workspace-theme-dark .text-\[\#0055da\] { color: hsl(217 55% 82%); }
+body.workspace-theme-dark .text-\[\#0F3A72\] { color: hsl(214 55% 82%); }
+body.workspace-theme-dark .text-\[\#0b4275\] { color: hsl(209 55% 82%); }
+body.workspace-theme-dark .text-\[\#101827\] { color: hsl(219 42% 82%); }
+body.workspace-theme-dark .text-\[\#102A43\]:not(.bg-\[\#f4a261\]):not(.bg-\[\#ffb37a\]) { color: hsl(209 55% 82%); }
+body.workspace-theme-dark .text-\[\#104581\] { color: hsl(212 55% 82%); }
+body.workspace-theme-dark .text-\[\#121c2a\] { color: hsl(215 40% 82%); }
+body.workspace-theme-dark .text-\[\#1465b5\] { color: hsl(210 55% 82%); }
+body.workspace-theme-dark .text-\[\#17324d\] { color: hsl(210 54% 82%); }
+body.workspace-theme-dark .text-\[\#1f4fc9\] { color: hsl(223 55% 78%); }
+body.workspace-theme-dark .text-\[\#52677a\] { color: hsl(208 20% 82%); }
+body.workspace-theme-dark .text-\[\#718294\] { color: hsl(211 14% 78%); }
+body.workspace-theme-dark .text-\[\#8f2900\] { color: hsl(17 55% 82%); }
+body.workspace-theme-dark .text-\[\#9a6a50\] { color: hsl(21 32% 78%); }
+body.workspace-theme-dark .text-\[\#a94720\] { color: hsl(17 55% 82%); }
+body.workspace-theme-dark .text-\[\#aa3000\] { color: hsl(17 55% 82%); }
+body.workspace-theme-dark .text-\[\#de6b35\] { color: hsl(19 55% 78%); }
+body.workspace-theme-dark .text-amber-500 { color: oklch(82.8% .189 84.429); }
+body.workspace-theme-dark .text-amber-600 { color: oklch(82.8% .189 84.429); }
+body.workspace-theme-dark .text-amber-700 { color: oklch(82.8% .189 84.429); }
+body.workspace-theme-dark .text-amber-800 { color: oklch(87.9% .169 91.605); }
+body.workspace-theme-dark .text-amber-900 { color: oklch(87.9% .169 91.605); }
+body.workspace-theme-dark .text-amber-950 { color: color-mix(in oklab, oklch(87.9% .169 91.605) 78%, white); }
+body.workspace-theme-dark .text-blue-500 { color: oklch(70.7% .165 254.624); }
+body.workspace-theme-dark .text-blue-600 { color: oklch(70.7% .165 254.624); }
+body.workspace-theme-dark .text-blue-700 { color: oklch(70.7% .165 254.624); }
+body.workspace-theme-dark .text-blue-800 { color: oklch(80.9% .105 251.813); }
+body.workspace-theme-dark .text-blue-900 { color: oklch(80.9% .105 251.813); }
+body.workspace-theme-dark .text-cyan-600 { color: oklch(78.9% .154 211.53); }
+body.workspace-theme-dark .text-cyan-700 { color: oklch(78.9% .154 211.53); }
+body.workspace-theme-dark .text-cyan-800 { color: oklch(86.5% .127 207.078); }
+body.workspace-theme-dark .text-cyan-900 { color: oklch(86.5% .127 207.078); }
+body.workspace-theme-dark .text-emerald-500 { color: oklch(76.5% .177 163.223); }
+body.workspace-theme-dark .text-emerald-600 { color: oklch(76.5% .177 163.223); }
+body.workspace-theme-dark .text-emerald-700 { color: oklch(76.5% .177 163.223); }
+body.workspace-theme-dark .text-emerald-800 { color: oklch(84.5% .143 164.978); }
+body.workspace-theme-dark .text-emerald-900 { color: oklch(84.5% .143 164.978); }
+body.workspace-theme-dark .text-emerald-950 { color: color-mix(in oklab, oklch(84.5% .143 164.978) 78%, white); }
+body.workspace-theme-dark .text-fuchsia-500 { color: oklch(74% .238 322.16); }
+body.workspace-theme-dark .text-fuchsia-600 { color: oklch(74% .238 322.16); }
+body.workspace-theme-dark .text-fuchsia-700 { color: oklch(74% .238 322.16); }
+body.workspace-theme-dark .text-indigo-500 { color: oklch(67.3% .182 276.935); }
+body.workspace-theme-dark .text-indigo-600 { color: oklch(67.3% .182 276.935); }
+body.workspace-theme-dark .text-indigo-700 { color: oklch(67.3% .182 276.935); }
+body.workspace-theme-dark .text-indigo-800 { color: oklch(78.5% .115 274.713); }
+body.workspace-theme-dark .text-indigo-900 { color: oklch(78.5% .115 274.713); }
+body.workspace-theme-dark .text-indigo-950 { color: color-mix(in oklab, oklch(78.5% .115 274.713) 78%, white); }
+body.workspace-theme-dark .text-orange-500 { color: oklch(75% .183 55.934); }
+body.workspace-theme-dark .text-orange-600 { color: oklch(75% .183 55.934); }
+body.workspace-theme-dark .text-orange-700 { color: oklch(75% .183 55.934); }
+body.workspace-theme-dark .text-orange-800 { color: oklch(83.7% .128 66.29); }
+body.workspace-theme-dark .text-orange-900 { color: oklch(83.7% .128 66.29); }
+body.workspace-theme-dark .text-pink-700 { color: oklch(71.8% .202 349.761); }
+body.workspace-theme-dark .text-purple-600 { color: oklch(71.4% .203 305.504); }
+body.workspace-theme-dark .text-red-500 { color: oklch(70.4% .191 22.216); }
+body.workspace-theme-dark .text-red-600 { color: oklch(70.4% .191 22.216); }
+body.workspace-theme-dark .text-red-700 { color: oklch(70.4% .191 22.216); }
+body.workspace-theme-dark .text-red-800 { color: oklch(80.8% .114 19.571); }
+body.workspace-theme-dark .text-red-900 { color: oklch(80.8% .114 19.571); }
+body.workspace-theme-dark .text-rose-500 { color: oklch(71.2% .194 13.428); }
+body.workspace-theme-dark .text-rose-600 { color: oklch(71.2% .194 13.428); }
+body.workspace-theme-dark .text-rose-700 { color: oklch(71.2% .194 13.428); }
+body.workspace-theme-dark .text-rose-800 { color: oklch(81% .117 11.638); }
+body.workspace-theme-dark .text-rose-900 { color: oklch(81% .117 11.638); }
+body.workspace-theme-dark .text-sky-600 { color: oklch(74.6% .16 232.661); }
+body.workspace-theme-dark .text-sky-700 { color: oklch(74.6% .16 232.661); }
+body.workspace-theme-dark .text-sky-800 { color: oklch(82.8% .111 230.318); }
+body.workspace-theme-dark .text-sky-900 { color: oklch(82.8% .111 230.318); }
+body.workspace-theme-dark .text-sky-950 { color: color-mix(in oklab, oklch(82.8% .111 230.318) 78%, white); }
+body.workspace-theme-dark .text-slate-300 { color: var(--ftd-text-5); }
+body.workspace-theme-dark .text-slate-400 { color: var(--ftd-text-4); }
+body.workspace-theme-dark .text-slate-500 { color: var(--ftd-text-3); }
+body.workspace-theme-dark .text-slate-600 { color: #b4c5da; }
+body.workspace-theme-dark .text-slate-700 { color: var(--ftd-text-2); }
+body.workspace-theme-dark .text-slate-800 { color: var(--ftd-text); }
+body.workspace-theme-dark .text-slate-900 { color: var(--ftd-text); }
+body.workspace-theme-dark .text-slate-950 { color: var(--ftd-text); }
+body.workspace-theme-dark .text-teal-600 { color: oklch(77.7% .152 181.912); }
+body.workspace-theme-dark .text-teal-700 { color: oklch(77.7% .152 181.912); }
+body.workspace-theme-dark .text-violet-600 { color: oklch(70.2% .183 293.541); }
+body.workspace-theme-dark .text-violet-700 { color: oklch(70.2% .183 293.541); }
+body.workspace-theme-dark .text-violet-800 { color: oklch(81.1% .111 293.571); }
+body.workspace-theme-dark .text-violet-900 { color: oklch(81.1% .111 293.571); }
+body.workspace-theme-dark .text-zinc-400 { color: var(--ftd-text-4); }
