@@ -1663,6 +1663,137 @@ function PersonalBadge() {
 function TaskBadges({ support, personal }: { support: boolean; personal: boolean }) {
   return <>{support && <SupportBadge />}{personal && <PersonalBadge />}</>;
 }
+
+/* ------------------------------------------------------------------ *
+ * Tags inside the spreadsheet grid.
+ *
+ * The sheet stores a tag as the literal prefix "[Hỗ trợ] " / "[Lịch cá
+ * nhân] ", and that text is what we keep saving, so the sheet mirror is
+ * untouched. On the web the prefix is drawn as a small chip while the cell
+ * is idle; focusing the cell swaps the chip back for the plain text so the
+ * caret, selection and typing all work on the real characters. Anything
+ * else between brackets is ordinary text and is never rewritten.
+ * ------------------------------------------------------------------ */
+type CellSegment = { kind: "text" | "tag"; start: number; end: number; variant?: "support" | "personal" };
+
+const gridLineMarker = /^\s*\d{1,3}\s*[.,)]\s*/;
+
+/** Splits a grid cell into plain-text runs and the leading tag of each line. */
+function cellSegments(value: string): CellSegment[] {
+  const segments: CellSegment[] = [];
+  let cursor = 0;
+  const pushText = (end: number) => {
+    if (end > cursor) segments.push({ kind: "text", start: cursor, end });
+    cursor = Math.max(cursor, end);
+  };
+  let offset = 0;
+  value.split("\n").forEach((line) => {
+    const marker = line.match(gridLineMarker);
+    let local = marker ? marker[0].length : 0;
+    if (marker) {
+      for (;;) {
+        const rest = line.slice(local);
+        const support = rest.match(supportTag);
+        const personal = support ? null : rest.match(personalTag);
+        const hit = support || personal;
+        if (!hit) break;
+        pushText(offset + local);
+        segments.push({ kind: "tag", start: offset + local, end: offset + local + hit[0].length, variant: support ? "support" : "personal" });
+        cursor = offset + local + hit[0].length;
+        local += hit[0].length;
+      }
+    }
+    offset += line.length + 1;
+  });
+  pushText(value.length);
+  return segments;
+}
+
+/**
+ * Chip drawn in place of a tag prefix. It is deliberately shorter than the
+ * 20px grid line box so swapping between chip and plain text never changes
+ * the row height.
+ */
+function GridTagChip({ variant }: { variant: "support" | "personal" }) {
+  const tone = variant === "support" ? "ws-grid-tag-support" : "ws-grid-tag-personal";
+  return <span className={`ws-grid-tag ${tone}`}><Tag className="h-3 w-3" aria-hidden="true" />{variant === "support" ? "Hỗ trợ" : "Lịch cá nhân"}</span>;
+}
+
+/** Idle rendering of a grid cell: tags as chips, everything else verbatim. */
+function GridCellDisplay({ value, formatRuns }: { value: string; formatRuns: TextFormatRun[] | null | undefined }) {
+  const segments = cellSegments(value);
+  const runs = normalizeTextFormatRuns(formatRuns, value.length);
+  return <>{segments.map((segment) => {
+    if (segment.kind === "tag") {
+      return <span key={`tag-${segment.start}`} data-cell-offset={segment.start}><GridTagChip variant={segment.variant!} /></span>;
+    }
+    const boundaries = new Set<number>([segment.start, segment.end]);
+    runs.forEach((run) => {
+      if (run.startIndex > segment.start && run.startIndex < segment.end) boundaries.add(run.startIndex);
+    });
+    const ordered = [...boundaries].sort((a, b) => a - b);
+    return ordered.slice(0, -1).map((start, index) => {
+      const end = ordered[index + 1];
+      const state = formatStateAt(runs, start);
+      return <span key={`text-${start}`} data-cell-offset={start} style={{ fontWeight: state.bold ? 700 : 500, fontStyle: state.italic ? "italic" : "normal" }}>{value.slice(start, end)}</span>;
+    });
+  })}</>;
+}
+
+/** Character index in the raw cell text under a viewport point, if any. */
+function cellOffsetFromPoint(root: HTMLElement, x: number, y: number): number | null {
+  const fromRange = (node: Node | null, nodeOffset: number) => {
+    let element = node instanceof HTMLElement ? node : node?.parentElement || null;
+    while (element && element !== root && element.dataset.cellOffset === undefined) element = element.parentElement;
+    if (!element || element === root || element.dataset.cellOffset === undefined) return null;
+    const base = Number(element.dataset.cellOffset);
+    if (!Number.isFinite(base)) return null;
+    // A chip stands for the whole tag, so any click on it lands at its start.
+    if (!(node instanceof Text)) return base;
+    return base + Math.min(nodeOffset, node.length);
+  };
+  const legacy = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }).caretRangeFromPoint;
+  if (typeof legacy === "function") {
+    const range = legacy.call(document, x, y);
+    return range ? fromRange(range.startContainer, range.startOffset) : null;
+  }
+  const modern = (document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null }).caretPositionFromPoint;
+  if (typeof modern === "function") {
+    const position = modern.call(document, x, y);
+    return position ? fromRange(position.offsetNode, position.offset) : null;
+  }
+  return null;
+}
+
+/** Puts the caret at a character index of the editor's text content. */
+function placeCaretAt(editor: HTMLElement, index: number) {
+  const selection = window.getSelection();
+  if (!selection) return;
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  let remaining = Math.max(0, index);
+  let node = walker.nextNode() as Text | null;
+  let last: Text | null = null;
+  while (node) {
+    if (remaining <= node.length) {
+      const range = document.createRange();
+      range.setStart(node, remaining);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return;
+    }
+    remaining -= node.length;
+    last = node;
+    node = walker.nextNode() as Text | null;
+  }
+  const range = document.createRange();
+  if (last) range.setStart(last, last.length);
+  else range.selectNodeContents(editor);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 function WorkTitle({ task }: { task: WorkTask }) {
   const tags = taskTags(task.title);
   const prefix = task.displayTitle.endsWith(task.title) ? task.displayTitle.slice(0, -task.title.length) : "";
@@ -1687,9 +1818,18 @@ function ImportantWorkContentEditor({ value, formatRuns, className, onChange, on
   onBlur: () => void;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const displayRef = useRef<HTMLDivElement>(null);
   const focusedRef = useRef(false);
   const savedRangeRef = useRef<Range | null>(null);
+  const pendingCaretRef = useRef<number | null>(null);
+  // Idle cells render tags as chips; editing swaps in the real characters.
+  const [editing, setEditing] = useState(false);
   const [toolbar, setToolbar] = useState<{ top: number; left: number; bold: boolean; italic: boolean } | null>(null);
+
+  const startEditing = (caret: number | null) => {
+    pendingCaretRef.current = caret;
+    setEditing(true);
+  };
 
   const selectionInsideEditor = () => {
     const editor = editorRef.current;
@@ -1752,6 +1892,24 @@ function ImportantWorkContentEditor({ value, formatRuns, className, onChange, on
     resizeGridEditor(editor);
   }, [value, formatRuns]);
 
+  // Entering edit mode: fill the editor with the raw text, then restore the
+  // caret to the character the user actually clicked on in the chip view.
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!editing || !editor) return;
+    writeEditableContent(editor, value, formatRuns);
+    resizeGridEditor(editor);
+    editor.focus({ preventScroll: true });
+    placeCaretAt(editor, pendingCaretRef.current ?? value.length);
+    pendingCaretRef.current = null;
+    rememberSelection();
+  }, [editing]);
+
+  // Idle cells still drive the row height, so remeasure when they change.
+  useLayoutEffect(() => {
+    if (!editing) resizeGridTextarea(displayRef.current?.closest("tr")?.querySelector("textarea") || null);
+  }, [editing, value, formatRuns]);
+
   useEffect(() => {
     const updateSelection = () => {
       if (focusedRef.current && selectionInsideEditor()) rememberSelection();
@@ -1763,7 +1921,7 @@ function ImportantWorkContentEditor({ value, formatRuns, className, onChange, on
   return <>
     <div className="relative">
       {!value && <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 whitespace-pre-wrap p-2 leading-5 text-slate-400">1. Nhập nội dung công việc{`\n`}2. Nhiệm vụ tiếp theo</div>}
-      <div
+      {editing ? <div
         ref={editorRef}
         contentEditable
         suppressContentEditableWarning
@@ -1784,11 +1942,26 @@ function ImportantWorkContentEditor({ value, formatRuns, className, onChange, on
         onBlur={() => {
           emitChange();
           focusedRef.current = false;
+          setEditing(false);
           setToolbar(null);
           onBlur();
         }}
         className={`${className} min-h-20 whitespace-pre-wrap font-medium text-slate-900`}
-      />
+      /> : <div
+        ref={displayRef}
+        role="textbox"
+        tabIndex={0}
+        aria-multiline="true"
+        aria-label="Nội dung công việc"
+        data-grid-cell-measure
+        onMouseDown={(event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          startEditing(displayRef.current ? cellOffsetFromPoint(displayRef.current, event.clientX, event.clientY) : null);
+        }}
+        onFocus={() => startEditing(null)}
+        className={`${className} min-h-20 cursor-text whitespace-pre-wrap font-medium text-slate-900`}
+      ><GridCellDisplay value={value} formatRuns={formatRuns} /></div>}
     </div>
     {toolbar && createPortal(
       <div
