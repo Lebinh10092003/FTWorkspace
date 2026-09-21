@@ -312,6 +312,17 @@ export const SOCIAL_DASHBOARD_NAV: ModuleNavItem[] = [
   { id: 'config', label: 'Cấu hình hệ thống', icon: Settings, requires: 'member' },
 ];
 
+/** Horizontal menu of "Công ca". Ids match the module tabs. */
+export const ATTENDANCE_NAV: ModuleNavItem[] = [
+  { id: 'timesheet', label: 'Bảng công tháng', icon: CalendarCheck },
+  { id: 'sheet', label: 'Liên kết Google Sheets', icon: FileSpreadsheet, requires: 'admin' },
+];
+
+/** Horizontal menu of "Quản lý nhân viên". Ids match the module tabs. */
+export const ACCOUNT_MANAGEMENT_NAV: ModuleNavItem[] = [
+  { id: 'employees', label: 'Danh sách nhân viên', icon: Users },
+];
+
 /** Horizontal menu of "Báo cáo thu chi". */
 export const FINANCE_NAV: ModuleNavItem[] = [
   { id: 'report', label: 'Báo cáo thu chi', icon: BadgeDollarSign },

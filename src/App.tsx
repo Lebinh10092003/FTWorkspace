@@ -11,7 +11,7 @@ import ModuleMobileNav from './components/ModuleMobileNav';
 import { readWorkspaceAppearance, WorkspaceAppearance } from './components/AppearanceSettings';
 import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
 import ModuleShellHeader from './components/layout/ModuleShellHeader';
-import { areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
+import { ACCOUNT_MANAGEMENT_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
 
 const lazyWithRecovery = <T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) => lazy(async () => {
   const retryKey = `ft-workspace-lazy-reload:${window.location.pathname}`;
@@ -84,7 +84,7 @@ const GUEST_USER: AppUser = {
 
 const workspacePalettes: Record<WorkspaceAppearance['theme'], { background: string; card: string; panel: string; text: string; muted: string; surfaceText: string; surfaceMuted: string; accent: string; imageOverlay: string }> = {
   light: { background: 'linear-gradient(150deg,#f6f8fc 0%,#eef3fb 45%,#eaf1ff 72%,#fff 100%)', card: 'rgba(255,255,255,.82)', panel: 'rgba(255,255,255,.9)', text: '#0f172a', muted: '#64748b', surfaceText: '#172033', surfaceMuted: '#64748b', accent: '#0055da', imageOverlay: 'rgba(246,248,252,.72)' },
-  dark: { background: 'linear-gradient(145deg,#182235 0%,#202d45 52%,#263a5d 100%)', card: 'rgba(248,250,252,.96)', panel: 'rgba(24,34,53,.94)', text: '#f8fafc', muted: '#cbd5e1', surfaceText: '#172033', surfaceMuted: '#5f6f82', accent: '#60a5fa', imageOverlay: 'rgba(20,30,48,.66)' },
+  dark: { background: 'linear-gradient(155deg,#080d16 0%,#0c1320 48%,#101a2b 100%)', card: '#141d2e', panel: '#0f1727', text: '#e9eff8', muted: '#94a6be', surfaceText: '#e9eff8', surfaceMuted: '#93a5bd', accent: '#5b9dff', imageOverlay: 'rgba(8,13,22,.82)' },
   blue: { background: 'linear-gradient(150deg,#eff6ff 0%,#dbeafe 48%,#e0f2fe 100%)', card: 'rgba(255,255,255,.78)', panel: 'rgba(239,246,255,.92)', text: '#172554', muted: '#475569', surfaceText: '#172554', surfaceMuted: '#475569', accent: '#2563eb', imageOverlay: 'rgba(219,234,254,.7)' },
   teal: { background: 'linear-gradient(150deg,#f0fdfa 0%,#ccfbf1 48%,#dff7f3 100%)', card: 'rgba(255,255,255,.8)', panel: 'rgba(240,253,250,.93)', text: '#134e4a', muted: '#4b6865', surfaceText: '#134e4a', surfaceMuted: '#4b6865', accent: '#0f9f95', imageOverlay: 'rgba(204,251,241,.7)' },
   mint: { background: 'linear-gradient(150deg,#f0fdf8 0%,#d1fae5 48%,#e6fff5 100%)', card: 'rgba(255,255,255,.8)', panel: 'rgba(240,253,248,.93)', text: '#14533f', muted: '#4f6b61', surfaceText: '#14533f', surfaceMuted: '#4f6b61', accent: '#10a875', imageOverlay: 'rgba(209,250,229,.7)' },
@@ -854,9 +854,19 @@ export default function App() {
     if (userRole !== 'ADMIN') return null;
     return (
       <>
-        <div className="workspace-module-canvas min-h-screen bg-slate-50 font-sans">
-          <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8"><button onClick={() => setViewMode('workspace')} className="ft-btn ft-btn-secondary">Quay lại Workspace</button><span className="text-sm font-bold text-slate-700">Quản trị Workspace</span></div></header>
-          <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8"><Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Đang tải quản lý nhân viên...</div>}><AccountManagement idToken={idToken || ''} userRole={userRole} /></Suspense></main>
+        <div className="ft-module-shell flex min-h-dvh flex-col font-sans">
+          <ModuleShellHeader
+            eyebrow="Quản trị Workspace"
+            title="Quản lý nhân viên"
+            items={ACCOUNT_MANAGEMENT_NAV}
+            activeId="employees"
+            onSelect={() => undefined}
+            ariaLabel="Điều hướng Quản lý nhân viên"
+            account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />}
+          />
+          <main className="min-w-0 flex-1">
+            <div className="ft-module-content mx-auto p-5 md:p-7"><Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Đang tải quản lý nhân viên...</div>}><AccountManagement idToken={idToken || ''} userRole={userRole} /></Suspense></div>
+          </main>
         </div>
         {loginModal}{profileModal}
       </>
@@ -957,10 +967,13 @@ export default function App() {
     return (
       <Suspense fallback={<div className="grid h-screen place-items-center bg-[#f3f5f1]">Đang nạp mô-đun Công ca...</div>}>
         <Attendance
-          onBackToWorkspace={() => setViewMode('workspace')}
           idToken={idToken || ''}
           userName={user.displayName}
           userEmail={user.email}
+          userRole={userRole}
+          photoURL={user.photoURL}
+          onAccountClick={openAccount}
+          onLogout={handleLogout}
           initialEditDate={attendanceEditDate}
           onInitialEditOpened={() => setAttendanceEditDate('')}
         />
