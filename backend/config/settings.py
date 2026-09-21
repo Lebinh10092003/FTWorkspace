@@ -100,6 +100,15 @@ WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED = env_bool(
     "WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED",
     False,
 )
+# The mirror image of the setting above. Đào tạo số sessions used to copy
+# themselves onto the instructor's personal schedule, so Lịch cá nhân filled up
+# with identically shaped rows their owner never wrote. The two calendars are
+# separate: a training session belongs to Đào tạo số, and staff add their own
+# work-schedule row when they want one.
+TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED = env_bool(
+    "TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED",
+    False,
+)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = [

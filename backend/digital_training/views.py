@@ -6,6 +6,7 @@ from rest_framework.permissions import BasePermission
 import json
 import uuid
 import unicodedata
+from django.conf import settings
 from django.utils import timezone
 
 from authentication.permissions import IsAuthenticated, IsManagerOrAdmin
@@ -19,14 +20,16 @@ from .session_notifications import notify_training_session_created, notify_train
 
 
 def _sync_session_to_work_schedule(item, kind, request):
-    if kind != "buổi tập huấn":
+    # Off by default: a training session is not a personal work-schedule task.
+    # See TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED in config/settings.py.
+    if kind != "buổi tập huấn" or not settings.TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED:
         return
     from work_schedule.training_sync import sync_work_item_from_training
     sync_work_item_from_training(item, request.user)
 
 
 def _delete_session_from_work_schedule(item, kind):
-    if kind != "buổi tập huấn":
+    if kind != "buổi tập huấn" or not settings.TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED:
         return
     from work_schedule.training_sync import delete_work_item_for_training
     delete_work_item_for_training(item)

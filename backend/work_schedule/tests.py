@@ -1248,6 +1248,77 @@ class WorkScheduleApiTests(TestCase):
         self.assertEqual(item.start_time.isoformat(timespec="minutes"), "08:15")
         self.assertEqual(item.end_time.isoformat(timespec="minutes"), "11:45")
 
+    def test_digital_training_session_does_not_appear_on_the_personal_schedule(self):
+        """Đào tạo số and Lịch làm việc are separate calendars.
+
+        Creating a "buổi tập huấn" in Đào tạo số used to mirror itself onto the
+        instructor's personal schedule, which filled Lịch cá nhân with rows the
+        owner never wrote and could not tell apart.
+        """
+        from digital_training.models import TrainingSession
+
+        trainer, trainer_token = self.profile("trainer@example.com", "ADMIN")
+        trainer.access_modules = ["digital-training", "work-schedule"]
+        trainer.save(update_fields=["access_modules"])
+        response = self.request(trainer_token, "post", "/api/digital-training/sessions", {
+            "title": "Tập huấn TH Kim Đồng",
+            "date": "2026-09-18",
+            "start_time": "08:00",
+            "end_time": "11:00",
+            "instructor_name": self.executor.name,
+        })
+        self.assertEqual(response.status_code, 201, response.data)
+        session = TrainingSession.objects.get(pk=response.json()["id"])
+        # Guard against the payload silently not persisting, which would make
+        # the assertion below pass for the wrong reason.
+        self.assertEqual(session.session_date.isoformat(), "2026-09-18")
+        self.assertFalse(
+            WorkItem.objects.filter(training_session=session).exists(),
+            "a Đào tạo số session must not create a row on the personal schedule",
+        )
+
+    def test_deleting_a_mirrored_row_keeps_the_digital_training_session(self):
+        """Removing the stray row must not delete the real Đào tạo số session."""
+        from digital_training.models import TrainingSession
+
+        session = TrainingSession.objects.create(
+            title="Tập huấn TH Trung Văn",
+            session_date="2026-09-19",
+            start_time=time(8, 0),
+            end_time=time(11, 0),
+            instructor_name=self.executor.name,
+        )
+        item = sync_work_item_from_training(session, self.manager)
+        self.assertIsNotNone(item)
+
+        deleted = self.request(self.manager_token, "delete", f"/api/work-schedule/items/{item.pk}")
+        self.assertEqual(deleted.status_code, 200, deleted.data)
+        self.assertFalse(WorkItem.objects.filter(pk=item.pk).exists())
+        self.assertTrue(
+            TrainingSession.objects.filter(pk=session.pk).exists(),
+            "deleting the work item must not delete a session owned by Đào tạo số",
+        )
+
+    @override_settings(WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED=True)
+    def test_deleting_a_work_schedule_owned_session_still_removes_it(self):
+        """A session the work schedule itself created is still its to delete."""
+        from digital_training.models import TrainingSession
+
+        response = self.request(self.manager_token, "post", "/api/work-schedule/items", {
+            "title": "Tập huấn B2 TH Cầu Giấy", "date": "2026-09-20",
+            "startTime": "14:00", "executorEmail": self.executor.email,
+            "supporterEmails": [], "managerEmails": [],
+            "label": "Tập huấn",
+        })
+        self.assertEqual(response.status_code, 201, response.data)
+        item = WorkItem.objects.get(pk=response.json()["item"]["id"])
+        session_id = item.training_session_id
+        self.assertIsNotNone(session_id)
+
+        deleted = self.request(self.manager_token, "delete", f"/api/work-schedule/items/{item.pk}")
+        self.assertEqual(deleted.status_code, 200, deleted.data)
+        self.assertFalse(TrainingSession.objects.filter(pk=session_id).exists())
+
     def test_training_reference_inside_normal_task_does_not_create_session(self):
         response = self.request(self.executor_token, "post", "/api/work-schedule/items", {
             "title": "Gửi tài liệu sau tập huấn", "date": "2026-09-07",

@@ -208,9 +208,16 @@ def sync_work_item_from_training(session, actor):
 
 
 def delete_training_for_work_item(item):
-    if item.training_session_id:
-        session = item.training_session
-        WorkItem.objects.filter(pk=item.pk).update(training_session=None)
+    # Only a session this work item produced is the work schedule's to remove.
+    # A session authored in Đào tạo số outlives the mirrored row, so deleting a
+    # stray row from Lịch cá nhân just unlinks it. This matches the ownership
+    # rule sync_training_from_work_item already applies.
+    if not item.training_session_id:
+        return
+    session = item.training_session
+    WorkItem.objects.filter(pk=item.pk).update(training_session=None)
+    item.training_session = None
+    if session.source == TrainingSession.SOURCE_WORK_SCHEDULE:
         session.delete()
 
 
