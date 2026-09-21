@@ -72,6 +72,14 @@
   --ft-space-10: 2.5rem;   /* 40px */
   --ft-space-12: 3rem;     /* 48px */
 
+  /* Logo plate. The mark is deep-navy artwork on transparency, so it needs a
+     light plate to stay legible; these tokens keep that plate identical in the
+     rail, the module bar and the Workspace launcher. */
+  --ft-logo-plate-bg:     #ffffff;
+  --ft-logo-plate-border: #e3eff9;
+  --ft-logo-plate-radius: 0.85rem;
+  --ft-logo-plate-shadow: 0 1px 3px rgba(23, 91, 150, .06);
+
   /* Animation */
   --ft-duration-fast:   150ms;
   --ft-duration-base:   200ms;
@@ -1341,11 +1349,11 @@ body.workspace-app-theme .workspace-module-canvas img[src="/logo.png"],
 body.workspace-app-theme img.ft-module-logo {
   box-sizing: content-box;
   max-height: 2.75rem;
-  border: 1px solid #d9e2f0;
-  border-radius: 0;
-  background: #fff !important;
+  border: 1px solid var(--ft-logo-plate-border);
+  border-radius: var(--ft-logo-plate-radius);
+  background: var(--ft-logo-plate-bg) !important;
   padding: .5rem .75rem;
-  box-shadow: 0 3px 10px rgba(15,55,95,.1);
+  box-shadow: var(--ft-logo-plate-shadow);
 }
 body.workspace-app-theme .ft-sidebar-brand {
   min-height: 6rem;
@@ -1392,11 +1400,11 @@ body.workspace-app-theme.workspace-theme-light .ft-sidebar-footer { border-color
 
 .workspace-theme > header img[src="/logo.png"] {
   box-sizing: content-box;
-  border: 1px solid #d9e2f0;
-  border-radius: 0;
-  background: #fff !important;
+  border: 1px solid var(--ft-logo-plate-border);
+  border-radius: var(--ft-logo-plate-radius);
+  background: var(--ft-logo-plate-bg) !important;
   padding: .5rem .75rem;
-  box-shadow: 0 3px 10px rgba(15,55,95,.1);
+  box-shadow: var(--ft-logo-plate-shadow);
 }
 
 /* The notification center belongs to the Workspace home header only. */
@@ -1453,11 +1461,11 @@ body { overflow-x: hidden; }
   max-width: 16rem;
   height: 5rem;
   object-fit: contain;
-  border: 1px solid #e3eff9;
-  border-radius: .85rem;
-  background: #fff;
+  border: 1px solid var(--ft-logo-plate-border);
+  border-radius: var(--ft-logo-plate-radius);
+  background: var(--ft-logo-plate-bg);
   padding: .35rem .6rem;
-  box-shadow: 0 1px 3px rgba(23, 91, 150, .06);
+  box-shadow: var(--ft-logo-plate-shadow);
 }
 
 .workspace-title-block {
@@ -2016,13 +2024,13 @@ body { overflow-x: hidden; }
   align-items: center;
   justify-content: center;
   gap: .6rem;
-  border: 1px solid #e3eff9;
-  border-radius: .85rem;
-  background: #fff;
+  border: 1px solid var(--ft-logo-plate-border);
+  border-radius: var(--ft-logo-plate-radius);
+  background: var(--ft-logo-plate-bg);
   padding: .5rem .6rem;
   margin-bottom: .45rem;
   min-height: 3.6rem;
-  box-shadow: 0 1px 3px rgba(23, 91, 150, .06);
+  box-shadow: var(--ft-logo-plate-shadow);
 }
 .ft-app-rail-brand img { height: 2.5rem; max-width: 100%; object-fit: contain; }
 .ft-app-rail.is-compact .ft-app-rail-brand { padding: .4rem .25rem; min-height: 3rem; }
@@ -2716,12 +2724,12 @@ body.workspace-app-theme.workspace-theme-dark .ft-mobile-nav button[aria-current
   color: #dceafc;
 }
 
-/* The logo plate stays light: the mark itself is deep blue artwork. */
-body.workspace-app-theme.workspace-theme-dark .ft-module-shell img[src="/logo.png"],
-body.workspace-app-theme.workspace-theme-dark .workspace-module-canvas img[src="/logo.png"],
-body.workspace-app-theme.workspace-theme-dark img.ft-module-logo {
-  border-color: #2b3c58;
-  background: #eef4fb !important;
+/* The plate stays white in dark mode too: the mark is deep-navy artwork and
+   the brand colour must not shift. Only the frame around it adapts, so the
+   plate reads as a deliberate card rather than a hole in the surface. */
+body.workspace-theme-dark {
+  --ft-logo-plate-border: #35486a;
+  --ft-logo-plate-shadow: 0 2px 10px rgba(0, 0, 0, .45);
 }
 
 /* ---- Panels, tables and forms ------------------------------------------- */
