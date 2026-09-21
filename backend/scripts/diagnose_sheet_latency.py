@@ -74,46 +74,56 @@ try:
     rows = _rows(service, start_row=3)
     from work_schedule.sheet_sync import _cell, _parse_date  # noqa: E402
 
+    from work_schedule.sheet_sync import (  # noqa: E402
+        _cell, _normalise_staff_name, _parse_date, _sheet_name_email_map,
+    )
+    from work_schedule.retention import retained_from  # noqa: E402
+
+    # The Sheet writes staff as "7. Phương", not as the profile's full name, so
+    # compare on the email the sync itself resolves each row to.
+    name_to_email = _sheet_name_email_map()
     sheet_groups = {}
+    unresolved = Counter()
     for row in rows:
         row_date = _parse_date(_cell(row, columns.get("date", -1)))
         staff = _cell(row, columns.get("staff", -1)).strip()
-        if row_date and staff:
-            content = _cell(row, columns.get("content", -1))
-            sheet_groups[(staff.casefold(), row_date)] = len(
-                [line for line in str(content).splitlines() if line.strip()])
-    print("Sheet rows read: %d  dated staff groups: %d" % (len(rows), len(sheet_groups)))
+        if not row_date or not staff:
+            continue
+        email = name_to_email.get(_normalise_staff_name(staff))
+        if not email:
+            unresolved[staff] += 1
+            continue
+        content = _cell(row, columns.get("content", -1))
+        sheet_groups[(email, row_date)] = len(
+            [line for line in str(content).splitlines() if line.strip()])
+
+    print("Sheet rows read: %d  resolved staff groups: %d" % (len(rows), len(sheet_groups)))
+    print("Sheet staff names that resolve to nobody:", unresolved.most_common(5))
     sheet_dates = sorted({value[1] for value in sheet_groups})
     if sheet_dates:
         print("Sheet date range: %s .. %s" % (sheet_dates[0], sheet_dates[-1]))
-        future = [value for value in sheet_dates if value > timezone.localdate()]
-        print("Sheet dates after today: %d (max %s)"
-              % (len(future), future[-1] if future else "none"))
-    staff_counts = Counter(name for name, _ in sheet_groups)
-    print("Sheet staff names (top 8):", staff_counts.most_common(8))
-    print("Retention start:", __import__("work_schedule.retention", fromlist=["retained_from"]).retained_from())
+    print("Retention start:", retained_from())
 
-    # Compare the groups the database changed most recently.
-    recent_items = (WorkItem.objects
-                    .select_related("executor")
-                    .order_by("-updated_at")[:400])
+    recent_items = WorkItem.objects.order_by("-updated_at")[:500]
     seen, missing, mismatched, matched = set(), 0, 0, 0
     examples = []
     for item in recent_items:
-        key = (item.executor.name or "", item.work_date)
-        if key in seen:
+        key = (item.executor_id, item.work_date)
+        if key in seen or item.work_date < retained_from():
             continue
         seen.add(key)
-        db_count = WorkItem.objects.filter(executor=item.executor, work_date=item.work_date).count()
-        found = sheet_groups.get((str(key[0]).casefold(), key[1]))
+        db_count = WorkItem.objects.filter(
+            executor_id=item.executor_id, work_date=item.work_date).count()
+        found = sheet_groups.get(key)
         if found is None:
             missing += 1
             if len(examples) < 8:
-                examples.append("missing  %s  %s  db=%d" % (key[1], key[0][:18], db_count))
+                examples.append("missing  %s  %s  db=%d" % (key[1], key[0][:22], db_count))
         elif found != db_count:
             mismatched += 1
             if len(examples) < 8:
-                examples.append("count    %s  %s  db=%d sheet=%d" % (key[1], key[0][:18], db_count, found))
+                examples.append("count    %s  %s  db=%d sheet=%d"
+                                % (key[1], key[0][:22], db_count, found))
         else:
             matched += 1
     print("Recent groups compared: matched=%d mismatched=%d missing_from_sheet=%d"
