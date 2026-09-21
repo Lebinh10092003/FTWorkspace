@@ -7,6 +7,8 @@ Only competitions whose code still starts with "I" are touched, so the Fermat
 family (FIEO, FIMO, FISO, FIAIO) and AYSBC are left alone, and anything already
 renamed by hand is skipped rather than renamed twice.
 """
+import unicodedata
+
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
@@ -14,6 +16,20 @@ from examination.models import Competition, ExamSession
 
 NAME_PREFIX = "SCO "
 CODE_PREFIX = "S"
+COMPLETED_PHASE = "hoan thanh"
+
+
+def _phase_key(value):
+    plain = "".join(
+        char for char in unicodedata.normalize("NFD", str(value or "").casefold())
+        if unicodedata.category(char) != "Mn"
+    ).replace("đ", "d")
+    return " ".join(plain.split())
+
+
+def is_completed(session):
+    """A kỳ tổ chức that has already been held keeps its old label."""
+    return _phase_key(session.phase) == COMPLETED_PHASE
 
 
 def targets():
@@ -66,6 +82,16 @@ class Command(BaseCommand):
             if row["nameChanged"]:
                 self.stdout.write(f"{' ' * 22}-> {row['newName']}")
 
+        kept = [
+            session for row in pending
+            for session in ExamSession.objects.filter(competition_id=row["id"])
+            if is_completed(session)
+        ]
+        if kept:
+            self.stdout.write(f"Kỳ đã tổ chức, giữ nhãn cũ: {len(kept)}")
+            for session in kept:
+                self.stdout.write(f"    {session.id}  {session.name}  [{session.phase}]")
+
         if not apply:
             self.stdout.write(self.style.WARNING("Chạy thử: chưa ghi gì. Thêm --apply để ghi."))
             return
@@ -81,7 +107,11 @@ class Command(BaseCommand):
                     competition.parent = row["newName"]
                 competition.save(update_fields=["code", "name", "parent", "updated_at"])
                 # Sessions repeat the competition name in their own parent link.
+                # A kỳ already held keeps the name it was held under, so the
+                # record of what happened is not rewritten after the fact.
                 for session in ExamSession.objects.filter(competition_id=row["id"]):
+                    if is_completed(session):
+                        continue
                     if (session.parent or "").strip() == row["name"]:
                         session.parent = row["newName"]
                         session.save(update_fields=["parent", "updated_at"])

@@ -237,11 +237,39 @@ class RenameScoCompetitionsTests(TestCase):
         self.assertEqual(Competition.objects.get(pk="imo").code, "SIMO")
         self.assertEqual(Competition.objects.get(pk="ieo").code, "IEO")
 
-    def test_sessions_follow_the_new_competition_name(self):
+    def test_a_running_session_follows_the_new_competition_name(self):
         a_session(session_id="imo-2026", competition="imo", name="Năm học 2026-2027")
-        ExamSession.objects.filter(pk="imo-2026").update(parent="International Math Olympiad")
+        ExamSession.objects.filter(pk="imo-2026").update(
+            parent="International Math Olympiad", phase="Vòng loại Quốc gia")
         self.run_command("--apply")
         self.assertEqual(ExamSession.objects.get(pk="imo-2026").parent, "SCO International Math Olympiad")
+
+    def test_a_finished_session_keeps_the_name_it_was_held_under(self):
+        a_session(session_id="imo-2025", competition="imo", name="Năm học 2025-2026")
+        ExamSession.objects.filter(pk="imo-2025").update(
+            parent="International Math Olympiad", phase="Hoàn thành")
+        self.run_command("--apply")
+        # The competition itself moves on, the record of the past kỳ does not.
+        self.assertEqual(Competition.objects.get(pk="imo").code, "SIMO")
+        self.assertEqual(ExamSession.objects.get(pk="imo-2025").parent, "International Math Olympiad")
+
+    def test_finished_and_running_sessions_of_one_competition_diverge(self):
+        a_session(session_id="imo-2025", competition="imo", name="Năm học 2025-2026")
+        a_session(session_id="imo-2026", competition="imo", name="Năm học 2026-2027")
+        ExamSession.objects.filter(pk="imo-2025").update(
+            parent="International Math Olympiad", phase="Hoàn thành")
+        ExamSession.objects.filter(pk="imo-2026").update(
+            parent="International Math Olympiad", phase="Chuẩn bị/Truyền thông")
+        self.run_command("--apply")
+        self.assertEqual(ExamSession.objects.get(pk="imo-2025").parent, "International Math Olympiad")
+        self.assertEqual(ExamSession.objects.get(pk="imo-2026").parent, "SCO International Math Olympiad")
+
+    def test_the_phase_check_ignores_case_and_accents(self):
+        a_session(session_id="imo-2025", competition="imo", name="Năm học 2025-2026")
+        ExamSession.objects.filter(pk="imo-2025").update(
+            parent="International Math Olympiad", phase="HOÀN THÀNH")
+        self.run_command("--apply")
+        self.assertEqual(ExamSession.objects.get(pk="imo-2025").parent, "International Math Olympiad")
 
 
 class SetExamRoundDateTests(TestCase):
