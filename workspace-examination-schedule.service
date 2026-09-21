@@ -1,0 +1,13 @@
+[Unit]
+Description=Mirror the exam calendar onto the Khảo thí work schedule
+After=network-online.target workspace-django.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=workspace
+Group=www-data
+WorkingDirectory=/var/www/ft-workspace/backend
+EnvironmentFile=/var/www/ft-workspace/backend/.env
+Environment=DJANGO_DB_PATH=/home/workspace/ft-workspace-data/workspace.sqlite3
+ExecStart=/var/www/ft-workspace/.venv/bin/python manage.py sync_examination_work_schedule --apply

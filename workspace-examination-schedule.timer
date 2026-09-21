@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh the Khảo thí work schedule from the exam calendar each morning
+
+[Timer]
+OnCalendar=*-*-* 05:30:00
+Persistent=true
+RandomizedDelaySec=5min
+Unit=workspace-examination-schedule.service
+
+[Install]
+WantedBy=timers.target

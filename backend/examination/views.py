@@ -2,6 +2,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 import ast
+import logging
 import uuid
 import json
 import re
@@ -18,6 +19,8 @@ from authentication.notifications import notify_workspace
 from authentication.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsManagerOrAdmin, IsAdmin
 from .sheet_publication import academic_year_for_date, publication_payload, session_academic_year, session_tab_name, sync_publication
 from .sheet_scheduler import output_sheet_has_unreviewed_changes
+
+logger = logging.getLogger(__name__)
 
 from .sync import (
     sync_session_candidate_totals,
@@ -1513,6 +1516,20 @@ def session_create(request):
     )
     return Response(serialize_session(sess), status=status.HTTP_201_CREATED)
 
+def _refresh_examination_work_schedule():
+    """Mirror the exam calendar onto the Khảo thí schedule after a change.
+
+    Best effort: a schedule that cannot be written must never stop a kỳ tổ chức
+    from being saved, so a failure here is swallowed and the nightly command
+    picks the change up instead.
+    """
+    try:
+        from .work_schedule_sync import sync_examination_work_schedule
+        sync_examination_work_schedule()
+    except Exception:  # noqa: BLE001 - the exam edit itself already succeeded
+        logger.exception("Không đồng bộ được lịch thi sang lịch làm việc Khảo thí.")
+
+
 @api_view(['PUT', 'DELETE'])
 @permission_classes([IsManagerOrAdmin])
 def session_detail(request, pk):
@@ -1586,6 +1603,7 @@ def session_detail(request, pk):
                 message=f'{audit_actor(request)} đã cập nhật: {change_text}',
                 action_url=f'/examination/sessions/{sess.id}',
             )
+        _refresh_examination_work_schedule()
         return Response(serialize_session(sess))
         
     elif request.method == 'DELETE':
