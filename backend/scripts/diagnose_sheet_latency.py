@@ -83,6 +83,15 @@ try:
             sheet_groups[(staff.casefold(), row_date)] = len(
                 [line for line in str(content).splitlines() if line.strip()])
     print("Sheet rows read: %d  dated staff groups: %d" % (len(rows), len(sheet_groups)))
+    sheet_dates = sorted({value[1] for value in sheet_groups})
+    if sheet_dates:
+        print("Sheet date range: %s .. %s" % (sheet_dates[0], sheet_dates[-1]))
+        future = [value for value in sheet_dates if value > timezone.localdate()]
+        print("Sheet dates after today: %d (max %s)"
+              % (len(future), future[-1] if future else "none"))
+    staff_counts = Counter(name for name, _ in sheet_groups)
+    print("Sheet staff names (top 8):", staff_counts.most_common(8))
+    print("Retention start:", __import__("work_schedule.retention", fromlist=["retained_from"]).retained_from())
 
     # Compare the groups the database changed most recently.
     recent_items = (WorkItem.objects
