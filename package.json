@@ -11,7 +11,8 @@
         "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
         "check:dialogs": "node scripts/check-native-dialogs.mjs",
         "check:email-renderers": "node scripts/check-email-render-contracts.mjs",
-        "lint": "npm run check:dialogs && npm run check:email-renderers && tsc --noEmit"
+        "check:document-types": "node scripts/check-document-type-codes.mjs",
+        "lint": "npm run check:dialogs && npm run check:email-renderers && npm run check:document-types && tsc --noEmit"
     },
     "dependencies": {
         "@google/genai": "^2.4.0",
