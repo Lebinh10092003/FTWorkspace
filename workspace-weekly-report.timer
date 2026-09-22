@@ -1,0 +1,10 @@
+[Unit]
+Description=Create the Fermat weekly report packet every Friday at 16:45 ICT
+
+[Timer]
+OnCalendar=Fri *-*-* 16:45:00 Asia/Ho_Chi_Minh
+Persistent=true
+Unit=workspace-weekly-report.service
+
+[Install]
+WantedBy=timers.target

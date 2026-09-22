@@ -9,6 +9,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+DOCS_SCOPE = "https://www.googleapis.com/auth/documents.readonly"
 REQUIRED_SHEETS = {
     "DASHBOARD": (100, 20),
     "KENH_MXH": (1000, 20),
@@ -72,20 +73,28 @@ def _service_account_info(config_data: dict[str, Any]) -> dict[str, Any] | None:
     return info
 
 
-def build_sheets_service(user_token: str | None, config_data: dict[str, Any]):
+def build_google_credentials(user_token: str | None, config_data: dict[str, Any], *, scopes: list[str]):
     info = _service_account_info(config_data)
     if info:
-        credentials = service_account.Credentials.from_service_account_info(
+        return service_account.Credentials.from_service_account_info(
             info,
-            scopes=[SHEETS_SCOPE],
+            scopes=scopes,
         )
-    elif user_token:
-        credentials = OAuthCredentials(token=user_token, scopes=[SHEETS_SCOPE])
-    else:
-        raise ValueError(
-            "Cần GOOGLE_SERVICE_ACCOUNT_JSON hoặc Google OAuth Access Token để truy cập Sheets."
-        )
+    if user_token:
+        return OAuthCredentials(token=user_token, scopes=scopes)
+    raise ValueError(
+        "Cần GOOGLE_SERVICE_ACCOUNT_JSON hoặc Google OAuth Access Token để truy cập Google Workspace."
+    )
+
+
+def build_sheets_service(user_token: str | None, config_data: dict[str, Any]):
+    credentials = build_google_credentials(user_token, config_data, scopes=[SHEETS_SCOPE])
     return build("sheets", "v4", credentials=credentials, cache_discovery=False)
+
+
+def build_docs_service(user_token: str | None, config_data: dict[str, Any]):
+    credentials = build_google_credentials(user_token, config_data, scopes=[DOCS_SCOPE])
+    return build("docs", "v1", credentials=credentials, cache_discovery=False)
 
 
 def _dashboard_values() -> list[list[str]]:

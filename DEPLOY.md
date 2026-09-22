@@ -68,6 +68,14 @@ BOOTSTRAP_ADMIN_PASSWORD=THAY_BANG_MAT_KHAU_MANH
 CRON_SECRET=THAY_BANG_CHUOI_BI_MAT_KHAC
 ```
 
+### Báo cáo cuối tuần
+
+Timer backend `workspace-weekly-report.timer` chạy lúc **16:45 thứ Sáu, giờ
+Việt Nam**, trực tiếp trên VPS của web. Timer đọc Lịch công tác rồi cập nhật
+một tab nhỏ cho mỗi nhân viên trong Google Sheet báo cáo; không phụ thuộc vào
+GitHub Actions. Service account trong `GOOGLE_SERVICE_ACCOUNT_JSON` cần quyền
+chỉnh sửa Google Sheet đó.
+
 Tạo chuỗi bí mật:
 
 ```bash
@@ -115,10 +123,13 @@ cd /var/www/ft-workspace
 cp workspace-django.service /etc/systemd/system/workspace-django.service
 cp workspace-social-sync.service /etc/systemd/system/workspace-social-sync.service
 cp workspace-social-sync.timer /etc/systemd/system/workspace-social-sync.timer
+cp workspace-weekly-report.service /etc/systemd/system/workspace-weekly-report.service
+cp workspace-weekly-report.timer /etc/systemd/system/workspace-weekly-report.timer
 
 systemctl daemon-reload
 systemctl enable workspace-django.service
 systemctl enable --now workspace-social-sync.timer
+systemctl enable --now workspace-weekly-report.timer
 
 cp nginx-workspace.conf /etc/nginx/sites-available/workspace.fermat.vn
 ln -sfn \

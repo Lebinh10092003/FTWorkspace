@@ -47,11 +47,12 @@ const QRCodeGenerator = lazyWithRecovery(() => import('./components/QRCodeGenera
 const Attendance = lazyWithRecovery(() => import('./components/Attendance'));
 const FundingProposalBuilder = lazyWithRecovery(() => import('./components/documents/FundingProposalBuilder'));
 const DocumentNumberGenerator = lazyWithRecovery(() => import('./components/documents/DocumentNumberGenerator'));
+const WeeklyReportCenter = lazyWithRecovery(() => import('./components/documents/WeeklyReportCenter'));
 const WorkSchedule = lazyWithRecovery(() => import('./components/WorkSchedule'));
 const CompetitionLandingManager = lazyWithRecovery(() => import('./components/examination/CompetitionLandingManager'));
 const CompetitionLandingPublic = lazyWithRecovery(() => import('./components/examination/CompetitionLandingPublic'));
 
-type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'competition-landing' | 'competition-landing-public' | 'attendance' | 'account-management';
+type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'attendance' | 'account-management';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -163,6 +164,7 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/communication-tools/qr')) return 'qr-generator';
   if (path.startsWith('/communication-tools/funding-proposal')) return 'funding-proposal';
   if (path.startsWith('/communication-tools/document-number')) return 'document-number';
+  if (path.startsWith('/communication-tools/weekly-report')) return 'weekly-report';
   if (path.startsWith('/communication-tools/competition-landing')) return 'competition-landing';
   if (path.startsWith('/communication-tools')) return 'communication-tools';
   if (path.startsWith('/finance-report')) return 'finance-report';
@@ -247,7 +249,7 @@ export default function App() {
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
   const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
-  const canAccessView = (mode: ViewMode) => { if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'work-schedule') return !isGuest; if (mode === 'communication-tools') return !isGuest && hasModuleAccess('email-builder'); if (mode === 'funding-proposal' || mode === 'document-number') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
+  const canAccessView = (mode: ViewMode) => { if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
 
   const persistSession = (token: string, nextUser: AppUser, role: UserRole) => {
@@ -313,6 +315,7 @@ export default function App() {
       'email-builder': '/communication-tools/email',
       'signature-builder': '/communication-tools/signature',
       'qr-generator': '/communication-tools/qr',
+      'weekly-report': '/communication-tools/weekly-report',
     };
     const path = paths[mode] || `/${mode}`;
     if (window.location.pathname !== path) window.history.pushState(null, '', path);
@@ -339,6 +342,7 @@ export default function App() {
       ...(canViewFinance ? [() => import('./components/digital-training/FinanceWorkspace')] : []),
       ...(hasModuleAccess('social-dashboard') ? [() => import('./components/social-dashboard/Dashboard')] : []),
       ...(hasModuleAccess('email-builder') ? [() => import('./components/email-builder/EmailTemplateBuilder'), () => import('./components/QRCodeGenerator')] : []),
+      () => import('./components/documents/WeeklyReportCenter'),
       ...(userRole === 'ADMIN' ? [() => import('./components/social-dashboard/AccountManagement')] : []),
     ];
     let cancelled = false;
@@ -780,11 +784,9 @@ export default function App() {
       { mode: 'qr-generator' as ViewMode, title: 'Tạo mã QR', description: 'Tạo mã QR, kiểm tra đường dẫn và xuất poster truyền thông.', icon: QrCode, color: 'from-blue-600 to-cyan-500', allowed: canAccessView('qr-generator') },
       { mode: 'funding-proposal' as ViewMode, title: 'Phiếu đề xuất kinh phí', description: 'Nhập dự toán, xem trước bản in A4 và tải phiếu Word để trình ký.', icon: ReceiptText, color: 'from-emerald-600 to-teal-500', allowed: canAccessView('funding-proposal') },
       { mode: 'document-number' as ViewMode, title: 'Trình tạo số Công văn', description: 'Lấy số văn bản mới nhất theo loại và ghi thẳng vào sổ trên Google Sheets.', icon: FileSignature, color: 'from-[#0055DA] to-[#00C68D]', allowed: canAccessView('document-number') },
+      { mode: 'weekly-report' as ViewMode, title: 'Báo cáo cuối tuần', description: 'Xem báo cáo AI của từng nhân viên, tự làm mới từ Google Docs và tải file Word.', icon: ClipboardList, color: 'from-amber-500 to-orange-600', allowed: canAccessView('weekly-report') },
       { mode: 'competition-landing' as ViewMode, title: 'Trang giới thiệu cuộc thi', description: 'Dựng trang giới thiệu công khai cho cuộc thi, lịch thi và số liệu lấy từ Khảo thí.', icon: Presentation, color: 'from-[#001E40] to-[#0055DA]', allowed: canAccessView('competition-landing') },
     ].filter(tool => tool.allowed);
-    const upcomingTools: Array<{ key: string; title: string; description: string; icon: typeof QrCode; color: string }> = [
-      { key: 'weekly-report', title: 'Trình tạo báo cáo cuối tuần', description: 'Mỗi 17h thứ Sáu, tự tổng hợp nhiệm vụ trong tuần của từng nhân viên: việc đã hoàn thành và việc của tuần sau.', icon: ClipboardList, color: 'from-amber-500 to-orange-600' },
-    ];
     return (
       <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans">
         <ModuleShellHeader
@@ -803,7 +805,6 @@ export default function App() {
             </div>
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {tools.map(tool => { const Icon = tool.icon; return <button key={tool.mode} type="button" onClick={() => setViewMode(tool.mode)} className="group rounded-3xl border border-slate-200 bg-white p-7 text-left shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl"><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white shadow-lg`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-900">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{tool.description}</p><span className="mt-6 block text-sm font-bold text-blue-600">Mở công cụ →</span></button>; })}
-              {upcomingTools.map(tool => { const Icon = tool.icon; return <div key={tool.key} aria-disabled="true" className="relative rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 p-7 text-left"><span className="absolute right-5 top-5 rounded-full bg-amber-100 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-amber-700">Sắp ra mắt</span><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white opacity-60 shadow-inner`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-500">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-400">{tool.description}</p><span className="mt-6 block text-sm font-bold text-slate-400">Đang phát triển</span></div>; })}
             </div>
           </div>
         </main>
@@ -995,6 +996,27 @@ export default function App() {
       <>
         <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Trình tạo số Công văn...</div>}>
           <DocumentNumberGenerator
+            idToken={idToken || ''}
+            userName={user.displayName}
+            userRole={userRole}
+            photoURL={user.photoURL}
+            onAccountClick={openAccount}
+            onLogout={handleLogout}
+            onNavSelect={id => setViewMode(id as ViewMode)}
+          />
+        </Suspense>
+        {loginModal}{profileModal}
+      </>
+    );
+  }
+
+  if (viewMode === 'weekly-report' && !canAccessView('weekly-report')) return null;
+
+  if (viewMode === 'weekly-report') {
+    return (
+      <>
+        <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Báo cáo cuối tuần...</div>}>
+          <WeeklyReportCenter
             idToken={idToken || ''}
             userName={user.displayName}
             userRole={userRole}

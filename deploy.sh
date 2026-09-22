@@ -17,6 +17,8 @@ EXAM_SHEET_EXPORT_SERVICE_NAME="${EXAM_SHEET_EXPORT_SERVICE_NAME:-workspace-exam
 EXAM_SHEET_EXPORT_TIMER_NAME="${EXAM_SHEET_EXPORT_TIMER_NAME:-workspace-examination-sheet-export.timer}"
 DB_BACKUP_SERVICE_NAME="${DB_BACKUP_SERVICE_NAME:-workspace-db-backup.service}"
 DB_BACKUP_TIMER_NAME="${DB_BACKUP_TIMER_NAME:-workspace-db-backup.timer}"
+WEEKLY_REPORT_SERVICE_NAME="${WEEKLY_REPORT_SERVICE_NAME:-workspace-weekly-report.service}"
+WEEKLY_REPORT_TIMER_NAME="${WEEKLY_REPORT_TIMER_NAME:-workspace-weekly-report.timer}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8001/api/health/}"
 HEALTH_HOST="${HEALTH_HOST:-workspace.fermat.vn}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
@@ -76,6 +78,8 @@ sudo install -m 0644 workspace-examination-sheet-export.service "/etc/systemd/sy
 sudo install -m 0644 workspace-examination-sheet-export.timer "/etc/systemd/system/$EXAM_SHEET_EXPORT_TIMER_NAME"
 sudo install -m 0644 workspace-db-backup.service "/etc/systemd/system/$DB_BACKUP_SERVICE_NAME"
 sudo install -m 0644 workspace-db-backup.timer "/etc/systemd/system/$DB_BACKUP_TIMER_NAME"
+sudo install -m 0644 workspace-weekly-report.service "/etc/systemd/system/$WEEKLY_REPORT_SERVICE_NAME"
+sudo install -m 0644 workspace-weekly-report.timer "/etc/systemd/system/$WEEKLY_REPORT_TIMER_NAME"
 sudo systemctl daemon-reload
 sudo systemctl enable --now workspace-schedule-sync.timer
 sudo systemctl enable --now workspace-examination-schedule.timer
@@ -86,6 +90,7 @@ sudo systemctl enable --now "$ASSESSMENT_LIFECYCLE_TIMER_NAME"
 sudo systemctl enable --now "$EXAM_SHEET_IMPORT_TIMER_NAME"
 sudo systemctl enable --now "$EXAM_SHEET_EXPORT_TIMER_NAME"
 sudo systemctl enable --now "$DB_BACKUP_TIMER_NAME"
+sudo systemctl enable --now "$WEEKLY_REPORT_TIMER_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 sudo systemctl start "$ASSESSMENT_LIFECYCLE_SERVICE_NAME"
 

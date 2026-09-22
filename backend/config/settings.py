@@ -110,6 +110,18 @@ TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED = env_bool(
     "TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED",
     False,
 )
+# Friday reporting destinations. These defaults are the Fermat shared
+# workbooks; deployments may point to an alternate test or production copy.
+WEEKLY_REPORT_SHEET_ID = os.getenv(
+    "WEEKLY_REPORT_SHEET_ID", "1yF78pcry1Pls6M-8f373eVLnsSCVX_QOvvfpD5SYYkM"
+).strip()
+WEEKLY_REPORT_DOCUMENT_ID = os.getenv(
+    "WEEKLY_REPORT_DOCUMENT_ID", "1TxSOV4atjOgNcRbW6h3Z_KFBoO7Rr8R3vbIzaXiOij8"
+).strip()
+# Required only for the external AI callback endpoint. Keep it different from
+# the Sheet webhook secret so an AI integration can refresh reports but cannot
+# submit work-schedule edits.
+WEEKLY_REPORT_WEBHOOK_SECRET = os.getenv("WEEKLY_REPORT_WEBHOOK_SECRET", "")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = [

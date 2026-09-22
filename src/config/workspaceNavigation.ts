@@ -122,7 +122,7 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     description: 'Thiết kế Email, chữ ký, mã QR và trang giới thiệu cuộc thi.',
     icon: Megaphone,
     path: '/communication-tools',
-    relatedViews: ['email-builder', 'signature-builder', 'qr-generator', 'competition-landing'],
+    relatedViews: ['email-builder', 'signature-builder', 'qr-generator', 'competition-landing', 'weekly-report'],
   },
   {
     id: 'account-management',
@@ -247,6 +247,7 @@ export const COMMUNICATION_TOOLS_NAV: ModuleNavItem[] = [
   { id: 'qr-generator', label: 'Tạo mã QR', icon: QrCode },
   { id: 'funding-proposal', label: 'Phiếu đề xuất kinh phí', icon: ReceiptText },
   { id: 'document-number', label: 'Trình tạo số Công văn', icon: FileSignature },
+  { id: 'weekly-report', label: 'Báo cáo cuối tuần', icon: ClipboardList },
   { id: 'competition-landing', label: 'Trang giới thiệu cuộc thi', icon: Presentation },
 ];
 
