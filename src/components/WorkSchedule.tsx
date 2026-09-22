@@ -1921,7 +1921,10 @@ function ImportantWorkContentEditor({ value, formatRuns, className, onChange, on
   return <>
     <div className="relative">
       {!value && <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 whitespace-pre-wrap p-2 leading-5 text-slate-400">1. Nhập nội dung công việc{`\n`}2. Nhiệm vụ tiếp theo</div>}
+      {/* Distinct keys stop React reusing the editor node for the idle view: it
+          would keep the editor's fixed height and the text written into it. */}
       {editing ? <div
+        key="editor"
         ref={editorRef}
         contentEditable
         suppressContentEditableWarning
@@ -1948,6 +1951,7 @@ function ImportantWorkContentEditor({ value, formatRuns, className, onChange, on
         }}
         className={`${className} min-h-20 whitespace-pre-wrap font-medium text-slate-900`}
       /> : <div
+        key="display"
         ref={displayRef}
         role="textbox"
         tabIndex={0}
