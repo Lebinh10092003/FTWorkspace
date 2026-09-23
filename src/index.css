@@ -124,6 +124,18 @@ button, input, select, textarea { font: inherit; }
 }
 a { color: inherit; text-decoration: none; }
 
+/* Public landing pages use their own link palette, independent of Workspace themes. */
+.landing-site a[class*="text-white"] { color: #fff; }
+.landing-site a[class*="text-[#0284C7]"] { color: #0284c7; }
+.landing-site a[class*="text-[#0369A1]"] { color: #0369a1; }
+.landing-site a[class*="text-[#0B3B60]"] { color: #0b3b60; }
+.landing-site a[class*="text-slate-600"] { color: #475569; }
+body.workspace-app-theme #root > .landing-site:first-child {
+  background: #f8fafc !important;
+  background-image: none !important;
+  color: #0b3b60 !important;
+}
+
 /* ══════════════════════════════════════════════════════════════
    Scrollbars — Visible across long workspace modules
    ══════════════════════════════════════════════════════════════ */

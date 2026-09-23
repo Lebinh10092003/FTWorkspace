@@ -1,7 +1,12 @@
 from django.urls import path
-from . import views, paper_views, blueprint_views, landing_views
+from . import views, paper_views, blueprint_views, landing_views, landing_site_views
 
 urlpatterns = [
+    path('public/landing-sites/<slug:slug>/leads', landing_site_views.landing_site_lead),
+    path('public/landing-sites/<slug:slug>', landing_site_views.public_landing_site),
+    path('landing-sites', landing_site_views.landing_sites),
+    path('landing-sites/<int:site_id>/leads', landing_site_views.landing_site_leads),
+    path('landing-sites/<int:site_id>', landing_site_views.landing_site_detail),
     # Trang giới thiệu công khai, không yêu cầu đăng nhập.
     path('public/competitions/<slug:slug>', landing_views.public_competition_landing, name='public_competition_landing'),
     path('examination/landing-pages', landing_views.landing_pages, name='landing_pages'),

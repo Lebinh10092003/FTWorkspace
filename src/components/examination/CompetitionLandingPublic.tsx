@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, CalendarDays, ChevronRight, Mail, MapPin, Phone, Sparkles, Trophy, Users } from 'lucide-react';
+import LandingSiteView, { type LandingSite } from './LandingSiteView';
 
 type LandingRound = { id: string; name: string; label: string; mode: string; dates: string[] };
 type LandingSession = { id: string; code: string; name: string; time: string; organizer: string; phase: string; candidates: number; rounds: LandingRound[] };
@@ -312,6 +313,7 @@ export function CompetitionLandingView({ data }: { data: CompetitionLanding }) {
 }
 
 export default function CompetitionLandingPublic({ slug }: { slug: string }) {
+  const [site, setSite] = useState<LandingSite | null>(null);
   const [data, setData] = useState<CompetitionLanding | null>(null);
   const [error, setError] = useState('');
 
@@ -321,6 +323,12 @@ export default function CompetitionLandingPublic({ slug }: { slug: string }) {
     setError('');
     (async () => {
       try {
+        const siteResponse = await fetch(`/api/public/landing-sites/${encodeURIComponent(slug)}`);
+        if (!active) return;
+        if (siteResponse.ok) {
+          setSite(await siteResponse.json() as LandingSite);
+          return;
+        }
         const response = await fetch(`/api/public/competitions/${encodeURIComponent(slug)}`);
         const payload = await response.json().catch(() => ({}));
         if (!active) return;
@@ -337,8 +345,8 @@ export default function CompetitionLandingPublic({ slug }: { slug: string }) {
   }, [slug]);
 
   useEffect(() => {
-    if (data?.competition.name) document.title = data.competition.name;
-  }, [data]);
+    if (site?.title || data?.competition.name) document.title = site?.title || data?.competition.name || '';
+  }, [data, site]);
 
   if (error) {
     return (
@@ -350,6 +358,7 @@ export default function CompetitionLandingPublic({ slug }: { slug: string }) {
       </div>
     );
   }
+  if (site) return <LandingSiteView site={site} />;
   if (!data) return <div className="grid min-h-dvh place-items-center bg-slate-50 text-sm font-semibold text-slate-500">Đang tải trang giới thiệu...</div>;
   return <CompetitionLandingView data={data} />;
 }

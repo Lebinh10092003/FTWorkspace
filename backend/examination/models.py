@@ -541,3 +541,29 @@ class CompetitionLandingPage(models.Model):
 
     def __str__(self):
         return f"{self.slug} · {self.competition_id}"
+
+
+class LandingSite(models.Model):
+    """Trang landing độc lập, chỉnh sửa bằng các khối nội dung có cấu trúc."""
+
+    slug = models.SlugField(max_length=120, unique=True)
+    title = models.CharField(max_length=300)
+    template = models.CharField(max_length=40, default='custom')
+    content = models.JSONField(default=dict)
+    published = models.BooleanField(default=False)
+    updated_by = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['title']
+
+
+class LandingLead(models.Model):
+    site = models.ForeignKey(LandingSite, on_delete=models.CASCADE, related_name='leads')
+    full_name = models.CharField(max_length=200)
+    phone = models.CharField(max_length=40)
+    email = models.EmailField(blank=True, default='')
+    school_city = models.CharField(max_length=300, blank=True, default='')
+    message = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)

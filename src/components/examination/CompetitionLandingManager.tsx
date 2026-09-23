@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, Check, Copy, Eye, Plus, Save, Trash2 } from 'lucide-react';
 import { appDialog } from '../AppDialog';
 import { CompetitionLandingView, type CompetitionLanding } from './CompetitionLandingPublic';
+import LandingStudio from './LandingStudio';
 
 type LandingSessions = CompetitionLanding['sessions'];
 type LandingStats = CompetitionLanding['stats'];
@@ -69,6 +70,7 @@ export function previewPayload(row: LandingRow): CompetitionLanding {
 }
 
 export default function CompetitionLandingManager({ idToken }: { idToken: string }) {
+  const [studio, setStudio] = useState(true);
   const [rows, setRows] = useState<LandingRow[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<LandingRow | null>(null);
@@ -124,6 +126,7 @@ export default function CompetitionLandingManager({ idToken }: { idToken: string
     }
   };
 
+  if (studio) return <div><button type="button" onClick={() => setStudio(false)} className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-[#0369A1]">Trang giới thiệu gắn với Khảo thí →</button><LandingStudio idToken={idToken} /></div>;
   if (loading) return <div className="py-16 text-center text-sm font-semibold text-slate-500">Đang tải cuộc thi từ mô-đun Khảo thí...</div>;
   if (error) return <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm font-semibold text-rose-700">{error}</div>;
   if (!rows.length) return <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">Chưa có cuộc thi nào trong mô-đun Khảo thí.</div>;
@@ -143,7 +146,7 @@ export default function CompetitionLandingManager({ idToken }: { idToken: string
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+    <div><button type="button" onClick={() => setStudio(true)} className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-[#0369A1]">← Trình tạo Landing Page</button><div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
       <aside className="space-y-2">
         <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Cuộc thi trong Khảo thí</p>
         {rows.map(row => (
@@ -286,6 +289,6 @@ export default function CompetitionLandingManager({ idToken }: { idToken: string
           )}
         </div>
       )}
-    </div>
+    </div></div>
   );
 }
