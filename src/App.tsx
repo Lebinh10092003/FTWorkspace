@@ -785,7 +785,7 @@ export default function App() {
       { mode: 'funding-proposal' as ViewMode, title: 'Phiếu đề xuất kinh phí', description: 'Nhập dự toán, xem trước bản in A4 và tải phiếu Word để trình ký.', icon: ReceiptText, color: 'from-emerald-600 to-teal-500', allowed: canAccessView('funding-proposal') },
       { mode: 'document-number' as ViewMode, title: 'Trình tạo số Công văn', description: 'Lấy số văn bản mới nhất theo loại và ghi thẳng vào sổ trên Google Sheets.', icon: FileSignature, color: 'from-[#0055DA] to-[#00C68D]', allowed: canAccessView('document-number') },
       { mode: 'weekly-report' as ViewMode, title: 'Báo cáo cuối tuần', description: 'Xem báo cáo AI của từng nhân viên, tự làm mới từ Google Docs và tải file Word.', icon: ClipboardList, color: 'from-amber-500 to-orange-600', allowed: canAccessView('weekly-report') },
-      { mode: 'competition-landing' as ViewMode, title: 'Trang giới thiệu cuộc thi', description: 'Dựng trang giới thiệu công khai cho cuộc thi, lịch thi và số liệu lấy từ Khảo thí.', icon: Presentation, color: 'from-[#001E40] to-[#0055DA]', allowed: canAccessView('competition-landing') },
+      { mode: 'competition-landing' as ViewMode, title: 'Landing page', description: 'Tạo landing page từ mẫu, chỉnh sửa nội dung và công bố qua URL riêng.', icon: Presentation, color: 'from-[#001E40] to-[#0055DA]', allowed: canAccessView('competition-landing') },
     ].filter(tool => tool.allowed);
     return (
       <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans">
@@ -938,7 +938,7 @@ export default function App() {
       <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans">
         <ModuleShellHeader
           eyebrow="Bộ công cụ FermatTech"
-          title="Trang giới thiệu cuộc thi"
+          title="Landing page"
           items={communicationToolsNav}
           activeId="competition-landing"
           onSelect={id => setViewMode(id as ViewMode)}

@@ -79,7 +79,7 @@ export default function LandingSiteView({ site, preview = false }: { site: Landi
   }
 
   const callNumber = (contact.phone || '0969 627 162').replace(/\D/g, '');
-  return <div className="landing-site min-h-screen bg-[#DCEBFA] font-display text-[#0B3B60] [scroll-behavior:smooth]">
+  return <div className="landing-site relative min-h-screen bg-[#DCEBFA] font-display text-[#0B3B60] [scroll-behavior:smooth]">
     <header className="lp-header sticky top-0 z-40 border-b border-[#E2E8F0] bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-5 py-3 lg:px-8">
         <a href="#dau-trang" className="flex min-w-0 items-center gap-3">
@@ -158,7 +158,7 @@ export default function LandingSiteView({ site, preview = false }: { site: Landi
       </section>}
     </main>
     <footer className="lp-footer border-t border-slate-200 bg-white px-5 py-10 text-center text-sm text-slate-500"><p className="font-extrabold text-[#0B3B60]">FermatTech</p><p className="mt-2">{contact.address || 'Eurowindow Multi Complex, 27 Trần Duy Hưng, Hà Nội'} · Hotline <a href={`tel:${callNumber}`} className="text-[#0284C7]">{contact.phone || '0969 627 162'}</a></p><p className="mt-3">© {new Date().getFullYear()} FermatTech</p></footer>
-    <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2" aria-label="Liên hệ nhanh">
+    <div className={`${preview ? 'absolute' : 'fixed'} bottom-5 right-5 z-50 flex flex-col gap-2`} aria-label="Liên hệ nhanh">
       <Action url={contact.zaloUrl} className="grid h-11 w-11 place-items-center rounded-full bg-[#0068FF] text-xs font-black text-white shadow-lg" >Zalo</Action>
       <div className="relative"><button type="button" aria-label="Facebook" aria-expanded={facebookOpen} onClick={() => setFacebookOpen(!facebookOpen)} className="grid h-11 w-11 place-items-center rounded-full bg-[#1877F2] text-white shadow-lg"><Facebook className="h-5 w-5" /></button>{facebookOpen && <div className="absolute bottom-0 right-14 min-w-36 rounded-xl border border-slate-200 bg-white p-2 text-sm shadow-lg">{subject === 'FIMO' ? <Action url={contact.facebookFimoUrl} className="block rounded-lg px-3 py-2 hover:bg-slate-50">FIMO fanpage</Action> : subject === 'FIEO' ? <Action url={contact.facebookFieoUrl} className="block rounded-lg px-3 py-2 hover:bg-slate-50">FIEO fanpage</Action> : <><Action url={contact.facebookFimoUrl} className="block rounded-lg px-3 py-2 hover:bg-slate-50">FIMO fanpage</Action><Action url={contact.facebookFieoUrl} className="block rounded-lg px-3 py-2 hover:bg-slate-50">FIEO fanpage</Action></>}</div>}</div>
       <a href={`tel:${callNumber}`} aria-label="Gọi hotline" className="grid h-11 w-11 place-items-center rounded-full bg-[#0B3B60] text-white shadow-lg"><Phone className="h-5 w-5" /></a>
