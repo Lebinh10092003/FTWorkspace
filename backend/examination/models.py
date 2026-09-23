@@ -543,12 +543,30 @@ class CompetitionLandingPage(models.Model):
         return f"{self.slug} · {self.competition_id}"
 
 
+class LandingTemplate(models.Model):
+    """Reusable layout and starter content for pages in the landing builder."""
+
+    key = models.SlugField(max_length=40, unique=True)
+    name = models.CharField(max_length=160)
+    description = models.CharField(max_length=300, blank=True, default='')
+    layout = models.CharField(max_length=40, default='olympiad')
+    content = models.JSONField(default=dict)
+    is_system = models.BooleanField(default=False)
+    updated_by = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-is_system', 'name']
+
+
 class LandingSite(models.Model):
     """Trang landing độc lập, chỉnh sửa bằng các khối nội dung có cấu trúc."""
 
     slug = models.SlugField(max_length=120, unique=True)
     title = models.CharField(max_length=300)
-    template = models.CharField(max_length=40, default='custom')
+    template = models.CharField(max_length=40, default='olympiad')
+    layout = models.CharField(max_length=40, default='olympiad')
     content = models.JSONField(default=dict)
     published = models.BooleanField(default=False)
     updated_by = models.CharField(max_length=255, blank=True, default='')

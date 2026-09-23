@@ -1,6 +1,7 @@
 """Independent, block-editable landing pages and consultation enquiries."""
 
 import re
+from uuid import uuid4
 from urllib.parse import urlparse
 
 from django.core.cache import cache
@@ -14,7 +15,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAuthenticated
 from .landing_templates import olympiad_content
-from .models import CompetitionLandingPage, LandingLead, LandingSite
+from .models import CompetitionLandingPage, LandingLead, LandingSite, LandingTemplate
 
 
 URL_KEYS = {'url', 'logoUrl', 'schoolUrl', 'excelUrl', 'individualUrl',
@@ -52,9 +53,67 @@ def _clean_link(value):
 
 def _payload(site):
     return {'id': site.id, 'slug': site.slug, 'title': site.title,
-            'template': site.template, 'content': site.content,
+            'template': site.template, 'layout': site.layout, 'content': site.content,
             'published': site.published, 'updatedAt': site.updated_at.isoformat(),
             'updatedBy': site.updated_by}
+
+
+def _template_payload(template):
+    return {'key': template.key, 'name': template.name,
+            'description': template.description, 'layout': template.layout,
+            'content': template.content, 'isSystem': template.is_system,
+            'updatedAt': template.updated_at.isoformat()}
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def landing_templates(request):
+    if request.method == 'GET':
+        return Response({'items': [_template_payload(item) for item in LandingTemplate.objects.all()]})
+    data = request.data or {}
+    name = str(data.get('name') or '').strip()[:160]
+    if not name:
+        return Response({'error': 'Cần nhập tên mẫu.'}, status=400)
+    try:
+        content = _clean_content(data.get('content') or {})
+    except ValueError as error:
+        return Response({'error': str(error)}, status=400)
+    template = LandingTemplate.objects.create(
+        key=f'mau-{uuid4().hex[:12]}', name=name,
+        description=str(data.get('description') or '').strip()[:300],
+        layout='olympiad', content=content,
+        updated_by=getattr(request.user, 'email', '') or '',
+    )
+    return Response(_template_payload(template), status=201)
+
+
+@api_view(['PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def landing_template_detail(request, key):
+    template = LandingTemplate.objects.filter(key=key).first()
+    if not template:
+        return Response({'error': 'Mẫu không tồn tại.'}, status=404)
+    if template.is_system:
+        return Response({'error': 'Mẫu mặc định chỉ có thể nhân bản.'}, status=400)
+    if request.method == 'DELETE':
+        if LandingSite.objects.filter(template=key).exists():
+            return Response({'error': 'Mẫu đang được sử dụng bởi landing page.'}, status=400)
+        template.delete()
+        return Response(status=204)
+    data = request.data or {}
+    name = str(data.get('name') or '').strip()[:160]
+    if not name:
+        return Response({'error': 'Cần nhập tên mẫu.'}, status=400)
+    try:
+        content = _clean_content(data.get('content') or {})
+    except ValueError as error:
+        return Response({'error': str(error)}, status=400)
+    template.name = name
+    template.description = str(data.get('description') or '').strip()[:300]
+    template.content = content
+    template.updated_by = getattr(request.user, 'email', '') or ''
+    template.save()
+    return Response(_template_payload(template))
 
 
 @api_view(['GET', 'POST'])
@@ -69,13 +128,18 @@ def landing_sites(request):
         return Response({'error': 'Cần nhập tên trang và đường dẫn.'}, status=400)
     if LandingSite.objects.filter(slug=slug).exists() or CompetitionLandingPage.objects.filter(slug=slug).exists():
         return Response({'error': 'Đường dẫn đã được sử dụng.'}, status=400)
-    template = 'olympiad' if data.get('template') == 'olympiad' else 'custom'
+    template_key = str(data.get('template') or 'olympiad')
+    template = LandingTemplate.objects.filter(key=template_key).first()
+    if not template:
+        return Response({'error': 'Mẫu trang không tồn tại.'}, status=400)
     try:
-        content = _clean_content(data.get('content') or (olympiad_content('FIMO') if template == 'olympiad' else {}))
+        subject = data.get('subject')
+        starter = olympiad_content(subject) if template.key == 'olympiad' and subject in ('FIMO', 'FIEO') else template.content
+        content = _clean_content(data.get('content') if 'content' in data else starter)
     except ValueError as error:
         return Response({'error': str(error)}, status=400)
     site = LandingSite.objects.create(
-        title=title, slug=slug, template=template, content=content,
+        title=title, slug=slug, template=template.key, layout=template.layout, content=content,
         published=False, updated_by=getattr(request.user, 'email', '') or '',
     )
     return Response(_payload(site), status=status.HTTP_201_CREATED)

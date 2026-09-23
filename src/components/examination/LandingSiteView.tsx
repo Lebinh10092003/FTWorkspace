@@ -15,7 +15,7 @@ export type LandingContent = {
   contact?: { email?: string; phone?: string; address?: string; zaloUrl?: string; facebookFimoUrl?: string; facebookFieoUrl?: string };
   customSections?: Array<{ title: string; body: string; buttonLabel: string; buttonUrl: string }>;
 };
-export type LandingSite = { id: number; slug: string; title: string; template: string; content: LandingContent; published: boolean; updatedAt: string; updatedBy: string };
+export type LandingSite = { id: number; slug: string; title: string; template: string; layout: string; content: LandingContent; published: boolean; updatedAt: string; updatedBy: string };
 
 const nav = [
   ['gioi-thieu', 'Giới thiệu'], ['de-mau', 'Đề mẫu'], ['lo-trinh', 'Lộ trình'],
