@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, paper_views, blueprint_views, landing_views, landing_site_views
+from . import views, paper_views, blueprint_views, landing_views, landing_site_views, sheet_webhook
 
 urlpatterns = [
     path('public/landing-sites/<slug:slug>/leads', landing_site_views.landing_site_lead),
@@ -55,6 +55,7 @@ urlpatterns = [
     path('examination/sheet-publication', views.sheet_publication_config, name='sheet_publication_config'),
     path('examination/sheet-publication/sync', views.sheet_publication_sync, name='sheet_publication_sync'),
     path('examination/sheets', views.sheets_list, name='sheets_list'),
+    path('examination/sheets/change-webhook', sheet_webhook.examination_sheet_change_webhook, name='examination_sheet_change_webhook'),
     path('examination/sheets/preview', views.sheet_import_preview, name='sheet_import_preview'),
     path('examination/sheets/<str:pk>', views.sheet_detail, name='sheet_detail'),
     path('examination/sheets/<str:pk>/export', views.sheet_export, name='sheet_export'),

@@ -1,6 +1,7 @@
 import uuid
 
 from django.utils import timezone
+from authentication.notifications import notify_workspace
 
 from .models import ExaminationSheet, LogNote
 from .sync import (
@@ -40,11 +41,12 @@ def output_sheet_has_unreviewed_changes(sheet, google_access_token=None):
     return current != sheet.last_content_fingerprint, current
 
 
-def scan_sheet_changes(now=None):
+def scan_sheet_changes(now=None, sheets=None):
     """Flag an edited competition tab for manual review without importing data."""
     now = now or timezone.now()
     summary = {'operation': 'change-scan', 'checked': 0, 'changed': 0, 'failed': 0, 'baselined': 0}
-    for sheet in ExaminationSheet.objects.exclude(url='').order_by('session_id', 'id'):
+    watched = sheets if sheets is not None else ExaminationSheet.objects.exclude(url='').order_by('session_id', 'id')
+    for sheet in watched:
         summary['checked'] += 1
         try:
             current = tab_content_fingerprint(sheet)
@@ -68,6 +70,15 @@ def scan_sheet_changes(now=None):
             sheet.updated_at = now
             sheet.save(update_fields=['pending_manual_import', 'change_detected_at', 'status', 'last_error', 'updated_at'])
             record_sheet_log(sheet, f'Tab {sheet.sheet_tab or "đầu tiên"} của {sheet.name} đã thay đổi; cần kiểm tra và nhập dữ liệu.')
+            notify_workspace(
+                event_key=f'examination:sheet-change:{sheet.id}:{current}',
+                title=f'Sheet khảo thí thay đổi: {sheet.sheet_tab or sheet.name}',
+                message=f'Tab {sheet.sheet_tab or "đầu tiên"} của {sheet.name} đã thay đổi. Hãy xem trước và nhập dữ liệu vào web.',
+                severity='warning',
+                category='examination',
+                action_url='/examination/import',
+                target_modules=['examination'],
+            )
             summary['changed'] += 1
     return summary
 

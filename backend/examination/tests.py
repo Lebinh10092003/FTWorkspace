@@ -1609,6 +1609,39 @@ class SheetChangeScanTests(TestCase):
         self.assertIsNotNone(source.change_detected_at)
         self.assertEqual(scan_sheet_changes()['changed'], 0)
 
+    @patch('examination.sheet_webhook.cache.add', return_value=True)
+    @patch('examination.sheet_scheduler.tab_content_fingerprint')
+    def test_apps_script_hint_checks_only_mapped_tab_and_notifies_without_importing(self, fingerprint, _throttle):
+        from .sheet_webhook import SPREADSHEET_ID
+
+        source = ExaminationSheet.objects.create(
+            id='siaio-watch', name='SCO - SIAIO',
+            url=f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit',
+            session_id=self.session.id, sheet_tab='SCO - SIAIO',
+            stage='registration-source', created_at=timezone.now(), updated_at=timezone.now(),
+        )
+        payload = {'spreadsheetId': SPREADSHEET_ID, 'sheetTab': 'SCO - SIAIO'}
+        client = APIClient()
+        fingerprint.return_value = 'csv:before'
+        baseline = client.post('/api/examination/sheets/change-webhook', payload, format='json')
+        self.assertEqual(baseline.status_code, 200)
+        self.assertEqual(baseline.data['baselined'], 1)
+
+        fingerprint.return_value = 'csv:after'
+        changed = client.post('/api/examination/sheets/change-webhook', payload, format='json')
+        self.assertEqual(changed.status_code, 200)
+        self.assertEqual(changed.data['changed'], 1)
+        source.refresh_from_db()
+        self.assertTrue(source.pending_manual_import)
+        self.assertEqual(Candidate.objects.count(), 0)
+        self.assertEqual(WorkspaceNotification.objects.filter(category='examination').count(), 1)
+
+    def test_apps_script_hint_rejects_unmapped_spreadsheet(self):
+        response = APIClient().post('/api/examination/sheets/change-webhook', {
+            'spreadsheetId': 'another-sheet', 'sheetTab': 'SCO - SIAIO',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
 
 class CompetitionLandingPageTests(TestCase):
     def setUp(self):
