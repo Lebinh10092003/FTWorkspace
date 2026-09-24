@@ -34,12 +34,12 @@ function NeuralArt() {
   return <div className="siaio-neural" aria-hidden="true">
     <div className="siaio-neural-halo" />
     <svg viewBox="0 0 570 430" className="siaio-neural-svg">
-      <defs><linearGradient id="siaio-line"><stop stopColor="#38e5ff" /><stop offset="1" stopColor="#a481ff" /></linearGradient></defs>
+      <defs><linearGradient id="siaio-line"><stop stopColor="#9bb6ff" /><stop offset="1" stopColor="#c9aff5" /></linearGradient></defs>
       {edges.map(([a, b], index) => <line key={index} x1={nodes[a][0]} y1={nodes[a][1]} x2={nodes[b][0]} y2={nodes[b][1]} stroke="url(#siaio-line)" strokeWidth="1.1" opacity={index % 3 === 0 ? '.66' : '.32'} />)}
-      {nodes.map(([x, y], index) => <g key={index}><circle cx={x} cy={y} r={index === 6 ? 8 : 4} fill={index % 3 === 0 ? '#b5ff6d' : '#46dffc'} /><circle cx={x} cy={y} r={index === 6 ? 23 : 13} fill="none" stroke="#8eeaff" opacity=".25" /></g>)}
-      <circle cx="285" cy="213" r="104" fill="none" stroke="#55dff5" strokeDasharray="3 8" opacity=".42" />
-      <circle cx="285" cy="213" r="75" fill="#0e2038" stroke="#70d5f5" strokeWidth="1" opacity=".92" />
-      <text x="285" y="232" textAnchor="middle" fontSize="70" fontWeight="900" fill="#e8fbff" letterSpacing="-8">AI</text>
+      {nodes.map(([x, y], index) => <g key={index}><circle cx={x} cy={y} r={index === 6 ? 8 : 4} fill={index % 3 === 0 ? '#f3c992' : '#aabaff'} /><circle cx={x} cy={y} r={index === 6 ? 23 : 13} fill="none" stroke="#b8c6ff" opacity=".25" /></g>)}
+      <circle cx="285" cy="213" r="104" fill="none" stroke="#aabaff" strokeDasharray="3 8" opacity=".42" />
+      <circle cx="285" cy="213" r="75" fill="#17203d" stroke="#aabaff" strokeWidth="1" opacity=".92" />
+      <text x="285" y="232" textAnchor="middle" fontSize="70" fontWeight="900" fill="#f5f6ff" letterSpacing="-8">AI</text>
     </svg>
     <span className="siaio-neural-tag siaio-neural-tag--one">EXPLORE_01</span>
     <span className="siaio-neural-tag siaio-neural-tag--two">CREATE_02</span>
@@ -67,11 +67,13 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
     '--siaio-button-size': numeric(c.style?.buttonSize, 14, 12, 28),
     '--siaio-button-padding': numeric(c.style?.buttonPadding, 15, 8, 28),
     '--siaio-heading-size': numeric(c.style?.sectionTitleSize, 44, 24, 64),
-    '--siaio-accent': /^#[0-9a-fA-F]{6}$/.test(c.style?.accentColor || '') ? c.style!.accentColor : '#54e8f5',
+    '--siaio-accent': /^#[0-9a-fA-F]{6}$/.test(c.style?.accentColor || '') ? c.style!.accentColor : '#aabaff',
   } as CSSProperties;
   const buttons = c.buttons?.length ? c.buttons : [
     { label: 'Đăng ký dự thi', url: '#dang-ky' }, { label: 'Xem đề mẫu', url: '#de-mau' },
   ];
+  const headline = c.headline || 'SIAIO · Khám phá trí tuệ nhân tạo';
+  const headlineParts = headline.match(/^(SIAIO)\s*[·—:-]\s*(.+)$/i);
   const timeline = c.timeline || [];
   const overview = c.overview || [];
   const highlights = c.highlights || [];
@@ -111,7 +113,7 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
           <div className="siaio-hero-copy">
             <span className="siaio-kicker"><span className="siaio-pulse" />{c.badge || 'SCO · Olympiad trí tuệ nhân tạo'}</span>
             <p className="siaio-hero-overline">THE NEXT GENERATION / 2026—2027</p>
-            <h1>{c.headline || 'SIAIO · Khám phá trí tuệ nhân tạo'}</h1>
+            <h1>{headlineParts ? <><span className="siaio-title-code">{headlineParts[1]}</span><span className="siaio-title-rest">{headlineParts[2]}</span></> : headline}</h1>
             <p className="siaio-hero-intro">{c.intro}</p>
             <div className="siaio-hero-actions">{buttons.map((button, index) => <Action key={index} url={button.url} className={`siaio-button ${index ? 'siaio-button--outline' : 'siaio-button--primary'}`}>{button.label} {index ? <ArrowDownRight size={18} /> : <ArrowUpRight size={18} />}</Action>)}</div>
             <div className="siaio-hero-caption"><span>01 / 04</span><span>KHÁM PHÁ · THỬ THÁCH · SÁNG TẠO</span></div>

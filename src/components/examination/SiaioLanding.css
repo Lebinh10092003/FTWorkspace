@@ -1,4 +1,4 @@
-.siaio-site{--siaio-accent:#54e8f5;background:#090e1c;color:#eaf8ff;font-family:Inter,ui-sans-serif,system-ui,sans-serif;overflow:hidden;scroll-behavior:smooth}
+.siaio-site{--siaio-accent:#aabaff;background:#0b1022;color:#f4f5ff;font-family:"Be Vietnam Pro",system-ui,sans-serif;overflow:hidden;scroll-behavior:smooth}
 .siaio-site *{box-sizing:border-box}.siaio-site a{text-decoration:none}.siaio-site button,.siaio-site select,.siaio-site input,.siaio-site textarea{font:inherit}.siaio-site section[id]{scroll-margin-top:80px}
 .siaio-header{height:76px;display:flex;align-items:center;gap:30px;padding:0 max(5vw,28px);position:relative;z-index:20;border-bottom:1px solid #ffffff18;background:#0a1120eF;backdrop-filter:blur(20px)}
 .siaio-brand{display:flex;align-items:center;gap:11px;color:#f0fbff;flex-shrink:0}.siaio-brand-mark{display:grid;place-items:center;width:39px;height:39px;background:var(--siaio-accent);clip-path:polygon(0 0,100% 0,100% 72%,73% 100%,0 100%);color:#07131e;font-weight:950;font-size:28px;letter-spacing:-5px;padding-right:5px}.siaio-brand-mark span{font-size:11px;align-self:start;margin:4px 0 0 3px}.siaio-brand strong{display:block;font-size:17px;letter-spacing:.08em;line-height:1}.siaio-brand small{display:block;margin-top:5px;font-size:9px;letter-spacing:.19em;color:#8ba6bb;text-transform:uppercase}
@@ -18,3 +18,44 @@
 @media(max-width:420px){.siaio-kicker{font-size:8px}.siaio-hero-actions{display:grid}.siaio-hero-caption{font-size:8px;gap:12px}.siaio-neural{height:255px}.siaio-neural-tag{font-size:7px;padding:5px}.siaio-section h2{font-size:35px}.siaio-console-controls,.siaio-form-split{grid-template-columns:1fr}.siaio-console-bar span:nth-child(2){display:none}.siaio-about-feature h3{font-size:27px}.siaio-form{padding:24px}}
 @media(prefers-reduced-motion:reduce){.siaio-site *{scroll-behavior:auto!important;transition:none!important}}
 @media(min-width:761px) and (max-width:1200px){.siaio-hero h1{font-size:clamp(44px,5.5vw,66px)}}
+
+/* A quieter ink, periwinkle and sand palette keeps the AI graphics legible. */
+.siaio-site{background:#0b1022;color:#f4f5ff}
+.siaio-header{background:#0d1429f0;border-color:#b4bdf72b}
+.siaio-brand-mark{color:#111831}
+.siaio-brand small,.siaio-nav a{color:#b4bcd5}
+.siaio-header-cta{border-color:#aabaff8c}
+.siaio-hero{background:radial-gradient(circle at 78% 35%,#303b69 0%,#1a2448 30%,#0b1022 72%)}
+.siaio-grid-overlay{background-image:linear-gradient(#b9c7ff12 1px,transparent 1px),linear-gradient(90deg,#b9c7ff12 1px,transparent 1px)}
+.siaio-kicker{border-color:#aabaff6b;color:#c9d2ff}
+.siaio-pulse{background:#f3c992;box-shadow:0 0 12px #f3c99280}
+.siaio-hero-overline,.siaio-hero-caption{color:#aeb9d0}
+.siaio-hero h1{background:linear-gradient(115deg,#fff 15%,#d7ddff 60%,#bcaef0 100%);background-clip:text;letter-spacing:-.045em;line-height:1.12}
+.siaio-title-code,.siaio-title-rest{display:block}.siaio-title-code{font-size:clamp(68px,var(--siaio-hero-size),104px);letter-spacing:-.055em}.siaio-title-rest{max-width:670px;margin-top:8px;font-size:clamp(32px,min(calc(var(--siaio-hero-size) - 32px),3.5vw),56px);line-height:1.28;letter-spacing:-.035em}
+.siaio-hero-intro{color:#c8cfe2}
+.siaio-button--primary{color:#111831}
+.siaio-button--outline{border-color:#aabaff8c;color:#f4f5ff;background:#aabaff12}
+.siaio-button--outline:hover,.siaio-header-cta:hover{background:#aabaff24}
+.siaio-neural-halo{background:radial-gradient(circle,#a6a8ff35 0%,#6b83de18 38%,transparent 70%)}
+.siaio-neural-svg{filter:drop-shadow(0 0 9px #aabaff65)}
+.siaio-neural-tag{border-color:#aabaff69;background:#1d2850d9;color:#e0e5ff}
+.siaio-neural-tag--three{color:#f5d2a7;border-color:#f3c99272}
+.siaio-signal-strip{background:#161e3b}.siaio-signal-index{color:#c0caff}.siaio-signal>span:last-child{color:#b5bfd8}
+.siaio-about{background:#10172d}.siaio-about-feature{border-color:#8d9cde7c;background:linear-gradient(145deg,#29355d,#1b2849 55%,#242445)}
+.siaio-about-feature:after{border-color:#b5bfff55;box-shadow:0 0 0 36px #b5bfff0d,0 0 0 90px #b5bfff08}
+.siaio-feature-orb{border-color:#bec8ffb0;color:#c3ccff;box-shadow:0 0 55px #aabaff30}
+.siaio-card-code,.siaio-about-tile>span{color:#bcc7ff}.siaio-about-feature p,.siaio-about-tile p{color:#c0c9df}
+.siaio-about-tile{background:#19213d}.siaio-about-tile--graphic{background:linear-gradient(125deg,#272a51,#383059)}
+.siaio-text-link{color:#c5ceff}
+.siaio-paper-section{background:#f4f2ed;color:#1f2945}.siaio-paper-section .siaio-section-code,.siaio-paper-section h2 em{color:#485fb7}
+.siaio-paper-heading>p{color:#546077}.siaio-paper-console{background:#141d38;border-color:#858fca;box-shadow:16px 16px 0 #dcd8e8}
+.siaio-console-bar{color:#b3bfeb}.siaio-console-bar i:first-child{background:#f3c992}.siaio-console-bar span:last-child{color:#f3c992}
+.siaio-console-prompt>span,.siaio-paper-result span{color:#c0caff}.siaio-console-prompt p,.siaio-paper-result p{color:#b3bed9}
+.siaio-select-wrap select{border-color:#66739f;background:#202c4f}.siaio-document-icon{border-color:#aabaff82;background:#aabaff1a}
+.siaio-timeline-section{background:#131b34}.siaio-timeline-number,.siaio-timeline-date,.siaio-timeline-arrow{color:#c5ceff}
+.siaio-registration{background:radial-gradient(circle at 100% 0%,#30385f,#181f3b 47%,#0e142b 100%)}
+.siaio-registration-grid article{border-color:#808dc36e;background:#202b4c}.siaio-registration-grid article:last-child{background:#292849;border-color:#a394d284}
+.siaio-reg-no{color:#c5ceff}.siaio-registration-grid p,.siaio-contact-copy>p{color:#bdc6de}
+.siaio-contact{background:#0e142a}.siaio-form{border-color:#6f7ca8;background:#1b2542}.siaio-form input,.siaio-form textarea{background:#111a32;border-color:#626f98}
+.siaio-form-success{color:#f3c992}.siaio-footer{background:#0a1021}
+@media(max-width:760px){.siaio-title-code{font-size:clamp(60px,13vw,82px)}.siaio-title-rest{font-size:clamp(34px,7vw,52px)}}

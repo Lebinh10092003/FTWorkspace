@@ -104,7 +104,7 @@ function OlympiadLandingView({ site, preview = false }: { site: LandingSite; pre
   }
 
   const callNumber = (contact.phone || '0969 627 162').replace(/\D/g, '');
-  return <div style={pageStyle} className={`landing-site ${isSiaio ? 'landing-site--siaio' : ''} relative min-h-screen bg-[#DCEBFA] font-display text-[#0B3B60] [scroll-behavior:smooth]`}>
+  return <div style={pageStyle} className={`landing-site ${isSiaio ? 'landing-site--siaio' : ''} relative min-h-screen bg-[#DCEBFA] text-[#0B3B60] [scroll-behavior:smooth]`}>
     <header className="lp-header sticky top-0 z-40 border-b border-[#E2E8F0] bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-5 py-3 lg:px-8">
         <a href="#dau-trang" className="flex min-w-0 items-center gap-3">
@@ -123,7 +123,7 @@ function OlympiadLandingView({ site, preview = false }: { site: LandingSite; pre
     <main id="dau-trang">
       <section className="lp-hero relative overflow-hidden bg-white">
         <div className="lp-hero-grid pointer-events-none absolute inset-0" />
-        <div className="pointer-events-none absolute -right-24 -top-44 h-[560px] w-[560px] rounded-full bg-sky-100/70 blur-3xl" />
+        <div className="lp-hero-glow pointer-events-none absolute -right-24 -top-44 h-[560px] w-[560px] rounded-full bg-sky-100/70 blur-3xl" />
         <div className="relative mx-auto grid max-w-7xl gap-12 px-5 py-20 lg:grid-cols-[1.1fr_.9fr] lg:items-center lg:px-8 lg:py-28">
           <div className="lp-hero-copy">
             <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-extrabold uppercase tracking-[.16em] text-[#0369A1]">{c.badge || 'Olympiad · FermatTech'}</span>

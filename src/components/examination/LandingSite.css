@@ -4,7 +4,10 @@
   --lp-cyan: #38c9f5;
   background: #cfe4f5;
   color: var(--lp-navy);
+  font-family: "Be Vietnam Pro", system-ui, sans-serif;
 }
+.landing-site .max-w-7xl { max-width: 1680px; }
+.landing-site .lp-hero h1 { letter-spacing: -.035em; line-height: 1.16; }
 .landing-site .lp-hero h1 { font-size: var(--lp-hero-title-size); }
 .landing-site .lp-hero-copy > p { font-size: var(--lp-intro-size); }
 .landing-site .lp-cta { font-size: var(--lp-button-size); padding-top: var(--lp-button-padding); padding-bottom: var(--lp-button-padding); }
@@ -229,6 +232,11 @@ body.workspace-app-theme #root > .landing-site:first-child {
   .landing-site .lp-hero-art { transform: none; }
   .landing-site .lp-hero h1 { font-size: min(var(--lp-hero-title-size), 11vw); }
   .landing-site .lp-about-panel { padding: 1.5rem; }
+  .landing-site .lp-hero-glow { display: none; }
+  .landing-site .lp-hero {
+    background: radial-gradient(circle at 100% 5%, rgba(34, 112, 184, .34), transparent 44%),
+      linear-gradient(145deg, #071d42, #0b447c);
+  }
 }
 
 .landing-site .lp-hero-copy > div:nth-of-type(1) a:first-child,
