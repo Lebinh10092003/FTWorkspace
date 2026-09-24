@@ -272,6 +272,28 @@ class FundingProposalDocxTests(TestCase):
         self.assertIn("2.475.000", xml)
         self.assertIn("27.725.000", xml)
 
+    def test_foreign_currency_is_used_throughout_the_document(self):
+        payload = self.payload()
+        payload.update({
+            "currency": "USD",
+            "items": [{"description": "Quilgo Ultra", "unit": "gói", "quantity": 1, "unitPrice": 145}],
+            "vatRate": 10,
+            "otherCost": 5,
+            "advanceAmount": 20,
+            "adjustedTotal": 160,
+            "committedAmount": 40,
+            "remainingAmount": 120,
+            "increaseAmount": 15,
+            "approvedTotal": 160,
+        })
+        _, content = build_funding_proposal(payload)
+        xml = self.document_text(content)
+        self.assertIn("Đơn vị tiền: USD.", xml)
+        self.assertIn("Tổng kinh phí đề nghị (A + B + C): 164,50 USD.", xml)
+        self.assertIn("Tạm ứng (nếu có): 20 USD", xml)
+        self.assertIn("Tổng mức được duyệt (gồm thuế, phí): 160 USD.", xml)
+        self.assertNotIn("đồng.", xml)
+
     def test_ticked_boxes_reflect_the_choices(self):
         _, content = build_funding_proposal(self.payload())
         xml = self.document_text(content)

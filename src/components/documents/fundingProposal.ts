@@ -13,6 +13,7 @@ export type ProposalItem = {
 export type ComparisonRow = { previous: string; current: string; delta: string };
 
 export type FundingProposal = {
+  currency: string;
   documentNumber: string;
   issuedOn: string;
   kind: 'new' | 'adjustment';
@@ -73,6 +74,7 @@ export const todayIso = () => {
 };
 
 export const blankProposal = (): FundingProposal => ({
+  currency: 'VND',
   documentNumber: '', issuedOn: todayIso(), kind: 'new', submissionRound: '',
   proposer: '', department: '', project: '', departmentHead: '', purpose: '',
   approvalDeadline: '', items: [newItem(), newItem()], vatRate: '', otherCost: '',
@@ -83,9 +85,59 @@ export const blankProposal = (): FundingProposal => ({
   decision: '', approvedTotal: '', conditions: '',
 });
 
-export const toNumber = (value: string | number | undefined) => {
+export const CURRENCIES = [
+  { code: 'VND', label: 'VND — Việt Nam đồng' },
+  { code: 'USD', label: 'USD — Đô la Mỹ' },
+  { code: 'EUR', label: 'EUR — Euro' },
+  { code: 'GBP', label: 'GBP — Bảng Anh' },
+  { code: 'JPY', label: 'JPY — Yên Nhật' },
+  { code: 'CNY', label: 'CNY — Nhân dân tệ' },
+  { code: 'SGD', label: 'SGD — Đô la Singapore' },
+  { code: 'AUD', label: 'AUD — Đô la Úc' },
+  { code: 'CAD', label: 'CAD — Đô la Canada' },
+  { code: 'KRW', label: 'KRW — Won Hàn Quốc' },
+] as const;
+
+export const currencyCode = (value: string) => /^[A-Z]{3}$/.test(value) ? value : 'VND';
+export const currencyUnit = (value: string) => value === 'VND' ? 'đồng' : currencyCode(value);
+const SYMBOL_CURRENCIES: Record<string, string[]> = {
+  '$': ['USD', 'CAD', 'AUD', 'SGD'], '€': ['EUR'], '£': ['GBP'],
+  '¥': ['JPY', 'CNY'], '₫': ['VND'],
+};
+const NUMERIC_INPUT = /^-?(?:\d+(?:[.,]\d{1,2})?|\d{1,3}([.,])\d{3}(?:\1\d{3})*(?:[.,]\d{1,2})?)$/;
+
+export const moneySymbolMismatch = (value: string, currency: string) => {
+  const symbol = String(value).match(/[$€£¥₫]/)?.[0];
+  return symbol ? !SYMBOL_CURRENCIES[symbol].includes(currencyCode(currency)) : false;
+};
+
+export const validMoneyInput = (value: string, currency: string) => {
+  const compact = String(value).replace(/\s/g, '');
+  if (!compact) return true;
+  if (moneySymbolMismatch(value, currency)) return false;
+  const symbols = compact.match(/[$€£¥₫]/g) || [];
+  if (symbols.length > 1 || (symbols.length === 1 &&
+    ![0, compact.length - 1].includes(compact.indexOf(symbols[0])))) return false;
+  const number = String(value).replace(/[$€£¥₫\s]/g, '');
+  return NUMERIC_INPUT.test(number);
+};
+
+export const toNumber = (value: string | number | undefined, currency?: string) => {
   if (value === undefined || value === null || value === '') return 0;
-  const parsed = Number(String(value).replace(/[,\s]/g, ''));
+  const raw = String(value).trim();
+  if (currency && !validMoneyInput(raw, currency)) return 0;
+  const unsigned = raw.replace(/[$€£¥₫\s]/g, '');
+  if (!NUMERIC_INPUT.test(unsigned)) return 0;
+  const separators = [...unsigned.matchAll(/[.,]/g)];
+  let canonical = unsigned;
+  if (separators.length) {
+    const last = separators[separators.length - 1].index!;
+    const fractionLength = unsigned.length - last - 1;
+    const decimal = fractionLength > 0 && fractionLength <= 2 ? last : -1;
+    canonical = unsigned.split('').map((char, index) =>
+      char === '.' || char === ',' ? (index === decimal ? '.' : '') : char).join('');
+  }
+  const parsed = Number(canonical);
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
@@ -93,12 +145,13 @@ export const toNumber = (value: string | number | undefined) => {
 export const money = (value: number) =>
   value ? value.toLocaleString('de-DE', { maximumFractionDigits: 2 }) : '';
 
-export const lineAmount = (item: ProposalItem) => toNumber(item.quantity) * toNumber(item.unitPrice);
+export const lineAmount = (item: ProposalItem, currency = 'VND') =>
+  toNumber(item.quantity) * toNumber(item.unitPrice, currency);
 
 export const totalsOf = (proposal: FundingProposal) => {
-  const subtotal = proposal.items.reduce((sum, item) => sum + lineAmount(item), 0);
+  const subtotal = proposal.items.reduce((sum, item) => sum + lineAmount(item, proposal.currency), 0);
   const vat = subtotal * toNumber(proposal.vatRate) / 100;
-  const other = toNumber(proposal.otherCost);
+  const other = toNumber(proposal.otherCost, proposal.currency);
   return { subtotal, vat, other, total: subtotal + vat + other };
 };
 
@@ -131,14 +184,23 @@ export const formatProposalNumber = (value: string) => {
 /** The payload the .docx endpoint expects. */
 export const toPayload = (proposal: FundingProposal) => ({
   ...proposal,
+  currency: currencyCode(proposal.currency),
   documentNumber: formatProposalNumber(proposal.documentNumber),
+  vatRate: toNumber(proposal.vatRate) || '',
+  otherCost: toNumber(proposal.otherCost, proposal.currency) || '',
+  advanceAmount: toNumber(proposal.advanceAmount, proposal.currency) || '',
+  adjustedTotal: toNumber(proposal.adjustedTotal, proposal.currency) || '',
+  committedAmount: toNumber(proposal.committedAmount, proposal.currency) || '',
+  remainingAmount: toNumber(proposal.remainingAmount, proposal.currency) || '',
+  increaseAmount: toNumber(proposal.increaseAmount, proposal.currency) || '',
+  approvedTotal: toNumber(proposal.approvedTotal, proposal.currency) || '',
   items: proposal.items
     .filter(item => item.description.trim() || item.quantity || item.unitPrice)
     .map(item => ({
       description: item.description,
       unit: item.unit,
       quantity: toNumber(item.quantity) || '',
-      unitPrice: toNumber(item.unitPrice) || '',
-      amount: lineAmount(item) || '',
+      unitPrice: toNumber(item.unitPrice, proposal.currency) || '',
+      amount: lineAmount(item, proposal.currency) || '',
     })),
 });

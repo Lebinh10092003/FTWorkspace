@@ -48,6 +48,13 @@ def _money(value):
     return f"{number:,.2f}".replace(",", "\u0000").replace(".", ",").replace("\u0000", ".")
 
 
+def _currency_unit(data):
+    code = str(data.get("currency") or "VND").strip().upper()
+    if len(code) != 3 or not code.isascii() or not code.isalpha():
+        code = "VND"
+    return "đồng" if code == "VND" else code
+
+
 def _dotted(value, width=30):
     text = str(value or "").strip()
     return text if text else "…" * width
@@ -234,6 +241,7 @@ def _signature_strip(document):
 def build_funding_proposal(data):
     """Render the form and return (filename, docx bytes)."""
     data = data if isinstance(data, dict) else {}
+    currency_unit = _currency_unit(data)
     document = Document()
     section = document.sections[0]
     section.page_width, section.page_height = Cm(21.0), Cm(29.7)
@@ -266,16 +274,16 @@ def build_funding_proposal(data):
     _para(document, f"Hạn cần duyệt: {_short_date(data.get('approvalDeadline'))}", space_after=8)
 
     _para(document, "2. Dự toán và phương án thực hiện", bold=True, space_before=4)
-    _para(document, "Đơn vị tiền: đồng.", italic=True, size=12)
+    _para(document, f"Đơn vị tiền: {currency_unit}.", italic=True, size=12)
     total = _cost_table(document, data)
-    _para(document, f"Tổng kinh phí đề nghị (A + B + C): {_dotted(_money(total) if total else '', 20)} đồng.",
+    _para(document, f"Tổng kinh phí đề nghị (A + B + C): {_dotted(_money(total) if total else '', 20)} {currency_unit}.",
           space_before=6)
     _para(document, f"Thông tin nhà cung cấp: {_dotted(data.get('supplier'), 36)}")
     payment = str(data.get("paymentMethod") or "transfer")
     _para(document, "Thanh toán: "
           + "   ".join(_box(payment == value, label) for value, label in PAYMENT_METHODS) + ";")
     _para(document,
-          f"Tạm ứng (nếu có): {_dotted(_money(data.get('advanceAmount')), 14)} đồng "
+          f"Tạm ứng (nếu có): {_dotted(_money(data.get('advanceAmount')), 14)} {currency_unit} "
           f"tại phiếu số: {_dotted(data.get('advanceDocument'), 6)} "
           f"{_date_phrase(data.get('advanceDate'), prefix='ngày')}", space_after=8)
 
@@ -287,10 +295,10 @@ def build_funding_proposal(data):
     _comparison_table(document, data)
     _para(document, f"Lý do thay đổi; tác động đến tiến độ, ngân sách: {_dotted(data.get('changeReason'), 24)}",
           space_before=6)
-    _para(document, f"Tổng sau điều chỉnh: {_dotted(_money(data.get('adjustedTotal')), 12)} đồng; "
-                    f"đã chi/cam kết: {_dotted(_money(data.get('committedAmount')), 12)} đồng.")
-    _para(document, f"Số tiền còn phải bố trí: {_dotted(_money(data.get('remainingAmount')), 12)} đồng; "
-                    f"phần xin tăng: {_dotted(_money(data.get('increaseAmount')), 10)} đồng.")
+    _para(document, f"Tổng sau điều chỉnh: {_dotted(_money(data.get('adjustedTotal')), 12)} {currency_unit}; "
+                    f"đã chi/cam kết: {_dotted(_money(data.get('committedAmount')), 12)} {currency_unit}.")
+    _para(document, f"Số tiền còn phải bố trí: {_dotted(_money(data.get('remainingAmount')), 12)} {currency_unit}; "
+                    f"phần xin tăng: {_dotted(_money(data.get('increaseAmount')), 10)} {currency_unit}.")
 
     selected = set(data.get("attachments") or [])
     first = ATTACHMENTS[:2]
@@ -309,7 +317,7 @@ def build_funding_proposal(data):
     decision = str(data.get("decision") or "")
     _para(document, "5. Phê duyệt của người có thẩm quyền", bold=True, space_before=4)
     _para(document, "   ".join(_box(decision == value, label) for value, label in DECISIONS))
-    _para(document, f"Tổng mức được duyệt (gồm thuế, phí): {_dotted(_money(data.get('approvedTotal')), 20)} đồng.")
+    _para(document, f"Tổng mức được duyệt (gồm thuế, phí): {_dotted(_money(data.get('approvedTotal')), 20)} {currency_unit}.")
     _para(document, f"Điều kiện; người thực hiện; thời hạn: {_dotted(data.get('conditions'), 24)}")
     _para(document, "Ký, ghi rõ họ tên, ngày ký; người phê duyệt ghi thêm chức vụ.",
           italic=True, size=12, space_after=6)

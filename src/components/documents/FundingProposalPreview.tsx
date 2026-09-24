@@ -1,13 +1,14 @@
 import React from 'react';
 import {
   ATTACHMENT_OPTIONS, DECISION_OPTIONS, FundingProposal,
-  dateWords, dotted, formatProposalNumber, lineAmount, money, shortDate, totalsOf,
+  currencyUnit, dateWords, dotted, formatProposalNumber, lineAmount, money, shortDate, toNumber, totalsOf,
 } from './fundingProposal';
 
 /** A4 rendering of the form: the same content the .docx carries, so what the
  *  user approves on screen is what Word prints. */
 export default function FundingProposalPreview({ value }: { value: FundingProposal }) {
   const totals = totalsOf(value);
+  const unit = currencyUnit(value.currency);
   const box = (checked: boolean, label: string) => (
     <span className="fp-box">{checked ? '☒' : '☐'} {label}</span>
   );
@@ -44,7 +45,7 @@ export default function FundingProposalPreview({ value }: { value: FundingPropos
       <p className="fp-line">Hạn cần duyệt: {shortDate(value.approvalDeadline)}</p>
 
       <h2 className="fp-section">2. Dự toán và phương án thực hiện</h2>
-      <p className="fp-note">Đơn vị tiền: đồng.</p>
+      <p className="fp-note">Đơn vị tiền: {unit}.</p>
       <table className="fp-table">
         <thead>
           <tr>
@@ -63,8 +64,8 @@ export default function FundingProposalPreview({ value }: { value: FundingPropos
               <td>{dotted(item.description, 24)}</td>
               <td className="fp-center">{dotted(item.unit, 4)}</td>
               <td className="fp-center">{dotted(item.quantity, 4)}</td>
-              <td className="fp-right">{dotted(money(Number(item.unitPrice) || 0), 6)}</td>
-              <td className="fp-right">{dotted(money(lineAmount(item)), 6)}</td>
+              <td className="fp-right">{dotted(money(toNumber(item.unitPrice, value.currency)), 6)}</td>
+              <td className="fp-right">{dotted(money(lineAmount(item, value.currency)), 6)}</td>
             </tr>
           ))}
           <tr>
@@ -88,13 +89,13 @@ export default function FundingProposalPreview({ value }: { value: FundingPropos
         </tbody>
       </table>
 
-      <p className="fp-line">Tổng kinh phí đề nghị (A + B + C): {dotted(money(totals.total), 20)} đồng.</p>
+      <p className="fp-line">Tổng kinh phí đề nghị (A + B + C): {dotted(money(totals.total), 20)} {unit}.</p>
       <p className="fp-line">Thông tin nhà cung cấp: {dotted(value.supplier, 36)}</p>
       <p className="fp-line">
         Thanh toán: {box(value.paymentMethod === 'transfer', 'Chuyển khoản')} {box(value.paymentMethod === 'cash', 'Tiền mặt')};
       </p>
       <p className="fp-line">
-        Tạm ứng (nếu có): {dotted(money(Number(value.advanceAmount) || 0), 14)} đồng tại phiếu số:{' '}
+        Tạm ứng (nếu có): {dotted(money(toNumber(value.advanceAmount, value.currency)), 14)} {unit} tại phiếu số:{' '}
         {dotted(value.advanceDocument, 6)} {dateWords(value.advanceDate, 'ngày')}
       </p>
 
@@ -123,12 +124,12 @@ export default function FundingProposalPreview({ value }: { value: FundingPropos
       </table>
       <p className="fp-line">Lý do thay đổi; tác động đến tiến độ, ngân sách: {dotted(value.changeReason, 24)}</p>
       <p className="fp-line">
-        Tổng sau điều chỉnh: {dotted(money(Number(value.adjustedTotal) || 0), 12)} đồng; đã chi/cam kết:{' '}
-        {dotted(money(Number(value.committedAmount) || 0), 12)} đồng.
+        Tổng sau điều chỉnh: {dotted(money(toNumber(value.adjustedTotal, value.currency)), 12)} {unit}; đã chi/cam kết:{' '}
+        {dotted(money(toNumber(value.committedAmount, value.currency)), 12)} {unit}.
       </p>
       <p className="fp-line">
-        Số tiền còn phải bố trí: {dotted(money(Number(value.remainingAmount) || 0), 12)} đồng; phần xin tăng:{' '}
-        {dotted(money(Number(value.increaseAmount) || 0), 10)} đồng.
+        Số tiền còn phải bố trí: {dotted(money(toNumber(value.remainingAmount, value.currency)), 12)} {unit}; phần xin tăng:{' '}
+        {dotted(money(toNumber(value.increaseAmount, value.currency)), 10)} {unit}.
       </p>
       <p className="fp-line">
         Hồ sơ kèm theo: {ATTACHMENT_OPTIONS.slice(0, 2).map(option => (
@@ -155,7 +156,7 @@ export default function FundingProposalPreview({ value }: { value: FundingPropos
           <React.Fragment key={option.value}>{box(value.decision === option.value, option.label)} </React.Fragment>
         ))}
       </p>
-      <p className="fp-line">Tổng mức được duyệt (gồm thuế, phí): {dotted(money(Number(value.approvedTotal) || 0), 20)} đồng.</p>
+      <p className="fp-line">Tổng mức được duyệt (gồm thuế, phí): {dotted(money(toNumber(value.approvedTotal, value.currency)), 20)} {unit}.</p>
       <p className="fp-line">Điều kiện; người thực hiện; thời hạn: {dotted(value.conditions, 24)}</p>
       <p className="fp-note">Ký, ghi rõ họ tên, ngày ký; người phê duyệt ghi thêm chức vụ.</p>
 

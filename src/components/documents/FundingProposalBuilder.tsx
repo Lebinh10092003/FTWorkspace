@@ -1,12 +1,14 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Loader2, Plus, RotateCcw, Trash2, TriangleAlert, ZoomIn, ZoomOut } from 'lucide-react';
+import { appDialog } from '../AppDialog';
 import ModuleShellHeader from '../layout/ModuleShellHeader';
 import AccountMenu from '../AccountMenu';
 import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
 import FundingProposalPreview from './FundingProposalPreview';
 import {
-  ATTACHMENT_OPTIONS, DECISION_OPTIONS, FundingProposal, ProposalItem,
-  blankProposal, lineAmount, money, newItem, proposalNumberDigits, toPayload, totalsOf,
+  ATTACHMENT_OPTIONS, CURRENCIES, DECISION_OPTIONS, FundingProposal, ProposalItem,
+  blankProposal, currencyUnit, lineAmount, money, moneySymbolMismatch, newItem,
+  proposalNumberDigits, toPayload, totalsOf, validMoneyInput,
 } from './fundingProposal';
 
 type Props = {
@@ -21,14 +23,75 @@ type Props = {
 
 const FIELD = 'ft-input';
 const LABEL = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500';
+const DRAFT_VERSION = 1;
+
+function draftKey(idToken: string, userName: string) {
+  try {
+    const claim = idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const subject = JSON.parse(atob(claim)).sub;
+    if (typeof subject === 'string' && subject) return `funding-proposal-draft:v${DRAFT_VERSION}:${subject}`;
+  } catch { /* Fall back to the visible account name. */ }
+  return `funding-proposal-draft:v${DRAFT_VERSION}:${userName.trim().toLowerCase()}`;
+}
+
+function readDraft(key: string): FundingProposal {
+  const fallback = blankProposal();
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) return fallback;
+    return {
+      ...fallback, ...parsed,
+      currency: typeof parsed.currency === 'string' ? parsed.currency : 'VND',
+      items: parsed.items.filter((item: unknown) => item && typeof item === 'object' && typeof (item as ProposalItem).id === 'string'),
+      comparison: {
+        quantity: { ...fallback.comparison.quantity, ...parsed.comparison?.quantity },
+        total: { ...fallback.comparison.total, ...parsed.comparison?.total },
+      },
+      attachments: Array.isArray(parsed.attachments) ? parsed.attachments : [],
+    };
+  } catch { return fallback; }
+}
 
 export default function FundingProposalBuilder({
   idToken, userName, userRole, photoURL, onAccountClick, onLogout, onNavSelect,
 }: Props) {
-  const [value, setValue] = useState<FundingProposal>(blankProposal);
+  const storageKey = useMemo(() => draftKey(idToken, userName), [idToken, userName]);
+  const currentStorageKey = useRef(storageKey);
+  const [value, setValue] = useState<FundingProposal>(() => readDraft(storageKey));
   const [zoom, setZoom] = useState(0.72);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [draftError, setDraftError] = useState(false);
+
+  useEffect(() => {
+    if (currentStorageKey.current !== storageKey) {
+      currentStorageKey.current = storageKey;
+      setValue(readDraft(storageKey));
+      setSavedAt(null);
+      return;
+    }
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(value));
+      setSavedAt(new Date());
+      setDraftError(false);
+    } catch {
+      setDraftError(true);
+    }
+  }, [storageKey, value]);
+
+  const monetaryInputs = [
+    ...value.items.map((item, index) => [`Đơn giá hạng mục ${index + 1}`, item.unitPrice] as const),
+    ['Chi phí khác', value.otherCost], ['Tạm ứng', value.advanceAmount],
+    ['Tổng sau điều chỉnh', value.adjustedTotal], ['Đã chi / cam kết', value.committedAmount],
+    ['Còn phải bố trí', value.remainingAmount], ['Phần xin tăng', value.increaseAmount],
+    ['Tổng mức được duyệt', value.approvedTotal],
+  ] as const;
+  const mismatch = monetaryInputs.find(([, amount]) => moneySymbolMismatch(amount, value.currency));
+  const invalidAmount = monetaryInputs.find(([, amount]) => !validMoneyInput(amount, value.currency));
+  const currencyValid = /^[A-Z]{3}$/.test(value.currency);
 
   const totals = useMemo(() => totalsOf(value), [value]);
   const set = <K extends keyof FundingProposal>(key: K, next: FundingProposal[K]) =>
@@ -49,6 +112,13 @@ export default function FundingProposalBuilder({
     }));
 
   const download = async () => {
+    if (!currencyValid || invalidAmount) {
+      setError(mismatch
+        ? `${mismatch[0]} có ký hiệu tiền khác ${currencyUnit(value.currency)}. Hãy chọn đúng tiền tệ cho toàn phiếu.`
+        : invalidAmount ? `${invalidAmount[0]} không phải số tiền hợp lệ.`
+          : 'Mã tiền tệ phải gồm đúng 3 chữ cái, ví dụ USD.');
+      return;
+    }
     setDownloading(true);
     setError('');
     try {
@@ -92,7 +162,11 @@ export default function FundingProposalBuilder({
         ariaLabel="Điều hướng bộ công cụ FermatTech"
         actions={(
           <>
-            <button type="button" onClick={() => setValue(blankProposal())}
+            <button type="button" onClick={async () => {
+              if (await appDialog.confirm('Xóa nội dung bản nháp hiện tại và bắt đầu phiếu mới?', {
+                title: 'Làm lại phiếu', confirmText: 'Làm lại', tone: 'danger',
+              })) { setValue(blankProposal()); setError(''); }
+            }}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
               <RotateCcw className="h-4 w-4" /><span className="hidden sm:inline">Làm lại</span>
             </button>
@@ -108,6 +182,16 @@ export default function FundingProposalBuilder({
 
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
+          <p role="status" className={`mb-4 text-xs font-semibold ${draftError ? 'text-rose-700' : 'text-slate-500'}`}>
+            {draftError ? 'Không thể tự lưu bản nháp trên trình duyệt này.'
+              : `Bản nháp tự lưu trên trình duyệt này${savedAt ? ` lúc ${savedAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}.`}
+          </p>
+          {mismatch && <div role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+            {mismatch[0]} có ký hiệu tiền khác {currencyUnit(value.currency)}. Chọn đúng tiền tệ cho toàn phiếu để tính và xuất Word.
+          </div>}
+          {!mismatch && invalidAmount && <div role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+            {invalidAmount[0]} không phải số tiền hợp lệ. Hãy nhập số, có thể kèm ký hiệu đúng với tiền tệ đã chọn.
+          </div>}
           {error && (
             <div role="alert" className="mb-5 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" /><span>{error}</span>
@@ -171,13 +255,31 @@ export default function FundingProposalBuilder({
                   </button>
                 </div>
 
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <label className="block"><span className={LABEL}>Tiền tệ của toàn phiếu</span>
+                    <select value={CURRENCIES.some(option => option.code === value.currency) ? value.currency : 'OTHER'}
+                      onChange={e => set('currency', e.target.value === 'OTHER' ? '' : e.target.value)} className={FIELD}>
+                      {CURRENCIES.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
+                      <option value="OTHER">Tiền tệ khác…</option>
+                    </select>
+                  </label>
+                  {!CURRENCIES.some(option => option.code === value.currency) && (
+                    <label className="block"><span className={LABEL}>Mã tiền tệ (3 chữ cái)</span>
+                      <input value={value.currency} onChange={e => set('currency', e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3))}
+                        maxLength={3} placeholder="THB" className={FIELD} />
+                    </label>
+                  )}
+                </div>
+                {!currencyValid && <p role="alert" className="mt-2 text-xs font-semibold text-rose-700">Nhập mã tiền tệ gồm 3 chữ cái, ví dụ THB.</p>}
+                <p className="mt-2 text-xs text-slate-500">Nhập số tiền theo tiền tệ đã chọn; ví dụ chọn USD rồi nhập 145 hoặc 145$. Hệ thống không tự quy đổi tỷ giá.</p>
+
                 <div className="mt-4 space-y-3">
                   {value.items.map((item, index) => (
                     <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-bold text-slate-500">Hạng mục {index + 1}</span>
                         <div className="flex items-center gap-2">
-                          <b className="text-xs font-extrabold text-slate-700">{money(lineAmount(item)) || '—'} đ</b>
+                          <b className="text-xs font-extrabold text-slate-700">{money(lineAmount(item, value.currency)) || '—'} {currencyUnit(value.currency)}</b>
                           {value.items.length > 1 && (
                             <button type="button" aria-label={`Xóa hạng mục ${index + 1}`}
                               onClick={() => setValue(c => ({ ...c, items: c.items.filter(row => row.id !== item.id) }))}
@@ -207,9 +309,9 @@ export default function FundingProposalBuilder({
 
                 <dl className="mt-4 space-y-1 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm">
                   {[['Cộng', totals.subtotal], ['Thuế GTGT', totals.vat], ['Chi phí khác', totals.other]].map(([text, amount]) => (
-                    <div key={text as string} className="flex justify-between"><dt className="text-slate-600">{text}</dt><dd className="font-semibold tabular-nums">{money(amount as number) || '0'} đ</dd></div>
+                    <div key={text as string} className="flex justify-between"><dt className="text-slate-600">{text}</dt><dd className="font-semibold tabular-nums">{money(amount as number) || '0'} {currencyUnit(value.currency)}</dd></div>
                   ))}
-                  <div className="flex justify-between border-t border-blue-200 pt-1.5"><dt className="font-extrabold text-blue-900">Tổng cộng</dt><dd className="font-extrabold tabular-nums text-blue-900">{money(totals.total) || '0'} đ</dd></div>
+                  <div className="flex justify-between border-t border-blue-200 pt-1.5"><dt className="font-extrabold text-blue-900">Tổng cộng</dt><dd className="font-extrabold tabular-nums text-blue-900">{money(totals.total) || '0'} {currencyUnit(value.currency)}</dd></div>
                 </dl>
 
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
