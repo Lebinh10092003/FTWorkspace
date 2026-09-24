@@ -20,6 +20,7 @@ from .models import CompetitionLandingPage, LandingLead, LandingSite, LandingTem
 
 URL_KEYS = {'url', 'logoUrl', 'schoolUrl', 'excelUrl', 'individualUrl',
             'handbookUrl', 'zaloUrl', 'facebookFimoUrl', 'facebookFieoUrl', 'buttonUrl'}
+BANK_KEYS = {'bankName', 'accountName', 'accountNumber', 'transferNote'}
 
 
 def _valid_link(value):
@@ -36,7 +37,7 @@ def _valid_link(value):
 def _clean_content(value):
     if isinstance(value, dict):
         return {str(key)[:80]: _clean_content(item) if key not in URL_KEYS else _clean_link(item)
-                for key, item in list(value.items())[:100]}
+                for key, item in list(value.items())[:100] if key not in BANK_KEYS}
     if isinstance(value, list):
         return [_clean_content(item) for item in value[:100]]
     if isinstance(value, (str, int, float, bool)) or value is None:
@@ -51,9 +52,18 @@ def _clean_link(value):
     return link
 
 
+def _without_bank_details(value):
+    if isinstance(value, dict):
+        return {key: _without_bank_details(item) for key, item in value.items()
+                if key not in BANK_KEYS}
+    if isinstance(value, list):
+        return [_without_bank_details(item) for item in value]
+    return value
+
+
 def _payload(site):
     return {'id': site.id, 'slug': site.slug, 'title': site.title,
-            'template': site.template, 'layout': site.layout, 'content': site.content,
+            'template': site.template, 'layout': site.layout, 'content': _without_bank_details(site.content),
             'published': site.published, 'updatedAt': site.updated_at.isoformat(),
             'updatedBy': site.updated_by}
 
@@ -61,7 +71,7 @@ def _payload(site):
 def _template_payload(template):
     return {'key': template.key, 'name': template.name,
             'description': template.description, 'layout': template.layout,
-            'content': template.content, 'isSystem': template.is_system,
+            'content': _without_bank_details(template.content), 'isSystem': template.is_system,
             'updatedAt': template.updated_at.isoformat()}
 
 

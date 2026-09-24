@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { ArrowDownToLine, ArrowRight, ArrowUp, BookOpen, CalendarDays, CheckCircle2, ExternalLink, Facebook, FileText, Mail, MapPin, Menu, Phone, Send, Trophy, X } from 'lucide-react';
 import './LandingSite.css';
+import SiaioLandingView from './SiaioLandingView';
 
 export type LinkButton = { label: string; url: string };
 export type LandingContent = {
@@ -13,7 +14,7 @@ export type LandingContent = {
   papers?: Record<string, Record<string, string>>;
   timeline?: Array<{ title: string; date: string; mode: string }>;
   awards?: Array<{ title: string; percent: string; description: string }>;
-  registration?: { schoolUrl?: string; excelUrl?: string; individualUrl?: string; handbookUrl?: string; bankName?: string; accountName?: string; accountNumber?: string; transferNote?: string };
+  registration?: { schoolUrl?: string; excelUrl?: string; individualUrl?: string; handbookUrl?: string };
   contact?: { email?: string; phone?: string; address?: string; zaloUrl?: string; facebookFimoUrl?: string; facebookFieoUrl?: string };
   customSections?: Array<{ title: string; body: string; buttonLabel: string; buttonUrl: string }>;
 };
@@ -38,7 +39,14 @@ function Action({ url, children, className = '', download, newTab = false }: { u
   return <a href={href} target={target} rel={target ? 'noopener noreferrer' : undefined} download={download} className={className}>{children}</a>;
 }
 
-export default function LandingSiteView({ site, preview = false }: { site: LandingSite; preview?: boolean }) {
+export default function LandingSiteView(props: { site: LandingSite; preview?: boolean }) {
+  if (props.site.layout === 'siaio' || props.site.content?.subject === 'SIAIO') {
+    return <SiaioLandingView {...props} />;
+  }
+  return <OlympiadLandingView {...props} />;
+}
+
+function OlympiadLandingView({ site, preview = false }: { site: LandingSite; preview?: boolean }) {
   const c = site.content || {};
   const subject = c.subject || (site.slug === 'fieo' ? 'FIEO' : site.slug === 'fimo' ? 'FIMO' : '');
   const isSiaio = subject === 'SIAIO' || site.layout === 'siaio';
@@ -159,7 +167,7 @@ export default function LandingSiteView({ site, preview = false }: { site: Landi
 
       <section id="dang-ky" className="lp-registration scroll-mt-24 py-20"><div className="mx-auto max-w-7xl px-5 lg:px-8"><Heading eyebrow={`Tham gia ${subject}`} title="Đăng ký dự thi" description="Chọn hình thức đăng ký phù hợp với nhà trường hoặc gia đình." /><div className="mt-10 grid gap-6 lg:grid-cols-2">
         <article className="rounded-3xl border border-[#E2E8F0] bg-white p-8"><span className="text-xs font-extrabold uppercase tracking-widest text-[#0284C7]">Dành cho nhà trường</span><h3 className="mt-3 text-2xl font-extrabold">Đăng ký theo danh sách</h3><p className="mt-3 leading-7 text-slate-600">Tập hợp thông tin học sinh theo mẫu và gửi hồ sơ đăng ký tập thể.</p><div className="mt-8 flex flex-wrap gap-3"><Action url={reg.excelUrl} download="Phu-luc-4-danh-sach-thi-sinh.xlsx" className="inline-flex items-center gap-2 rounded-xl border border-sky-200 px-4 py-3 text-sm font-bold text-[#0369A1]"><ArrowDownToLine className="h-4 w-4" />Tải Excel Phụ lục 4</Action><Action url={reg.schoolUrl} className="inline-flex items-center gap-2 rounded-xl bg-[#0284C7] px-4 py-3 text-sm font-bold text-white">Đăng ký trường <ArrowRight className="h-4 w-4" /></Action></div></article>
-        <article className="rounded-3xl border border-[#E2E8F0] bg-white p-8"><span className="text-xs font-extrabold uppercase tracking-widest text-[#0284C7]">Dành cho cá nhân</span><h3 className="mt-3 text-2xl font-extrabold">Đăng ký trực tiếp</h3><p className="mt-3 leading-7 text-slate-600">Hoàn thành biểu mẫu và tham khảo hướng dẫn thanh toán chính thức.</p><div className="mt-6 rounded-xl bg-slate-50 p-4 text-sm text-slate-600"><p>Ngân hàng: <strong>{reg.bankName || 'Đang cập nhật'}</strong></p><p className="mt-1">Chủ tài khoản: <strong>{reg.accountName || 'Đang cập nhật'}</strong></p><p className="mt-1">Số tài khoản: <strong>{reg.accountNumber || 'Đang cập nhật'}</strong></p>{reg.transferNote && <p className="mt-1">Nội dung: {reg.transferNote}</p>}</div><div className="mt-6 flex flex-wrap gap-3"><Action url={reg.individualUrl} className="inline-flex items-center gap-2 rounded-xl bg-[#0284C7] px-4 py-3 text-sm font-bold text-white">Mở form đăng ký <ArrowRight className="h-4 w-4" /></Action><Action url={reg.handbookUrl} className="inline-flex items-center gap-2 rounded-xl border border-sky-200 px-4 py-3 text-sm font-bold text-[#0369A1]">Xem cẩm nang <BookOpen className="h-4 w-4" /></Action></div></article>
+        <article className="rounded-3xl border border-[#E2E8F0] bg-white p-8"><span className="text-xs font-extrabold uppercase tracking-widest text-[#0284C7]">Dành cho cá nhân</span><h3 className="mt-3 text-2xl font-extrabold">Đăng ký trực tiếp</h3><p className="mt-3 leading-7 text-slate-600">Hoàn thành biểu mẫu đăng ký và xem cẩm nang dự thi.</p><div className="mt-6 flex flex-wrap gap-3"><Action url={reg.individualUrl} className="inline-flex items-center gap-2 rounded-xl bg-[#0284C7] px-4 py-3 text-sm font-bold text-white">Mở form đăng ký <ArrowRight className="h-4 w-4" /></Action><Action url={reg.handbookUrl} className="inline-flex items-center gap-2 rounded-xl border border-sky-200 px-4 py-3 text-sm font-bold text-[#0369A1]">Xem cẩm nang <BookOpen className="h-4 w-4" /></Action></div></article>
       </div></div></section>
 
       {(c.customSections || []).map((item, i) => <section key={i} className="lp-custom bg-white py-16"><div className="mx-auto max-w-4xl px-5 text-center"><h2 className="text-3xl font-extrabold">{item.title}</h2><p className="mt-4 whitespace-pre-line leading-8 text-slate-600">{item.body}</p>{item.buttonLabel && <Action url={item.buttonUrl} className="mt-6 inline-flex rounded-xl bg-[#0284C7] px-5 py-3 text-sm font-bold text-white">{item.buttonLabel}</Action>}</div></section>)}

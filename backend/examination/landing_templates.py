@@ -1,6 +1,6 @@
 """Starter content for the two Olympiad landing pages.
 
-Operational facts that have not been provided (dates, paper files, bank details,
+Operational facts that have not been provided (dates, paper files,
 award percentages and fanpage URLs) deliberately remain empty.
 """
 
@@ -47,8 +47,7 @@ def olympiad_content(subject):
         ],
         'registration': {
             'schoolUrl': '', 'excelUrl': '',
-            'individualUrl': '', 'handbookUrl': '', 'bankName': 'VPBank',
-            'accountName': '', 'accountNumber': '', 'transferNote': '',
+            'individualUrl': '', 'handbookUrl': '',
         },
         'contact': {
             'email': '', 'phone': '0969 627 162',
@@ -88,8 +87,7 @@ def siaio_content():
             {'title': 'Vòng Chung kết Quốc tế', 'date': '2026-12-27', 'mode': 'Theo thông báo của Ban tổ chức'},
         ],
         'awards': [],
-        'registration': {'schoolUrl': '', 'excelUrl': '', 'individualUrl': '', 'handbookUrl': '',
-                         'bankName': '', 'accountName': '', 'accountNumber': '', 'transferNote': ''},
+        'registration': {'schoolUrl': '', 'excelUrl': '', 'individualUrl': '', 'handbookUrl': ''},
         'contact': {'email': '', 'phone': '0969 627 162',
                     'address': 'Eurowindow Multi Complex, 27 Trần Duy Hưng, Hà Nội',
                     'zaloUrl': 'https://zalo.me/fermattech', 'facebookFimoUrl': '', 'facebookFieoUrl': ''},

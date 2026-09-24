@@ -80,6 +80,28 @@ class LandingSiteTests(TestCase):
         }, format='json')
         self.assertEqual(response.status_code, 400)
 
+    def test_bank_details_are_removed_from_saved_and_public_content(self):
+        site = LandingSite.objects.get(slug='fimo')
+        content = {**site.content, 'registration': {
+            **site.content['registration'], 'bankName': 'Example Bank',
+            'accountName': 'Someone', 'accountNumber': '123456',
+            'transferNote': 'Legacy note',
+        }}
+        site.content = content
+        site.save(update_fields=['content'])
+        public = APIClient().get('/api/public/landing-sites/fimo')
+        self.assertEqual(public.status_code, 200)
+        for key in ('bankName', 'accountName', 'accountNumber', 'transferNote'):
+            self.assertNotIn(key, public.data['content']['registration'])
+
+        updated = self.client.put(f'/api/landing-sites/{site.pk}', {
+            'title': site.title, 'slug': site.slug, 'published': True, 'content': content,
+        }, format='json')
+        self.assertEqual(updated.status_code, 200, updated.data)
+        self.assertEqual(LandingSite.objects.get(pk=site.pk).content['registration'],
+                         {key: value for key, value in content['registration'].items()
+                          if key not in ('bankName', 'accountName', 'accountNumber', 'transferNote')})
+
     def test_consultation_form_saves_a_lead(self):
         response = APIClient().post('/api/public/landing-sites/fimo/leads', {
             'fullName': 'Nguyễn An', 'phone': '0969627162', 'email': 'an@example.com',
