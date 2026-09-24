@@ -6,6 +6,12 @@ from .models import LandingLead, LandingSite, LandingTemplate
 
 
 class LandingSiteTests(TestCase):
+    def test_siaio_starter_is_draft_with_subject_picker(self):
+        site = LandingSite.objects.get(slug='siaio')
+        self.assertFalse(site.published)
+        self.assertEqual(site.layout, 'siaio')
+        self.assertIn('Trí tuệ nhân tạo', site.content['paperSubjects'])
+
     def setUp(self):
         self.admin = UserProfile.objects.create(email='landing-studio@example.com', name='Landing Studio', role='ADMIN')
         self.client = APIClient()

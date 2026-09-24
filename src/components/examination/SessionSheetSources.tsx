@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Clock3, ExternalLink, FileSpreadsheet, Pencil, Plus, RefreshCw, UploadCloud, X } from 'lucide-react';
 
-type SheetSource = { id: string; name?: string; url: string; stage?: string; sheetTab?: string; automationEnabled?: boolean; automationStartDate?: string; automationEndDate?: string; pendingManualImport?: boolean };
+type SheetSource = { id: string; name?: string; url: string; stage?: string; sheetTab?: string; automationEnabled?: boolean; automationStartDate?: string; automationEndDate?: string; pendingManualImport?: boolean; changeDetectedAt?: string | null };
 type Props = { sources: SheetSource[]; sessionId: string; sessionLabel: string; idToken?: string | null; canManage: boolean; onImport: () => void; onSourcesChanged: (sources: SheetSource[]) => void };
 type ExportPreview = { currentFingerprint: string; sheetTab: string; changedCells: number; changedRows: number; matchedRows?: number; appendedRows?: number; appendedCandidates?: { code?: string; name?: string; birth_date?: string; identity?: string; email?: string; phone?: string }[]; unmatchedSheetRows?: number[]; matchConflicts?: { row: number; rowLabel: string; reason: string; sheetIdentity?: string; candidateOptions?: string[] }[]; changes: { cell: string; row?: number; rowLabel?: string; column?: string; field?: string; current: string; next: string }[]; changesTruncated?: boolean };
 type ImportPreview = { source?: { name?: string; id?: string; fingerprint?: string; sheetTab?: string }; summary?: { total?: number; new?: number; matched?: number; changed?: number; unchanged?: number; conflicts?: number; webOnly?: number }; webOnlyRecords?: { code?: string; name?: string; birthDate?: string; identity?: string; email?: string; phone?: string }[]; records: { code?: string; name?: string; _preview?: { sourceRow?: number; status?: 'new' | 'changed' | 'unchanged' | 'conflict'; matchedCode?: string; changedFields?: string[]; changes?: { field: string; label?: string; current?: string; next?: string }[] } }[] };
@@ -123,7 +123,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 {source.name || 'Google Sheets chưa đặt tên'}</b>
 <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${output ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'}`}>
 {sheetType(source)}</span>
-{source.pendingManualImport && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">Cần đối soát thủ công</span>}</div>
+{source.pendingManualImport && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">Tab đã thay đổi · cần nhập vào web{source.changeDetectedAt ? ` · ${new Date(source.changeDetectedAt).toLocaleString('vi-VN')}` : ''}</span>}</div>
 <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
 <p>
 <span className="font-bold text-slate-700">Tab:</span> {source.sheetTab || 'Chưa khai báo'}</p>

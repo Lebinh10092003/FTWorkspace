@@ -1,0 +1,14 @@
+[Unit]
+Description=Detect edits in examination Google Sheet tabs
+After=network-online.target workspace-django.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=workspace
+Group=www-data
+WorkingDirectory=/var/www/ft-workspace/backend
+EnvironmentFile=/var/www/ft-workspace/backend/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=DJANGO_DB_PATH=/home/workspace/ft-workspace-data/workspace.sqlite3
+ExecStart=/var/www/ft-workspace/.venv/bin/python manage.py sync_examination_sheets --operation change-scan

@@ -1579,6 +1579,37 @@ class SheetCandidateImportPreviewTests(TestCase):
         self.assertIn('Google Sheets', response.data['error'])
 
 
+class SheetChangeScanTests(TestCase):
+    def setUp(self):
+        ExaminationSheet.objects.all().delete()
+        self.session = ExamSession.objects.create(
+            id='sheet-watch-session', competition_id='fmo', code='FMO',
+            name='FMO', parent='FermatTech', organizer='FermatTech',
+            time='2026 - 2027', sort_key='fmo-sheet-watch',
+        )
+
+    @patch('examination.sheet_scheduler.tab_content_fingerprint')
+    def test_change_scan_alerts_once_after_baseline(self, fingerprint):
+        from .sheet_scheduler import scan_sheet_changes
+        source = ExaminationSheet.objects.create(
+            id='sheet-watch', name='SCO - SIAIO',
+            url='https://docs.google.com/spreadsheets/d/watched',
+            session_id=self.session.id, sheet_tab='SCO - SIAIO',
+            stage='registration-source', created_at=timezone.now(), updated_at=timezone.now(),
+        )
+        fingerprint.return_value = 'api:first'
+        self.assertEqual(scan_sheet_changes()['baselined'], 1)
+        source.refresh_from_db()
+        self.assertFalse(source.pending_manual_import)
+
+        fingerprint.return_value = 'api:second'
+        self.assertEqual(scan_sheet_changes()['changed'], 1)
+        source.refresh_from_db()
+        self.assertTrue(source.pending_manual_import)
+        self.assertIsNotNone(source.change_detected_at)
+        self.assertEqual(scan_sheet_changes()['changed'], 0)
+
+
 class CompetitionLandingPageTests(TestCase):
     def setUp(self):
         self.user = UserProfile.objects.create(email='landing-admin@example.com', name='Landing Admin', role='ADMIN')

@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   ATTACHMENT_OPTIONS, DECISION_OPTIONS, FundingProposal,
-  dateWords, dotted, lineAmount, money, shortDate, totalsOf,
+  dateWords, dotted, formatProposalNumber, lineAmount, money, shortDate, totalsOf,
 } from './fundingProposal';
 
 /** A4 rendering of the form: the same content the .docx carries, so what the
@@ -22,7 +22,7 @@ export default function FundingProposalPreview({ value }: { value: FundingPropos
             <td><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br /><b>Độc lập - Tự do - Hạnh phúc</b></td>
           </tr>
           <tr>
-            <td>Số: {value.documentNumber.trim() || '……/PĐXKP-FT'}</td>
+            <td>Số: {formatProposalNumber(value.documentNumber) || '……/PĐXKP-FT'}</td>
             <td><i>{dateWords(value.issuedOn)}</i></td>
           </tr>
         </tbody>

@@ -120,9 +120,18 @@ export const shortDate = (value: string) => {
   return `${pad(parsed.getDate())}/${pad(parsed.getMonth() + 1)}/${parsed.getFullYear()}`;
 };
 
+export const proposalNumberDigits = (value: string) =>
+  value.split('/', 1)[0].replace(/\D/g, '');
+
+export const formatProposalNumber = (value: string) => {
+  const digits = proposalNumberDigits(value);
+  return digits ? `${digits}/PĐXKP-FT` : '';
+};
+
 /** The payload the .docx endpoint expects. */
 export const toPayload = (proposal: FundingProposal) => ({
   ...proposal,
+  documentNumber: formatProposalNumber(proposal.documentNumber),
   items: proposal.items
     .filter(item => item.description.trim() || item.quantity || item.unitPrice)
     .map(item => ({

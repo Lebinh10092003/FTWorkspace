@@ -210,6 +210,8 @@ class ExaminationSheet(models.Model):
     last_import_at = models.DateTimeField(null=True, blank=True)
     last_export_at = models.DateTimeField(null=True, blank=True)
     last_content_fingerprint = models.CharField(max_length=64, blank=True, default='')
+    last_observed_fingerprint = models.CharField(max_length=80, blank=True, default='')
+    change_detected_at = models.DateTimeField(null=True, blank=True)
     pending_manual_import = models.BooleanField(default=False)
     last_error = models.TextField(blank=True, default='')
     created_at = models.DateTimeField()

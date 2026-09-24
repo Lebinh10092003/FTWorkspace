@@ -133,7 +133,7 @@ def _letterhead(document, data):
     _cell_text(table.cell(0, 1), "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
     _para(table.cell(0, 1), "Độc lập - Tự do - Hạnh phúc", bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0)
 
-    number = str(data.get("documentNumber") or "").strip()
+    number = _document_number(data)
     _cell_text(
         table.cell(1, 0),
         f"Số: {number}" if number else "Số: ……/PĐXKP-FT",
@@ -348,7 +348,13 @@ def _comparison_table(document, data):
 
 
 def _filename(data):
-    number = str(data.get("documentNumber") or "").strip().replace("/", "-")
+    number = _document_number(data).replace("/", "-")
     stamp = _parse_date(data.get("issuedOn")) or date.today()
     tail = number or stamp.strftime("%Y%m%d")
     return f"Phieu-de-xuat-kinh-phi-{tail}.docx"
+
+
+def _document_number(data):
+    prefix = str(data.get("documentNumber") or "").split("/", 1)[0]
+    digits = "".join(char for char in prefix if char.isascii() and char.isdigit())
+    return f"{digits}/PĐXKP-FT" if digits else ""

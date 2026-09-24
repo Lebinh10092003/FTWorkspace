@@ -10,9 +10,9 @@ def olympiad_content(subject):
     name = ('Fermat International Mathematics Olympiad' if is_math
             else 'Fermat International English Olympiad')
     # Mùa 2026–2027 theo các phiên thi FIMO/FIEO trong mô-đun Khảo thí.
-    dates = (['2026-09-20', '2026-12-06', '2027-02-28', '2027-04-25', '2027-07-11']
+    dates = (['2026-10-11', '2026-12-06', '2027-02-28', '2027-04-25', '2027-07-11']
              if is_math else
-             ['2026-09-27', '2026-12-13', '2027-03-07', '2027-05-02', '2027-07-18'])
+             ['2026-10-18', '2026-12-13', '2027-03-07', '2027-05-02', '2027-07-18'])
     return {
         'subject': subject,
         'badge': 'KỲ THI OLYMPIC TOÀN QUỐC · LỚP 1–9',
@@ -56,5 +56,42 @@ def olympiad_content(subject):
             'zaloUrl': 'https://zalo.me/fermattech',
             'facebookFimoUrl': '', 'facebookFieoUrl': '',
         },
+        'customSections': [],
+    }
+
+
+def siaio_content():
+    """Separate SCO AI page, with configurable subjects and one compact paper picker."""
+    return {
+        'subject': 'SIAIO',
+        'badge': 'SCO · OLYMPIAD TRÍ TUỆ NHÂN TẠO 2026–2027',
+        'headline': 'SIAIO · Khám phá trí tuệ nhân tạo',
+        'intro': 'Một hành trình học thuật để học sinh thể hiện tư duy, khả năng sáng tạo và ứng dụng AI.',
+        'logoUrl': '/logo.png',
+        'buttons': [
+            {'label': 'Đăng ký dự thi', 'url': '#dang-ky'},
+            {'label': 'Xem đề mẫu', 'url': '#de-mau'},
+        ],
+        'highlights': [
+            {'value': '04/10', 'label': 'Vòng loại Quốc gia'},
+            {'value': '08/11', 'label': 'Chung kết Quốc gia'},
+            {'value': '27/12', 'label': 'Chung kết Quốc tế'},
+        ],
+        'overview': [
+            {'title': 'Tư duy AI cho thế hệ mới', 'body': 'Khám phá các môn thi và nội dung phù hợp với từng khối lớp.', 'url': ''},
+        ],
+        'paperSubjects': ['Trí tuệ nhân tạo'],
+        'papers': {'Trí tuệ nhân tạo': {str(i): '' for i in range(1, 13)}},
+        'timeline': [
+            {'title': 'Vòng loại Quốc gia', 'date': '2026-10-04', 'mode': 'Theo thông báo của Ban tổ chức'},
+            {'title': 'Vòng Chung kết Quốc gia', 'date': '2026-11-08', 'mode': 'Theo thông báo của Ban tổ chức'},
+            {'title': 'Vòng Chung kết Quốc tế', 'date': '2026-12-27', 'mode': 'Theo thông báo của Ban tổ chức'},
+        ],
+        'awards': [],
+        'registration': {'schoolUrl': '', 'excelUrl': '', 'individualUrl': '', 'handbookUrl': '',
+                         'bankName': '', 'accountName': '', 'accountNumber': '', 'transferNote': ''},
+        'contact': {'email': '', 'phone': '0969 627 162',
+                    'address': 'Eurowindow Multi Complex, 27 Trần Duy Hưng, Hà Nội',
+                    'zaloUrl': 'https://zalo.me/fermattech', 'facebookFimoUrl': '', 'facebookFieoUrl': ''},
         'customSections': [],
     }

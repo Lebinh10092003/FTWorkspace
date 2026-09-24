@@ -6,7 +6,7 @@ import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
 import FundingProposalPreview from './FundingProposalPreview';
 import {
   ATTACHMENT_OPTIONS, DECISION_OPTIONS, FundingProposal, ProposalItem,
-  blankProposal, lineAmount, money, newItem, toPayload, totalsOf,
+  blankProposal, lineAmount, money, newItem, proposalNumberDigits, toPayload, totalsOf,
 } from './fundingProposal';
 
 type Props = {
@@ -121,7 +121,13 @@ export default function FundingProposalBuilder({
                 <h2 className="text-sm font-extrabold uppercase tracking-wide text-blue-700">1. Thông tin đề xuất</h2>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <label className="block"><span className={LABEL}>Số phiếu</span>
-                    <input value={value.documentNumber} onChange={e => set('documentNumber', e.target.value)} placeholder="46/PĐXKP-FT" className={FIELD} />
+                    <span className="relative block">
+                      <input value={proposalNumberDigits(value.documentNumber)}
+                        onChange={e => set('documentNumber', proposalNumberDigits(e.target.value))}
+                        type="text" inputMode="numeric" pattern="[0-9]*" placeholder="46"
+                        aria-label="Số phiếu" className={`${FIELD} pr-28`} />
+                      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-semibold text-slate-500">/PĐXKP-FT</span>
+                    </span>
                   </label>
                   <label className="block"><span className={LABEL}>Ngày lập</span>
                     <input type="date" value={value.issuedOn} onChange={e => set('issuedOn', e.target.value)} className={FIELD} />

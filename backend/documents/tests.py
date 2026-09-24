@@ -242,6 +242,13 @@ class FundingProposalDocxTests(TestCase):
         with zipfile.ZipFile(BytesIO(content)) as archive:
             self.assertIn("word/document.xml", archive.namelist())
 
+    def test_numeric_document_number_gets_the_fixed_suffix(self):
+        payload = self.payload()
+        payload["documentNumber"] = "46"
+        filename, content = build_funding_proposal(payload)
+        self.assertIn("46-PĐXKP-FT", filename)
+        self.assertIn("Số: 46/PĐXKP-FT", self.document_text(content))
+
     def test_the_form_keeps_its_official_headings(self):
         _, content = build_funding_proposal(self.payload())
         xml = self.document_text(content)

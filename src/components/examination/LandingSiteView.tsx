@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type CSSProperties, type FormEvent } from 'react';
 import { ArrowDownToLine, ArrowRight, ArrowUp, BookOpen, CalendarDays, CheckCircle2, ExternalLink, Facebook, FileText, Mail, MapPin, Menu, Phone, Send, Trophy, X } from 'lucide-react';
 import './LandingSite.css';
 
 export type LinkButton = { label: string; url: string };
 export type LandingContent = {
   badge?: string; headline?: string; intro?: string; logoUrl?: string; subject?: string;
+  paperSubjects?: string[];
+  style?: { heroTitleSize?: number; introSize?: number; buttonSize?: number; buttonPadding?: number; sectionTitleSize?: number; accentColor?: string };
   buttons?: LinkButton[];
   highlights?: Array<{ value: string; label: string }>;
   overview?: Array<{ title: string; body: string; url: string }>;
@@ -39,17 +41,32 @@ function Action({ url, children, className = '', download, newTab = false }: { u
 export default function LandingSiteView({ site, preview = false }: { site: LandingSite; preview?: boolean }) {
   const c = site.content || {};
   const subject = c.subject || (site.slug === 'fieo' ? 'FIEO' : site.slug === 'fimo' ? 'FIMO' : '');
+  const isSiaio = subject === 'SIAIO' || site.layout === 'siaio';
   const otherSubject = subject === 'FIMO' ? 'FIEO' : subject === 'FIEO' ? 'FIMO' : '';
   const aboutEntries = (c.overview || []).filter(item => !otherSubject || !item.url?.toLowerCase().endsWith(`/cuoc-thi/${otherSubject.toLowerCase()}`));
   const crossEntry = (c.overview || []).find(item => otherSubject && item.url?.toLowerCase().endsWith(`/cuoc-thi/${otherSubject.toLowerCase()}`));
-  const subjectName = subject === 'FIMO' ? 'Toán học' : subject === 'FIEO' ? 'Tiếng Anh' : 'Cuộc thi';
+  const subjectName = subject === 'FIMO' ? 'Toán học' : subject === 'FIEO' ? 'Tiếng Anh' : isSiaio ? 'Trí tuệ nhân tạo' : 'Cuộc thi';
   const subjectFeatures = subject === 'FIMO'
     ? ['Đề thi song ngữ', 'Tư duy logic', 'Giải quyết vấn đề']
     : subject === 'FIEO'
       ? ['100% tiếng Anh', 'Định hướng CEFR', 'Năng lực ngôn ngữ']
-      : [];
+      : isSiaio ? ['Khám phá AI', 'Thử thách sáng tạo', 'Nhiều môn thi'] : [];
   const [menuOpen, setMenuOpen] = useState(false);
   const [facebookOpen, setFacebookOpen] = useState(false);
+  const paperSubjects = (c.paperSubjects?.length ? c.paperSubjects : Object.keys(c.papers || {})).filter(Boolean);
+  const [paperSubject, setPaperSubject] = useState('');
+  const [paperGrade, setPaperGrade] = useState(1);
+  const selectedPaperSubject = paperSubjects.includes(paperSubject) ? paperSubject : paperSubjects[0] || '';
+  const selectedPaperUrl = c.papers?.[selectedPaperSubject]?.[String(paperGrade)] || '';
+  const numericStyle = (value: number | undefined, fallback: number, min: number, max: number) => `${Math.max(min, Math.min(max, Number(value) || fallback))}px`;
+  const pageStyle = {
+    '--lp-hero-title-size': numericStyle(c.style?.heroTitleSize, 60, 30, 90),
+    '--lp-intro-size': numericStyle(c.style?.introSize, 18, 14, 30),
+    '--lp-button-size': numericStyle(c.style?.buttonSize, 14, 12, 28),
+    '--lp-button-padding': numericStyle(c.style?.buttonPadding, 14, 8, 28),
+    '--lp-section-title-size': numericStyle(c.style?.sectionTitleSize, 36, 24, 60),
+    '--lp-accent': /^#[0-9a-fA-F]{6}$/.test(c.style?.accentColor || '') ? c.style!.accentColor : isSiaio ? '#7c3aed' : '#0284c7',
+  } as CSSProperties;
   const [form, setForm] = useState({ fullName: '', phone: '', email: '', schoolCity: '', message: '', website: '' });
   const [formState, setFormState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [formError, setFormError] = useState('');
@@ -79,7 +96,7 @@ export default function LandingSiteView({ site, preview = false }: { site: Landi
   }
 
   const callNumber = (contact.phone || '0969 627 162').replace(/\D/g, '');
-  return <div className="landing-site relative min-h-screen bg-[#DCEBFA] font-display text-[#0B3B60] [scroll-behavior:smooth]">
+  return <div style={pageStyle} className={`landing-site ${isSiaio ? 'landing-site--siaio' : ''} relative min-h-screen bg-[#DCEBFA] font-display text-[#0B3B60] [scroll-behavior:smooth]`}>
     <header className="lp-header sticky top-0 z-40 border-b border-[#E2E8F0] bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-5 py-3 lg:px-8">
         <a href="#dau-trang" className="flex min-w-0 items-center gap-3">
@@ -104,7 +121,7 @@ export default function LandingSiteView({ site, preview = false }: { site: Landi
             <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-extrabold uppercase tracking-[.16em] text-[#0369A1]">{c.badge || 'Olympiad · FermatTech'}</span>
             <h1 className="mt-6 max-w-3xl text-4xl font-black leading-[1.13] tracking-tight text-[#0B3B60] sm:text-5xl lg:text-6xl">{c.headline || site.title}</h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">{c.intro}</p>
-            <div className="mt-8 flex flex-wrap gap-3">{heroButtons.map((button, index) => <Action key={index} url={button.url} className={index === 0 ? 'inline-flex items-center gap-2 rounded-xl bg-[#0284C7] px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-sky-100 hover:bg-[#0369A1]' : 'inline-flex items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-6 py-3.5 text-sm font-bold text-[#0B3B60] hover:bg-sky-50'}>{button.label}<ArrowRight className="h-4 w-4" /></Action>)}</div>
+            <div className="mt-8 flex flex-wrap gap-3">{heroButtons.map((button, index) => <Action key={index} url={button.url} className={`lp-cta ${index === 0 ? 'inline-flex items-center gap-2 rounded-xl bg-[#0284C7] px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-sky-100 hover:bg-[#0369A1]' : 'inline-flex items-center gap-2 rounded-xl border border-[#CBD5E1] bg-white px-6 py-3.5 text-sm font-bold text-[#0B3B60] hover:bg-sky-50'}`}>{button.label}<ArrowRight className="h-4 w-4" /></Action>)}</div>
             <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-3">{(c.highlights || []).map((item, i) => <div key={i} className="lp-stat rounded-2xl border border-[#E2E8F0] bg-white/80 p-4"><strong className="block text-xl font-extrabold text-[#0284C7]">{item.value}</strong><span className="mt-1 block text-xs font-medium text-slate-500">{item.label}</span></div>)}</div>
           </div>
           <div className="lp-hero-art relative rounded-[2rem] border border-sky-100 bg-gradient-to-br from-[#0B3B60] to-[#0369A1] p-8 text-white shadow-2xl shadow-sky-100 sm:p-12">
@@ -132,11 +149,11 @@ export default function LandingSiteView({ site, preview = false }: { site: Landi
       </div></section>
 
       {subject && <section id="de-mau" className="lp-papers scroll-mt-24 bg-white py-20"><div className="mx-auto max-w-7xl px-5 lg:px-8">
-        <Heading eyebrow={`Tài liệu ${subject}`} title={`Đề mẫu ${subjectName} · Lớp 1 đến lớp 9`} description="Chọn khối lớp để xem trực tuyến hoặc tải đề PDF." />
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 9 }, (_, i) => i + 1).map(grade => { const url = c.papers?.[subject]?.[String(grade)] || ''; return <article key={`${subject}-${grade}`} className="lp-paper-card rounded-2xl border border-[#E2E8F0] p-5"><div className="flex items-center gap-3"><span className="rounded-xl bg-sky-50 p-3 text-[#0284C7]"><FileText className="h-5 w-5" /></span><div><h3 className="font-extrabold">Lớp {grade}</h3><p className="text-xs text-slate-500">Đề mẫu {subject} · PDF</p></div></div><div className="mt-5 flex flex-wrap gap-2"><Action url={url} newTab className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 px-3 py-2 text-xs font-bold text-[#0369A1] hover:bg-sky-50"><ExternalLink className="h-3.5 w-3.5" />Đọc trực tuyến</Action><Action url={url} download={pdfName(subject, grade)} className="inline-flex items-center gap-1.5 rounded-lg bg-sky-50 px-3 py-2 text-xs font-bold text-[#0369A1] hover:bg-sky-100"><ArrowDownToLine className="h-3.5 w-3.5" />Tải về (.PDF)</Action></div>{!url && <p className="mt-3 text-xs text-slate-400">Đề mẫu đang được cập nhật</p>}</article>; })}</div>
+        <Heading eyebrow={`Tài liệu ${subject}`} title={isSiaio ? 'Đề mẫu theo môn và khối lớp' : `Đề mẫu ${subjectName} · Lớp 1 đến lớp 9`} description={isSiaio ? 'Chọn môn thi và lớp để xem đúng đề mẫu, ngay trong một khu vực.' : 'Chọn khối lớp để xem trực tuyến hoặc tải đề PDF.'} />
+        {isSiaio ? <div className="lp-paper-picker mx-auto mt-10 max-w-3xl rounded-3xl border p-6 shadow-xl sm:p-8"><div className="grid gap-4 sm:grid-cols-2"><label className="grid gap-2 text-sm font-bold">Môn thi<select aria-label="Chọn môn thi" value={selectedPaperSubject} onChange={event => setPaperSubject(event.target.value)} className="rounded-xl border border-violet-200 bg-white px-4 py-3 text-slate-900">{paperSubjects.map(item => <option key={item} value={item}>{item}</option>)}</select></label><label className="grid gap-2 text-sm font-bold">Khối lớp<select aria-label="Chọn lớp xem đề mẫu" value={paperGrade} onChange={event => setPaperGrade(Number(event.target.value))} className="rounded-xl border border-violet-200 bg-white px-4 py-3 text-slate-900">{Array.from({ length: 12 }, (_, i) => i + 1).map(grade => <option key={grade} value={grade}>Lớp {grade}</option>)}</select></label></div><div className="mt-6 flex flex-wrap items-center gap-4 rounded-2xl border border-white/15 bg-white/10 p-5"><FileText className="h-8 w-8 text-violet-200" /><div className="min-w-0 flex-1"><h3 className="font-extrabold">{selectedPaperSubject || 'Chọn môn thi'} · Lớp {paperGrade}</h3><p className="text-sm text-violet-100">{selectedPaperUrl ? 'Đề mẫu PDF' : 'Đề mẫu đang được cập nhật'}</p></div><Action url={selectedPaperUrl} newTab className="lp-cta rounded-xl bg-white px-5 py-3 font-bold text-violet-900">Xem đề mẫu</Action></div></div> : <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 9 }, (_, i) => i + 1).map(grade => { const url = c.papers?.[subject]?.[String(grade)] || ''; return <article key={`${subject}-${grade}`} className="lp-paper-card rounded-2xl border border-[#E2E8F0] p-5"><div className="flex items-center gap-3"><span className="rounded-xl bg-sky-50 p-3 text-[#0284C7]"><FileText className="h-5 w-5" /></span><div><h3 className="font-extrabold">Lớp {grade}</h3><p className="text-xs text-slate-500">Đề mẫu {subject} · PDF</p></div></div><div className="mt-5 flex flex-wrap gap-2"><Action url={url} newTab className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 px-3 py-2 text-xs font-bold text-[#0369A1] hover:bg-sky-50"><ExternalLink className="h-3.5 w-3.5" />Đọc trực tuyến</Action><Action url={url} download={pdfName(subject, grade)} className="inline-flex items-center gap-1.5 rounded-lg bg-sky-50 px-3 py-2 text-xs font-bold text-[#0369A1] hover:bg-sky-100"><ArrowDownToLine className="h-3.5 w-3.5" />Tải về (.PDF)</Action></div>{!url && <p className="mt-3 text-xs text-slate-400">Đề mẫu đang được cập nhật</p>}</article>; })}</div>}
       </div></section>}
 
-      <section id="lo-trinh" className="lp-timeline scroll-mt-24 py-20"><div className="mx-auto max-w-7xl px-5 lg:px-8"><Heading eyebrow={`Lộ trình ${subject}`} title="Các mốc của mùa thi" description="Lịch thi theo thông tin đang được Ban tổ chức cập nhật." /><div className="mt-10 grid gap-4 md:grid-cols-5">{(c.timeline || []).map((item, i) => <div key={i} className="lp-timeline-card rounded-2xl border border-[#E2E8F0] bg-white p-5"><span className="inline-grid h-9 w-9 place-items-center rounded-full bg-[#0B3B60] text-xs font-bold text-white">{String(i + 1).padStart(2, '0')}</span><h3 className="mt-5 font-extrabold">{item.title}</h3><p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#0284C7]"><CalendarDays className="h-4 w-4" />{displayDate(item.date) || 'Đang cập nhật'}</p><p className="mt-2 text-xs text-slate-500">{item.mode}</p></div>)}</div></div></section>
+      <section id="lo-trinh" className="lp-timeline scroll-mt-24 py-20"><div className="mx-auto max-w-7xl px-5 lg:px-8"><Heading eyebrow={`Lộ trình ${subject}`} title="Các mốc của mùa thi" description="Lịch thi theo thông tin đang được Ban tổ chức cập nhật." /><div className="mt-10 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">{(c.timeline || []).map((item, i) => <div key={i} className="lp-timeline-card rounded-2xl border border-[#E2E8F0] bg-white p-5"><span className="inline-grid h-9 w-9 place-items-center rounded-full bg-[#0B3B60] text-xs font-bold text-white">{String(i + 1).padStart(2, '0')}</span><h3 className="mt-5 font-extrabold">{item.title}</h3><p className="mt-3 flex items-center gap-2 text-sm font-bold text-[#0284C7]"><CalendarDays className="h-4 w-4" />{displayDate(item.date) || 'Đang cập nhật'}</p><p className="mt-2 text-xs text-slate-500">{item.mode}</p></div>)}</div></div></section>
 
       <section id="giai-thuong" className="lp-awards scroll-mt-24 bg-white py-20"><div className="mx-auto max-w-7xl px-5 lg:px-8"><Heading eyebrow={`Vinh danh ${subject}`} title="Cơ cấu giải thưởng" description="Tỷ lệ giải thưởng sẽ được công bố theo thể lệ chính thức." /><div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{(c.awards || []).map((item, i) => <div key={i} className="lp-award-card rounded-2xl border border-[#E2E8F0] p-6 text-center"><Trophy className={`mx-auto h-9 w-9 ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-orange-600' : 'text-sky-500'}`} /><h3 className="mt-4 font-extrabold">{item.title}</h3><p className="mt-2 text-3xl font-black text-[#0284C7]">{item.percent || '—'}</p><p className="mt-2 text-xs text-slate-500">{item.description || 'Tỷ lệ đang cập nhật'}</p></div>)}</div></div></section>
 

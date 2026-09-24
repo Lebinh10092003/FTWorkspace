@@ -1199,6 +1199,38 @@ def remote_sheet_fingerprint(sheet, google_access_token=None):
                 f'Google Sheets API: {api_error}; ??c c?ng khai: {public_error}'
             ) from public_error
 
+
+def tab_content_fingerprint(sheet, google_access_token=None):
+    """Fingerprint every populated cell of the configured tab, including headers."""
+    spreadsheet_id = extract_spreadsheet_id(sheet.url)
+    if not spreadsheet_id:
+        raise ValueError('Liên kết Google Sheets không hợp lệ.')
+    try:
+        return 'csv:' + public_sheet_fingerprint(sheet.url, sheet.sheet_tab)
+    except Exception as exc:
+        public_failure = exc
+    config = SystemConfig.objects.filter(key='main').first()
+    config_data = config.data if config else {}
+    saved_token = config.last_google_access_token if config else None
+    try:
+        service = build_sheets_service(google_access_token or saved_token, config_data or {})
+        metadata = service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id, fields='sheets(properties(title))',
+        ).execute()
+        names = [item.get('properties', {}).get('title') for item in metadata.get('sheets', [])]
+        tab_name = sheet.sheet_tab or next((name for name in names if name), '')
+        if tab_name not in names:
+            raise ValueError(f'Không tìm thấy tab {tab_name}.')
+        values = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id, range=f'{_sheet_range_title(tab_name)}!A1:ZZ',
+        ).execute().get('values', [])
+        return 'api:' + sheet_values_fingerprint(values)
+    except Exception as api_error:
+        raise ValueError(
+            f'Không đọc được tab {sheet.sheet_tab or "đầu tiên"}: '
+            f'CSV công khai: {public_failure}; Google API: {api_error}'
+        ) from api_error
+
 def export_session_to_google_sheet(sheet, google_access_token=None, export_mode='merge', append_candidate_codes=None):
     session = ExamSession.objects.filter(id=sheet.session_id).first()
     if not session:

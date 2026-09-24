@@ -1,0 +1,10 @@
+[Unit]
+Description=Check examination Google Sheet tabs every 15 minutes
+
+[Timer]
+OnCalendar=*-*-* *:00,15,30,45:00
+Persistent=true
+Unit=workspace-examination-sheet-scan.service
+
+[Install]
+WantedBy=timers.target

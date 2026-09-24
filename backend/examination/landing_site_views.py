@@ -14,7 +14,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.permissions import IsAuthenticated
-from .landing_templates import olympiad_content
+from .landing_templates import olympiad_content, siaio_content
 from .models import CompetitionLandingPage, LandingLead, LandingSite, LandingTemplate
 
 
@@ -134,7 +134,8 @@ def landing_sites(request):
         return Response({'error': 'Mẫu trang không tồn tại.'}, status=400)
     try:
         subject = data.get('subject')
-        starter = olympiad_content(subject) if template.key == 'olympiad' and subject in ('FIMO', 'FIEO') else template.content
+        starter = (olympiad_content(subject) if template.key == 'olympiad' and subject in ('FIMO', 'FIEO')
+                   else siaio_content() if template.key == 'siaio' else template.content)
         content = _clean_content(data.get('content') if 'content' in data else starter)
     except ValueError as error:
         return Response({'error': str(error)}, status=400)

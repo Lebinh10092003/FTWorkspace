@@ -107,6 +107,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         automationStartDate?: string;
         automationEndDate?: string;
         pendingManualImport?: boolean;
+        changeDetectedAt?: string | null;
       }>
     >(() => bootstrapCache?.sheetLinks || []),
     [sheetAction, setSheetAction] = useState<{
@@ -304,6 +305,20 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     } catch {}
     window.location.reload();
   };
+  useEffect(() => {
+    if (isGuest || !idToken) return;
+    const refreshAlerts = async () => {
+      try {
+        const response = await fetch('/api/examination/sheets', { headers: { Authorization: `Bearer ${idToken}` } });
+        if (response.ok) {
+          const rows = await response.json();
+          if (Array.isArray(rows)) setSheetLinks(rows);
+        }
+      } catch { /* Next poll will retry. */ }
+    };
+    const timer = window.setInterval(refreshAlerts, 60_000);
+    return () => window.clearInterval(timer);
+  }, [idToken, isGuest]);
   useEffect(() => {
     let active = true;
     Promise.all([api("/bootstrap"), isGuest ? Promise.resolve([]) : api("/sheets")])
@@ -2040,6 +2055,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     "teacher-detail": teacherDetail,
   };
   const examinationNavItems = filterModuleNav(EXAMINATION_NAV, { edit: canEdit, member: !isGuest });
+  const pendingSheetAlerts = sheetLinks.filter(item => item.pendingManualImport);
   const examinationNavActiveId = EXAMINATION_PAGE_TO_NAV[page] || page;
   return (
     <div className="ft-module-shell flex min-h-screen flex-col font-sans text-[#121c2a]">
@@ -2061,6 +2077,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-8">
           {bootstrapError && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{bootstrapError}</div>}
+          {pendingSheetAlerts.length > 0 && <div role="alert" className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><strong>{pendingSheetAlerts.length} tab khảo thí cần cập nhật dữ liệu vào web</strong><div className="mt-2 flex flex-wrap gap-2">{pendingSheetAlerts.map(item => <button key={item.id} type="button" onClick={() => { const session = sessions.find(row => row.id === item.sessionId); if (session) setSelected(session); go('session-detail', item.sessionId); }} className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-semibold hover:bg-amber-100">{item.sheetTab || item.name || item.sessionId}</button>)}</div></div>}
           {sessions === initialSessions && !bootstrapError ? (
             <div className="grid min-h-[60vh] place-items-center text-sm font-semibold text-slate-500">
               <span className="inline-flex items-center gap-3">

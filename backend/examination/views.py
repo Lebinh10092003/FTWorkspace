@@ -886,6 +886,7 @@ def serialize_examination_sheet(sheet):
         'lastImportAt': sheet.last_import_at.isoformat() if sheet.last_import_at else None,
         'lastExportAt': sheet.last_export_at.isoformat() if sheet.last_export_at else None,
         'pendingManualImport': sheet.pending_manual_import,
+        'changeDetectedAt': sheet.change_detected_at.isoformat() if sheet.change_detected_at else None,
         'lastError': sheet.last_error,
         'createdAt': sheet.created_at.isoformat(),
         'updatedAt': sheet.updated_at.isoformat(),
@@ -2340,6 +2341,10 @@ def sheet_detail(request, pk):
                 status=status.HTTP_409_CONFLICT,
             )
             
+        if (sheet.url, sheet.sheet_tab) != (before['url'], before['sheetTab']):
+            sheet.last_observed_fingerprint = ''
+            sheet.pending_manual_import = False
+            sheet.change_detected_at = None
         sheet.updated_at = timezone.now()
         sheet.save()
         after = {'name': sheet.name, 'url': sheet.url, 'sessionId': sheet.session_id, 'sheetTab': sheet.sheet_tab, 'stage': sheet.stage, 'automationEnabled': sheet.automation_enabled, 'automationStartDate': str(sheet.automation_start_date or ''), 'automationEndDate': str(sheet.automation_end_date or '')}
@@ -2433,9 +2438,11 @@ def sheet_export(request, pk):
     sheet.last_export_at = timezone.now()
     sheet.last_content_fingerprint = str(result.get('fingerprint') or '')
     sheet.pending_manual_import = False
+    sheet.last_observed_fingerprint = ''
+    sheet.change_detected_at = None
     sheet.last_error = ''
     sheet.updated_at = timezone.now()
-    sheet.save(update_fields=['status', 'last_export_at', 'last_content_fingerprint', 'pending_manual_import', 'last_error', 'updated_at'])
+    sheet.save(update_fields=['status', 'last_export_at', 'last_content_fingerprint', 'last_observed_fingerprint', 'change_detected_at', 'pending_manual_import', 'last_error', 'updated_at'])
     export_content = f'Xuất dữ liệu sang Google Sheet {sheet.name} thành công.'
     append_audit(f'session-{sheet.session_id}', export_content, request, system=True)
     append_competition_scope_audit(sheet.session_id, export_content, request, system=True)
@@ -2883,10 +2890,12 @@ def import_candidates(request):
             source_sheet.last_import_at = timezone.now()
             source_sheet.last_content_fingerprint = source_fingerprint or source_sheet.last_content_fingerprint
             source_sheet.pending_manual_import = False
+            source_sheet.last_observed_fingerprint = f'csv:{source_fingerprint}' if source_fingerprint else ''
+            source_sheet.change_detected_at = None
             source_sheet.status = 'success'
             source_sheet.last_error = ''
             source_sheet.updated_at = timezone.now()
-            source_sheet.save(update_fields=['last_import_at', 'last_content_fingerprint', 'pending_manual_import', 'status', 'last_error', 'updated_at'])
+            source_sheet.save(update_fields=['last_import_at', 'last_content_fingerprint', 'last_observed_fingerprint', 'change_detected_at', 'pending_manual_import', 'status', 'last_error', 'updated_at'])
         return Response({'created': created, 'updated': updated, 'linkedExisting': linked_existing, 'removedFromSession': removed_from_session, 'items': items_returned})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
