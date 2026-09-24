@@ -61,6 +61,26 @@ def _without_bank_details(value):
     return value
 
 
+def _slug_conflict(slug, exclude_site=None):
+    """Đường dẫn /cuoc-thi/<slug> do hai mô-đun cùng phục vụ, nên phải là duy nhất
+    trên cả hai. Trả về câu giải thích nơi đang giữ đường dẫn, để người biên tập
+    biết cần đổi ở đâu thay vì chỉ thấy một lỗi chung."""
+    if not slug:
+        return 'Đường dẫn không hợp lệ. Hãy nhập đường dẫn chỉ gồm chữ thường, số và dấu gạch ngang.'
+    taken = LandingSite.objects.filter(slug=slug)
+    if exclude_site is not None:
+        taken = taken.exclude(pk=exclude_site)
+    other = taken.first()
+    if other:
+        return f'Đường dẫn "{slug}" đang được landing page "{other.title}" sử dụng.'
+    competition_page = CompetitionLandingPage.objects.filter(slug=slug).select_related('competition').first()
+    if competition_page:
+        code = getattr(competition_page.competition, 'code', '') or slug
+        return (f'Đường dẫn "{slug}" đang thuộc trang giới thiệu gắn với Khảo thí của {code}. '
+                'Hãy đổi đường dẫn ở một trong hai trang.')
+    return ''
+
+
 def _payload(site):
     return {'id': site.id, 'slug': site.slug, 'title': site.title,
             'template': site.template, 'layout': site.layout, 'content': _without_bank_details(site.content),
@@ -136,8 +156,9 @@ def landing_sites(request):
     slug = slugify(str(data.get('slug') or title))[:120]
     if not title or not slug:
         return Response({'error': 'Cần nhập tên trang và đường dẫn.'}, status=400)
-    if LandingSite.objects.filter(slug=slug).exists() or CompetitionLandingPage.objects.filter(slug=slug).exists():
-        return Response({'error': 'Đường dẫn đã được sử dụng.'}, status=400)
+    conflict = _slug_conflict(slug)
+    if conflict:
+        return Response({'error': conflict}, status=400)
     template_key = str(data.get('template') or 'olympiad')
     template = LandingTemplate.objects.filter(key=template_key).first()
     if not template:
@@ -167,8 +188,9 @@ def landing_site_detail(request, site_id):
         return Response(status=204)
     data = request.data or {}
     slug = slugify(str(data.get('slug') or site.slug))[:120]
-    if not slug or LandingSite.objects.filter(slug=slug).exclude(pk=site.pk).exists() or CompetitionLandingPage.objects.filter(slug=slug).exists():
-        return Response({'error': 'Đường dẫn không hợp lệ hoặc đã được sử dụng.'}, status=400)
+    conflict = _slug_conflict(slug, exclude_site=site.pk)
+    if conflict:
+        return Response({'error': conflict}, status=400)
     try:
         content = _clean_content(data.get('content') or {})
     except ValueError as error:

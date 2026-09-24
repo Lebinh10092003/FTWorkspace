@@ -2,7 +2,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from authentication.models import UserProfile
-from .models import LandingLead, LandingSite, LandingTemplate
+from .models import Competition, CompetitionLandingPage, LandingLead, LandingSite, LandingTemplate
 
 
 class LandingSiteTests(TestCase):
@@ -38,6 +38,26 @@ class LandingSiteTests(TestCase):
         }, format='json')
         self.assertEqual(updated.status_code, 200, updated.data)
         self.assertEqual(APIClient().get('/api/public/landing-sites/hoi-thao-mau').status_code, 200)
+
+    def test_siaio_page_can_be_published_from_the_studio(self):
+        site = LandingSite.objects.get(slug='siaio')
+        response = self.client.put(f'/api/landing-sites/{site.pk}', {
+            'title': site.title, 'slug': 'siaio', 'published': True, 'content': site.content,
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data['published'])
+        self.assertEqual(APIClient().get('/api/public/landing-sites/siaio').status_code, 200)
+
+    def test_slug_held_by_a_competition_page_names_the_holder(self):
+        competition = Competition.objects.first()
+        self.assertIsNotNone(competition)
+        CompetitionLandingPage.objects.create(competition=competition, slug='trang-dung-chung')
+        site = LandingSite.objects.get(slug='siaio')
+        response = self.client.put(f'/api/landing-sites/{site.pk}', {
+            'title': site.title, 'slug': 'trang-dung-chung', 'published': True, 'content': site.content,
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Khảo thí', response.data['error'])
 
     def test_first_template_creates_independent_fimo_and_fieo_pages(self):
         templates = self.client.get('/api/landing-templates')
