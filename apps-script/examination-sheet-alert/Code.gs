@@ -64,3 +64,11 @@ function installExaminationTriggers() {
     ScriptApp.newTrigger('onExaminationChange').forSpreadsheet(spreadsheet).onChange().create();
   }
 }
+
+function testExaminationWebhook() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet || spreadsheet.getId() !== EXAMINATION_SPREADSHEET_ID) {
+    throw new Error('Dự án Apps Script chưa gắn với Sheet khảo thí 2026-2027.');
+  }
+  sendExaminationHint_(spreadsheet.getId(), 'SCO - SIAIO');
+}
