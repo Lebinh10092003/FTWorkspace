@@ -21,6 +21,7 @@ const categoryLabels: Record<string, string> = {
   'work-schedule': 'Lịch làm việc',
   'social-dashboard': 'Truyền thông',
   attendance: 'Công ca',
+  examination: 'Khảo thí',
   workspace: 'Workspace',
 };
 
