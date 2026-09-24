@@ -50,7 +50,10 @@ function sendExaminationHint_(spreadsheetId, tabName) {
 }
 
 function installExaminationTriggers() {
-  var spreadsheet = SpreadsheetApp.openById(EXAMINATION_SPREADSHEET_ID);
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet || spreadsheet.getId() !== EXAMINATION_SPREADSHEET_ID) {
+    throw new Error('Dự án Apps Script chưa gắn với Sheet khảo thí 2026-2027.');
+  }
   var existing = ScriptApp.getProjectTriggers().map(function(trigger) {
     return trigger.getHandlerFunction();
   });
