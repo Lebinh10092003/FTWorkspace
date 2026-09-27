@@ -128,6 +128,8 @@ export default function TrainingAssessmentPublic({ slug, idToken = "" }: { slug:
   const [currentIndex, setCurrentIndex] = useState(0);
   const [reviewedIds, setReviewedIds] = useState<string[]>([]);
   const [reviewMode, setReviewMode] = useState(false);
+  const [previousAttemptToken, setPreviousAttemptToken] = useState("");
+  const [unfinishedAttempt, setUnfinishedAttempt] = useState<any>(null);
   const [expandedImageUrl, setExpandedImageUrl] = useState("");
   const [mediaLoadError, setMediaLoadError] = useState(false);
   const [mediaUseFallback, setMediaUseFallback] = useState(false);
@@ -185,7 +187,12 @@ export default function TrainingAssessmentPublic({ slug, idToken = "" }: { slug:
         const response = await fetch(`/api/training-assessment-attempts/${savedToken}`);
         if (response.ok) {
           const body = await response.json();
-          restoreAttempt(body);
+          if (body.status === "in_progress") {
+            setAssessment(body.assessment);
+            setUnfinishedAttempt(body);
+          } else {
+            restoreAttempt(body);
+          }
           return;
         }
         localStorage.removeItem(storageKey);
@@ -234,7 +241,7 @@ export default function TrainingAssessmentPublic({ slug, idToken = "" }: { slug:
       setAttempt(body);
       if (submit) setAnswers(body.answers || answers);
       setSaveState(submit ? "Đã nộp bài" : "Đã lưu");
-      if (body.status !== "in_progress") localStorage.removeItem(storageKey);
+      if (body.status !== "in_progress") localStorage.setItem(storageKey, body.access_token);
     } catch (error: any) {
       setMessage(String(error?.message || error));
       setSaveState("Chưa lưu được");
@@ -314,18 +321,75 @@ export default function TrainingAssessmentPublic({ slug, idToken = "" }: { slug:
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/training-assessments/${slug}/start`, {
+      const begin = (replacePrevious = false) => fetch(`/api/training-assessments/${slug}/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(identity),
+        body: JSON.stringify({ ...identity, previous_attempt_token: previousAttemptToken, replace_previous: replacePrevious }),
       });
+      let response = await begin();
+      if (response.status === 409) {
+        const prior = await response.json();
+        if (prior.code === "unfinished_attempt") {
+          setUnfinishedAttempt(prior.attempt);
+          return;
+        }
+        if (prior.code === "retake_confirmation_required") {
+          const points = prior.manual_grading_required
+            ? `điểm phần chấm tự động ${Number(prior.previous_auto_score || 0).toLocaleString("vi-VN")}/${Number(prior.previous_auto_max_score || 0).toLocaleString("vi-VN")}; phần thực hành đang chờ chấm`
+            : `điểm ${Number(prior.previous_score || 0).toLocaleString("vi-VN")}/${Number(prior.previous_max_score || 0).toLocaleString("vi-VN")}`;
+          const confirmed = await appDialog.confirm(
+            `Người này đã có bài thi với ${points}. Nếu làm lại, câu trả lời và điểm cũ sẽ bị xóa. Anh/chị có xác nhận làm lại không?`,
+            { title: "Xác nhận làm lại bài", confirmText: "Xóa điểm cũ và làm lại", tone: "danger" },
+          );
+          if (!confirmed) return;
+          response = await begin(true);
+        } else {
+          throw new Error(prior.error || "Không thể bắt đầu lượt làm mới.");
+        }
+      }
       if (!response.ok) throw new Error(await apiError(response));
       const body = await response.json();
       localStorage.setItem(storageKey, body.access_token);
       restoreAttempt(body);
+      setPreviousAttemptToken("");
       if (body.resumed) {
         void appDialog.alert("Hệ thống đã tìm thấy bài đang làm theo đúng họ tên và thông tin liên hệ. Câu trả lời và thời gian còn lại đã được khôi phục.", { title: "Đã khôi phục bài làm", tone: "success" });
       }
+    } catch (error: any) {
+      setMessage(String(error?.message || error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startFreshFromUnfinished = async () => {
+    if (!unfinishedAttempt) return;
+    const confirmed = await appDialog.confirm(
+      "Lượt đang làm và mọi câu trả lời đã lưu sẽ bị xóa. Hệ thống sẽ tạo lượt mới với mã và thời gian làm bài mới. Anh/chị có xác nhận không?",
+      { title: "Tạo lượt làm mới", confirmText: "Xóa lượt cũ và tạo lượt mới", tone: "danger" },
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/training-assessments/${slug}/start`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          respondent_name: unfinishedAttempt.respondent_name,
+          email: unfinishedAttempt.email,
+          phone: unfinishedAttempt.phone,
+          organization: unfinishedAttempt.organization,
+          position: unfinishedAttempt.position,
+          participant_code: unfinishedAttempt.participant_code,
+          previous_attempt_token: unfinishedAttempt.access_token,
+          start_new: true,
+        }),
+      });
+      if (!response.ok) throw new Error(await apiError(response));
+      const body = await response.json();
+      localStorage.setItem(storageKey, body.access_token);
+      setUnfinishedAttempt(null);
+      restoreAttempt(body);
     } catch (error: any) {
       setMessage(String(error?.message || error));
     } finally {
@@ -497,6 +561,21 @@ export default function TrainingAssessmentPublic({ slug, idToken = "" }: { slug:
     );
   }
 
+  if (unfinishedAttempt && !attempt) {
+    return <div lang="vi" className="grid min-h-screen place-items-center bg-slate-50 p-5 text-slate-900">
+      <main className="w-full max-w-xl rounded-2xl border bg-white p-6 shadow-lg sm:p-8">
+        <h1 className="text-xl font-extrabold">Bạn có một lượt làm chưa hoàn thành</h1>
+        <p className="mt-3 leading-7 text-slate-700">{unfinishedAttempt.respondent_name} đã có bài đang làm. Anh/chị có thể tiếp tục với các câu trả lời và thời gian còn lại, hoặc tạo lượt mới. Nếu tạo lượt mới, lượt đang làm sẽ bị xóa hoàn toàn.</p>
+        <p className="mt-2 text-sm text-slate-600">Thời gian còn lại đến {new Date(unfinishedAttempt.expires_at).toLocaleString("vi-VN")}.</p>
+        {message && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{message}</p>}
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button disabled={busy} className="ft-primary" onClick={() => { localStorage.setItem(storageKey, unfinishedAttempt.access_token); restoreAttempt(unfinishedAttempt); setUnfinishedAttempt(null); }}>Tiếp tục lượt cũ</button>
+          <button disabled={busy} className="ft-btn ft-btn-secondary" onClick={() => void startFreshFromUnfinished()}>Làm lại bằng lượt mới</button>
+        </div>
+      </main>
+    </div>;
+  }
+
   if (!attempt) {
     const isOpen = assessment.availability === "open";
     const practicalQuestionCount = Number(assessment.practical_question_count || 0);
@@ -561,9 +640,22 @@ export default function TrainingAssessmentPublic({ slug, idToken = "" }: { slug:
   }
 
   if (attempt.status !== "in_progress") {
-    const percent = Number(attempt.max_score) > 0
-      ? Math.round((Number(attempt.score || 0) / Number(attempt.max_score)) * 100)
-      : 0;
+    const automaticScore = Number(attempt.auto_graded_points || 0);
+    const automaticMaximum = Number(attempt.auto_max_score || 0);
+    const hasManualQuestions = Number(attempt.max_score || 0) > automaticMaximum;
+    const startNextPerson = () => {
+      setPreviousAttemptToken(String(attempt.access_token || ""));
+      localStorage.removeItem(storageKey);
+      setAttempt(null);
+      setAnswers({});
+      setIdentity({ respondent_name: "", email: "", phone: "", organization: "", position: "", participant_code: "" });
+      setCurrentIndex(0);
+      setReviewedIds([]);
+      setReviewMode(false);
+      setMessage("");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      void load();
+    };
     return (
       <div className="grid min-h-screen place-items-center bg-slate-50 p-5">
         <section className="w-full max-w-2xl rounded-3xl border bg-white p-8 text-center shadow-xl">
@@ -571,11 +663,11 @@ export default function TrainingAssessmentPublic({ slug, idToken = "" }: { slug:
           <h1 className="mt-4 text-3xl font-extrabold text-slate-900">Đã ghi nhận bài làm</h1>
           <p className="mt-2 text-slate-600">{attempt.respondent_name} · {assessment.partner_name}</p>
           <div className="mx-auto mt-7 max-w-sm rounded-2xl bg-slate-900 p-6 text-white">
-            <p className="text-sm text-slate-300">Điểm tự động</p>
-            <p className="mt-1 text-4xl font-black">{Number(attempt.score || 0).toLocaleString("vi-VN")} / {Number(attempt.max_score || 0).toLocaleString("vi-VN")}</p>
-            <p className="mt-2 text-sm text-slate-300">{percent}%</p>
+            <p className="text-sm text-slate-300">Điểm phần chấm tự động</p>
+            <p className="mt-1 text-4xl font-black">{automaticMaximum > 0 ? `${automaticScore.toLocaleString("vi-VN")} / ${automaticMaximum.toLocaleString("vi-VN")}` : "Không có câu chấm tự động"}</p>
           </div>
-          {attempt.manual_grading_required && <p className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Bài có câu trả lời ngắn hoặc ảnh thực hành cần giảng viên chấm bổ sung.</p>}
+          {hasManualQuestions && <p className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Điểm thực hành và điểm tổng kết sẽ được cập nhật sau khi người chấm hoàn tất chấm bài.</p>}
+          <button type="button" onClick={startNextPerson} className="ft-primary mt-6 w-full justify-center">Thêm lượt làm bài mới</button>
         </section>
       </div>
     );
@@ -627,7 +719,22 @@ export default function TrainingAssessmentPublic({ slug, idToken = "" }: { slug:
           <div className="mt-8 flex items-center justify-between border-t pt-5"><button disabled={currentIndex === 0} onClick={() => setCurrentIndex((value) => Math.max(0, value - 1))} className="ft-btn ft-btn-secondary disabled:opacity-40"><ChevronLeft className="h-4 w-4" />Câu trước</button><button disabled={currentIndex === questions.length - 1} onClick={() => setCurrentIndex((value) => Math.min(questions.length - 1, value + 1))} className="ft-btn ft-btn-secondary disabled:opacity-40">Câu sau<ChevronRight className="h-4 w-4" /></button></div>
         </article>}</section>
       </main>
-      <footer className="fixed inset-x-0 bottom-0 z-20 border-t bg-white p-3 shadow-[0_-8px_24px_rgba(15,23,42,.08)] sm:p-4"><div className="mx-auto flex max-w-6xl items-center justify-between gap-3"><p className="hidden text-sm text-slate-600 sm:block">{isPreview ? "Đây là bản mô phỏng: câu trả lời sẽ không được lưu hoặc nộp." : unansweredRequired ? `Còn ${unansweredRequired} câu bắt buộc chưa trả lời — anh/chị vẫn có thể nộp bài.` : "Đã trả lời đủ các câu bắt buộc"}</p>{isPreview ? <button type="button" disabled className="ft-primary ml-auto cursor-not-allowed opacity-50"><Send className="h-4 w-4" />Chế độ demo — không nộp bài</button> : <button disabled={busy} onClick={async () => { const detail = unansweredRequired ? `Anh/chị còn ${unansweredRequired} câu bắt buộc chưa trả lời. Các câu này sẽ được nộp ở trạng thái để trống.` : "Anh/chị đã trả lời đủ các câu bắt buộc."; const confirmed = await appDialog.confirm(`${detail} Sau khi nộp, anh/chị không thể sửa câu trả lời.`, { title: "Xác nhận nộp bài", confirmText: "Nộp bài", tone: "warning" }); if (confirmed) void save(true); }} className="ft-primary ml-auto disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" />Nộp bài</button>}</div></footer>
+      <footer className="fixed inset-x-0 bottom-0 z-20 border-t bg-white p-3 shadow-[0_-8px_24px_rgba(15,23,42,.08)] sm:p-4">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+          <p className="hidden text-sm text-slate-600 sm:block">{isPreview ? "Đây là bản mô phỏng: câu trả lời sẽ không được lưu hoặc nộp." : unansweredRequired ? `Còn ${unansweredRequired} câu bắt buộc chưa trả lời.` : "Đã trả lời đủ các câu bắt buộc"}</p>
+          {isPreview ? (
+            <button type="button" disabled className="ft-primary ml-auto cursor-not-allowed opacity-50"><Send className="h-4 w-4" />Chế độ demo — không nộp bài</button>
+          ) : reviewMode ? (
+            <button type="button" disabled={busy} onClick={async () => {
+              const detail = unansweredRequired ? `Anh/chị còn ${unansweredRequired} câu bắt buộc chưa trả lời. Các câu này sẽ được nộp ở trạng thái để trống.` : "Anh/chị đã trả lời đủ các câu bắt buộc.";
+              const confirmed = await appDialog.confirm(`${detail} Sau khi nộp, anh/chị không thể sửa câu trả lời.`, { title: "Xác nhận nộp bài", confirmText: "Nộp bài", tone: "warning" });
+              if (confirmed) void save(true);
+            }} className="ft-primary ml-auto disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" />Xác nhận nộp bài</button>
+          ) : (
+            <button type="button" disabled={busy} onClick={() => setReviewMode(true)} className="ft-primary ml-auto disabled:cursor-not-allowed disabled:opacity-50">Rà soát để nộp bài<ChevronRight className="h-4 w-4" /></button>
+          )}
+        </div>
+      </footer>
       {expandedImageUrl && <div role="dialog" aria-modal="true" aria-label="Ảnh minh họa phóng to" className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/80 p-4" onClick={() => setExpandedImageUrl("")}><div className="relative max-h-full max-w-6xl" onClick={(event) => event.stopPropagation()}><img src={expandedImageUrl} alt="Ảnh minh họa phóng to" className="max-h-[90dvh] max-w-full rounded-2xl bg-white object-contain shadow-2xl" /><button type="button" onClick={() => setExpandedImageUrl("")} className="absolute right-2 top-2 rounded-lg bg-slate-900/80 px-3 py-2 text-sm font-bold text-white">Đóng</button></div></div>}
     </div>
   );

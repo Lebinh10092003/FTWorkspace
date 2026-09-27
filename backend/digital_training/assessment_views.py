@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import re
 import secrets
@@ -24,6 +25,7 @@ from .assessment_service import (
     append_variants,
     assessment_google_sheet_resources,
     automatic_question_score,
+    clear_attempt_from_google_sheet,
     download_assessment_file_from_drive,
     delete_assessment_file_from_drive,
     fetch_google_sheet,
@@ -50,6 +52,8 @@ from .serializers import (
     TrainingAssessmentSerializer,
 )
 from .views import _actor, _can_manage, _forbidden
+
+logger = logging.getLogger(__name__)
 
 
 def _assessment_error(message, code=status.HTTP_400_BAD_REQUEST):
@@ -233,7 +237,7 @@ def _availability(assessment):
     now = timezone.now()
     if assessment.status == "draft":
         return "draft", "Bài đánh giá chưa được phát hành."
-    if assessment.status == "closed":
+    if assessment.status != "published":
         return "closed", "Bài đánh giá đã đóng."
     if assessment.opens_at and now < assessment.opens_at:
         return "upcoming", "Bài đánh giá chưa đến thời gian mở."
@@ -302,7 +306,37 @@ def _attempt_payload(attempt, request):
     data["access_token"] = str(attempt.access_token)
     data["assessment"] = _public_assessment(attempt.assessment)
     data["questions"] = public_questions(attempt.assessment, attempt.variant)
+    data["auto_max_score"] = sum(
+        Decimal(str(question.get("points") or 0))
+        for question in attempt.assessment.questions
+        if str(question.get("variant") or "Đề 1") == attempt.variant
+        and automatic_question_score(question, "") is not None
+    )
     return data
+
+
+def _reopen_attempt_for_continuation(attempt, extra_minutes):
+    """Reopen the same attempt with its answers and uploads intact."""
+    now = timezone.now()
+    attempt.score = None
+    attempt.auto_graded_points = Decimal("0")
+    attempt.practical_score = None
+    attempt.grading = {}
+    attempt.grading_notes = []
+    attempt.manual_grading_required = False
+    attempt.status = "in_progress"
+    attempt.submitted_at = None
+    attempt.expires_at = now + timedelta(minutes=extra_minutes)
+    attempt.sync_status = "pending"
+    attempt.sync_error = ""
+    attempt.synced_at = None
+    attempt.purge_after = None
+    attempt.save(update_fields=[
+        "score", "auto_graded_points", "practical_score", "grading", "grading_notes",
+        "manual_grading_required", "status", "submitted_at", "expires_at",
+        "sync_status", "sync_error", "synced_at", "purge_after", "updated_at",
+    ])
+    return attempt
 
 
 def _normalized_submission_link(value):
@@ -841,6 +875,129 @@ def assessment_result_grade(request, pk, attempt_pk):
     return Response(_admin_attempt_payload(attempt, request))
 
 
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def assessment_result_answers(request, pk, attempt_pk):
+    if not _can_manage(request):
+        return _forbidden()
+    changes = request.data.get("answers")
+    if not isinstance(changes, dict) or not changes:
+        return _assessment_error("Hãy chọn ít nhất một câu trả lời để sửa.")
+    with transaction.atomic():
+        attempt = TrainingAssessmentAttempt.objects.select_for_update().select_related("assessment").filter(
+            pk=attempt_pk, assessment_id=pk,
+        ).first()
+        if not attempt:
+            return _assessment_error("Không tìm thấy lượt làm bài.", status.HTTP_404_NOT_FOUND)
+        questions = {
+            str(question.get("id")): question
+            for question in attempt.assessment.questions
+            if str(question.get("variant") or "Đề 1") == attempt.variant
+        }
+        answers = dict(attempt.answers or {})
+        grading = dict(attempt.grading or {})
+        notes = list(attempt.grading_notes or [])
+        changed_ids = []
+        for question_id, value in changes.items():
+            question_id = str(question_id)
+            question = questions.get(question_id)
+            if not question:
+                return _assessment_error("Có câu trả lời không thuộc mã đề của lượt làm này.")
+            question_type = question.get("type")
+            options = question.get("options") or []
+            option_keys = {str(option.get("key")) for option in options}
+            if question_type in {"practical_submission", "file_upload"}:
+                link = str((value.get("link") if isinstance(value, dict) else value) or "").strip()
+                if link and not re.match(r"^https?://\S+$", link, flags=re.IGNORECASE):
+                    return _assessment_error("Link bài thực hành phải bắt đầu bằng http:// hoặc https://.")
+                existing = answers.get(question_id)
+                cleaned = {**existing, "link": link} if isinstance(existing, dict) else {"link": link}
+            elif question_type == "single_choice":
+                cleaned = str(value or "").strip()
+                if cleaned and cleaned not in option_keys:
+                    return _assessment_error("Phương án trắc nghiệm không hợp lệ.")
+            elif question_type == "multiple_choice":
+                cleaned = [str(item).strip() for item in value] if isinstance(value, list) else []
+                if any(item not in option_keys for item in cleaned):
+                    return _assessment_error("Phương án trắc nghiệm không hợp lệ.")
+            elif question_type == "matching":
+                if not isinstance(value, dict):
+                    return _assessment_error("Đáp án ghép nối không hợp lệ.")
+                right_keys = {chr(65 + index) for index in range(len(options))}
+                cleaned = {str(key): str(item) for key, item in value.items() if item}
+                if any(key not in option_keys or item not in right_keys for key, item in cleaned.items()):
+                    return _assessment_error("Cặp ghép nối không hợp lệ.")
+            elif question_type == "ordering":
+                cleaned = str(value or "").strip()
+                if cleaned and (len(cleaned.split("-")) != len(option_keys) or set(cleaned.split("-")) != option_keys):
+                    return _assessment_error("Thứ tự đáp án không hợp lệ.")
+            elif question_type == "short_answer":
+                cleaned = str(value or "")[:5000]
+            else:
+                return _assessment_error("Loại câu hỏi này chưa hỗ trợ sửa câu trả lời.")
+            if answers.get(question_id) == cleaned:
+                continue
+            old_value = answers.get(question_id)
+            answers[question_id] = cleaned
+            grading.pop(question_id, None)
+            changed_ids.append(question_id)
+            notes.append({
+                "id": secrets.token_hex(8), "question_id": question_id,
+                "content": (f"{_actor(request)} đã sửa câu trả lời. "
+                            f"Trước: {str(old_value)[:300]}; sau: {str(cleaned)[:300]}"),
+                "grader": _actor(request), "created_at": timezone.now().isoformat(),
+            })
+        if not changed_ids:
+            return Response(_admin_attempt_payload(attempt, request))
+        attempt.answers = answers
+        attempt.grading = grading
+        attempt.grading_notes = notes[-200:]
+        update_fields = ["answers", "grading", "grading_notes", "updated_at"]
+        if attempt.status != "in_progress":
+            automatic_total = Decimal("0")
+            manual_total = Decimal("0")
+            total = Decimal("0")
+            manual_pending = False
+            for question_id, question in questions.items():
+                automatic = automatic_question_score(question, answers.get(question_id, ""))
+                if automatic is not None:
+                    automatic_total += automatic
+                if question_id in grading:
+                    awarded = Decimal(str(grading[question_id]))
+                elif automatic is None:
+                    awarded = Decimal("0")
+                    manual_pending = True
+                else:
+                    awarded = automatic
+                total += awarded
+                if automatic is None:
+                    manual_total += awarded
+            attempt.auto_graded_points = automatic_total
+            attempt.practical_score = manual_total
+            attempt.score = total
+            attempt.manual_grading_required = manual_pending
+            attempt.sync_status = "pending"
+            attempt.sync_error = ""
+            attempt.synced_at = None
+            update_fields.extend([
+                "auto_graded_points", "practical_score", "score", "manual_grading_required",
+                "sync_status", "sync_error", "synced_at",
+            ])
+        attempt.save(update_fields=update_fields)
+        notify_workspace(
+            event_key=f"assessment-attempt:{attempt.pk}:answers-edited:{secrets.token_hex(8)}",
+            title="Quản trị viên đã sửa bài làm",
+            message=(f"{_actor(request)} đã sửa {len(changed_ids)} câu trả lời trong lượt "
+                     f"{attempt.access_token} của {attempt.respondent_name}."),
+            severity="warning", category="digital-training", target_roles=["ADMIN"],
+            action_url=f"/training-assessments/{pk}",
+        )
+    if attempt.status != "in_progress":
+        _sync_completed_attempt(attempt)
+        refresh_and_backup_assessment(attempt.assessment)
+    return Response(_admin_attempt_payload(attempt, request))
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def assessment_result_upload_content(request, pk, attempt_pk, upload_pk):
@@ -983,19 +1140,101 @@ def assessment_result_storage(request, pk, attempt_pk):
         password_error = _require_confirmation_password(request)
         if password_error:
             return password_error
-        if attempt.sync_status != "synced":
-            return _assessment_error("Chỉ được xóa dữ liệu tạm sau khi đồng bộ Google Sheets thành công.")
-        try:
-            append_assessment_deletion_log(attempt, _actor(request), "Xóa thủ công", "Dữ liệu tạm đã đồng bộ thành công.")
-        except Exception as error:
-            return _assessment_error(f"Không thể ghi nhật ký xóa vào Google Sheets: {error}")
-        attempt.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        actor = _actor(request)
+        with transaction.atomic():
+            notify_workspace(
+                event_key=f"assessment-attempt:{attempt.pk}:deleted",
+                title="Đã xóa một lượt làm bài",
+                message=(f"{actor} đã xóa lượt {attempt.access_token} của {attempt.respondent_name} "
+                         f"trong bài “{attempt.assessment.title}” (trạng thái: {attempt.status}; "
+                         f"đồng bộ: {attempt.sync_status})."),
+                severity="warning", category="digital-training", target_roles=["ADMIN"],
+                action_url="/training-assessments",
+            )
+            attempt.delete()
+        sheet_log_warning = ""
+        if attempt.assessment.output_sheet_url:
+            try:
+                clear_attempt_from_google_sheet(attempt)
+            except Exception:
+                logger.exception("Could not clear deleted assessment attempt %s from Google Sheets", attempt_pk)
+                sheet_log_warning = "Đã xóa lượt làm khỏi hệ thống nhưng chưa xóa được điểm cũ trên Google Sheets. Cần kiểm tra và xóa thủ công tại bảng điểm."
+            try:
+                append_assessment_deletion_log(
+                    attempt, actor, "Xóa thủ công",
+                    f"Đã xóa khỏi hệ thống; trạng thái đồng bộ trước khi xóa: {attempt.sync_status}.",
+                )
+            except Exception:
+                logger.exception("Could not append deletion log for assessment attempt %s", attempt_pk)
+                sheet_log_warning += " Chưa ghi được nhật ký xóa lên Google Sheets."
+        return Response({"sheet_log_warning": sheet_log_warning})
     if attempt.status == "in_progress":
         return _assessment_error("Chỉ đồng bộ lượt làm đã nộp hoặc đã hết giờ.")
     if not attempt.assessment.output_sheet_url:
         return _assessment_error("Bài kiểm tra chưa có Google Sheet đầu ra để đồng bộ.")
     _sync_completed_attempt(attempt)
+    return Response(_admin_attempt_payload(attempt, request))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def assessment_result_reopen(request, pk, attempt_pk):
+    if not _can_manage(request):
+        return _forbidden()
+    password_error = _require_confirmation_password(request)
+    if password_error:
+        return password_error
+    try:
+        extra_minutes = int(request.data.get("extra_minutes"))
+    except (TypeError, ValueError):
+        return _assessment_error("Vui lòng nhập số phút làm thêm từ 1 đến 10.080 phút.")
+    if not 1 <= extra_minutes <= 10080:
+        return _assessment_error("Số phút làm thêm phải từ 1 đến 10.080 phút.")
+    with transaction.atomic():
+        attempt = TrainingAssessmentAttempt.objects.select_for_update().select_related("assessment").filter(
+            pk=attempt_pk, assessment_id=pk,
+        ).first()
+        if not attempt:
+            return _assessment_error("Không tìm thấy lượt làm bài.", status.HTTP_404_NOT_FOUND)
+        if attempt.status == "in_progress":
+            return _assessment_error("Lượt này vẫn đang làm; không cần mở lại.")
+        availability, _ = _availability(attempt.assessment)
+        if availability != "open":
+            return _assessment_error(
+                "Bài kiểm tra đang đóng hoặc ngoài lịch mở. Hãy mở lại bài và gia hạn lịch trước khi mở lại lượt làm."
+            )
+        if attempt.assessment.closes_at and timezone.now() + timedelta(minutes=extra_minutes) > attempt.assessment.closes_at:
+            return _assessment_error("Thời gian làm thêm vượt quá giờ đóng bài. Hãy gia hạn giờ đóng bài trước.")
+        other_active = attempt.assessment.attempts.filter(status="in_progress").exclude(pk=attempt.pk)
+        if attempt.participant_code:
+            other_active = other_active.filter(participant_code__iexact=attempt.participant_code)
+        else:
+            other_active = other_active.filter(email__iexact=attempt.email, phone=attempt.phone)
+        if other_active.exists():
+            return _assessment_error("Người học đã có lượt đang làm khác. Hãy xử lý lượt đó trước.")
+        previous_status = attempt.status
+        previous_sync_status = attempt.sync_status
+        now = timezone.now()
+        if attempt.assessment.output_sheet_url:
+            try:
+                clear_attempt_from_google_sheet(attempt)
+            except Exception:
+                logger.exception("Could not clear reopened assessment attempt %s from Google Sheets", attempt.pk)
+                return _assessment_error(
+                    "Chưa xóa được điểm cũ trên Google Sheets nên chưa thể mở tiếp lượt này. "
+                    "Vui lòng thử lại hoặc liên hệ nhân viên FermatTech để được hỗ trợ.",
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+        _reopen_attempt_for_continuation(attempt, extra_minutes)
+        notify_workspace(
+            event_key=f"assessment-attempt:{attempt.pk}:reopened:{int(now.timestamp())}",
+            title="Đã mở lại lượt làm bài",
+            message=(f"{_actor(request)} đã cho {attempt.respondent_name} làm tiếp lượt {attempt.access_token} "
+                     f"trong bài “{attempt.assessment.title}” (trước đó: {previous_status}; "
+                     f"đồng bộ: {previous_sync_status}; thêm {extra_minutes} phút)."),
+            severity="warning", category="digital-training", target_roles=["ADMIN"],
+            action_url=f"/training-assessments/{pk}",
+        )
     return Response(_admin_attempt_payload(attempt, request))
 
 
@@ -1063,13 +1302,11 @@ def public_assessment_start(request, slug):
         if assessment.participants:
             participant = next((item for item in assessment.participants if (
                 participant_code and str(item.get("code") or "").strip().casefold() == participant_code.casefold()
-            ) or (
-                email and str(item.get("email") or "").strip().casefold() == email.casefold()
-            ) or (
-                phone and str(item.get("phone") or "").strip() == phone
             )), None)
             if not participant:
-                return _assessment_error("Không tìm thấy người tham gia trong danh sách của đợt kiểm tra.")
+                return _assessment_error(
+                    "Không tìm thấy mã người tham gia trong danh sách. Vui lòng kiểm tra lại mã hoặc liên hệ nhân viên FermatTech để được hỗ trợ."
+                )
             participant_code = str(participant.get("code") or participant_code).strip()
             name = str(participant.get("name") or name).strip()
             email = str(participant.get("email") or email).strip().lower()
@@ -1113,33 +1350,49 @@ def public_assessment_start(request, slug):
             previous = assessment.attempts.filter(pk__in=previous_ids)
             if contact_attempts.exists() and not previous.exists():
                 return _assessment_error(
-                    "Họ tên hoặc thông tin liên hệ chưa khớp với lượt làm trước. Vui lòng nhập đúng thông tin đã dùng.",
+                    "Thông tin vừa nhập trùng email hoặc số điện thoại với lượt làm trước nhưng họ tên/thông tin khác nhau. "
+                    "Vui lòng kiểm tra lại; nếu cần sửa hoặc làm lại, hãy liên hệ nhân viên FermatTech để được hỗ trợ.",
                 )
+        replacing_attempt = None
         active_attempt = previous.filter(status="in_progress").order_by("-started_at").first()
         if active_attempt:
             active_attempt = _expire_if_needed(active_attempt)
         if active_attempt and active_attempt.status == "in_progress":
-            reset_performed = bool(request.data.get("reset"))
-            if reset_performed:
-                for upload in active_attempt.uploads.all():
-                    if upload.file:
-                        upload.file.delete(save=False)
-                active_attempt.uploads.all().delete()
-                active_attempt.answers = {}
-                active_attempt.progress = {}
-                active_attempt.expires_at = min(
-                    timezone.now() + timedelta(minutes=assessment.duration_minutes),
-                    assessment.closes_at or timezone.now() + timedelta(days=36500),
-                )
-                active_attempt.save(update_fields=["answers", "progress", "expires_at", "updated_at"])
-            payload = _attempt_payload(active_attempt, request)
-            payload["resumed"] = not reset_performed
-            payload["reset_performed"] = reset_performed
-            return Response(payload)
+            active_token = str(request.data.get("previous_attempt_token") or "").strip()
+            if request.data.get("start_new"):
+                if active_token != str(active_attempt.access_token):
+                    return _assessment_error("Không xác thực được lượt cũ. Vui lòng tải lại bài hoặc liên hệ nhân viên FermatTech.")
+                replacing_attempt = active_attempt
+            else:
+                return Response({
+                    "code": "unfinished_attempt",
+                    "error": "Bạn có một lượt làm chưa hoàn thành. Hãy chọn tiếp tục lượt cũ hoặc tạo lượt mới.",
+                    "attempt": _attempt_payload(active_attempt, request),
+                }, status=status.HTTP_409_CONFLICT)
         if not position:
             return _assessment_error("Vui lòng nhập đầy đủ: chức vụ.")
-        if contact_attempts.count() >= assessment.attempt_limit:
-            return _assessment_error(f"Bạn đã sử dụng đủ {assessment.attempt_limit} lượt làm bài.")
+        previous_token = str(request.data.get("previous_attempt_token") or "").strip()
+        retry_attempt = next(
+            (item for item in previous if str(item.access_token) == previous_token), None,
+        ) if previous_token else None
+        if retry_attempt and retry_attempt.status in {"submitted", "timed_out"}:
+            if not request.data.get("replace_previous"):
+                return Response({
+                    "code": "retake_confirmation_required",
+                    "error": "Người này đã có bài làm. Xác nhận làm lại sẽ xóa câu trả lời và điểm cũ.",
+                    "previous_score": retry_attempt.score,
+                    "previous_max_score": retry_attempt.max_score,
+                    "previous_auto_score": retry_attempt.auto_graded_points,
+                    "previous_auto_max_score": _attempt_payload(retry_attempt, request)["auto_max_score"],
+                    "manual_grading_required": retry_attempt.manual_grading_required,
+                }, status=status.HTTP_409_CONFLICT)
+            replacing_attempt = retry_attempt
+        used_attempts = contact_attempts.exclude(pk=replacing_attempt.pk) if replacing_attempt else contact_attempts
+        if used_attempts.count() >= assessment.attempt_limit:
+            return _assessment_error(
+                f"Bạn đã sử dụng đủ {assessment.attempt_limit} lượt làm bài. "
+                "Nếu đã nộp nhầm hoặc cần làm lại, vui lòng liên hệ nhân viên FermatTech để được hỗ trợ."
+            )
         variants = variants_for(assessment)
         if not variants:
             return _assessment_error("Bài đánh giá chưa có câu hỏi.")
@@ -1166,7 +1419,33 @@ def public_assessment_start(request, slug):
             expires_at=expires_at,
             max_score=maximum,
         )
-    return Response(_attempt_payload(attempt, request), status=status.HTTP_201_CREATED)
+        if replacing_attempt:
+            if assessment.output_sheet_url:
+                try:
+                    clear_attempt_from_google_sheet(replacing_attempt)
+                except Exception:
+                    logger.exception("Could not clear replaced assessment attempt %s from Google Sheets", replacing_attempt.pk)
+                    transaction.set_rollback(True)
+                    return _assessment_error(
+                        "Chưa xóa được điểm cũ trên Google Sheets nên chưa thể tạo lượt mới. "
+                        "Vui lòng thử lại hoặc liên hệ nhân viên FermatTech để được hỗ trợ.",
+                        status.HTTP_503_SERVICE_UNAVAILABLE,
+                    )
+            old_pk = replacing_attempt.pk
+            old_token = str(replacing_attempt.access_token)
+            replacing_attempt.delete()
+            notify_workspace(
+                event_key=f"assessment-attempt:{old_pk}:replaced-by:{attempt.pk}",
+                title="Người học đã tạo lượt làm mới",
+                message=(f"{name} đã xác nhận làm lại bài “{assessment.title}”. "
+                         f"Lượt cũ {old_token} đã bị xóa; lượt mới là {attempt.access_token}."),
+                severity="warning", category="digital-training", target_roles=["ADMIN"],
+                action_url=f"/training-assessments/{assessment.pk}",
+            )
+        payload = _attempt_payload(attempt, request)
+        if replacing_attempt:
+            payload["retake_performed"] = True
+    return Response(payload, status=status.HTTP_201_CREATED)
 
 
 def _clean_answer_value(value):

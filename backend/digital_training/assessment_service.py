@@ -1349,6 +1349,38 @@ def append_assessment_deletion_log(attempt, actor, mode, note=""):
     ))
 
 
+def clear_attempt_from_google_sheet(attempt):
+    """Remove an attempt's score from both the answer tab and submission list."""
+    service, spreadsheet_id, layout = assessment_google_sheet_resources(attempt.assessment)
+    metadata = service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id, fields="sheets(properties(title))",
+    ).execute()
+    titles = {item.get("properties", {}).get("title") for item in metadata.get("sheets", [])}
+    preferred = layout["answer_sheets"][attempt.variant]
+    legacy = _variant_sheet_title("BÀI LÀM", attempt.variant)
+    sheet_title = preferred if preferred in titles else legacy
+    removed = False
+    for title, token_column in ((sheet_title, "G"), (layout["distribution"], "L")):
+        if title not in titles:
+            continue
+        existing = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id, range=f"'{title}'!{token_column}:{token_column}",
+        ).execute().get("values", [])
+        row_number = next(
+            (index for index, values in enumerate(existing, start=1)
+             if values and str(values[0]) == str(attempt.access_token)),
+            None,
+        )
+        if row_number:
+            _execute_sheets_write(service.spreadsheets().values().clear(
+                spreadsheetId=spreadsheet_id,
+                range=f"'{title}'!A{row_number}:ZZ{row_number}",
+                body={},
+            ))
+            removed = True
+    return removed
+
+
 def sync_attempt_to_google_sheet(attempt, resources=None):
     service, spreadsheet_id, layout = resources or assessment_google_sheet_resources(attempt.assessment)
     questions = public_questions(attempt.assessment, attempt.variant)

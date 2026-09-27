@@ -243,6 +243,11 @@ export default function TrainingAssessmentsAdmin({
   const [showTrash, setShowTrash] = useState(false);
   const [selected, setSelected] = useState<Assessment | null>(null);
   const [results, setResults] = useState<any[]>([]);
+  const [editingAnswerAttempt, setEditingAnswerAttempt] = useState<any | null>(null);
+  const [answerDrafts, setAnswerDrafts] = useState<Record<string, any>>({});
+  const [resultSearch, setResultSearch] = useState("");
+  const [resultStatus, setResultStatus] = useState("");
+  const [resultVariant, setResultVariant] = useState("");
   const [manualScores, setManualScores] = useState<Record<number, string>>({});
   const [scheduleDraft, setScheduleDraft] = useState({ opens_at: "", closes_at: "" });
   const [detailTab, setDetailTab] = useState<"overview" | "settings">("overview");
@@ -291,6 +296,15 @@ export default function TrainingAssessmentsAdmin({
   const [filterPartner, setFilterPartner] = useState("");
   const [workDateSort, setWorkDateSort] = useState<"desc" | "asc">("desc");
   const auth = { Authorization: `Bearer ${idToken}` };
+  const resultVariants = useMemo(() => Array.from(new Set(results.map((item) => String(item.variant || "")).filter(Boolean))).sort(), [results]);
+  const filteredResults = useMemo(() => results.filter((item) => {
+    const normalized = (value: unknown) => String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
+    const needle = normalized(resultSearch.trim());
+    if (needle && ![item.respondent_name, item.email, item.phone].some((value) => normalized(value).includes(needle))) return false;
+    if (resultStatus && item.status !== resultStatus) return false;
+    if (resultVariant && item.variant !== resultVariant) return false;
+    return true;
+  }), [results, resultSearch, resultStatus, resultVariant]);
   const bankUrl = bankSource === "default" ? bankSettings.default_url.trim() : sheetUrl.trim();
 
   const loadBankSettings = async () => {
@@ -769,6 +783,9 @@ export default function TrainingAssessmentsAdmin({
     } catch (error: any) { setNotice(String(error?.message || error)); } finally { setBusy(false); }
   };
   const openDetail = async (item: Assessment, updateUrl = true) => {
+    setResultSearch("");
+    setResultStatus("");
+    setResultVariant("");
     if (updateUrl && window.location.pathname !== assessmentDetailPath(item.id)) {
       window.history.pushState({ trainingAssessmentId: item.id }, "", assessmentDetailPath(item.id));
     }
@@ -852,7 +869,7 @@ export default function TrainingAssessmentsAdmin({
     let confirmationPassword = "";
     if (removeStored) {
       const password = await confirmWithPassword(
-        `Xóa vĩnh viễn lượt làm của ${result.respondent_name}? Dữ liệu đã đồng bộ sẽ không còn hiển thị trong hệ thống.`,
+        `Xóa lượt làm của ${result.respondent_name} để người này có thể bắt đầu lượt mới? Câu trả lời và điểm cũ sẽ bị xóa; nếu đã đồng bộ, hệ thống cũng sẽ xóa dòng điểm trên Google Sheets.`,
         "Xóa lượt làm",
         "Xóa lượt làm",
       );
@@ -868,11 +885,104 @@ export default function TrainingAssessmentsAdmin({
         body: removeStored ? JSON.stringify({ confirmation_password: confirmationPassword }) : undefined,
       });
       if (!response.ok) throw new Error(await errorText(response));
-      if (removeStored) setResults((current) => current.filter((item) => item.id !== result.id));
+      if (removeStored) {
+        const payload = await response.json();
+        setResults((current) => current.filter((item) => item.id !== result.id));
+        setNotice(payload.sheet_log_warning || `Đã xóa lượt làm của ${result.respondent_name}. Người học có thể bắt đầu lại bằng thông tin đã đăng ký.`);
+        try {
+          const detailResponse = await fetch(`/api/digital-training/assessments/${selected.id}`, { headers: auth });
+          if (detailResponse.ok) {
+            const updated = await detailResponse.json();
+            setSelected(updated);
+            setItems((current) => current.map((item) => item.id === updated.id ? updated : item));
+          }
+        } catch {
+          // Deletion succeeded; stale summary counts will refresh when the page reloads.
+        }
+      }
       else {
         const updated = await response.json();
         setResults((current) => current.map((item) => item.id === updated.id ? updated : item));
       }
+    } catch (error: any) {
+      setNotice(String(error?.message || error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reopenAttempt = async (result: any) => {
+    if (!selected) return;
+    const extraMinutesText = await appDialog.prompt(
+      `Nhập số phút làm thêm cho ${result.respondent_name}. Câu trả lời đã có sẽ được giữ nguyên để tiếp tục.`,
+      { title: "Mở tiếp lượt cũ", confirmText: "Tiếp tục", placeholder: "Ví dụ: 30", inputType: "number" },
+    );
+    if (extraMinutesText === null) return;
+    const extraMinutes = Number(extraMinutesText);
+    if (!Number.isInteger(extraMinutes) || extraMinutes < 1 || extraMinutes > 10080) {
+      setNotice("Vui lòng nhập số phút làm thêm từ 1 đến 10.080 phút.");
+      return;
+    }
+    const password = await confirmWithPassword(
+      `Mở tiếp lượt cũ cho ${result.respondent_name} trong ${extraMinutes} phút? Câu trả lời được giữ nguyên; điểm cũ sẽ được xóa để chấm lại sau khi nộp.`,
+      "Mở tiếp lượt cũ", "Mở tiếp",
+    );
+    if (!password) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      const response = await fetch(`/api/digital-training/assessments/${selected.id}/results/${result.id}/reopen`, {
+        method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation_password: password, extra_minutes: extraMinutes }),
+      });
+      if (!response.ok) throw new Error(await errorText(response));
+      const updated = await response.json();
+      setResults((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setNotice(`Đã mở tiếp lượt của ${result.respondent_name} trong ${extraMinutes} phút. Người học nhập đúng thông tin cũ để chọn tiếp tục hoặc tạo lượt mới.`);
+      try {
+        const detailResponse = await fetch(`/api/digital-training/assessments/${selected.id}`, { headers: auth });
+        if (detailResponse.ok) {
+          const detail = await detailResponse.json();
+          setSelected(detail);
+          setItems((current) => current.map((item) => item.id === detail.id ? detail : item));
+        }
+      } catch {
+        // The attempt is already reopened; summary counts refresh on the next load.
+      }
+    } catch (error: any) {
+      setNotice(String(error?.message || error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openAnswerEditor = (result: any) => {
+    setEditingAnswerAttempt(result);
+    setAnswerDrafts(structuredClone(result.answers || {}));
+    setNotice("");
+  };
+
+  const saveAnswerEdits = async () => {
+    if (!selected || !editingAnswerAttempt) return;
+    const changes = Object.fromEntries(Object.entries(answerDrafts).filter(([questionId, value]) =>
+      JSON.stringify(value) !== JSON.stringify(editingAnswerAttempt.answers?.[questionId])));
+    if (!Object.keys(changes).length) {
+      setEditingAnswerAttempt(null);
+      return;
+    }
+    setBusy(true);
+    setNotice("");
+    try {
+      const response = await fetch(`/api/digital-training/assessments/${selected.id}/results/${editingAnswerAttempt.id}/answers`, {
+        method: "PATCH", headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({ answers: changes }),
+      });
+      if (!response.ok) throw new Error(await errorText(response));
+      const updated = await response.json();
+      setResults((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setGradingAttempt((current: any) => current?.id === updated.id ? updated : current);
+      setEditingAnswerAttempt(null);
+      setNotice(`Đã cập nhật bài làm của ${updated.respondent_name}. Điểm tự động đã được tính lại; các câu chấm tay vừa sửa cần chấm lại.`);
     } catch (error: any) {
       setNotice(String(error?.message || error));
     } finally {
@@ -1499,7 +1609,7 @@ export default function TrainingAssessmentsAdmin({
           {detailTab === "settings" && <div className="border-t bg-slate-50 px-6 pb-6"><div className="mx-auto max-w-5xl rounded-xl border border-blue-100 bg-blue-50/60 p-4"><div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-extrabold text-slate-900">Google Sheet liên kết</p><p className="mt-1 max-w-2xl text-sm text-slate-600">Bài nộp và điểm chấm tự động được ghi lên Sheet. Chỉ trạng thái “Đã hoàn thành sao lưu” mới xác nhận câu hỏi, đáp án, điểm và liên kết media đã khớp hoàn toàn.</p></div><div className="flex flex-wrap gap-2">{selected.output_sheet_url && <a href={selected.output_sheet_url} target="_blank" rel="noreferrer" className="ft-btn ft-btn-secondary bg-white"><FileSpreadsheet className="h-4 w-4" />Mở Google Sheet<ExternalLink className="h-3.5 w-3.5" /></a>}{driveFolderLink && <a href={driveFolderLink} target="_blank" rel="noreferrer" className="ft-btn ft-btn-secondary bg-white"><Upload className="h-4 w-4" />Mở thư mục bài làm<ExternalLink className="h-3.5 w-3.5" /></a>}<button disabled={busy || !selected.output_sheet_url} onClick={() => void prepareOutput()} className="ft-btn ft-btn-secondary bg-white" title="Hệ thống → Google Sheet"><RefreshCw className="h-4 w-4" />Cập nhật lên Sheet</button><button disabled={busy || !selected.output_sheet_url} onClick={() => void verifyBackup()} className="ft-btn ft-btn-secondary bg-white"><FileCheck2 className="h-4 w-4" />Kiểm chứng sao lưu</button><button disabled={busy || !selected.output_sheet_url} onClick={() => void importGradesFromSheet()} className="ft-btn ft-btn-secondary bg-white" title="Google Sheet → hệ thống; chỉ cập nhật điểm"><Download className="h-4 w-4" />Đồng bộ điểm từ Sheet</button></div></div></div></div>}
         </article>
         <div className="grid gap-4 sm:grid-cols-3"><div className="rounded-2xl border bg-white p-5"><Users className="h-5 w-5 text-blue-600" /><b className="mt-3 block text-3xl">{selected.attempts_count}</b><span className="text-sm text-slate-500">Lượt bắt đầu</span></div><div className="rounded-2xl border bg-white p-5"><Check className="h-5 w-5 text-emerald-600" /><b className="mt-3 block text-3xl">{selected.submitted_count}</b><span className="text-sm text-slate-500">Bài đã nộp</span></div><div className="rounded-2xl border bg-white p-5"><BarChart3 className="h-5 w-5 text-amber-600" /><b className="mt-3 block text-3xl">{selected.average_score ?? "—"}{selected.average_score != null && "%"}</b><span className="text-sm text-slate-500">Điểm trung bình</span></div></div>
-        {selected.output_sheet_url && (selected.sync_counts.pending || selected.sync_counts.error) && <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><p><b>Cần đồng bộ:</b> {selected.sync_counts.pending} chờ, {selected.sync_counts.error} lỗi. Dữ liệu gốc vẫn an toàn trong hệ thống; hãy đồng bộ lại trước khi xóa lượt.</p><button disabled={busy} onClick={() => void syncPendingResults()} className="ft-btn ft-btn-secondary bg-white"><RefreshCw className="h-4 w-4" />Đồng bộ lại tất cả</button></div>}
+        {selected.output_sheet_url && (selected.sync_counts.pending || selected.sync_counts.error) && <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><p><b>Cần đồng bộ:</b> {selected.sync_counts.pending} chờ, {selected.sync_counts.error} lỗi. Có thể thử đồng bộ lại hoặc xóa riêng lượt làm nếu cần cho người học bắt đầu lại.</p><button disabled={busy} onClick={() => void syncPendingResults()} className="ft-btn ft-btn-secondary bg-white"><RefreshCw className="h-4 w-4" />Đồng bộ lại tất cả</button></div>}
         <div className="hidden overflow-hidden rounded-2xl border bg-white shadow-sm">
           <div className="flex items-center justify-between gap-3 p-5"><div><h3 className="text-lg font-extrabold">Kết quả người học</h3><p className="text-sm text-slate-500">Mở link/tệp minh chứng ngay tại đây rồi nhập tổng điểm để chấm trực tiếp bài thực hành.</p></div><button disabled={!results.length} onClick={exportResults} className="ft-btn ft-btn-secondary"><Download className="h-4 w-4" />Xuất XLSX</button></div>
           <div className="overflow-x-auto">
@@ -1511,8 +1621,68 @@ export default function TrainingAssessmentsAdmin({
         </div>
         <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 p-5"><div><h3 className="text-lg font-extrabold" title="Chọn Chấm bài này để chấm riêng một bài; chọn Chấm bài ở trên để duyệt lần lượt các học viên.">Kết quả người học</h3><p className="mt-1 text-sm text-slate-500">Bài nộp và điểm chấm trong hệ thống được tự động ghi lên Sheet; dùng các nút dưới đây khi cần đồng bộ thủ công.</p></div><div className="flex flex-wrap gap-2"><button disabled={busy || !selected.output_sheet_url} onClick={() => void prepareOutput()} className="ft-btn ft-btn-secondary" title="Ghi lại cấu trúc, danh sách bài làm, câu trả lời và điểm hiện tại từ hệ thống lên Google Sheet"><RefreshCw className="h-4 w-4" />Cập nhật lên Sheet</button><button disabled={busy || !selected.output_sheet_url} onClick={() => void importGradesFromSheet()} className="ft-btn ft-btn-secondary" title="Chỉ lấy Điểm thực hành hoặc Tổng điểm từ các tab BÀI LÀM ĐỀ về hệ thống"><Download className="h-4 w-4" />Đồng bộ điểm từ Sheet</button><button disabled={!results.length} onClick={exportResults} className="ft-btn ft-btn-secondary"><Download className="h-4 w-4" />Xuất XLSX</button></div></div>
-          <div className="overflow-x-auto"><table className="ft-table min-w-[1380px]"><thead><tr><th>STT</th><th>Người học</th><th>Liên hệ</th><th>Tổ chuyên môn/Phòng ban</th><th>Chức vụ</th><th>Mã đề</th><th>Điểm</th><th>Đánh giá</th><th>Trạng thái</th><th>Thời gian bắt đầu</th><th>Thời gian nộp bài</th><th aria-label="Thao tác" /></tr></thead><tbody>{results.length ? results.map((item, index) => <tr key={item.id}><td>{index + 1}</td><td><b>{item.respondent_name}</b></td><td>{item.email || item.phone || "—"}</td><td>{item.organization || "—"}</td><td>{item.position || "—"}</td><td>{item.variant}</td><td><b>{Number(item.score || 0).toLocaleString("vi-VN")} / {Number(item.max_score || 0).toLocaleString("vi-VN")}</b><span className={`mt-1 block text-[11px] font-bold ${item.manual_grading_required ? "text-amber-800" : "text-emerald-700"}`}>{item.manual_grading_required ? "Cần chấm" : "Đã chấm"}</span></td><td><span className="whitespace-nowrap font-bold text-slate-700">{completionLabel(item)}</span></td><td>{item.status === "submitted" ? "Đã nộp" : item.status === "timed_out" ? "Hết giờ" : "Đang làm"}<div className={`mt-2 text-[11px] font-bold ${item.sync_status === "synced" ? "text-emerald-600" : item.sync_status === "error" ? "text-rose-600" : "text-amber-600"}`}>Sync: {item.sync_status || "pending"}</div>{item.sync_error && <p className="mt-1 max-w-52 text-[10px] text-rose-600" title={item.sync_error}>Lỗi: {item.sync_error}</p>}{item.status === "in_progress" && <button disabled={busy} onClick={() => void endAttempt(item)} className="mt-2 rounded border border-amber-300 px-2 py-1 text-[11px] font-bold text-amber-800">Kết thúc lượt</button>}{item.status !== "in_progress" && item.sync_status !== "synced" && <button disabled={busy} onClick={() => void updateResultStorage(item)} className="mt-2 rounded border px-2 py-1 text-[11px] font-bold">Thử lại</button>}</td><td>{item.started_at ? new Date(item.started_at).toLocaleString("vi-VN") : "—"}</td><td>{item.submitted_at ? new Date(item.submitted_at).toLocaleString("vi-VN") : "—"}</td><td><div className="flex items-center gap-2"><button disabled={busy || item.status === "in_progress" || selected.status !== "closed"} onClick={() => void openGrading(item, true)} className="rounded-lg border border-violet-200 p-2 text-violet-700 hover:bg-violet-50 disabled:opacity-45" title={selected.status !== "closed" ? "Đóng bài kiểm tra trước khi chấm" : "Chấm bài này"} aria-label={`Chấm bài này: ${item.respondent_name}`}><FileCheck2 className="h-4 w-4" /></button><button disabled={busy || item.status === "in_progress"} onClick={() => void openGrading(item)} className="rounded-lg border border-blue-200 p-2 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45" title={item.status === "in_progress" ? "Chỉ chấm bài đã kết thúc" : selected.status === "closed" ? "Mở chấm bài / sửa điểm" : "Đóng bài kiểm tra trước khi chấm"} aria-label={`Chấm hoặc sửa bài làm của ${item.respondent_name}`}><Pencil className="h-4 w-4" /></button><button disabled={busy} onClick={() => void updateResultStorage(item, true)} className="rounded-lg border border-rose-200 p-2 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-45" title="Xóa bài làm" aria-label={`Xóa bài làm của ${item.respondent_name}`}><Trash2 className="h-4 w-4" /></button></div></td></tr>) : <tr><td colSpan={12} className="py-10 text-center text-slate-500">Chưa có lượt làm bài.</td></tr>}</tbody></table></div>
+          <div className="flex flex-wrap items-end gap-3 border-t bg-slate-50 p-4">
+            <label className="min-w-56 flex-1">
+              <span className="mb-1 block text-xs font-bold">Tìm người làm bài</span>
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                <input className="ft-input pl-9" value={resultSearch} onChange={(event) => setResultSearch(event.target.value)} placeholder="Họ tên, email hoặc số điện thoại" />
+              </div>
+            </label>
+            <label><span className="mb-1 block text-xs font-bold">Trạng thái</span><select className="ft-input min-w-36" value={resultStatus} onChange={(event) => setResultStatus(event.target.value)}><option value="">Tất cả</option><option value="in_progress">Đang làm</option><option value="submitted">Đã nộp</option><option value="timed_out">Hết giờ</option></select></label>
+            <label><span className="mb-1 block text-xs font-bold">Mã đề</span><select className="ft-input min-w-28" value={resultVariant} onChange={(event) => setResultVariant(event.target.value)}><option value="">Tất cả</option>{resultVariants.map((variant) => <option key={variant} value={variant}>{variant}</option>)}</select></label>
+            <span className="pb-2 text-xs font-semibold text-slate-600">Hiển thị {filteredResults.length}/{results.length} lượt</span>
+          </div>
+          {notice && <p role="status" className="mx-4 mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-900">{notice}</p>}
+          <div className="overflow-x-auto">
+            <table className="ft-table min-w-[1380px]">
+              <thead><tr><th>STT</th><th>Người học</th><th>Liên hệ</th><th>Tổ chuyên môn/Phòng ban</th><th>Chức vụ</th><th>Mã đề</th><th>Điểm</th><th>Đánh giá</th><th>Trạng thái</th><th>Thời gian bắt đầu</th><th>Thời gian nộp bài</th><th aria-label="Thao tác" /></tr></thead>
+              <tbody>{filteredResults.length ? filteredResults.map((item, index) => (
+                <tr key={item.id}>
+                  <td>{index + 1}</td>
+                  <td><b>{item.respondent_name}</b></td>
+                  <td>{item.email || item.phone || "—"}</td>
+                  <td>{item.organization || "—"}</td>
+                  <td>{item.position || "—"}</td>
+                  <td>{item.variant}</td>
+                  <td><b>{Number(item.score || 0).toLocaleString("vi-VN")} / {Number(item.max_score || 0).toLocaleString("vi-VN")}</b><span className={`mt-1 block text-[11px] font-bold ${item.manual_grading_required ? "text-amber-800" : "text-emerald-700"}`}>{item.manual_grading_required ? "Cần chấm" : "Đã chấm"}</span></td>
+                  <td><span className="whitespace-nowrap font-bold text-slate-700">{completionLabel(item)}</span></td>
+                  <td>{item.status === "submitted" ? "Đã nộp" : item.status === "timed_out" ? "Hết giờ" : "Đang làm"}<div className={`mt-2 text-[11px] font-bold ${item.sync_status === "synced" ? "text-emerald-600" : item.sync_status === "error" ? "text-rose-600" : "text-amber-600"}`}>Sync: {item.sync_status || "pending"}</div>{item.sync_error && <p className="mt-1 max-w-52 text-[10px] text-rose-600" title={item.sync_error}>Lỗi: {item.sync_error}</p>}{item.status === "in_progress" && <button disabled={busy} onClick={() => void endAttempt(item)} className="mt-2 rounded border border-amber-300 px-2 py-1 text-[11px] font-bold text-amber-800">Kết thúc lượt</button>}{item.status !== "in_progress" && item.sync_status !== "synced" && <button disabled={busy} onClick={() => void updateResultStorage(item)} className="mt-2 rounded border px-2 py-1 text-[11px] font-bold">Thử lại</button>}</td>
+                  <td>{item.started_at ? new Date(item.started_at).toLocaleString("vi-VN") : "—"}</td>
+                  <td>{item.submitted_at ? new Date(item.submitted_at).toLocaleString("vi-VN") : "—"}</td>
+                  <td><div className="flex items-center gap-2">
+                    <button disabled={busy || item.status === "in_progress" || !["closed", "graded"].includes(selected.status)} onClick={() => void openGrading(item, true)} className="rounded-lg border border-violet-200 p-2 text-violet-700 hover:bg-violet-50 disabled:opacity-45" title={!["closed", "graded"].includes(selected.status) ? "Đóng bài kiểm tra trước khi chấm" : "Chấm bài này"} aria-label={`Chấm bài này: ${item.respondent_name}`}><FileCheck2 className="h-4 w-4" /></button>
+                    <button disabled={busy || item.status === "in_progress"} onClick={() => void openGrading(item)} className="rounded-lg border border-blue-200 p-2 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45" title={item.status === "in_progress" ? "Chỉ chấm bài đã kết thúc" : "Mở chấm bài / sửa điểm"} aria-label={`Chấm hoặc sửa bài làm của ${item.respondent_name}`}><Pencil className="h-4 w-4" /></button>
+                    <button disabled={busy} onClick={() => openAnswerEditor(item)} className="rounded-lg border border-blue-200 px-2 py-1 text-xs font-bold text-blue-800 hover:bg-blue-50 disabled:opacity-45" title="Sửa câu trả lời hoặc dán link bài thực hành hộ thí sinh">Sửa bài làm</button>
+                    {item.status !== "in_progress" && <button disabled={busy} onClick={() => void reopenAttempt(item)} className="rounded-lg border border-amber-200 px-2 py-1 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-45" title="Giữ câu trả lời và cấp thêm thời gian cho lượt cũ">Mở tiếp lượt cũ</button>}
+                    <button disabled={busy} onClick={() => void updateResultStorage(item, true)} className="rounded-lg border border-rose-200 p-2 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-45" title="Xóa lượt làm để giải phóng giới hạn lượt" aria-label={`Xóa bài làm của ${item.respondent_name}`}><Trash2 className="h-4 w-4" /></button>
+                  </div></td>
+                </tr>
+              )) : <tr><td colSpan={12} className="py-10 text-center text-slate-500">{results.length ? "Không có lượt làm phù hợp bộ lọc." : "Chưa có lượt làm bài."}</td></tr>}</tbody>
+            </table>
+          </div>
         </div>
+        {editingAnswerAttempt && <div role="dialog" aria-modal="true" aria-label={`Sửa bài làm của ${editingAnswerAttempt.respondent_name}`} className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b p-5"><div><h3 className="text-xl font-extrabold">Sửa bài làm: {editingAnswerAttempt.respondent_name}</h3><p className="mt-1 text-sm text-slate-600">Mã đề {editingAnswerAttempt.variant} · Thay đổi được lưu vào nhật ký người chấm.</p></div><button type="button" onClick={() => setEditingAnswerAttempt(null)} className="ft-btn ft-btn-secondary">Đóng</button></div>
+            {editingAnswerAttempt.status === "in_progress" && <p className="mx-5 mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Người học đang làm bài. Nếu họ tiếp tục lưu, câu trả lời trên trình duyệt của họ có thể ghi đè nội dung admin vừa sửa.</p>}
+            {notice && <p role="status" className="mx-5 mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{notice}</p>}
+            <div className="space-y-4 overflow-y-auto p-5">{selected.questions.filter((question) => question.variant === editingAnswerAttempt.variant).sort((a, b) => Number(a.order) - Number(b.order)).map((question) => {
+              const value = answerDrafts[question.id];
+              const setValue = (next: any) => setAnswerDrafts((current) => ({ ...current, [question.id]: next }));
+              const options = question.options || [];
+              return <section key={question.id} className="rounded-xl border p-4"><p className="text-xs font-bold text-blue-700">Câu {question.order} · {questionTypeLabels[question.type] || question.type}</p><p className="mt-1 whitespace-pre-wrap font-semibold">{question.text}</p>
+                {(question.type === "practical_submission" || question.type === "file_upload") && <label className="mt-3 block text-sm"><span className="font-bold">Link bài làm</span><input type="url" className="ft-input mt-1" value={typeof value === "object" && value ? String(value.link || "") : String(value || "")} onChange={(event) => setValue({ ...(typeof value === "object" && value ? value : {}), link: event.target.value })} placeholder="https://drive.google.com/..." /></label>}
+                {question.type === "short_answer" && <textarea className="ft-input mt-3 min-h-24" value={String(value || "")} onChange={(event) => setValue(event.target.value)} aria-label={`Câu trả lời câu ${question.order}`} />}
+                {question.type === "single_choice" && <select className="ft-input mt-3" value={String(value || "")} onChange={(event) => setValue(event.target.value)} aria-label={`Đáp án câu ${question.order}`}><option value="">Chưa chọn</option>{options.map((option: any) => <option key={option.key} value={option.key}>{option.key}. {option.text}</option>)}</select>}
+                {question.type === "multiple_choice" && <div className="mt-3 grid gap-2">{options.map((option: any) => { const picked = Array.isArray(value) ? value : String(value || "").split(/[;,|]/).map((item) => item.trim()).filter(Boolean); return <label key={option.key} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={picked.includes(option.key)} onChange={(event) => setValue(event.target.checked ? [...picked, option.key] : picked.filter((key) => key !== option.key))} />{option.key}. {option.text}</label>; })}</div>}
+                {question.type === "matching" && <div className="mt-3 grid gap-2">{options.map((option: any) => { const matched = typeof value === "object" && value && !Array.isArray(value) ? value : {}; return <label key={option.key} className="grid gap-1 text-sm sm:grid-cols-2 sm:items-center"><span>{option.key}. {option.text}</span><select className="ft-input" value={String(matched[option.key] || "")} onChange={(event) => setValue({ ...matched, [option.key]: event.target.value })}><option value="">Chưa ghép</option>{options.map((right: any, index: number) => <option key={index} value={String.fromCharCode(65 + index)}>{String.fromCharCode(65 + index)}. {right.match_text}</option>)}</select></label>; })}</div>}
+                {question.type === "ordering" && <label className="mt-3 block text-sm"><span className="font-bold">Thứ tự các mã đáp án, ngăn bằng dấu gạch ngang</span><input className="ft-input mt-1" value={String(value || "")} onChange={(event) => setValue(event.target.value)} placeholder={options.map((option: any) => option.key).join("-")} /><small className="mt-1 block text-slate-500">{options.map((option: any) => `${option.key}: ${option.text}`).join(" · ")}</small></label>}
+              </section>;
+            })}</div>
+            <div className="flex justify-end gap-2 border-t p-4"><button type="button" disabled={busy} onClick={() => setEditingAnswerAttempt(null)} className="ft-btn ft-btn-secondary">Hủy</button><button type="button" disabled={busy} onClick={() => void saveAnswerEdits()} className="ft-primary">{busy ? "Đang lưu..." : "Lưu bài làm"}</button></div>
+          </div>
+        </div>}
       </section>
     );
   }
