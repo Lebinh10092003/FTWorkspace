@@ -10,6 +10,7 @@ WorkingDirectory=/var/www/ft-workspace/backend
 EnvironmentFile=/var/www/ft-workspace/backend/.env
 Environment=PYTHONUNBUFFERED=1
 Environment=DJANGO_DB_PATH=/home/workspace/ft-workspace-data/workspace.sqlite3
+Environment=ASSESSMENT_CLOSING_PID_FILE=/run/workspace-assessment-closing/worker.pid
 ExecStart=/var/www/ft-workspace/.venv/bin/gunicorn --workers 3 --timeout 120 --bind 127.0.0.1:8001 --access-logfile - --error-logfile - config.wsgi:application
 Restart=always
 RestartSec=5

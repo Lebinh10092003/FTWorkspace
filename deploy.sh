@@ -103,6 +103,11 @@ sudo systemctl enable --now "$WEEKLY_REPORT_TIMER_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 sudo systemctl start "$ASSESSMENT_LIFECYCLE_SERVICE_NAME"
 sudo systemctl restart "$ASSESSMENT_CLOSING_SERVICE_NAME"
+if ! sudo systemctl is-active --quiet "$ASSESSMENT_CLOSING_SERVICE_NAME"; then
+  sudo systemctl --no-pager --full status "$ASSESSMENT_CLOSING_SERVICE_NAME" || true
+  echo "ERROR: Assessment closing worker did not start." >&2
+  exit 1
+fi
 
 for attempt in $(seq 1 "$HEALTH_RETRIES"); do
   if curl --fail --silent --header "Host: $HEALTH_HOST" "$HEALTH_URL" >/dev/null 2>&1; then
