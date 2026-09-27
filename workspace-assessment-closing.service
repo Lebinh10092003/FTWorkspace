@@ -1,13 +1,20 @@
 [Unit]
-Description=FT Workspace close assessments at their scheduled end time
+Description=FT Workspace close assessments at each scheduled end time
 After=workspace-django.service network-online.target
 
 [Service]
-Type=oneshot
+Type=simple
 User=workspace
 Group=www-data
+RuntimeDirectory=workspace-assessment-closing
 WorkingDirectory=/var/www/ft-workspace/backend
 EnvironmentFile=/var/www/ft-workspace/backend/.env
 Environment=PYTHONUNBUFFERED=1
 Environment=DJANGO_DB_PATH=/home/workspace/ft-workspace-data/workspace.sqlite3
+Environment=ASSESSMENT_CLOSING_PID_FILE=/run/workspace-assessment-closing/worker.pid
 ExecStart=/var/www/ft-workspace/.venv/bin/python manage.py close_due_assessments
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

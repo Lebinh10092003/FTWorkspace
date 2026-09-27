@@ -1,7 +1,10 @@
 import hashlib
 import json
 import logging
+import os
+import signal
 from datetime import timedelta
+from pathlib import Path
 
 from django.db import transaction
 from django.db.models import Max, Q
@@ -18,6 +21,18 @@ RETENTION_DELETE_DAY = 31
 RETENTION_MILESTONES = (14, 21, 28, RETENTION_DELETE_DAY)
 DRAFT_TRASH_DAYS = 3
 BACKUP_RETRY_DELAY = timedelta(days=1)
+
+
+def wake_assessment_closer():
+    """Tell the deadline worker to recalculate after an admin changes a test."""
+    pid_file = os.getenv("ASSESSMENT_CLOSING_PID_FILE")
+    if not pid_file or not hasattr(signal, "SIGUSR1"):
+        return
+    try:
+        os.kill(int(Path(pid_file).read_text(encoding="ascii")), signal.SIGUSR1)
+    except (FileNotFoundError, ProcessLookupError, PermissionError, ValueError, OSError):
+        # The daily lifecycle remains a fallback while the worker restarts.
+        logger.warning("Assessment closing worker is unavailable; daily lifecycle will catch up")
 
 
 def assessment_retention_anchor(assessment):
@@ -248,13 +263,16 @@ def trash_draft(assessment):
     assessment.save(update_fields=["trashed_at", "purge_at", "updated_at"])
 
 
-def close_due_assessments(now=None):
+def close_due_assessments(now=None, assessment_id=None):
     """Close scheduled tests and finish active attempts at their actual deadline."""
     now = now or timezone.now()
     closed = 0
-    due_ids = list(TrainingAssessment.objects.filter(
+    due = TrainingAssessment.objects.filter(
         status="published", trashed_at__isnull=True, closes_at__lte=now,
-    ).values_list("pk", flat=True))
+    )
+    if assessment_id is not None:
+        due = due.filter(pk=assessment_id)
+    due_ids = list(due.values_list("pk", flat=True))
     for assessment_id in due_ids:
         with transaction.atomic():
             assessment = TrainingAssessment.objects.select_for_update().filter(

@@ -87,6 +87,31 @@ class AssessmentLifecycleTests(TestCase):
         self.assertEqual(self.attempt.score, 2)
         self.assertFalse(self.attempt.manual_grading_required)
 
+    def test_admin_detail_closes_overdue_assessment_when_opened(self):
+        self.assessment.status = "published"
+        self.assessment.closes_at = timezone.now() - timedelta(seconds=1)
+        self.assessment.closed_at = None
+        self.assessment.save(update_fields=["status", "closes_at", "closed_at"])
+
+        response = self.client.get(f"/api/digital-training/assessments/{self.assessment.pk}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "closed")
+        self.assessment.refresh_from_db()
+        self.assertEqual(self.assessment.status, "closed")
+
+    @patch("digital_training.assessment_views.wake_assessment_closer")
+    def test_schedule_change_wakes_deadline_worker(self, wake_worker):
+        new_deadline = timezone.now() + timedelta(hours=2)
+
+        response = self.client.patch(
+            f"/api/digital-training/assessments/{self.assessment.pk}",
+            {"closes_at": new_deadline.isoformat()}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        wake_worker.assert_called_once_with()
+
     @patch("digital_training.assessment_lifecycle.verify_assessment_backup")
     def test_finishing_the_last_grade_immediately_starts_and_completes_backup(self, verify):
         def complete_backup(assessment, rebuild=True):

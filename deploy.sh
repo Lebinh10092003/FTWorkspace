@@ -12,7 +12,6 @@ TRAINING_COMPLETION_TIMER_NAME="${TRAINING_COMPLETION_TIMER_NAME:-workspace-trai
 ASSESSMENT_LIFECYCLE_SERVICE_NAME="${ASSESSMENT_LIFECYCLE_SERVICE_NAME:-workspace-assessment-lifecycle.service}"
 ASSESSMENT_LIFECYCLE_TIMER_NAME="${ASSESSMENT_LIFECYCLE_TIMER_NAME:-workspace-assessment-lifecycle.timer}"
 ASSESSMENT_CLOSING_SERVICE_NAME="${ASSESSMENT_CLOSING_SERVICE_NAME:-workspace-assessment-closing.service}"
-ASSESSMENT_CLOSING_TIMER_NAME="${ASSESSMENT_CLOSING_TIMER_NAME:-workspace-assessment-closing.timer}"
 EXAM_SHEET_IMPORT_SERVICE_NAME="${EXAM_SHEET_IMPORT_SERVICE_NAME:-workspace-examination-sheet-import.service}"
 EXAM_SHEET_IMPORT_TIMER_NAME="${EXAM_SHEET_IMPORT_TIMER_NAME:-workspace-examination-sheet-import.timer}"
 EXAM_SHEET_EXPORT_SERVICE_NAME="${EXAM_SHEET_EXPORT_SERVICE_NAME:-workspace-examination-sheet-export.service}"
@@ -77,7 +76,6 @@ sudo install -m 0644 workspace-training-completion.timer "/etc/systemd/system/$T
 sudo install -m 0644 workspace-assessment-lifecycle.service "/etc/systemd/system/$ASSESSMENT_LIFECYCLE_SERVICE_NAME"
 sudo install -m 0644 workspace-assessment-lifecycle.timer "/etc/systemd/system/$ASSESSMENT_LIFECYCLE_TIMER_NAME"
 sudo install -m 0644 workspace-assessment-closing.service "/etc/systemd/system/$ASSESSMENT_CLOSING_SERVICE_NAME"
-sudo install -m 0644 workspace-assessment-closing.timer "/etc/systemd/system/$ASSESSMENT_CLOSING_TIMER_NAME"
 sudo install -m 0644 workspace-examination-sheet-import.service "/etc/systemd/system/$EXAM_SHEET_IMPORT_SERVICE_NAME"
 sudo install -m 0644 workspace-examination-sheet-import.timer "/etc/systemd/system/$EXAM_SHEET_IMPORT_TIMER_NAME"
 sudo install -m 0644 workspace-examination-sheet-export.service "/etc/systemd/system/$EXAM_SHEET_EXPORT_SERVICE_NAME"
@@ -89,13 +87,14 @@ sudo install -m 0644 workspace-db-backup.timer "/etc/systemd/system/$DB_BACKUP_T
 sudo install -m 0644 workspace-weekly-report.service "/etc/systemd/system/$WEEKLY_REPORT_SERVICE_NAME"
 sudo install -m 0644 workspace-weekly-report.timer "/etc/systemd/system/$WEEKLY_REPORT_TIMER_NAME"
 sudo systemctl daemon-reload
+sudo systemctl disable --now workspace-assessment-closing.timer 2>/dev/null || true
 sudo systemctl enable --now workspace-schedule-sync.timer
 sudo systemctl enable --now workspace-examination-schedule.timer
 sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl enable --now "$SYNC_TIMER_NAME"
 sudo systemctl enable --now "$TRAINING_COMPLETION_TIMER_NAME"
 sudo systemctl enable --now "$ASSESSMENT_LIFECYCLE_TIMER_NAME"
-sudo systemctl enable --now "$ASSESSMENT_CLOSING_TIMER_NAME"
+sudo systemctl enable "$ASSESSMENT_CLOSING_SERVICE_NAME"
 sudo systemctl enable --now "$EXAM_SHEET_IMPORT_TIMER_NAME"
 sudo systemctl enable --now "$EXAM_SHEET_EXPORT_TIMER_NAME"
 sudo systemctl enable --now "$EXAM_SHEET_SCAN_TIMER_NAME"
@@ -103,7 +102,7 @@ sudo systemctl enable --now "$DB_BACKUP_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_REPORT_TIMER_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 sudo systemctl start "$ASSESSMENT_LIFECYCLE_SERVICE_NAME"
-sudo systemctl start "$ASSESSMENT_CLOSING_SERVICE_NAME"
+sudo systemctl restart "$ASSESSMENT_CLOSING_SERVICE_NAME"
 
 for attempt in $(seq 1 "$HEALTH_RETRIES"); do
   if curl --fail --silent --header "Host: $HEALTH_HOST" "$HEALTH_URL" >/dev/null 2>&1; then

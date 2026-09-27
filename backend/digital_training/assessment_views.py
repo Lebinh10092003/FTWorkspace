@@ -46,7 +46,7 @@ from .models import (
     TrainingAssessmentUpload,
     TrainingQuestionBankSnapshot,
 )
-from .assessment_lifecycle import refresh_and_backup_assessment, start_retention_counter, trash_draft, verify_assessment_backup
+from .assessment_lifecycle import close_due_assessments, refresh_and_backup_assessment, start_retention_counter, trash_draft, verify_assessment_backup, wake_assessment_closer
 from .serializers import (
     TrainingAssessmentAttemptSerializer,
     TrainingAssessmentSerializer,
@@ -473,6 +473,7 @@ def _sync_completed_attempt(attempt):
 def assessments(request):
     queryset = TrainingAssessment.objects.select_related("session", "partner", "training_class").filter(trashed_at__isnull=True)
     if request.method == "GET":
+        close_due_assessments()
         rows = list(queryset)
         for item in rows:
             refresh_and_backup_assessment(item)
@@ -482,6 +483,7 @@ def assessments(request):
     serializer = TrainingAssessmentSerializer(data=request.data, context={"request": request})
     serializer.is_valid(raise_exception=True)
     item = serializer.save(created_by=_actor(request))
+    wake_assessment_closer()
     notify_workspace(
         event_key=f"assessment:{item.pk}:created",
         title="Đã tạo bài kiểm tra cuối khóa",
@@ -504,6 +506,8 @@ def assessments(request):
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def assessment_detail(request, pk):
+    if request.method == "GET":
+        close_due_assessments(assessment_id=pk)
     item = TrainingAssessment.objects.select_related("session", "partner", "training_class").filter(pk=pk, trashed_at__isnull=True).first()
     if not item:
         return _assessment_error("Không tìm thấy bài đánh giá.", status.HTTP_404_NOT_FOUND)
@@ -530,6 +534,7 @@ def assessment_detail(request, pk):
                 status.HTTP_409_CONFLICT,
             )
         item.delete()
+        wake_assessment_closer()
         notify_workspace(
             event_key=f"assessment:{pk}:deleted:{int(timezone.now().timestamp())}",
             title="Đã xóa bài kiểm tra cuối khóa", message=f"{_actor(request)} đã xóa “{item.title}” cùng dữ liệu bài làm trên web.",
@@ -567,6 +572,7 @@ def assessment_detail(request, pk):
             category="digital-training", target_modules=["digital-training"],
             action_url=f"/training-assessments/{updated.pk}",
         )
+    wake_assessment_closer()
     return Response(TrainingAssessmentSerializer(updated, context={"request": request}).data)
 
 
