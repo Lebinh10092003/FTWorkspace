@@ -19,6 +19,7 @@ type WorkTask = {
   id: number;
   title: string;
   formatRuns?: TextFormatRun[] | null;
+  sheetEmphasis?: boolean | null;
   displayTitle: string;
   description: string;
   progressNote: string;
@@ -1470,10 +1471,12 @@ const formatRunsFromStates = (states: FormatState[]): TextFormatRun[] => {
   return runs;
 };
 
-const effectiveTaskFormatRuns = (task: Pick<WorkTask, "title" | "priority" | "formatRuns">): TextFormatRun[] => {
-  if (taskTags(task.title).personal) return [];
-  if (task.formatRuns !== null && task.formatRuns !== undefined) return task.formatRuns;
-  return task.priority === "high"
+const effectiveTaskFormatRuns = (task: Pick<WorkTask, "title" | "priority" | "formatRuns" | "sheetEmphasis">): TextFormatRun[] => {
+  const tags = taskTags(task.title);
+  if (tags.personal) return [];
+  if (task.formatRuns?.length) return task.formatRuns;
+  if (task.sheetEmphasis === false) return [];
+  return (task.sheetEmphasis === true || (task.priority === "high" && tags.support))
     ? [{ startIndex: 0, bold: true, italic: true }]
     : [];
 };

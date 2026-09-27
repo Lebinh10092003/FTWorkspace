@@ -19,7 +19,7 @@ from django.utils.dateparse import parse_date
 
 from work_schedule.models import WorkItem
 from work_schedule.rich_text import format_state_at, normalize_format_runs, utf16_length
-from work_schedule.sheet_parser import is_personal_task
+from work_schedule.sheet_parser import is_personal_task, is_support_task
 
 
 def _rendered_bold(item):
@@ -29,7 +29,7 @@ def _rendered_bold(item):
         return bool(format_state_at(runs, 0)["bold"])
     if item.sheet_emphasis is not None:
         return bool(item.sheet_emphasis)
-    return item.priority == "high" and not is_personal_task(item.title)
+    return item.priority == "high" and is_support_task(item.title) and not is_personal_task(item.title)
 
 
 class Command(BaseCommand):

@@ -26,7 +26,7 @@ from .models import (
 )
 from .retention import purge_expired_work_schedule, retained_from
 from .rich_text import format_state_at, normalize_format_runs, slice_format_runs, utf16_length
-from .sheet_parser import is_personal_task, without_task_tags, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
+from .sheet_parser import is_personal_task, is_support_task, without_task_tags, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
 from .signals import suppress_sheet_queue
 
 
@@ -1156,9 +1156,8 @@ def _sheet_text_length(value):
 def _build_content_format_runs(content, items=None):
     """Build explicit rich-text runs for the Sheet task cell.
 
-    New/web-authored items use their stored title runs. Legacy items keep the
-    historical time/priority fallback until their formatting is captured from
-    the Sheet or explicitly edited in the web grid.
+    Stored title runs take precedence. Otherwise, high-priority support tasks
+    get automatic emphasis until their formatting is explicitly edited.
     """
     # Sheets only accepts textFormatRuns for a literal, non-empty string cell.
     # Without this guard an empty schedule generated a run at index 0 and made
@@ -1200,7 +1199,7 @@ def _build_content_format_runs(content, items=None):
                 # web editor, or a stale Sheet capture).
                 append_run(offset, False, False)
                 current_state = (False, False)
-            elif item is not None and item_runs is not None:
+            elif item is not None and item_runs is not None and (item_runs or getattr(item, "sheet_emphasis", None) is False):
                 # Reset every numbered line before applying its title-local
                 # runs. This prevents a bold first task leaking into later
                 # tasks through the cell's base style.
@@ -1217,26 +1216,23 @@ def _build_content_format_runs(content, items=None):
                 tail = format_state_at(normalized, _sheet_text_length(title))
                 current_state = (tail["bold"], tail["italic"])
             else:
-                is_high_priority = (
-                    task_index < len(ordered_items)
-                    and ordered_items[task_index].priority == "high"
-                )
+                is_high_priority = item is not None and getattr(item, "priority", None) == "high"
                 time_line = marker.group(0) + without_task_tags(line[marker.end():])
                 sheet_emphasis = getattr(item, "sheet_emphasis", None) if item else None
-                # A Sheet editor's explicit choice wins over the automatic time
-                # or priority rule. Legacy callers without items retain the
-                # historical time-based output.
+                # Only high-priority support tasks get automatic emphasis. A
+                # Sheet editor's explicit choice still wins, and personal
+                # tasks remain plain even when tagged as support.
                 important = (
                     bool(sheet_emphasis)
                     if sheet_emphasis is not None
-                    else (is_high_priority if ordered_items else bool(_TIME_LINE_RE.match(time_line)))
+                    else (is_support_task(title) and (is_high_priority if ordered_items else bool(_TIME_LINE_RE.match(time_line))))
                 )
                 next_state = (
                     not is_personal_task(title) and important,
                     not is_personal_task(title) and important,
                 )
-                if next_state != current_state:
-                    append_run(offset, next_state[0], next_state[1], legacy=True)
+                if next_state != current_state or item is not None:
+                    append_run(offset, next_state[0], next_state[1], legacy=next_state[0])
                     current_state = next_state
         offset += _sheet_text_length(line) + 1  # +1 for newline character
     return runs

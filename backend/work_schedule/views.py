@@ -156,6 +156,7 @@ def _payload(item, user, role):
         "status": item.status,
         "displayStatus": display_status,
         "priority": item.priority,
+        "sheetEmphasis": item.sheet_emphasis,
         "timePrefixInTitle": item.time_prefix_in_title,
         "formatRuns": title_format_runs,
         "label": item.label,

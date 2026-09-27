@@ -290,10 +290,10 @@ class WorkScheduleSheetParserTests(TestCase):
         self.assertEqual(task.start_time.isoformat(timespec="minutes"), "07:30")
         self.assertEqual(task.end_time.isoformat(timespec="minutes"), "12:30")
 
-    def test_only_authored_time_prefix_gets_bold_italic_pure_black(self):
+    def test_only_high_priority_support_tasks_get_automatic_bold_italic(self):
         self.assertEqual(_build_content_format_runs(""), [])
 
-        content = "1. Việc có giờ hệ thống\n2. 8h30: Việc ghi giờ trong tên\n3. 7:00 Việc khác"
+        content = "1. Việc có giờ hệ thống\n2. [Hỗ trợ] 8h30: Việc ghi giờ trong tên\n3. 7:00 Việc khác"
         runs = _build_content_format_runs(content)
         emphasized = [run for run in runs if run["format"].get("bold")]
         self.assertEqual(len(emphasized), 1)
@@ -307,12 +307,60 @@ class WorkScheduleSheetParserTests(TestCase):
                 self.priority = priority
 
         priority_runs = _build_content_format_runs(
-            "1. Việc không có giờ nhưng ưu tiên cao\n2. Việc thường",
-            [Item("high"), Item("medium")],
+            "1. [Hỗ trợ] Việc ưu tiên cao\n2. Việc ưu tiên cao khác\n3. [Lịch cá nhân] Việc cá nhân",
+            [Item("high"), Item("high"), Item("high")],
         )
         self.assertTrue(priority_runs[0]["format"]["bold"])
         self.assertFalse(priority_runs[1]["format"]["bold"])
         self.assertFalse(priority_runs[1]["format"]["italic"])
+
+    def test_web_support_task_with_empty_runs_uses_priority_until_explicit_unbold(self):
+        from types import SimpleNamespace
+
+        title = "[Hỗ trợ] 7h30 Tham dự tập huấn"
+        content = f"1. {title}"
+        item = SimpleNamespace(title=title, priority="high", title_format_runs=[], sheet_emphasis=None)
+        automatic_runs = _build_content_format_runs(content, [item])
+        self.assertTrue(any(run["format"]["bold"] for run in automatic_runs))
+
+        item.sheet_emphasis = False
+        manual_unbold_runs = _build_content_format_runs(content, [item])
+        self.assertFalse(any(run["format"]["bold"] for run in manual_unbold_runs))
+
+    @mock.patch("work_schedule.management.commands.refresh_priority_task_format.sync_to_sheet")
+    def test_refresh_priority_format_queues_automatic_high_tasks(self, sync_mock):
+        from django.core.management import call_command
+        from .signals import suppress_sheet_queue
+
+        profile = UserProfile.objects.create(
+            email="support-format@example.com", name="Support Format",
+            role="EMPLOYEE", access_modules=[],
+        )
+        work_date = timezone.localdate()
+        with suppress_sheet_queue():
+            for offset, (title, priority, runs, emphasis) in enumerate((
+                ("[Hỗ trợ] 7h30 Tập huấn", "high", [], None),
+                ("Việc khác", "high", [], None),
+                ("[Hỗ trợ] Việc thường", "medium", [], None),
+                ("[Hỗ trợ] Đã bỏ đậm", "high", [], False),
+            )):
+                WorkItem.objects.create(
+                    creator=profile, executor=profile,
+                    work_date=work_date + timedelta(days=offset),
+                    title=title, priority=priority, title_format_runs=runs,
+                    sheet_emphasis=emphasis,
+                )
+        sync_mock.return_value = {"groups": 2, "conflicts": []}
+
+        call_command("refresh_priority_task_format", "--apply", stdout=StringIO())
+
+        self.assertEqual(
+            list(WorkScheduleSheetChange.objects.filter(
+                executor_email=profile.email,
+            ).values_list("executor_email", "work_date")),
+            [(profile.email, work_date), (profile.email, work_date + timedelta(days=1))],
+        )
+        sync_mock.assert_called_once_with()
 
     def test_manual_rich_text_does_not_leak_into_the_following_tasks(self):
         class Item:
