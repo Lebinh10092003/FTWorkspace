@@ -248,6 +248,10 @@ export default function TrainingAssessmentsAdmin({
   const [resultSearch, setResultSearch] = useState("");
   const [resultStatus, setResultStatus] = useState("");
   const [resultVariant, setResultVariant] = useState("");
+  const [resultPage, setResultPage] = useState(1);
+  const [toasts, setToasts] = useState<Array<{ id: number; message: string; warning: boolean }>>([]);
+  const toastId = useRef(0);
+  const toastTimers = useRef(new Map<number, number>());
   const [manualScores, setManualScores] = useState<Record<number, string>>({});
   const [scheduleDraft, setScheduleDraft] = useState({ opens_at: "", closes_at: "" });
   const [detailTab, setDetailTab] = useState<"overview" | "settings">("overview");
@@ -305,6 +309,23 @@ export default function TrainingAssessmentsAdmin({
     if (resultVariant && item.variant !== resultVariant) return false;
     return true;
   }), [results, resultSearch, resultStatus, resultVariant]);
+  const resultsPerPage = 50;
+  const resultPageCount = Math.max(1, Math.ceil(filteredResults.length / resultsPerPage));
+  const currentResultPage = Math.min(resultPage, resultPageCount);
+  const pageResults = filteredResults.slice((currentResultPage - 1) * resultsPerPage, currentResultPage * resultsPerPage);
+  const dismissToast = (id: number) => {
+    window.clearTimeout(toastTimers.current.get(id));
+    toastTimers.current.delete(id);
+    setToasts((current) => current.filter((item) => item.id !== id));
+  };
+  const showToast = (message: string, warning = false) => {
+    const id = ++toastId.current;
+    setToasts((current) => [...current, { id, message, warning }]);
+    toastTimers.current.set(id, window.setTimeout(() => dismissToast(id), 30000));
+  };
+  useEffect(() => {
+    return () => { toastTimers.current.forEach((timer) => window.clearTimeout(timer)); };
+  }, []);
   const bankUrl = bankSource === "default" ? bankSettings.default_url.trim() : sheetUrl.trim();
 
   const loadBankSettings = async () => {
@@ -370,20 +391,39 @@ export default function TrainingAssessmentsAdmin({
   useEffect(() => {
     if (screen !== "detail" || !selected?.id) return;
     let active = true;
-    const refreshQuestions = async () => {
+    const refreshAssessment = async () => {
       try {
         const response = await fetch(`/api/digital-training/assessments/${selected.id}`, { headers: { Authorization: `Bearer ${idToken}` } });
         if (!response.ok) return;
-        const updated = await response.json();
+        const updated = await response.json() as Assessment;
         if (active) {
-          setSelected((current) => current?.id === updated.id ? { ...current, questions: updated.questions, variants: updated.variants } : current);
+          setSelected((current) => current?.id === updated.id ? updated : current);
           setItems((current) => current.map((item) => item.id === updated.id ? updated : item));
+          if (updated.status !== "published") {
+            const resultsResponse = await fetch(`/api/digital-training/assessments/${updated.id}/results`, { headers: { Authorization: `Bearer ${idToken}` } });
+            if (active && resultsResponse.ok) setResults(await resultsResponse.json());
+          }
         }
       } catch { /* Keep the current detail if the connection is unavailable. */ }
     };
-    window.addEventListener("focus", refreshQuestions);
-    return () => { active = false; window.removeEventListener("focus", refreshQuestions); };
-  }, [screen, selected?.id, idToken]);
+    window.addEventListener("focus", refreshAssessment);
+    const closingTime = selected.status === "published" && selected.closes_at ? new Date(selected.closes_at).getTime() : 0;
+    const timeUntilClose = closingTime - Date.now();
+    let closingTimer: number | undefined;
+    let closingPoll: number | undefined;
+    if (closingTime && timeUntilClose < 2147483647) {
+      closingTimer = window.setTimeout(() => {
+        void refreshAssessment();
+        closingPoll = window.setInterval(() => void refreshAssessment(), 15000);
+      }, Math.max(0, timeUntilClose + 2000));
+    }
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refreshAssessment);
+      window.clearTimeout(closingTimer);
+      window.clearInterval(closingPoll);
+    };
+  }, [screen, selected?.id, selected?.status, selected?.closes_at, idToken]);
 
   const publicLink = selected
     ? `${window.location.origin}/training-assessment/${selected.public_slug}`
@@ -786,6 +826,7 @@ export default function TrainingAssessmentsAdmin({
     setResultSearch("");
     setResultStatus("");
     setResultVariant("");
+    setResultPage(1);
     if (updateUrl && window.location.pathname !== assessmentDetailPath(item.id)) {
       window.history.pushState({ trainingAssessmentId: item.id }, "", assessmentDetailPath(item.id));
     }
@@ -888,7 +929,7 @@ export default function TrainingAssessmentsAdmin({
       if (removeStored) {
         const payload = await response.json();
         setResults((current) => current.filter((item) => item.id !== result.id));
-        setNotice(payload.sheet_log_warning || `Đã xóa lượt làm của ${result.respondent_name}. Người học có thể bắt đầu lại bằng thông tin đã đăng ký.`);
+        showToast(payload.sheet_log_warning || `Đã xóa lượt làm của ${result.respondent_name}. Người học có thể bắt đầu lại bằng thông tin đã đăng ký.`, Boolean(payload.sheet_log_warning));
         try {
           const detailResponse = await fetch(`/api/digital-training/assessments/${selected.id}`, { headers: auth });
           if (detailResponse.ok) {
@@ -1625,21 +1666,21 @@ export default function TrainingAssessmentsAdmin({
             <label className="min-w-56 flex-1">
               <span className="mb-1 block text-xs font-bold">Tìm người làm bài</span>
               <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                <input className="ft-input pl-9" value={resultSearch} onChange={(event) => setResultSearch(event.target.value)} placeholder="Họ tên, email hoặc số điện thoại" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input className="ft-input" style={{ paddingLeft: "2.5rem" }} aria-label="Tìm người làm bài theo họ tên, email hoặc số điện thoại" value={resultSearch} onChange={(event) => { setResultSearch(event.target.value); setResultPage(1); }} placeholder="Họ tên, email hoặc số điện thoại" />
               </div>
             </label>
-            <label><span className="mb-1 block text-xs font-bold">Trạng thái</span><select className="ft-input min-w-36" value={resultStatus} onChange={(event) => setResultStatus(event.target.value)}><option value="">Tất cả</option><option value="in_progress">Đang làm</option><option value="submitted">Đã nộp</option><option value="timed_out">Hết giờ</option></select></label>
-            <label><span className="mb-1 block text-xs font-bold">Mã đề</span><select className="ft-input min-w-28" value={resultVariant} onChange={(event) => setResultVariant(event.target.value)}><option value="">Tất cả</option>{resultVariants.map((variant) => <option key={variant} value={variant}>{variant}</option>)}</select></label>
-            <span className="pb-2 text-xs font-semibold text-slate-600">Hiển thị {filteredResults.length}/{results.length} lượt</span>
+            <label><span className="mb-1 block text-xs font-bold">Trạng thái</span><select className="ft-input min-w-36" value={resultStatus} onChange={(event) => { setResultStatus(event.target.value); setResultPage(1); }}><option value="">Tất cả</option><option value="in_progress">Đang làm</option><option value="submitted">Đã nộp</option><option value="timed_out">Hết giờ</option></select></label>
+            <label><span className="mb-1 block text-xs font-bold">Mã đề</span><select className="ft-input min-w-28" value={resultVariant} onChange={(event) => { setResultVariant(event.target.value); setResultPage(1); }}><option value="">Tất cả</option>{resultVariants.map((variant) => <option key={variant} value={variant}>{variant}</option>)}</select></label>
+            <span className="pb-2 text-xs font-semibold text-slate-600">Hiển thị {filteredResults.length ? `${(currentResultPage - 1) * resultsPerPage + 1}–${Math.min(currentResultPage * resultsPerPage, filteredResults.length)}` : "0"}/{filteredResults.length} lượt · tổng {results.length}</span>
           </div>
           {notice && <p role="status" className="mx-4 mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-900">{notice}</p>}
           <div className="overflow-x-auto">
             <table className="ft-table min-w-[1380px]">
               <thead><tr><th>STT</th><th>Người học</th><th>Liên hệ</th><th>Tổ chuyên môn/Phòng ban</th><th>Chức vụ</th><th>Mã đề</th><th>Điểm</th><th>Đánh giá</th><th>Trạng thái</th><th>Thời gian bắt đầu</th><th>Thời gian nộp bài</th><th aria-label="Thao tác" /></tr></thead>
-              <tbody>{filteredResults.length ? filteredResults.map((item, index) => (
+              <tbody>{filteredResults.length ? pageResults.map((item, index) => (
                 <tr key={item.id}>
-                  <td>{index + 1}</td>
+                  <td>{(currentResultPage - 1) * resultsPerPage + index + 1}</td>
                   <td><b>{item.respondent_name}</b></td>
                   <td>{item.email || item.phone || "—"}</td>
                   <td>{item.organization || "—"}</td>
@@ -1661,6 +1702,14 @@ export default function TrainingAssessmentsAdmin({
               )) : <tr><td colSpan={12} className="py-10 text-center text-slate-500">{results.length ? "Không có lượt làm phù hợp bộ lọc." : "Chưa có lượt làm bài."}</td></tr>}</tbody>
             </table>
           </div>
+          {filteredResults.length > resultsPerPage && <nav className="flex flex-wrap items-center justify-between gap-3 border-t bg-white px-4 py-3 text-sm" aria-label="Chuyển trang danh sách bài làm">
+            <span className="text-slate-600">Trang {currentResultPage}/{resultPageCount}</span>
+            <div className="flex flex-wrap items-center gap-1">
+              <button type="button" disabled={currentResultPage === 1} onClick={() => setResultPage(currentResultPage - 1)} className="ft-btn ft-btn-secondary disabled:opacity-40" aria-label="Trang trước"><ChevronLeft className="h-4 w-4" /></button>
+              {Array.from({ length: resultPageCount }, (_, index) => index + 1).filter((page) => page === 1 || page === resultPageCount || Math.abs(page - currentResultPage) <= 2).map((page, index, visible) => <React.Fragment key={page}>{index > 0 && page - visible[index - 1] > 1 && <span className="px-1 text-slate-400">…</span>}<button type="button" onClick={() => setResultPage(page)} aria-label={`Trang ${page}`} aria-current={page === currentResultPage ? "page" : undefined} className={`min-w-9 rounded-lg px-2 py-1.5 font-bold ${page === currentResultPage ? "bg-blue-600 text-white" : "border text-slate-700 hover:bg-slate-50"}`}>{page}</button></React.Fragment>)}
+              <button type="button" disabled={currentResultPage === resultPageCount} onClick={() => setResultPage(currentResultPage + 1)} className="ft-btn ft-btn-secondary disabled:opacity-40" aria-label="Trang sau"><ChevronRight className="h-4 w-4" /></button>
+            </div>
+          </nav>}
         </div>
         {editingAnswerAttempt && <div role="dialog" aria-modal="true" aria-label={`Sửa bài làm của ${editingAnswerAttempt.respondent_name}`} className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
           <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -1683,6 +1732,12 @@ export default function TrainingAssessmentsAdmin({
             <div className="flex justify-end gap-2 border-t p-4"><button type="button" disabled={busy} onClick={() => setEditingAnswerAttempt(null)} className="ft-btn ft-btn-secondary">Hủy</button><button type="button" disabled={busy} onClick={() => void saveAnswerEdits()} className="ft-primary">{busy ? "Đang lưu..." : "Lưu bài làm"}</button></div>
           </div>
         </div>}
+        {toasts.length > 0 && createPortal(<div className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2" aria-label="Thông báo thao tác">
+          {toasts.map((toast) => <div key={toast.id} role="status" className={`pointer-events-auto flex items-start gap-3 rounded-xl border p-4 shadow-lg ${toast.warning ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-300 bg-white text-emerald-950"}`}>
+            <p className="min-w-0 flex-1 text-sm font-medium leading-5">{toast.message}</p>
+            <button type="button" onClick={() => dismissToast(toast.id)} className="shrink-0 rounded-md border border-current/30 px-2 py-1 text-xs font-bold hover:bg-black/5" aria-label="Ẩn thông báo">Đóng</button>
+          </div>)}
+        </div>, document.body)}
       </section>
     );
   }

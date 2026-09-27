@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from authentication.models import UserProfile, WorkspaceNotification
 from .assessment_lifecycle import (
     assessment_retention_anchor,
+    close_due_assessments,
     refresh_and_backup_assessment,
     lifecycle_warning,
     refresh_assessment_status,
@@ -55,6 +56,36 @@ class AssessmentLifecycleTests(TestCase):
         refresh_assessment_status(self.assessment)
         self.assessment.refresh_from_db()
         self.assertEqual(self.assessment.status, "graded")
+
+    def test_scheduled_close_grades_active_attempt_at_deadline_once(self):
+        deadline = timezone.now().replace(second=0, microsecond=0)
+        self.assessment.status = "published"
+        self.assessment.closes_at = deadline
+        self.assessment.closed_at = None
+        self.assessment.questions = [{
+            "id": "q1", "variant": "Đề 1", "order": 1, "type": "single_choice",
+            "text": "Câu hỏi", "points": 2,
+            "options": [{"key": "A", "text": "Đúng"}, {"key": "B", "text": "Sai"}],
+            "correct_answers": ["A"],
+        }]
+        self.assessment.save(update_fields=["status", "closes_at", "closed_at", "questions"])
+        self.attempt.status = "in_progress"
+        self.attempt.answers = {"q1": "A"}
+        self.attempt.expires_at = deadline + timedelta(minutes=30)
+        self.attempt.submitted_at = None
+        self.attempt.save(update_fields=["status", "answers", "expires_at", "submitted_at"])
+
+        self.assertEqual(close_due_assessments(deadline - timedelta(seconds=1)), 0)
+        self.assertEqual(close_due_assessments(deadline), 1)
+        self.assertEqual(close_due_assessments(deadline + timedelta(minutes=1)), 0)
+        self.assessment.refresh_from_db()
+        self.attempt.refresh_from_db()
+        self.assertEqual(self.assessment.status, "closed")
+        self.assertEqual(self.assessment.retention_started_at, deadline)
+        self.assertEqual(self.attempt.status, "timed_out")
+        self.assertEqual(self.attempt.submitted_at, deadline)
+        self.assertEqual(self.attempt.score, 2)
+        self.assertFalse(self.attempt.manual_grading_required)
 
     @patch("digital_training.assessment_lifecycle.verify_assessment_backup")
     def test_finishing_the_last_grade_immediately_starts_and_completes_backup(self, verify):

@@ -1,15 +1,18 @@
 import hashlib
 import json
+import logging
 from datetime import timedelta
 
+from django.db import transaction
 from django.db.models import Max, Q
 from django.utils import timezone
 
 from authentication.notifications import notify_workspace
 
-from .assessment_service import prepare_assessment_google_sheet, rebuild_assessment_google_sheet_rows, variants_for
+from .assessment_service import grade_attempt, prepare_assessment_google_sheet, rebuild_assessment_google_sheet_rows, sync_attempt_to_google_sheet, variants_for
 from .models import TrainingAssessment
 
+logger = logging.getLogger(__name__)
 
 RETENTION_DELETE_DAY = 31
 RETENTION_MILESTONES = (14, 21, 28, RETENTION_DELETE_DAY)
@@ -245,19 +248,60 @@ def trash_draft(assessment):
     assessment.save(update_fields=["trashed_at", "purge_at", "updated_at"])
 
 
+def close_due_assessments(now=None):
+    """Close scheduled tests and finish active attempts at their actual deadline."""
+    now = now or timezone.now()
+    closed = 0
+    due_ids = list(TrainingAssessment.objects.filter(
+        status="published", trashed_at__isnull=True, closes_at__lte=now,
+    ).values_list("pk", flat=True))
+    for assessment_id in due_ids:
+        with transaction.atomic():
+            assessment = TrainingAssessment.objects.select_for_update().filter(
+                pk=assessment_id, status="published", trashed_at__isnull=True, closes_at__lte=now,
+            ).first()
+            if not assessment:
+                continue
+            timed_out_ids = []
+            for attempt in assessment.attempts.select_for_update().filter(status="in_progress"):
+                grade_attempt(attempt)
+                attempt.status = "timed_out"
+                attempt.submitted_at = min(attempt.expires_at, assessment.closes_at)
+                attempt.save(update_fields=[
+                    "score", "max_score", "auto_graded_points", "manual_grading_required",
+                    "status", "submitted_at", "updated_at",
+                ])
+                timed_out_ids.append(attempt.pk)
+            assessment.status = "closed"
+            assessment.save(update_fields=["status", "updated_at"])
+            start_retention_counter(assessment, assessment.closes_at)
+        for attempt in assessment.attempts.filter(pk__in=timed_out_ids):
+            if not assessment.output_sheet_url:
+                continue
+            try:
+                sync_attempt_to_google_sheet(attempt)
+                attempt.sync_status = "synced"
+                attempt.sync_error = ""
+                attempt.synced_at = timezone.now()
+            except Exception as error:
+                logger.exception("Could not sync timed-out assessment attempt %s", attempt.pk)
+                attempt.sync_status = "error"
+                attempt.sync_error = str(error)[:2000]
+            attempt.save(update_fields=["sync_status", "sync_error", "synced_at", "updated_at"])
+        notify_workspace(
+            event_key=f"assessment:{assessment.pk}:closed:{int(assessment.closes_at.timestamp())}",
+            title="Bài kiểm tra đã đóng",
+            message=f"“{assessment.title}” đã đóng theo lịch và sẵn sàng để chấm.",
+            category="digital-training", target_modules=["digital-training"],
+            action_url=f"/training-assessments/{assessment.pk}",
+        )
+        closed += 1
+    return closed
+
+
 def run_assessment_lifecycle(now=None):
     now = now or timezone.now()
-    result = {"warned": 0, "backedUp": 0, "deleted": 0, "failedBackup": 0, "trashed": 0, "purgedDrafts": 0}
-
-    # This is a due-only query, not a scan of every organization. Scheduled tests
-    # are closed once, then enter the same per-assessment milestone queue.
-    for assessment in TrainingAssessment.objects.filter(
-        status="published", trashed_at__isnull=True, closes_at__lte=now,
-    ).iterator():
-        assessment.status = "closed"
-        assessment.attempts.filter(status="in_progress").update(status="timed_out", submitted_at=now)
-        assessment.save(update_fields=["status", "updated_at"])
-        start_retention_counter(assessment, assessment.closes_at)
+    result = {"closed": close_due_assessments(now), "warned": 0, "backedUp": 0, "deleted": 0, "failedBackup": 0, "trashed": 0, "purgedDrafts": 0}
 
     # Back up every newly graded assessment as soon as possible. This also
     # catches legacy rows that reached "graded" before automatic backup was
