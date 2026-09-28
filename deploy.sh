@@ -82,6 +82,8 @@ sudo install -m 0644 workspace-examination-sheet-export.service "/etc/systemd/sy
 sudo install -m 0644 workspace-examination-sheet-export.timer "/etc/systemd/system/$EXAM_SHEET_EXPORT_TIMER_NAME"
 sudo install -m 0644 workspace-examination-sheet-scan.service "/etc/systemd/system/$EXAM_SHEET_SCAN_SERVICE_NAME"
 sudo install -m 0644 workspace-examination-sheet-scan.timer "/etc/systemd/system/$EXAM_SHEET_SCAN_TIMER_NAME"
+sudo install -m 0644 workspace-examination-partner-contacts.service /etc/systemd/system/workspace-examination-partner-contacts.service
+sudo install -m 0644 workspace-examination-partner-contacts.timer /etc/systemd/system/workspace-examination-partner-contacts.timer
 sudo install -m 0644 workspace-db-backup.service "/etc/systemd/system/$DB_BACKUP_SERVICE_NAME"
 sudo install -m 0644 workspace-db-backup.timer "/etc/systemd/system/$DB_BACKUP_TIMER_NAME"
 sudo install -m 0644 workspace-weekly-report.service "/etc/systemd/system/$WEEKLY_REPORT_SERVICE_NAME"
@@ -98,6 +100,10 @@ sudo systemctl enable "$ASSESSMENT_CLOSING_SERVICE_NAME"
 sudo systemctl enable --now "$EXAM_SHEET_IMPORT_TIMER_NAME"
 sudo systemctl enable --now "$EXAM_SHEET_EXPORT_TIMER_NAME"
 sudo systemctl enable --now "$EXAM_SHEET_SCAN_TIMER_NAME"
+sudo systemctl enable --now workspace-examination-partner-contacts.timer
+if ! "$VENV_DIR/bin/python" backend/manage.py sync_examination_partner_contacts; then
+  echo "WARNING: Partner contact Sheet sync deferred to the retry timer." >&2
+fi
 sudo systemctl enable --now "$DB_BACKUP_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_REPORT_TIMER_NAME"
 sudo systemctl restart "$SERVICE_NAME"

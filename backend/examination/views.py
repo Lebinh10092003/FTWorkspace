@@ -1069,9 +1069,8 @@ def recover_partners_from_lognotes():
 
 def persisted_partners():
     config, _ = SystemConfig.objects.get_or_create(key=PARTNER_CONFIG_KEY)
-    partners = normalize_partners((config.data or {}).get('partners'))
-    if partners:
-        return partners
+    if 'partners' in (config.data or {}):
+        return normalize_partners(config.data['partners'])
     recovered = recover_partners_from_lognotes()
     if recovered:
         config.data = {'partners': recovered}
@@ -1109,6 +1108,9 @@ def partners_detail(request):
             changes = audit_values(before, after, labels)
             if changes:
                 append_audit(entity_key, 'Cập nhật đối tác: ' + changes, request)
+    if before_partners != after_partners:
+        from .partner_contact_sync import launch_partner_contact_sync
+        transaction.on_commit(launch_partner_contact_sync, robust=True)
     return Response({'partners': partners})
 @api_view(['GET'])
 @permission_classes([IsAuthenticatedOrReadOnly])

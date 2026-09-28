@@ -1,0 +1,10 @@
+[Unit]
+Description=Retry teacher contact Sheet sync every 15 minutes
+
+[Timer]
+OnCalendar=*-*-* *:00,15,30,45:00
+Persistent=true
+Unit=workspace-examination-partner-contacts.service
+
+[Install]
+WantedBy=timers.target
