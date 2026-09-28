@@ -122,7 +122,7 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     description: 'Thiết kế Email, chữ ký, mã QR và trang giới thiệu cuộc thi.',
     icon: Megaphone,
     path: '/communication-tools',
-    relatedViews: ['email-builder', 'signature-builder', 'qr-generator', 'competition-landing', 'weekly-report'],
+    relatedViews: ['email-builder', 'signature-builder', 'qr-generator', 'funding-proposal', 'document-number', 'weekly-report', 'competition-landing'],
   },
   {
     id: 'account-management',

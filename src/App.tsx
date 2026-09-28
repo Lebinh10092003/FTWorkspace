@@ -167,6 +167,10 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/communication-tools/weekly-report')) return 'weekly-report';
   if (path.startsWith('/communication-tools/competition-landing')) return 'competition-landing';
   if (path.startsWith('/communication-tools')) return 'communication-tools';
+  if (path === '/funding-proposal' || path === '/funding-proposal/') return 'funding-proposal';
+  if (path === '/document-number' || path === '/document-number/') return 'document-number';
+  if (path === '/weekly-report' || path === '/weekly-report/') return 'weekly-report';
+  if (path === '/competition-landing' || path === '/competition-landing/') return 'competition-landing';
   if (path.startsWith('/finance-report')) return 'finance-report';
   if (path.startsWith('/signature-builder')) return 'signature-builder';
   if (path.startsWith('/email-builder')) return 'email-builder';
@@ -315,7 +319,10 @@ export default function App() {
       'email-builder': '/communication-tools/email',
       'signature-builder': '/communication-tools/signature',
       'qr-generator': '/communication-tools/qr',
+      'funding-proposal': '/communication-tools/funding-proposal',
+      'document-number': '/communication-tools/document-number',
       'weekly-report': '/communication-tools/weekly-report',
+      'competition-landing': '/communication-tools/competition-landing',
     };
     const path = paths[mode] || `/${mode}`;
     if (window.location.pathname !== path) window.history.pushState(null, '', path);
