@@ -2516,9 +2516,10 @@ body.workspace-app-theme .bndc-tree-name { color: var(--workspace-surface-text);
 .fp-letterhead tr:first-child td { padding-bottom: 6px; }
 .fp-letterhead td:first-child { width: 35%; }
 .fp-letterhead tr:nth-child(2) td { font-size: 14pt; font-weight: 400; }
+.fp-letterhead tr:first-child td:nth-child(2) { font-size: 13pt; }
 .fp-organization { display: inline-block; white-space: nowrap; }
 .fp-organization::after { content: ""; display: block; width: 2.4cm; margin: 3px auto 0; border-bottom: 1px solid #111; }
-.fp-motto { display: inline-block; border-bottom: 1px solid #111; padding: 1px 1.15cm 3px; white-space: nowrap; }
+.fp-motto { display: inline-block; border-bottom: 1px solid #111; padding: 1px 0 3px; white-space: nowrap; font-size: 14pt; }
 
 .fp-title { margin: 14px 0 2px; text-align: center; font-size: 13pt; font-weight: 700; }
 .fp-subtitle { margin: 0 0 10px; text-align: center; font-size: 12pt; font-style: italic; }

@@ -130,7 +130,7 @@ def _numbered_funding_proposal(request, payload):
         if record.owner_email != owner_email:
             return None, Response({"error": "Bản nháp này thuộc tài khoản khác."}, status=status.HTTP_403_FORBIDDEN)
         try:
-            assign_funding_number(record, payload.get("issuedOn"))
+            assign_funding_number(record)
         except ValueError as exc:
             return None, Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     payload["documentNumber"] = record.document_number

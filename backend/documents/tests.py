@@ -1,8 +1,8 @@
 import zipfile
-from importlib import import_module
 from datetime import date
 from io import BytesIO
 from unittest import mock
+from urllib.parse import quote
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -214,18 +214,8 @@ class DocumentNumberApiTests(TestCase):
 
 
 class FundingProposalDocxTests(TestCase):
-    def test_existing_shared_register_number_becomes_first_proposal_number(self):
-        record = FundingProposalRecord.objects.create(
-            draft_id="2c510806-876b-45ba-b2f6-53d743979f25",
-            owner_email="owner@example.com", document_number="47/PĐXKP-FT",
-        )
-        migration = import_module("documents.migrations.0003_funding_proposal_numbering")
-        from django.apps import apps
-        migration.normalize_existing_proposals(apps, None)
-        record.refresh_from_db()
-        self.assertEqual(record.document_number, "01/PĐXKP-FT")
-        self.assertEqual(record.sequence_number, 1)
-        self.assertEqual(FundingProposalNumberCounter.objects.get(year=record.number_year).last_number, 1)
+    def test_counter_reserves_the_existing_manually_numbered_proposal(self):
+        self.assertEqual(FundingProposalNumberCounter.objects.get(pk=1).last_number, 2)
 
     def payload(self):
         return {
@@ -255,7 +245,7 @@ class FundingProposalDocxTests(TestCase):
     def test_it_produces_a_readable_docx(self):
         filename, content = build_funding_proposal(self.payload())
         self.assertTrue(filename.endswith(".docx"))
-        self.assertIn("46-PĐXKP-FT", filename)
+        self.assertEqual(filename, "46. Phiếu đề xuất kinh phí.docx")
         with zipfile.ZipFile(BytesIO(content)) as archive:
             self.assertIn("word/document.xml", archive.namelist())
 
@@ -263,7 +253,7 @@ class FundingProposalDocxTests(TestCase):
         payload = self.payload()
         payload["documentNumber"] = "46"
         filename, content = build_funding_proposal(payload)
-        self.assertIn("46-PĐXKP-FT", filename)
+        self.assertEqual(filename, "46. Phiếu đề xuất kinh phí.docx")
         self.assertIn("Số: 46/PĐXKP-FT", self.document_text(content))
 
     def test_the_form_keeps_its_official_headings(self):
@@ -293,6 +283,11 @@ class FundingProposalDocxTests(TestCase):
         self.assertEqual(word.tables[-1].rows.__len__(), 2)
         self.assertEqual(word.tables[-1].columns.__len__(), 2)
         self.assertEqual(word.tables[1].cell(1, 1).paragraphs[0].runs[-1].font.size.pt, 14)
+        heading, motto, motto_rule = word.tables[0].cell(0, 1).paragraphs[:3]
+        self.assertEqual(next(run for run in heading.runs if run.text).font.size.pt, 13)
+        self.assertEqual(next(run for run in motto.runs if run.text).font.size.pt, 14)
+        self.assertAlmostEqual(motto_rule.paragraph_format.left_indent.cm, 2.32, places=1)
+        self.assertAlmostEqual(motto_rule.paragraph_format.right_indent.cm, 2.32, places=1)
         with zipfile.ZipFile(BytesIO(content)) as archive:
             document = archive.read("word/document.xml").decode("utf-8")
             self.assertIn('w:pBdr', document)
@@ -364,7 +359,7 @@ class FundingProposalDocxTests(TestCase):
         disposition = response["Content-Disposition"]
         # ASCII fallback plus the real Vietnamese name, not an RFC2047 blob.
         self.assertTrue(disposition.startswith("attachment;"), disposition)
-        self.assertIn('filename="Phieu-de-xuat-kinh-phi-46-PDXKP-FT.docx"', disposition)
+        self.assertIn('filename="46. Phieu de xuat kinh phi.docx"', disposition)
         self.assertIn("filename*=UTF-8''", disposition)
         self.assertGreater(len(response.content), 5000)
 
@@ -385,17 +380,17 @@ class FundingProposalDocxTests(TestCase):
                     content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
                 )
                 self.assertEqual(response.status_code, 200)
-                self.assertEqual(response["X-Document-Number"], "01")
-                self.assertIn("01-PDXKP-FT.docx", response["Content-Disposition"])
+                self.assertEqual(response["X-Document-Number"], "03")
+                self.assertIn(quote("3. Phiếu đề xuất kinh phí.docx"), response["Content-Disposition"])
         common_register.assert_not_called()
         save.assert_not_called()
-        self.assertEqual(FundingProposalRecord.objects.get().document_number, "01/PĐXKP-FT")
+        self.assertEqual(FundingProposalRecord.objects.get().document_number, "03/PĐXKP-FT")
 
         status_response = self.client.get(
             "/api/documents/funding-proposal/status?draftId=" + payload["draftId"],
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
-        self.assertEqual(status_response.json()["documentNumber"], "01/PĐXKP-FT")
+        self.assertEqual(status_response.json()["documentNumber"], "03/PĐXKP-FT")
 
         with mock.patch("documents.views.save_proposal", return_value=(
             "drive-file-1", "https://drive.google.com/file/d/drive-file-1/view",
@@ -406,7 +401,8 @@ class FundingProposalDocxTests(TestCase):
                     content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
                 )
                 self.assertEqual(saved.status_code, 200)
-                self.assertEqual(saved.json()["documentNumber"], "01/PĐXKP-FT")
+                self.assertEqual(saved.json()["documentNumber"], "03/PĐXKP-FT")
+                self.assertEqual(saved.json()["fileName"], "3. Phiếu đề xuất kinh phí.docx")
         self.assertEqual(save.call_count, 2)
         self.assertEqual(save.call_args.kwargs["file_id"], "drive-file-1")
 
@@ -415,11 +411,11 @@ class FundingProposalDocxTests(TestCase):
             "/api/documents/funding-proposal.docx", second,
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
         )
-        self.assertEqual(response["X-Document-Number"], "02")
+        self.assertEqual(response["X-Document-Number"], "04")
 
         next_year = dict(payload, draftId="32a997ba-8315-46a7-a8ac-11de870036a1", issuedOn="2027-01-02")
         response = self.client.post(
             "/api/documents/funding-proposal.docx", next_year,
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
         )
-        self.assertEqual(response["X-Document-Number"], "01")
+        self.assertEqual(response["X-Document-Number"], "05")

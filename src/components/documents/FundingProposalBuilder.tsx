@@ -167,7 +167,7 @@ export default function FundingProposalBuilder({
       }));
       const blob = await response.blob();
       const name = filenameFrom(response.headers.get('Content-Disposition'))
-        || `Phieu-de-xuat-kinh-phi-${value.issuedOn}.docx`;
+        || (documentNumber ? `${Number(documentNumber)}. Phiếu đề xuất kinh phí.docx` : 'Phiếu đề xuất kinh phí.docx');
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;

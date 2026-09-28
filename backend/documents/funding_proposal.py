@@ -5,7 +5,7 @@ numbered sections 1-5, a cost table that carries its own CỘNG / VAT / CHI PHÍ
 KHÁC / TỔNG CỘNG rows, and a two-by-two signature grid. Word renders this
 directly; nothing here depends on the browser that filled the form in.
 """
-from datetime import date, datetime
+from datetime import datetime
 from io import BytesIO
 
 from docx import Document
@@ -167,10 +167,15 @@ def _letterhead(document, data):
                               align=WD_ALIGN_PARAGRAPH.CENTER, space_after=4)
     organization_rule.paragraph_format.line_spacing = 0.3
     _centered_rule(organization_rule, 1.7)
-    _cell_text(table.cell(0, 1), "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
-    motto = _para(table.cell(0, 1), "Độc lập - Tự do - Hạnh phúc", bold=True, size=13,
-                  align=WD_ALIGN_PARAGRAPH.CENTER, space_after=4)
-    _centered_rule(motto, 2.0)
+    _cell_text(table.cell(0, 1), "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold=True, size=13, align=WD_ALIGN_PARAGRAPH.CENTER)
+    _para(table.cell(0, 1), "Độc lập - Tự do - Hạnh phúc", bold=True, size=14,
+          align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0)
+    # Give the text the full cell width, then draw a centered rule below it.
+    # At 14 pt bold Times New Roman the text measures about 6.05 cm.
+    motto_rule = _para(table.cell(0, 1), "", size=4,
+                       align=WD_ALIGN_PARAGRAPH.CENTER, space_after=4)
+    motto_rule.paragraph_format.line_spacing = 0.3
+    _centered_rule(motto_rule, 2.32)
 
     number = _document_number(data)
     _cell_text(
@@ -391,10 +396,8 @@ def _comparison_table(document, data):
 
 
 def _filename(data):
-    number = _document_number(data).replace("/", "-")
-    stamp = _parse_date(data.get("issuedOn")) or date.today()
-    tail = number or stamp.strftime("%Y%m%d")
-    return f"Phieu-de-xuat-kinh-phi-{tail}.docx"
+    number = _document_number(data).split("/", 1)[0]
+    return f"{int(number)}. Phiếu đề xuất kinh phí.docx" if number else "Phiếu đề xuất kinh phí.docx"
 
 
 def _document_number(data):
