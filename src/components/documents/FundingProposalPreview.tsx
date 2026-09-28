@@ -20,7 +20,7 @@ export default function FundingProposalPreview({ value }: { value: FundingPropos
         <tbody>
           <tr>
             <td><b>CÔNG TY CỔ PHẦN</b><br /><b>CÔNG NGHỆ FERMAT</b></td>
-            <td><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br /><b>Độc lập - Tự do - Hạnh phúc</b></td>
+            <td><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br /><b className="fp-motto">Độc lập - Tự do - Hạnh phúc</b></td>
           </tr>
           <tr>
             <td>Số: {formatProposalNumber(value.documentNumber) || '……/PĐXKP-FT'}</td>

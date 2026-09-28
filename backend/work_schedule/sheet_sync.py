@@ -61,7 +61,8 @@ SHEET_STAFF_EMAILS = {
     "sơn": "sondc@fermat.edu.vn",
     "khánh hà": "hadk1@fermat.edu.vn",
 }
-WEEKDAYS = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]
+# Match the existing "Lịch công tác" dropdown values, including Sunday.
+WEEKDAYS = ["Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy", "CN"]
 INCREMENTAL_SYNC_LEASE_SECONDS = 300
 TWO_WAY_SYNC_LEASE_SECONDS = 1800
 CONFLICT_RETRY_MINUTES = 5
@@ -269,6 +270,28 @@ def _sheet_employee_code(email, profile=None):
     # Email is a stable, already-supported identity when HR has not assigned an
     # employee code yet; never write a blank hidden identity for a new person.
     return str(profile.employee_code or profile.email) if profile else email
+
+
+def _sheet_staff_labels(service):
+    """Use the visible roster labels from Danh mục, not full HR names."""
+    cached = getattr(service, "_work_schedule_staff_labels", None)
+    if isinstance(cached, dict):
+        return cached
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=_spreadsheet_id(), range="'Danh mục'!A2:C",
+            valueRenderOption="FORMATTED_VALUE",
+        ).execute()
+        rows = result.get("values", []) if isinstance(result, dict) else []
+    except Exception:
+        logger.exception("Không đọc được nhãn Chủ trì trong tab Danh mục.")
+        rows = []
+    labels = {}
+    for row in rows:
+        if len(row) >= 3 and str(row[0]).strip() and str(row[1]).strip() and str(row[2]).strip():
+            labels[str(row[2]).strip().lower()] = str(row[1]).strip()
+    service._work_schedule_staff_labels = labels
+    return labels
 
 
 def _row_employee_email(row, name_email_map=None):
@@ -1681,6 +1704,7 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
     profiles = UserProfile.objects.in_bulk(
         {email for email, _ in groups}, field_name="email"
     )
+    staff_labels = _sheet_staff_labels(service)
     next_row = max((i for i, row in enumerate(rows, start=rows_start) if any(_cell(row, c) for c in range(min(9, len(row))))), default=rows_start - 1) + 1
     for email, work_date in sorted(groups, key=lambda value: (value[1], value[0])):
         items = items_by_group[(email, work_date)]
@@ -1709,6 +1733,7 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
             continue
         content, self_notes, leader_notes, task_ids = _group_values(items) if items else ("", "", "", "")
         new_hash = _row_hash(content, self_notes, leader_notes, task_ids)
+        exam_generated = any(str(item.source_record_id or "").startswith("REC-EXAM-") for item in items)
         if current and (email, work_date) in preserve_sheet_groups:
             # A full pull has just established the Sheet snapshot as the
             # source of truth. Do not normalize duplicate lines, notes, or
@@ -1734,6 +1759,17 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
                         "range": f"'{SHEET_NAME}'!{column}{row_number}",
                         "values": [[value]],
                     })
+            if exam_generated:
+                profile = profiles.get(email)
+                for name, value in (
+                    ("weekday", WEEKDAYS[work_date.weekday()]),
+                    ("staff", staff_labels.get(email, profile.name if profile else email)),
+                ):
+                    if _cell(current, columns[name]) != value:
+                        raw_updates.append({
+                            "range": f"'{SHEET_NAME}'!{_column_letter(columns[name])}{row_number}",
+                            "values": [[value]],
+                        })
             metadata_synced.append((email, work_date, row_number, new_hash, items))
             continue
         for name, value in (
@@ -1743,21 +1779,28 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
         ):
             column = _column_letter(columns[name])
             raw_updates.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[value]]})
+        profile = profiles.get(email)
+        display_name = staff_labels.get(email, profile.name if profile else email)
+        weekday = WEEKDAYS[work_date.weekday()]
         if not current:
-            profile = profiles.get(email)
             iso_week = work_date.isocalendar().week
             record_id = f"REC-WEB-{uuid.uuid4().hex[:12].upper()}"
             for name, value in (
-                ("weekday", WEEKDAYS[work_date.weekday()]),
+                ("weekday", weekday),
                 ("date", work_date.strftime("%d/%m/%Y")),
                 ("week", iso_week),
-                ("staff", profile.name if profile else email),
+                ("staff", display_name),
                 ("employee_id", _sheet_employee_code(email, profile)),
                 ("record_id", record_id),
             ):
                 column = _column_letter(columns[name])
                 target = updates if name in {"weekday", "date", "week"} else raw_updates
                 target.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[value]]})
+        elif exam_generated:
+            for name, value in (("weekday", weekday), ("staff", display_name)):
+                if _cell(current, columns[name]) != value:
+                    column = _column_letter(columns[name])
+                    raw_updates.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[value]]})
         synced.append((email, work_date, row_number, new_hash, items))
     if updates or raw_updates:
         ensure_sheet_row_capacity(service, max(update_rows))

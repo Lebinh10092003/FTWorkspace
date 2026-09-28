@@ -1,8 +1,11 @@
 import hmac
+import logging
 import os
 import unicodedata
+import uuid
 from urllib.parse import quote
 
+from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -15,7 +18,8 @@ from rest_framework.response import Response
 from authentication.permissions import IsWorkspaceAuthenticated
 
 from .funding_proposal import build_funding_proposal
-from .models import WeeklyReport
+from .funding_archive import save_proposal
+from .models import FundingProposalRecord, WeeklyReport
 from .numbering import (
     DOCUMENT_TYPES,
     format_number,
@@ -30,6 +34,8 @@ from .weekly_reports import (
     run_weekly_report_pipeline,
     sync_reports_from_google_doc,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _google_token(request):
@@ -78,9 +84,53 @@ def document_number_issue(request):
 @api_view(["POST"])
 @permission_classes([IsWorkspaceAuthenticated])
 def funding_proposal_docx(request):
-    """Render the funding proposal and return it as a Word download."""
-    payload = request.data if isinstance(request.data, dict) else {}
+    """Number, archive and download one funding proposal draft."""
+    payload = dict(request.data) if isinstance(request.data, dict) else {}
+    draft_text = str(payload.get("draftId") or "").strip()
+    record = None
+    if draft_text:
+        try:
+            draft_id = uuid.UUID(draft_text)
+        except ValueError:
+            return Response({"error": "Mã bản nháp không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
+        proposer = str(payload.get("proposer") or "").strip()
+        project = str(payload.get("project") or payload.get("purpose") or "").strip()
+        if not proposer or not project:
+            return Response({"error": "Vui lòng nhập người đề xuất và công việc/dự án trước khi tạo phiếu."}, status=status.HTTP_400_BAD_REQUEST)
+        owner_email = str(request.user.email or "").strip().lower()
+        with transaction.atomic():
+            record, _ = FundingProposalRecord.objects.get_or_create(
+                draft_id=draft_id, defaults={"owner_email": owner_email},
+            )
+            record = FundingProposalRecord.objects.select_for_update().get(pk=record.pk)
+            if record.owner_email != owner_email:
+                return Response({"error": "Bản nháp này thuộc tài khoản khác."}, status=status.HTTP_403_FORBIDDEN)
+            if not record.document_number:
+                try:
+                    issued = issue_number(
+                        document_type="Phiếu đề xuất kinh phí", subject=project,
+                        drafter=proposer, signer="Tổng Giám đốc",
+                        issued_on=payload.get("issuedOn"),
+                    )
+                except ValueError as error:
+                    return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+                record.document_number = issued["number"]
+                record.save(update_fields=["document_number", "updated_at"])
+        payload["documentNumber"] = record.document_number
     filename, content = build_funding_proposal(payload)
+    if record:
+        try:
+            file_id, drive_url = save_proposal(
+                draft_id=draft_id, filename=filename, content=content,
+                file_id=record.drive_file_id,
+            )
+        except Exception:
+            logger.exception("Could not archive funding proposal draft %s", draft_id)
+            return Response({"error": "Đã cấp số phiếu nhưng chưa lưu được lên Drive. Vui lòng thử lại; số phiếu sẽ được giữ nguyên."},
+                            status=status.HTTP_502_BAD_GATEWAY)
+        record.drive_file_id = file_id
+        record.drive_url = drive_url
+        record.save(update_fields=["drive_file_id", "drive_url", "updated_at"])
     response = HttpResponse(
         content,
         content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -93,6 +143,9 @@ def funding_proposal_docx(request):
         f"filename*=UTF-8''{quote(filename)}"
     )
     response["Content-Length"] = str(len(content))
+    if record:
+        response["X-Document-Number"] = record.document_number.split("/", 1)[0]
+        response["X-Drive-File-URL"] = record.drive_url
     return response
 
 

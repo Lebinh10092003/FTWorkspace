@@ -8,7 +8,7 @@ import FundingProposalPreview from './FundingProposalPreview';
 import {
   ATTACHMENT_OPTIONS, CURRENCIES, DECISION_OPTIONS, FundingProposal, ProposalItem,
   blankProposal, currencyUnit, lineAmount, money, moneySymbolMismatch, newItem,
-  proposalNumberDigits, toPayload, totalsOf, validMoneyInput,
+  formatProposalNumber, toPayload, totalsOf, validMoneyInput,
 } from './fundingProposal';
 
 type Props = {
@@ -131,6 +131,13 @@ export default function FundingProposalBuilder({
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload.error || 'Không tạo được file Word.');
       }
+      const documentNumber = response.headers.get('X-Document-Number') || '';
+      const driveUrl = response.headers.get('X-Drive-File-URL') || '';
+      if (documentNumber || driveUrl) setValue(current => ({
+        ...current,
+        documentNumber: documentNumber || current.documentNumber,
+        driveUrl: driveUrl || current.driveUrl,
+      }));
       const blob = await response.blob();
       const name = filenameFrom(response.headers.get('Content-Disposition'))
         || `Phieu-de-xuat-kinh-phi-${value.issuedOn}.docx`;
@@ -197,6 +204,9 @@ export default function FundingProposalBuilder({
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" /><span>{error}</span>
             </div>
           )}
+          {value.driveUrl && <p className="mb-4 text-sm font-semibold text-emerald-800">
+            File Word đã lưu vào Drive: <a href={value.driveUrl} target="_blank" rel="noopener noreferrer" className="underline">Mở phiếu</a>
+          </p>}
 
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             {/* ---------- Form ---------- */}
@@ -204,14 +214,9 @@ export default function FundingProposalBuilder({
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 className="text-sm font-extrabold uppercase tracking-wide text-blue-700">1. Thông tin đề xuất</h2>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <label className="block"><span className={LABEL}>Số phiếu</span>
-                    <span className="relative block">
-                      <input value={proposalNumberDigits(value.documentNumber)}
-                        onChange={e => set('documentNumber', proposalNumberDigits(e.target.value))}
-                        type="text" inputMode="numeric" pattern="[0-9]*" placeholder="46"
-                        aria-label="Số phiếu" className={`${FIELD} pr-28`} />
-                      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-semibold text-slate-500">/PĐXKP-FT</span>
-                    </span>
+                  <label className="block"><span className={LABEL}>Số phiếu (tự động)</span>
+                    <input value={formatProposalNumber(value.documentNumber) || 'Cấp khi tạo file Word'}
+                      type="text" aria-label="Số phiếu" readOnly className={FIELD} />
                   </label>
                   <label className="block"><span className={LABEL}>Ngày lập</span>
                     <input type="date" value={value.issuedOn} onChange={e => set('issuedOn', e.target.value)} className={FIELD} />

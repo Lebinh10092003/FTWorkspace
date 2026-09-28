@@ -16,6 +16,7 @@ from .sheet_parser import leader_assessment_notes, parse_leader_review, assessme
 from .retention import notification_from, retained_from
 from .sheet_sync import (
     EMPLOYEE_EMAILS,
+    WEEKDAYS,
     _build_content_format_runs,
     _attendance_value,
     _canonical_row,
@@ -25,6 +26,7 @@ from .sheet_sync import (
     _insert_missing_rows_by_date,
     _row_hash,
     _row_employee_email,
+    _sheet_staff_labels,
     _task_format_runs_from_cell,
     _row_task_emphasis,
     _reorder_misplaced_web_rows,
@@ -39,6 +41,17 @@ from .training_sync import sync_work_item_from_training
 
 
 class WorkScheduleSheetParserTests(TestCase):
+    def test_generated_rows_use_calendar_weekday_and_roster_staff_label(self):
+        service = mock.MagicMock()
+        service.spreadsheets().values().get().execute.return_value = {
+            "values": [["EMP-AA0FCF6E", "6. Phong", "phongnt@fermat.edu.vn"]]
+        }
+        with mock.patch("work_schedule.sheet_sync._spreadsheet_id", return_value="sheet-id"):
+            labels = _sheet_staff_labels(service)
+        self.assertEqual(WEEKDAYS[date(2026, 9, 27).weekday()], "CN")
+        self.assertEqual(labels["phongnt@fermat.edu.vn"], "6. Phong")
+        self.assertEqual(service.spreadsheets().values().get.call_args.kwargs["range"], "'Danh mục'!A2:C")
+
     def test_task_uid_finds_existing_row_when_staff_label_cannot_be_resolved(self):
         task_uid = deterministic_sheet_uid(77, 1)
         row = ["Ba", "15/09/2026", "38", "Tên cũ", "1. Việc", "", "", "", "REC-WEB-X", f"1. {task_uid}", ""]

@@ -1,6 +1,18 @@
 from django.db import models
 
 
+class FundingProposalRecord(models.Model):
+    """Stable number and Drive file for one browser draft."""
+
+    draft_id = models.UUIDField(unique=True)
+    owner_email = models.EmailField()
+    document_number = models.CharField(max_length=64, blank=True, default="")
+    drive_file_id = models.CharField(max_length=180, blank=True, default="")
+    drive_url = models.URLField(max_length=500, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class WeeklyReport(models.Model):
     """The structured report that powers the web preview and Word download.
 

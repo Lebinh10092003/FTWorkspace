@@ -13,6 +13,8 @@ export type ProposalItem = {
 export type ComparisonRow = { previous: string; current: string; delta: string };
 
 export type FundingProposal = {
+  draftId: string;
+  driveUrl: string;
   currency: string;
   documentNumber: string;
   issuedOn: string;
@@ -73,7 +75,14 @@ export const todayIso = () => {
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 
+const newDraftId = () => globalThis.crypto?.randomUUID?.() ||
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const n = Math.floor(Math.random() * 16);
+    return (c === 'x' ? n : (n & 3) | 8).toString(16);
+  });
+
 export const blankProposal = (): FundingProposal => ({
+  draftId: newDraftId(), driveUrl: '',
   currency: 'VND',
   documentNumber: '', issuedOn: todayIso(), kind: 'new', submissionRound: '',
   proposer: '', department: '', project: '', departmentHead: '', purpose: '',
@@ -157,7 +166,7 @@ export const totalsOf = (proposal: FundingProposal) => {
 
 /** Dotted leader used wherever the printed form leaves a blank to write on. */
 export const dotted = (value: string | undefined, width = 30) =>
-  value && value.trim() ? value.trim() : '…'.repeat(width);
+  value && value.trim() ? value.trim() : '…'.repeat(Math.min(width, 6));
 
 export const dateWords = (value: string, prefix = 'Hà Nội, ngày') => {
   const parsed = value ? new Date(`${value}T00:00:00`) : null;
@@ -184,6 +193,7 @@ export const formatProposalNumber = (value: string) => {
 /** The payload the .docx endpoint expects. */
 export const toPayload = (proposal: FundingProposal) => ({
   ...proposal,
+  driveUrl: undefined,
   currency: currencyCode(proposal.currency),
   documentNumber: formatProposalNumber(proposal.documentNumber),
   vatRate: toNumber(proposal.vatRate) || '',

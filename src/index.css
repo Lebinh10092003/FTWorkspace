@@ -2504,7 +2504,7 @@ body.workspace-app-theme .bndc-tree-name { color: var(--workspace-surface-text);
   margin: 0 auto;
   border: 1px solid #d8e1ec;
   background: #fff;
-  padding: 1.6cm 2cm 1.6cm 2.5cm;
+  padding: 2.2cm 1.8cm 2.2cm 3.2cm;
   box-shadow: 0 6px 24px rgba(15, 55, 95, .12);
   color: #111827;
   font-family: "Times New Roman", Times, serif;
@@ -2514,7 +2514,8 @@ body.workspace-app-theme .bndc-tree-name { color: var(--workspace-surface-text);
 .fp-letterhead { width: 100%; border-collapse: collapse; }
 .fp-letterhead td { padding: 2px 4px; text-align: center; vertical-align: middle; font-size: 12pt; }
 .fp-letterhead tr:first-child td { padding-bottom: 6px; }
-.fp-letterhead td:first-child { width: 38%; }
+.fp-letterhead td:first-child { width: 35%; }
+.fp-motto { display: inline-block; border-bottom: 1px solid #111; padding: 1px 1.15cm 3px; white-space: nowrap; }
 
 .fp-title { margin: 14px 0 2px; text-align: center; font-size: 16pt; font-weight: 700; }
 .fp-subtitle { margin: 0 0 10px; text-align: center; font-size: 12pt; font-style: italic; }

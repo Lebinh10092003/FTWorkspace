@@ -10,6 +10,7 @@ from rest_framework.authtoken.models import Token
 from authentication.models import UserProfile
 
 from .funding_proposal import build_funding_proposal
+from .models import FundingProposalRecord
 from .numbering import (
     derive_type_code,
     format_number,
@@ -263,6 +264,15 @@ class FundingProposalDocxTests(TestCase):
         ]:
             self.assertIn(heading, xml, heading)
 
+    def test_a4_margins_and_centered_motto_rule(self):
+        _, content = build_funding_proposal(self.payload())
+        with zipfile.ZipFile(BytesIO(content)) as archive:
+            document = archive.read("word/document.xml").decode("utf-8")
+            self.assertIn('w:pBdr', document)
+            self.assertIn('w:bottom w:val="single"', document)
+            self.assertIn('w:left="1814"', document)  # 3.2 cm in twips
+            self.assertIn('w:right="1020"', document)  # 1.8 cm in twips
+
     def test_totals_are_computed_from_the_line_items(self):
         _, content = build_funding_proposal(self.payload())
         xml = self.document_text(content)
@@ -330,3 +340,26 @@ class FundingProposalDocxTests(TestCase):
         self.assertIn('filename="Phieu-de-xuat-kinh-phi-46-PDXKP-FT.docx"', disposition)
         self.assertIn("filename*=UTF-8''", disposition)
         self.assertGreater(len(response.content), 5000)
+
+    def test_number_and_drive_file_are_reused_for_the_same_draft(self):
+        user = get_user_model().objects.create_user(
+            username="funding@example.com", email="funding@example.com", password="StrongPassword9921"
+        )
+        UserProfile.objects.create(email=user.email, name="Funding", role="EMPLOYEE", access_modules=[])
+        token = Token.objects.create(user=user).key
+        payload = self.payload()
+        payload["draftId"] = "f392b695-66f2-4f6d-83ac-dd44568be5af"
+        payload["documentNumber"] = "999/PĐXKP-FT"  # Browser number is untrusted.
+        with mock.patch("documents.views.issue_number", return_value={"number": "47/PĐXKP-FT"}) as issue, \
+                mock.patch("documents.views.save_proposal", return_value=("drive-file-1", "https://drive.google.com/file/d/drive-file-1/view")) as save:
+            for _ in range(2):
+                response = self.client.post(
+                    "/api/documents/funding-proposal.docx", payload,
+                    content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response["X-Document-Number"], "47")
+        self.assertEqual(issue.call_count, 1)
+        self.assertEqual(save.call_count, 2)
+        self.assertEqual(save.call_args.kwargs["file_id"], "drive-file-1")
+        self.assertEqual(FundingProposalRecord.objects.get().document_number, "47/PĐXKP-FT")

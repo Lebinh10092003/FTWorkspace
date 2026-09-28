@@ -57,7 +57,9 @@ def _currency_unit(data):
 
 def _dotted(value, width=30):
     text = str(value or "").strip()
-    return text if text else "…" * width
+    # Long runs of ellipses have no legal wrap points in Word and can force
+    # table cells and paragraphs beyond the printable width.
+    return text if text else "…" * min(width, 6)
 
 
 def _box(checked, label):
@@ -119,6 +121,27 @@ def _borderless(table):
     table._tbl.tblPr.append(borders)
 
 
+def _widths(table, centimeters):
+    table.autofit = False
+    for index, width in enumerate(centimeters):
+        table.columns[index].width = Cm(width)
+        for cell in table.columns[index].cells:
+            cell.width = Cm(width)
+
+
+def _motto_rule(paragraph):
+    """A short centered rule beneath the motto, inside its own paragraph."""
+    paragraph.paragraph_format.left_indent = Cm(2.0)
+    paragraph.paragraph_format.right_indent = Cm(2.0)
+    ppr = paragraph._p.get_or_add_pPr()
+    borders = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    for key, value in (("val", "single"), ("sz", "6"), ("space", "2"), ("color", "000000")):
+        bottom.set(qn(f"w:{key}"), value)
+    borders.append(bottom)
+    ppr.append(borders)
+
+
 def _cell_text(cell, text, *, bold=False, italic=False, size=13, align=WD_ALIGN_PARAGRAPH.LEFT):
     cell.text = ""
     paragraph = cell.paragraphs[0]
@@ -132,13 +155,14 @@ def _letterhead(document, data):
     table = document.add_table(rows=2, cols=2)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     _borderless(table)
-    table.columns[0].width = Cm(6.5)
-    table.columns[1].width = Cm(10.0)
+    _widths(table, [5.6, 10.4])
 
     _cell_text(table.cell(0, 0), "CÔNG TY CỔ PHẦN", bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
     _para(table.cell(0, 0), "CÔNG NGHỆ FERMAT", bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0)
-    _cell_text(table.cell(0, 1), "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
-    _para(table.cell(0, 1), "Độc lập - Tự do - Hạnh phúc", bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0)
+    _cell_text(table.cell(0, 1), "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
+    motto = _para(table.cell(0, 1), "Độc lập - Tự do - Hạnh phúc", bold=True, size=13,
+                  align=WD_ALIGN_PARAGRAPH.CENTER, space_after=4)
+    _motto_rule(motto)
 
     number = _document_number(data)
     _cell_text(
@@ -152,7 +176,9 @@ def _letterhead(document, data):
         italic=True,
         align=WD_ALIGN_PARAGRAPH.CENTER,
     )
-    document.add_paragraph()
+    spacer = document.add_paragraph()
+    spacer.paragraph_format.space_after = Pt(0)
+    spacer.paragraph_format.line_spacing = 0.5
 
 
 def _cost_table(document, data):
@@ -161,11 +187,11 @@ def _cost_table(document, data):
     table = document.add_table(rows=rows + 5, cols=6)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    widths = [Cm(1.2), Cm(6.4), Cm(1.6), Cm(1.8), Cm(2.6), Cm(2.8)]
+    widths = [1.0, 5.3, 1.4, 1.5, 3.1, 3.7]
     headers = ["TT", "Nội dung, quy cách\nvà cấu phần chi phí", "ĐVT",
                "Số\nlượng", "Đơn giá\nchưa thuế", "Thành tiền\nchưa thuế"]
-    for index, (label, width) in enumerate(zip(headers, widths)):
-        table.columns[index].width = width
+    _widths(table, widths)
+    for index, label in enumerate(headers):
         _cell_text(table.cell(0, index), label, bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
 
     subtotal = 0.0
@@ -228,9 +254,9 @@ def _signature_strip(document):
     table = document.add_table(rows=1, cols=4)
     _borderless(table)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _widths(table, [4.0] * 4)
     labels = ["NGƯỜI LẬP\nPHIẾU", "PHỤ TRÁCH\nBỘ PHẬN", "KẾ TOÁN\nKIỂM TRA", "NGƯỜI\nPHÊ DUYỆT"]
     for index, label in enumerate(labels):
-        table.columns[index].width = Cm(4.0)
         cell = table.cell(0, index)
         _cell_text(cell, label, bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
         for _ in range(3):
@@ -245,8 +271,8 @@ def build_funding_proposal(data):
     document = Document()
     section = document.sections[0]
     section.page_width, section.page_height = Cm(21.0), Cm(29.7)
-    section.top_margin, section.bottom_margin = Cm(1.6), Cm(1.6)
-    section.left_margin, section.right_margin = Cm(2.5), Cm(2.0)
+    section.top_margin, section.bottom_margin = Cm(2.2), Cm(2.2)
+    section.left_margin, section.right_margin = Cm(3.2), Cm(1.8)
 
     normal = document.styles["Normal"]
     normal.font.name = FONT
@@ -339,9 +365,8 @@ def _comparison_table(document, data):
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     headers = ["Nội dung", "Đã duyệt trước", "Đề nghị lần này", "Tăng/giảm"]
-    widths = [Cm(5.0), Cm(3.6), Cm(3.6), Cm(3.4)]
-    for index, (label, width) in enumerate(zip(headers, widths)):
-        table.columns[index].width = width
+    _widths(table, [4.8, 3.8, 3.8, 3.6])
+    for index, label in enumerate(headers):
         _cell_text(table.cell(0, index), label, bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
     labels = [
         ("quantity", "Số lượng/đơn giá\nhạng mục thay đổi"),
