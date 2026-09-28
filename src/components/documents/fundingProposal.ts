@@ -15,6 +15,7 @@ export type ComparisonRow = { previous: string; current: string; delta: string }
 export type FundingProposal = {
   draftId: string;
   driveUrl: string;
+  fileTitle: string;
   currency: string;
   documentNumber: string;
   issuedOn: string;
@@ -82,7 +83,7 @@ const newDraftId = () => globalThis.crypto?.randomUUID?.() ||
   });
 
 export const blankProposal = (): FundingProposal => ({
-  draftId: newDraftId(), driveUrl: '',
+  draftId: newDraftId(), driveUrl: '', fileTitle: 'Phiếu đề xuất kinh phí',
   currency: 'VND',
   documentNumber: '', issuedOn: todayIso(), kind: 'new', submissionRound: '',
   proposer: '', department: '', project: '', departmentHead: '', purpose: '',

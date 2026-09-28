@@ -7,6 +7,7 @@ directly; nothing here depends on the browser that filled the form in.
 """
 from datetime import datetime
 from io import BytesIO
+import re
 
 from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -18,6 +19,8 @@ from docx.shared import Cm, Pt
 TICKED = "☒"      # ☒
 UNTICKED = "☐"    # ☐
 FONT = "Times New Roman"
+DEFAULT_FILE_TITLE = "Phiếu đề xuất kinh phí"
+INVALID_FILE_TITLE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 PAYMENT_METHODS = [("transfer", "Chuyển khoản"), ("cash", "Tiền mặt")]
 PROPOSAL_KINDS = [("new", "Mới"), ("adjustment", "Điều chỉnh, bổ sung")]
@@ -397,7 +400,19 @@ def _comparison_table(document, data):
 
 def _filename(data):
     number = _document_number(data).split("/", 1)[0]
-    return f"{int(number)}. Phiếu đề xuất kinh phí.docx" if number else "Phiếu đề xuất kinh phí.docx"
+    title = file_title(data)
+    return f"{int(number)}. {title}.docx" if number else f"{title}.docx"
+
+
+def file_title(data):
+    """Accept a human-readable title while keeping the number and extension fixed."""
+    value = data.get("fileTitle", DEFAULT_FILE_TITLE)
+    title = " ".join(str(value or "").split())
+    if title.lower().endswith(".docx"):
+        title = title[:-5].rstrip()
+    if not title or len(title) > 120 or INVALID_FILE_TITLE.search(title) or title.endswith("."):
+        raise ValueError("Tên phiếu phải có 1–120 ký tự và không chứa ký tự đặc biệt của tên file.")
+    return title
 
 
 def _document_number(data):

@@ -392,6 +392,15 @@ class FundingProposalDocxTests(TestCase):
         )
         self.assertEqual(status_response.json()["documentNumber"], "03/PĐXKP-FT")
 
+        payload["fileTitle"] = "Phiếu đề xuất kinh phí TK AI TH Đại Mỗ"
+        renamed_download = self.client.post(
+            "/api/documents/funding-proposal.docx", payload,
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(renamed_download["X-Document-Number"], "03")
+        self.assertIn(quote("3. Phiếu đề xuất kinh phí TK AI TH Đại Mỗ.docx"),
+                      renamed_download["Content-Disposition"])
+
         with mock.patch("documents.views.save_proposal", return_value=(
             "drive-file-1", "https://drive.google.com/file/d/drive-file-1/view",
         )) as save:
@@ -402,11 +411,17 @@ class FundingProposalDocxTests(TestCase):
                 )
                 self.assertEqual(saved.status_code, 200)
                 self.assertEqual(saved.json()["documentNumber"], "03/PĐXKP-FT")
-                self.assertEqual(saved.json()["fileName"], "3. Phiếu đề xuất kinh phí.docx")
+                self.assertEqual(saved.json()["fileName"], "3. Phiếu đề xuất kinh phí TK AI TH Đại Mỗ.docx")
         self.assertEqual(save.call_count, 2)
         self.assertEqual(save.call_args.kwargs["file_id"], "drive-file-1")
 
         second = dict(payload, draftId="28709d48-acd4-44fc-8365-d08498042731")
+        invalid = self.client.post(
+            "/api/documents/funding-proposal.docx", dict(second, fileTitle="../bad"),
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(FundingProposalNumberCounter.objects.get(pk=1).last_number, 3)
         response = self.client.post(
             "/api/documents/funding-proposal.docx", second,
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",

@@ -17,7 +17,7 @@ from rest_framework.response import Response
 # member can draft a document, so they are not scoped to a single module.
 from authentication.permissions import IsWorkspaceAuthenticated
 
-from .funding_proposal import build_funding_proposal
+from .funding_proposal import build_funding_proposal, file_title
 from .funding_archive import save_proposal
 from .funding_numbering import assign_funding_number
 from .models import FundingProposalRecord, WeeklyReport
@@ -90,6 +90,10 @@ def document_number_issue(request):
 def funding_proposal_docx(request):
     """Number and download a proposal; downloading never writes to Drive."""
     payload = dict(request.data) if isinstance(request.data, dict) else {}
+    try:
+        payload["fileTitle"] = file_title(payload)
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     record, error = _numbered_funding_proposal(request, payload)
     if error:
         return error
@@ -142,6 +146,10 @@ def _numbered_funding_proposal(request, payload):
 def funding_proposal_save_to_drive(request):
     """Save only when the user explicitly chooses the Drive action."""
     payload = dict(request.data) if isinstance(request.data, dict) else {}
+    try:
+        payload["fileTitle"] = file_title(payload)
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     if not payload.get("draftId"):
         return Response({"error": "Thiếu mã bản nháp."}, status=status.HTTP_400_BAD_REQUEST)
     record, error = _numbered_funding_proposal(request, payload)

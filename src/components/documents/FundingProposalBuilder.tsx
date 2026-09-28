@@ -47,6 +47,7 @@ function readDraft(key: string): FundingProposal {
       // These values are owned by the server; an older local draft may still
       // contain the former shared-register number (for example 47).
       documentNumber: '', driveUrl: '',
+      fileTitle: typeof parsed.fileTitle === 'string' && parsed.fileTitle ? parsed.fileTitle : fallback.fileTitle,
       currency: typeof parsed.currency === 'string' ? parsed.currency : 'VND',
       items: parsed.items.filter((item: unknown) => item && typeof item === 'object' && typeof (item as ProposalItem).id === 'string'),
       comparison: {
@@ -145,8 +146,26 @@ export default function FundingProposalBuilder({
     return true;
   };
 
+  const chooseFileTitle = async () => {
+    const entered = await appDialog.prompt(
+      'Nhập phần tên của phiếu. Hệ thống sẽ tự thêm số phiếu ở đầu và đuôi .docx. Ví dụ: 3. Phiếu đề xuất kinh phí TK AI TH Đại Mỗ.docx',
+      { title: 'Đặt tên file Word', defaultValue: value.fileTitle, confirmText: 'Tiếp tục' },
+    );
+    if (entered === null) return null;
+    const title = entered.replace(/\.docx$/i, '').trim().replace(/\s+/g, ' ');
+    if (!title || title.length > 120 || /[<>:"/\\|?*\x00-\x1f]/.test(title) || title.endsWith('.')) {
+      await appDialog.alert('Tên phiếu cần có 1–120 ký tự và không chứa các ký tự \\ / : * ? " < > |.',
+        { title: 'Tên file không hợp lệ', tone: 'warning' });
+      return null;
+    }
+    setValue(current => ({ ...current, fileTitle: title }));
+    return title;
+  };
+
   const download = async () => {
     if (!validate()) return;
+    const fileTitle = await chooseFileTitle();
+    if (fileTitle === null) return;
     setDownloading(true);
     setError('');
     setSaveNotice('');
@@ -154,7 +173,7 @@ export default function FundingProposalBuilder({
       const response = await fetch('/api/documents/funding-proposal.docx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify(toPayload(value)),
+        body: JSON.stringify(toPayload({ ...value, fileTitle })),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -167,7 +186,7 @@ export default function FundingProposalBuilder({
       }));
       const blob = await response.blob();
       const name = filenameFrom(response.headers.get('Content-Disposition'))
-        || (documentNumber ? `${Number(documentNumber)}. Phiếu đề xuất kinh phí.docx` : 'Phiếu đề xuất kinh phí.docx');
+        || (documentNumber ? `${Number(documentNumber)}. ${fileTitle}.docx` : `${fileTitle}.docx`);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -185,6 +204,8 @@ export default function FundingProposalBuilder({
 
   const saveToDrive = async () => {
     if (!validate()) return;
+    const fileTitle = await chooseFileTitle();
+    if (fileTitle === null) return;
     setSavingToDrive(true);
     setError('');
     setSaveNotice('');
@@ -192,7 +213,7 @@ export default function FundingProposalBuilder({
       const response = await fetch('/api/documents/funding-proposal/drive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify(toPayload(value)),
+        body: JSON.stringify(toPayload({ ...value, fileTitle })),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Không lưu được phiếu vào Drive.');
