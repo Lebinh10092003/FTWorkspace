@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, paper_views, blueprint_views, landing_views, landing_site_views, sheet_webhook
+from . import views, paper_views, blueprint_views, landing_views, landing_site_views, sheet_webhook, billing_views, form_registration
 
 urlpatterns = [
     path('public/landing-sites/<slug:slug>/leads', landing_site_views.landing_site_lead),
@@ -14,6 +14,14 @@ urlpatterns = [
     path('examination/landing-pages', landing_views.landing_pages, name='landing_pages'),
     path('examination/landing-pages/<str:competition_id>', landing_views.landing_page_detail, name='landing_page_detail'),
     path('examination/bootstrap', views.examination_bootstrap, name='examination_bootstrap'),
+    path('examination/billing/records', billing_views.records),
+    path('examination/billing/stats', billing_views.stats),
+    path('examination/billing/seen', billing_views.seen),
+    path('examination/billing/records/<int:pk>/<str:action>', billing_views.record_action),
+    path('examination/billing/unmatched', billing_views.unmatched_list),
+    path('examination/billing/unmatched/<uuid:pk>/image', billing_views.unmatched_image),
+    path('examination/billing/unmatched/<uuid:pk>/resolve', billing_views.resolve_unmatched),
+    path('examination/form-registration/webhook', form_registration.registration_webhook),
     path('examination/papers', paper_views.papers_list, name='papers_list'),
     path('examination/papers/<uuid:pk>', paper_views.paper_detail, name='paper_detail'),
     path('examination/papers/<uuid:pk>/duplicate', paper_views.paper_duplicate, name='paper_duplicate'),

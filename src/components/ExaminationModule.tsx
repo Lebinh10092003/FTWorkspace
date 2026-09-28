@@ -20,6 +20,7 @@ import AccountMenu from "./AccountMenu";
 import ModuleShellHeader from "./layout/ModuleShellHeader";
 import { EXAMINATION_NAV, EXAMINATION_PAGE_TO_NAV, filterModuleNav } from "../config/workspaceNavigation";
 import SearchableSelect from "./SearchableSelect";
+import UnmatchedTransfers from "./finance/UnmatchedTransfers";
 import { matchesSearch } from "../lib/searchText";
 import { DateBadge, DeadlineLegend as Legend, Metric, SessionsTable, TimeField, dateValue, emptyDate, todayIso, sessionDisplayName, sessionTimelineLabel, sessionRecencyKey, formatGrade, BirthDateControl, LIST_PAGE_SIZE, TablePagination } from "./examination/ui";
 import { roundDates, sessionRounds } from "./examination/rounds";
@@ -2027,6 +2028,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     competitions: competitionList,
     sessions: list,
     candidates: candidateList,
+    "unmatched-transfers": <UnmatchedTransfers idToken={idToken} mode="examination" />,
     classes,
     teachers: teachersPage,
     partners: partnersPage,

@@ -272,6 +272,7 @@ export const EXAMINATION_NAV: ModuleNavItem[] = [
     ],
   },
   { id: 'candidates', label: 'Thí sinh', icon: Users },
+  { id: 'unmatched-transfers', label: 'Khoản thu cần tra soát', icon: ReceiptText, requires: 'member' },
   { id: 'partners', label: 'Đối tác', icon: Handshake },
   {
     id: 'class-group',

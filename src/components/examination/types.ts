@@ -1,6 +1,6 @@
 import type { UserRole } from '../../types';
 
-export type ExaminationPage = 'overview' | 'competitions' | 'sessions' | 'candidates' | 'classes' | 'teachers' | 'partners' | 'import' | 'papers' | 'paper-create' | 'paper-detail' | 'blueprints' | 'blueprint-detail' | 'ai-config' | 'competition-detail' | 'session-detail' | 'candidate-detail' | 'class-detail' | 'teacher-detail';
+export type ExaminationPage = 'overview' | 'competitions' | 'sessions' | 'candidates' | 'unmatched-transfers' | 'classes' | 'teachers' | 'partners' | 'import' | 'papers' | 'paper-create' | 'paper-detail' | 'blueprints' | 'blueprint-detail' | 'ai-config' | 'competition-detail' | 'session-detail' | 'candidate-detail' | 'class-detail' | 'teacher-detail';
 export type DraftDate = { day: string; month: string; year: string; planned: boolean; unknown: boolean };
 export type SessionRoundSlot = { id: string; label?: string; date?: string; time?: string; mode?: string; link?: string; location?: string; note?: string };
 export type SessionRound = { id: string; name: string; label: string; date?: string; slots?: SessionRoundSlot[] };

@@ -7,6 +7,7 @@ const listRoutes: Record<string, ExaminationPage> = {
   'competitions': 'competitions',
   'sessions': 'sessions',
   'candidates': 'candidates',
+  'unmatched-transfers': 'unmatched-transfers',
   'classes': 'classes',
   'teachers': 'teachers',
   'partners': 'partners',
@@ -45,6 +46,7 @@ export function examinationPathFor(page: ExaminationPage, id = ''): string {
     case 'sessions': return '/examination/sessions';
     case 'session-detail': return encoded ? `/examination/sessions/${encoded}` : '/examination/sessions';
     case 'candidates': return '/examination/candidates';
+    case 'unmatched-transfers': return '/examination/unmatched-transfers';
     case 'candidate-detail': return encoded ? `/examination/candidates/${encoded}` : '/examination/candidates';
     case 'classes': return '/examination/classes';
     case 'class-detail': return encoded ? `/examination/classes/${encoded}` : '/examination/classes';

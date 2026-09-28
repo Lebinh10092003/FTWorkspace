@@ -5,8 +5,8 @@ type SheetSource = { id: string; name?: string; url: string; stage?: string; she
 type Props = { sources: SheetSource[]; sessionId: string; sessionLabel: string; idToken?: string | null; canManage: boolean; onImport: () => void; onSourcesChanged: (sources: SheetSource[]) => void };
 type ExportPreview = { currentFingerprint: string; sheetTab: string; changedCells: number; changedRows: number; matchedRows?: number; appendedRows?: number; appendedCandidates?: { code?: string; name?: string; birth_date?: string; identity?: string; email?: string; phone?: string }[]; unmatchedSheetRows?: number[]; matchConflicts?: { row: number; rowLabel: string; reason: string; sheetIdentity?: string; candidateOptions?: string[] }[]; changes: { cell: string; row?: number; rowLabel?: string; column?: string; field?: string; current: string; next: string }[]; changesTruncated?: boolean };
 type ImportPreview = { source?: { name?: string; id?: string; fingerprint?: string; sheetTab?: string }; summary?: { total?: number; new?: number; matched?: number; changed?: number; unchanged?: number; conflicts?: number; webOnly?: number }; webOnlyRecords?: { code?: string; name?: string; birthDate?: string; identity?: string; email?: string; phone?: string }[]; records: { code?: string; name?: string; _preview?: { sourceRow?: number; status?: 'new' | 'changed' | 'unchanged' | 'conflict'; matchedCode?: string; changedFields?: string[]; changes?: { field: string; label?: string; current?: string; next?: string }[] } }[] };
-const sheetType = (source: SheetSource) => source.stage === 'session-output' ? 'Sheet tổng hợp' : 'Sheet đầu vào';
-const schedule = (source: SheetSource) => !source.automationEnabled ? 'Chưa bật lịch tự động' : `${source.stage === 'session-output' ? 'Xuất 11:00 và 16:00' : 'Nhập 10:00 và 15:00'}${[source.automationStartDate, source.automationEndDate].filter(Boolean).length ? ` · ${[source.automationStartDate, source.automationEndDate].filter(Boolean).join(' – ')}` : ''}`;
+const sheetType = (source: SheetSource) => source.stage === 'form-webhook' ? 'Form đăng ký' : source.stage === 'session-output' ? 'Sheet tổng hợp' : 'Sheet đầu vào';
+const schedule = (source: SheetSource) => source.stage === 'form-webhook' ? 'Tự động khi có đăng ký / chỉnh sửa' : !source.automationEnabled ? 'Chưa bật lịch tự động' : `${source.stage === 'session-output' ? 'Xuất 11:00 và 16:00' : 'Nhập 10:00 và 15:00'}${[source.automationStartDate, source.automationEndDate].filter(Boolean).length ? ` · ${[source.automationStartDate, source.automationEndDate].filter(Boolean).join(' – ')}` : ''}`;
 
 export default function SessionSheetSources({ sources, sessionId, sessionLabel, idToken, canManage, onImport, onSourcesChanged }: Props) {
   const [editing, setEditing] = useState<SheetSource | null>(null);
@@ -134,7 +134,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 <a href={source.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex max-w-full items-center gap-1.5 truncate text-sm font-bold text-indigo-700 hover:underline">
 <ExternalLink className="h-4 w-4 shrink-0" />Mở Google Sheet</a>
 </div>
-{canManage && <div className="flex shrink-0 flex-wrap gap-2">
+{canManage && source.stage !== 'form-webhook' && <div className="flex shrink-0 flex-wrap gap-2">
 <button disabled={importingId === source.id} onClick={() => requestImport(source)} className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50">
 <RefreshCw className="h-3.5 w-3.5" />
 {importingId === source.id ? '\u0110ang nh\u1eadp\u2026' : 'Nh\u1eadp d\u1eef li\u1ec7u'}</button>

@@ -45,8 +45,12 @@ def scan_sheet_changes(now=None, sheets=None):
     """Flag an edited competition tab for manual review without importing data."""
     now = now or timezone.now()
     summary = {'operation': 'change-scan', 'checked': 0, 'changed': 0, 'failed': 0, 'baselined': 0}
-    watched = sheets if sheets is not None else ExaminationSheet.objects.exclude(url='').order_by('session_id', 'id')
+    watched = sheets if sheets is not None else ExaminationSheet.objects.exclude(url='').exclude(stage='form-webhook').order_by('session_id', 'id')
     for sheet in watched:
+        # Bound Apps Script handles private form tabs. The generic scanner cannot
+        # read them and would otherwise raise a false manual-import warning.
+        if sheet.stage == 'form-webhook':
+            continue
         summary['checked'] += 1
         try:
             current = tab_content_fingerprint(sheet)

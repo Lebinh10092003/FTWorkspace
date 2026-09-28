@@ -850,6 +850,10 @@ def ensure_output_sheet_source(session, url, sheet_tab='', created_by=None):
 def ensure_registration_sheet_source(session, created_by=None):
     """Keep the registration Sheet link available as an importable source for a session."""
     url = str(session.registration_sheet_url or '').strip()
+    if '1gqO1Tp4YSBp0UVBgXjJgvL8CuqftVKGNd74PPRX9i8E' in url:
+        # This private Form workbook is imported by its signed Apps Script push.
+        # The generic CSV importer cannot read it and must not create a second source.
+        return ExaminationSheet.objects.filter(session_id=session.id, stage='form-webhook').first()
     existing = ExaminationSheet.objects.filter(session_id=session.id, stage='registration-source').first()
     if not url:
         if existing:

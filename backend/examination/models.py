@@ -95,6 +95,57 @@ class CandidateParticipation(models.Model):
         return f"{self.candidate.code} / {self.session.code}"
 
 
+class ExaminationBillingRecord(models.Model):
+    """Accounting facts for one registration; Sheet imports never overwrite these."""
+    participation = models.OneToOneField(CandidateParticipation, on_delete=models.CASCADE, related_name='billing')
+    amount = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True)
+    transfer_status = models.CharField(max_length=20, default='pending')
+    transfer_reference = models.CharField(max_length=255, blank=True, default='')
+    transfer_confirmed_at = models.DateTimeField(null=True, blank=True)
+    transfer_confirmed_by = models.CharField(max_length=255, blank=True, default='')
+    invoice_status = models.CharField(max_length=20, default='pending')
+    invoice_number = models.CharField(max_length=255, blank=True, default='')
+    invoice_checked_at = models.DateTimeField(null=True, blank=True)
+    invoice_checked_by = models.CharField(max_length=255, blank=True, default='')
+    seen_by_accountant = models.BooleanField(default=False)
+    note = models.TextField(blank=True, default='')
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class UnmatchedTransfer(models.Model):
+    """A bank transfer awaiting a candidate match from Khảo thí."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    amount = models.DecimalField(max_digits=12, decimal_places=0)
+    reference = models.CharField(max_length=255, blank=True, default='')
+    note = models.TextField(blank=True, default='')
+    image = models.BinaryField(null=True, blank=True)
+    image_type = models.CharField(max_length=50, blank=True, default='')
+    status = models.CharField(max_length=20, default='open')
+    resolution_note = models.TextField(blank=True, default='')
+    matched_participation = models.ForeignKey(CandidateParticipation, null=True, blank=True, on_delete=models.SET_NULL)
+    created_by = models.CharField(max_length=255)
+    resolved_by = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class FormRegistrationLink(models.Model):
+    """Stable identity for a form row and its selected competition."""
+    spreadsheet_id = models.CharField(max_length=100)
+    sheet_tab = models.CharField(max_length=255)
+    source_uid = models.CharField(max_length=255)
+    session = models.ForeignKey(ExamSession, on_delete=models.CASCADE)
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE)
+    source_row = models.PositiveIntegerField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=['spreadsheet_id', 'sheet_tab', 'source_uid', 'session'],
+            name='unique_form_registration_session',
+        )]
+
+
 class ExamRoom(models.Model):
     """A reusable room definition belonging to one configured session round."""
     MODE_IN_PERSON = 'IN_PERSON'

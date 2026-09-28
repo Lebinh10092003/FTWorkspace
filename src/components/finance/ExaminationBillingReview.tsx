@@ -9,8 +9,9 @@ import examinationBillingService, {
   type ExaminationBillingRecord,
   type ExaminationBillingStats,
 } from './examinationBillingService';
+import UnmatchedTransfers from './UnmatchedTransfers';
 
-const money = (value: number) => `${value.toLocaleString('vi-VN')}đ`;
+const money = (value: number | null) => value === null ? 'Chưa nhập' : `${value.toLocaleString('vi-VN')}đ`;
 
 const dateTime = (value?: string | null) => {
   if (!value) return '—';
@@ -96,6 +97,11 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
 
   const newRecords = useMemo(() => records.filter(item => !item.seenByAccountant), [records]);
 
+  const runAction = async (action: Promise<unknown>) => {
+    try { await action; setError(''); }
+    catch (cause: any) { setError(cause?.message || 'Không thể cập nhật hồ sơ đối soát.'); }
+  };
+
   const visibleRecords = useMemo(() => {
     const needle = keyword.trim().toLowerCase();
     return records.filter(item => {
@@ -116,6 +122,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
   };
 
   const confirmTransfer = async (record: ExaminationBillingRecord) => {
+    if (record.amount === null) { setError('Cần nhập số tiền phải thu trước khi xác nhận chuyển khoản.'); return; }
     const reference = await appDialog.prompt(
       `Nhập mã giao dịch / nội dung chuyển khoản của ${record.candidateName} (${money(record.amount)}).`,
       { title: 'Xác nhận đã chuyển khoản', placeholder: 'VCB 0918.221540', confirmText: 'Xác nhận' },
@@ -178,6 +185,18 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
     setNotice(`Đã đánh dấu ${record.candidateName} không cần hóa đơn.`);
   };
 
+  const setAmount = async (record: ExaminationBillingRecord) => {
+    const value = await appDialog.prompt(`Nhập số tiền phải thu của ${record.candidateName}.`, {
+      title: 'Số tiền phải thu', defaultValue: record.amount === null ? '' : String(record.amount),
+      placeholder: '650000', confirmText: 'Lưu số tiền',
+    });
+    if (value === null) return;
+    const amount = Number(value);
+    if (!Number.isSafeInteger(amount) || amount <= 0) { setError('Số tiền phải là số nguyên dương.'); return; }
+    try { await examinationBillingService.setAmount(record.id, amount, { idToken }); await reload(); setError(''); }
+    catch (cause: any) { setError(cause?.message || 'Không thể lưu số tiền.'); }
+  };
+
   if (loading) return <p className="py-16 text-center text-sm font-semibold text-slate-500">Đang tải dữ liệu đối soát...</p>;
 
   return (
@@ -205,7 +224,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
               {newRecords.length > 3 ? `, +${newRecords.length - 3} thí sinh` : ''})
             </span>
           </p>
-          <button type="button" onClick={() => void acknowledgeNew()} className="ft-btn ft-btn-secondary text-xs">
+          <button type="button" onClick={() => void runAction(acknowledgeNew())} className="ft-btn ft-btn-secondary text-xs">
             <CheckCheck className="h-4 w-4" />Đánh dấu đã xem
           </button>
         </div>
@@ -280,10 +299,11 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
                       <p className="mt-0.5 text-xs text-slate-500">{record.sessionCode}</p>
                     </td>
                     <td className="text-xs">{dateTime(record.registeredAt)}</td>
-                    <td className="whitespace-nowrap font-bold">{money(record.amount)}</td>
+                    <td className="whitespace-nowrap font-bold">{money(record.amount)}{canEdit && <button type="button" className="ml-2 text-xs text-sky-700 underline" onClick={() => void setAmount(record)}>Sửa</button>}</td>
                     <td>
                       <TransferChip status={record.transferStatus} />
                       {record.transferReference && <p className="mt-1 text-[11px] text-slate-500">{record.transferReference}</p>}
+                      {record.paymentProof?.split(' | ').filter(link => /^https:\/\//i.test(link)).map((link, index) => <a key={`${link}-${index}`} href={link} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] text-sky-700 underline">Ảnh người đăng ký gửi {index + 1}</a>)}
                       {record.transferConfirmedAt && (
                         <p className="mt-0.5 text-[11px] text-slate-400">{record.transferConfirmedBy} · {dateTime(record.transferConfirmedAt)}</p>
                       )}
@@ -302,19 +322,19 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
                         <div className="flex flex-wrap gap-1.5">
                           {record.transferStatus !== 'confirmed' && (
                             <>
-                              <button type="button" onClick={() => void confirmTransfer(record)} className="ws-bulk-btn text-emerald-700">Đã chuyển khoản</button>
-                              <button type="button" onClick={() => void flagTransfer(record)} className="ws-bulk-btn text-amber-700">Lệch tiền</button>
+                              <button type="button" onClick={() => void runAction(confirmTransfer(record))} className="ws-bulk-btn text-emerald-700">Đã chuyển khoản</button>
+                              <button type="button" onClick={() => void runAction(flagTransfer(record))} className="ws-bulk-btn text-amber-700">Lệch tiền</button>
                             </>
                           )}
                           {record.transferStatus === 'confirmed' && !invoiceSettled && (
                             <>
-                              <button type="button" onClick={() => void checkInvoice(record)} className="ws-bulk-btn text-emerald-700">Đã kiểm hóa đơn</button>
-                              <button type="button" onClick={() => void flagInvoice(record)} className="ws-bulk-btn text-rose-700">Hóa đơn lỗi</button>
-                              <button type="button" onClick={() => void skipInvoice(record)} className="ws-bulk-btn">Không cần</button>
+                              <button type="button" onClick={() => void runAction(checkInvoice(record))} className="ws-bulk-btn text-emerald-700">Đã kiểm hóa đơn</button>
+                              <button type="button" onClick={() => void runAction(flagInvoice(record))} className="ws-bulk-btn text-rose-700">Hóa đơn lỗi</button>
+                              <button type="button" onClick={() => void runAction(skipInvoice(record))} className="ws-bulk-btn">Không cần</button>
                             </>
                           )}
                           {record.invoiceStatus === 'issue' && (
-                            <button type="button" onClick={() => void checkInvoice(record)} className="ws-bulk-btn text-emerald-700">Đã xử lý xong</button>
+                            <button type="button" onClick={() => void runAction(checkInvoice(record))} className="ws-bulk-btn text-emerald-700">Đã xử lý xong</button>
                           )}
                           {record.transferStatus === 'confirmed' && invoiceSettled && record.invoiceStatus !== 'issue' && (
                             <span className="text-xs font-semibold text-emerald-700">Hoàn tất</span>
@@ -334,6 +354,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
           </table>
         </div>
       </div>
+      <UnmatchedTransfers idToken={idToken} mode="finance" canCreate={canEdit} />
     </section>
   );
 }
