@@ -73,6 +73,14 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
   const [keyword, setKeyword] = useState('');
   const [transferFilter, setTransferFilter] = useState<'all' | BillingTransferStatus>('all');
   const [invoiceFilter, setInvoiceFilter] = useState<'all' | BillingInvoiceStatus>('all');
+  const [proofUrl, setProofUrl] = useState('');
+
+  useEffect(() => () => { if (proofUrl) URL.revokeObjectURL(proofUrl); }, [proofUrl]);
+
+  const viewProof = async (id: string) => {
+    try { setProofUrl(await examinationBillingService.registrationProof(id, { idToken })); }
+    catch (cause: any) { setError(cause?.message || 'Không thể tải chứng từ.'); }
+  };
 
   const reload = useCallback(async () => {
     try {
@@ -304,6 +312,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
                       <TransferChip status={record.transferStatus} />
                       {record.transferReference && <p className="mt-1 text-[11px] text-slate-500">{record.transferReference}</p>}
                       {record.paymentProof?.split(' | ').filter(link => /^https:\/\//i.test(link)).map((link, index) => <a key={`${link}-${index}`} href={link} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] text-sky-700 underline">Ảnh người đăng ký gửi {index + 1}</a>)}
+                      {record.paymentProofId && <button type="button" onClick={() => void viewProof(record.paymentProofId!)} className="mt-1 block text-[11px] text-sky-700 underline">Xem chứng từ đăng ký</button>}
                       {record.transferConfirmedAt && (
                         <p className="mt-0.5 text-[11px] text-slate-400">{record.transferConfirmedBy} · {dateTime(record.transferConfirmedAt)}</p>
                       )}
@@ -355,6 +364,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
         </div>
       </div>
       <UnmatchedTransfers idToken={idToken} mode="finance" canCreate={canEdit} />
+      {proofUrl && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/80 p-4" role="dialog" aria-label="Chứng từ đăng ký"><button type="button" onClick={() => setProofUrl('')} className="absolute right-5 top-5 rounded-lg bg-white px-3 py-2 text-sm font-bold">Đóng</button><iframe src={proofUrl} title="Chứng từ đăng ký" className="h-[85vh] w-[95vw] max-w-5xl rounded-lg bg-white" /></div>}
     </section>
   );
 }

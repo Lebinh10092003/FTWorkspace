@@ -67,6 +67,61 @@ function syncAllRegistrations() {
   });
 }
 
+/** Copy registrations entered on Workspace back to the original private Form tabs. */
+function syncWorkspaceRegistrations() {
+  var book = SpreadsheetApp.getActiveSpreadsheet();
+  if (!book || book.getId() !== REGISTRATION_SPREADSHEET_ID) {
+    throw new Error('Script phải được gắn với đúng Sheet đăng ký 2026–2027.');
+  }
+  var props = PropertiesService.getScriptProperties();
+  var url = props.getProperty('WEBHOOK_URL');
+  var secret = props.getProperty('WEBHOOK_SECRET');
+  if (!url || !secret) throw new Error('Cần WEBHOOK_URL và WEBHOOK_SECRET trong Script Properties.');
+  var base = url.replace(/\/webhook\/?$/, '');
+  if (base === url) throw new Error('WEBHOOK_URL cần kết thúc bằng /webhook.');
+  var options = {
+    method: 'post', contentType: 'application/json',
+    headers: {'X-Examination-Webhook-Secret': secret},
+    payload: '{}', muteHttpExceptions: true
+  };
+  var response = UrlFetchApp.fetch(base + '/workspace-pending', options);
+  if (response.getResponseCode() !== 200) throw new Error('Không thể lấy đăng ký Workspace: ' + response.getResponseCode());
+  var pending = JSON.parse(response.getContentText()).registrations || [];
+  pending.forEach(function(item) {
+    Object.keys(item.tabs || {}).forEach(function(tab) {
+      if (REGISTRATION_TABS.indexOf(tab) < 0) throw new Error('Tab không hợp lệ: ' + tab);
+      var sheet = book.getSheetByName(tab);
+      if (!sheet) throw new Error('Thiếu tab ' + tab);
+      if (sheet.getMaxColumns() < 18) sheet.insertColumnsAfter(sheet.getMaxColumns(), 18 - sheet.getMaxColumns());
+      var header = String(sheet.getRange(1, 18).getDisplayValue() || '').trim();
+      if (header && header !== 'Mã đăng ký Workspace') throw new Error('Cột R của ' + tab + ' đang được dùng.');
+      if (!header) sheet.getRange(1, 18).setValue('Mã đăng ký Workspace');
+      var marker = 'WORKSPACE:' + item.registrationId;
+      var rowNumber = 0;
+      var lastRow = sheet.getLastRow();
+      if (lastRow >= 2) {
+        var existing = sheet.getRange(2, 18, lastRow - 1, 1).getDisplayValues();
+        for (var index = 0; index < existing.length; index++) {
+          if (existing[index][0] === marker) { rowNumber = index + 2; break; }
+        }
+      }
+      if (!rowNumber) {
+        var values = item.tabs[tab];
+        if (!Array.isArray(values) || values.length !== 18 || values[17] !== marker) throw new Error('Dòng đăng ký không hợp lệ.');
+        sheet.appendRow(values);
+        rowNumber = sheet.getLastRow();
+      }
+      var ack = UrlFetchApp.fetch(base + '/workspace-ack', {
+        method: 'post', contentType: 'application/json',
+        headers: {'X-Examination-Webhook-Secret': secret},
+        payload: JSON.stringify({registrationId: item.registrationId, sheetTab: tab, rowNumber: rowNumber}),
+        muteHttpExceptions: true
+      });
+      if (ack.getResponseCode() !== 200) throw new Error('Không thể xác nhận dòng Sheet: ' + ack.getResponseCode());
+    });
+  });
+}
+
 function installRegistrationTriggers() {
   var book = SpreadsheetApp.getActiveSpreadsheet();
   if (!book || book.getId() !== REGISTRATION_SPREADSHEET_ID) {
@@ -81,5 +136,8 @@ function installRegistrationTriggers() {
   }
   if (handlers.indexOf('syncAllRegistrations') < 0) {
     ScriptApp.newTrigger('syncAllRegistrations').timeBased().everyMinutes(10).create();
+  }
+  if (handlers.indexOf('syncWorkspaceRegistrations') < 0) {
+    ScriptApp.newTrigger('syncWorkspaceRegistrations').timeBased().everyMinutes(10).create();
   }
 }

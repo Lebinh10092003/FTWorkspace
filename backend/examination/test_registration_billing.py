@@ -1,4 +1,6 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+import json
+import uuid
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -7,7 +9,8 @@ from rest_framework.test import APIClient
 
 from authentication.models import JobTitle, UserProfile, WorkspaceNotification
 from .form_registration import SESSION_IDS, SPREADSHEET_ID, selected_codes
-from .models import Candidate, CandidateParticipation, ExamSession, ExaminationBillingRecord, ExaminationSheet, FormRegistrationLink, UnmatchedTransfer
+from .models import Candidate, CandidateParticipation, ExamSession, ExaminationBillingRecord, ExaminationSheet, FormRegistrationLink, PublicExamRegistration, UnmatchedTransfer
+from .public_registration_sheet import row_for, sync_registration
 from .sheet_scheduler import scan_sheet_changes
 
 
@@ -34,6 +37,88 @@ class RegistrationAndBillingTests(TestCase):
         row[10] = 'Trường A'
         row[12] = contests
         return row
+
+    def public_payload(self):
+        return {
+            'requestKey': str(uuid.uuid4()), 'contestCodes': json.dumps(['SIBO', 'FIEO']),
+            'name': 'Nguyễn Minh An', 'birthDate': '2018-07-12',
+            'email': 'parent@example.test', 'phone': '0912345678',
+            'school': 'Trường A', 'grade': '3', 'city': 'Hà Nội',
+            'ward': 'Phường A', 'address': 'Số 1, đường B',
+            'paymentDeclared': 'true',
+        }
+
+    def test_public_form_creates_one_candidate_two_billing_records_and_is_idempotent(self):
+        payload = self.public_payload()
+        payload['proof'] = SimpleUploadedFile('proof.png', b'\x89PNG\r\n\x1a\n' + b'x' * 20, content_type='image/png')
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post('/api/public/examination/registration', payload, format='multipart')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(Candidate.objects.count(), 1)
+        self.assertEqual(CandidateParticipation.objects.count(), 2)
+        self.assertEqual(ExaminationBillingRecord.objects.count(), 2)
+        self.assertEqual(WorkspaceNotification.objects.filter(title='Thí sinh mới cần đối soát').count(), 2)
+        self.assertEqual(WorkspaceNotification.objects.filter(title='Thí sinh mới đăng ký').count(), 2)
+        self.assertEqual(PublicExamRegistration.objects.count(), 1)
+        retry = self.client.post('/api/public/examination/registration', self.public_payload() | {'requestKey': payload['requestKey']}, format='multipart')
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(CandidateParticipation.objects.count(), 2)
+        self.assertEqual(retry.data['registrationId'], response.data['registrationId'])
+        self.assertNotEqual(self.client.get(f"/api/examination/public-registrations/{response.data['registrationId']}/proof").status_code, 200)
+        self.client.force_authenticate(self.finance)
+        self.assertEqual(self.client.get(f"/api/examination/public-registrations/{response.data['registrationId']}/proof").status_code, 200)
+
+    def test_public_sheet_export_uses_original_tabs_and_webhook_ignores_its_rows(self):
+        response = self.client.post('/api/public/examination/registration', self.public_payload(), format='multipart')
+        self.assertEqual(response.status_code, 201, response.data)
+        item = PublicExamRegistration.objects.select_related('candidate').get()
+        self.assertEqual(row_for(item, 'SIPhO, SIChO, SIBO, SILSO')[12], 'SIBO')
+        self.assertEqual(row_for(item, 'FIMO, FIEO')[12], 'FIEO')
+        self.assertEqual(row_for(item, 'FIMO, FIEO')[17], f'WORKSPACE:{item.id}')
+        sheet = MagicMock()
+        sheet.spreadsheets.return_value.get.return_value.execute.return_value = {
+            'sheets': [{'properties': {'title': tab, 'sheetId': number, 'gridProperties': {'columnCount': 18}}}
+                       for number, tab in enumerate(('SIPhO, SIChO, SIBO, SILSO', 'FIMO, FIEO'))],
+        }
+        def values_get(**kwargs):
+            result = MagicMock()
+            result.execute.return_value = {'values': [['Mã đăng ký Workspace']]} if kwargs['range'].endswith('R1') else {'values': []}
+            return result
+        sheet.spreadsheets.return_value.values.return_value.get.side_effect = values_get
+        sheet.spreadsheets.return_value.values.return_value.append.return_value.execute.return_value = {'updates': {'updatedRange': "'FIMO, FIEO'!A2:R2"}}
+        sync_registration(item, service=sheet)
+        self.assertEqual(sheet.spreadsheets.return_value.values.return_value.append.call_count, 2)
+        item.refresh_from_db()
+        self.assertEqual(item.sheet_status, 'synced')
+        row = row_for(item, 'FIMO, FIEO')
+        with patch.dict('os.environ', {'EXAMINATION_REGISTRATION_WEBHOOK_SECRET': 'test-secret'}):
+            imported = self.client.post('/api/examination/form-registration/webhook', {
+                'spreadsheetId': SPREADSHEET_ID, 'sheetTab': 'FIMO, FIEO',
+                'rows': [{'rowNumber': 2, 'values': row}],
+            }, format='json', HTTP_X_EXAMINATION_WEBHOOK_SECRET='test-secret')
+        self.assertEqual(imported.status_code, 200)
+        self.assertEqual(imported.data['skipped'], 1)
+        self.assertEqual(CandidateParticipation.objects.count(), 2)
+
+    def test_signed_apps_script_pull_and_ack_are_idempotent(self):
+        created = self.client.post('/api/public/examination/registration', self.public_payload(), format='multipart')
+        self.assertEqual(created.status_code, 201, created.data)
+        pending_url = '/api/examination/form-registration/workspace-pending'
+        ack_url = '/api/examination/form-registration/workspace-ack'
+        self.assertEqual(self.client.post(pending_url, {}, format='json').status_code, 403)
+        with patch.dict('os.environ', {'EXAMINATION_REGISTRATION_WEBHOOK_SECRET': 'test-secret'}):
+            pending = self.client.post(pending_url, {}, format='json', HTTP_X_EXAMINATION_WEBHOOK_SECRET='test-secret')
+            self.assertEqual(pending.status_code, 200)
+            self.assertEqual(len(pending.data['registrations']), 1)
+            self.assertEqual(set(pending.data['registrations'][0]['tabs']), {'SIPhO, SIChO, SIBO, SILSO', 'FIMO, FIEO'})
+            for tab in ('SIPhO, SIChO, SIBO, SILSO', 'FIMO, FIEO'):
+                ack = self.client.post(ack_url, {
+                    'registrationId': created.data['registrationId'], 'sheetTab': tab, 'rowNumber': 2,
+                }, format='json', HTTP_X_EXAMINATION_WEBHOOK_SECRET='test-secret')
+                self.assertEqual(ack.status_code, 200)
+            again = self.client.post(pending_url, {}, format='json', HTTP_X_EXAMINATION_WEBHOOK_SECRET='test-secret')
+            self.assertEqual(again.data['registrations'], [])
+            self.assertEqual(PublicExamRegistration.objects.get().sheet_status, 'synced')
 
     def test_grouped_form_registers_only_selected_contests_and_retries_safely(self):
         tab = 'SIPhO, SIChO, SIBO, SILSO'

@@ -3,6 +3,7 @@ import { ArrowDownToLine, ArrowRight, ArrowUp, BookOpen, CalendarDays, CheckCirc
 import './LandingSite.css';
 import './LandingMotion.css';
 import SiaioLandingView from './SiaioLandingView';
+import { publicRegistrationLink } from './publicRegistrationLink';
 import { countdownLabel, describeMilestones, statusLabel, type MilestoneSummary, type MilestoneView } from './landingTimeline';
 import { useActiveSection, usePointerTilt, useRevealScope, useScrollProgress, useScrolledPast } from './landingMotion';
 
@@ -119,9 +120,10 @@ function OlympiadLandingView({ site, preview = false }: { site: LandingSite; pre
   const [form, setForm] = useState({ fullName: '', phone: '', email: '', schoolCity: '', message: '', website: '' });
   const [formState, setFormState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [formError, setFormError] = useState('');
-  const reg = c.registration || {};
+  const directRegistration = !preview ? publicRegistrationLink(site.slug, site.title) : '';
+  const reg = { ...(c.registration || {}), ...(directRegistration ? { individualUrl: directRegistration } : {}) };
   const contact = c.contact || {};
-  const heroButtons = c.buttons?.length ? c.buttons : [
+  const heroButtons = c.buttons?.length ? c.buttons.map(button => directRegistration && /đăng ký|tham gia/i.test(button.label) ? { ...button, url: directRegistration } : button) : [
     { label: 'Đăng ký ngay', url: reg.individualUrl || '#dang-ky' },
     { label: 'Khám phá đề mẫu', url: '#de-mau' },
   ];

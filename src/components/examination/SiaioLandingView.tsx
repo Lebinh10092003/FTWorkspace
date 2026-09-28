@@ -89,7 +89,7 @@ function SiaioRoadmap({ schedule }: { schedule: MilestoneSummary }) {
 
 export default function SiaioLandingView({ site, preview = false }: { site: LandingSite; preview?: boolean }) {
   const c = site.content || {};
-  const reg = c.registration || {};
+  const reg = { ...(c.registration || {}), ...(!preview ? { individualUrl: '/dang-ky-du-thi?cuoc-thi=SIAIO' } : {}) };
   const contact = c.contact || {};
   const [menuOpen, setMenuOpen] = useState(false);
   const subjects = (c.paperSubjects?.length ? c.paperSubjects : Object.keys(c.papers || {})).filter(Boolean);

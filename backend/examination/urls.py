@@ -1,7 +1,11 @@
 from django.urls import path
-from . import views, paper_views, blueprint_views, landing_views, landing_site_views, sheet_webhook, billing_views, form_registration
+from . import views, paper_views, blueprint_views, landing_views, landing_site_views, sheet_webhook, billing_views, form_registration, public_registration
 
 urlpatterns = [
+    path('public/examination/registration', public_registration.public_registration),
+    path('examination/form-registration/workspace-pending', public_registration.workspace_pending),
+    path('examination/form-registration/workspace-ack', public_registration.workspace_ack),
+    path('examination/public-registrations/<uuid:pk>/proof', public_registration.public_registration_proof),
     path('public/landing-sites/<slug:slug>/leads', landing_site_views.landing_site_lead),
     path('public/landing-sites/<slug:slug>', landing_site_views.public_landing_site),
     path('landing-sites', landing_site_views.landing_sites),

@@ -88,7 +88,11 @@ export function CompetitionLandingView({ data }: { data: CompetitionLanding }) {
   const period = data.stats.firstDate && data.stats.lastDate
     ? `${shortDate(data.stats.firstDate)} – ${shortDate(data.stats.lastDate)}`
     : 'Đang cập nhật';
-  const register = data.registrationUrl;
+  const directRegistrationCodes = new Set(['SIAIO', 'SIPHO', 'SICHO', 'SIBO', 'SILSO', 'FIMO', 'FIEO']);
+  const competitionCode = data.competition.code.toUpperCase();
+  const register = directRegistrationCodes.has(competitionCode)
+    ? `/dang-ky-du-thi?cuoc-thi=${encodeURIComponent(competitionCode)}`
+    : data.registrationUrl;
 
   return (
     <div className="min-h-dvh bg-white font-sans text-slate-800">

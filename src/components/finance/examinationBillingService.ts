@@ -5,7 +5,7 @@ export type BillingInvoiceStatus = 'pending' | 'checked' | 'issue' | 'not_requir
 export type ExaminationBillingRecord = {
   id: string; candidateName: string; candidateCode: string;
   competitionCode: string; competitionName: string; sessionCode: string;
-  school: string; registeredAt: string; amount: number | null; paymentProof?: string;
+  school: string; registeredAt: string; amount: number | null; paymentProof?: string; paymentProofId?: string;
   transferStatus: BillingTransferStatus; transferReference: string;
   transferConfirmedAt: string | null; transferConfirmedBy: string | null;
   invoiceStatus: BillingInvoiceStatus; invoiceNumber: string;
@@ -85,6 +85,13 @@ export const examinationBillingService = {
       headers: options.idToken ? { Authorization: `Bearer ${options.idToken}` } : {},
     });
     if (!response.ok) throw new Error('Không thể tải ảnh chuyển khoản.');
+    return URL.createObjectURL(await response.blob());
+  },
+  async registrationProof(id: string, options: BillingRequestOptions = {}): Promise<string> {
+    const response = await fetch(`/api/examination/public-registrations/${encodeURIComponent(id)}/proof`, {
+      headers: options.idToken ? { Authorization: `Bearer ${options.idToken}` } : {},
+    });
+    if (!response.ok) throw new Error('Không thể tải chứng từ đăng ký.');
     return URL.createObjectURL(await response.blob());
   },
 };

@@ -81,6 +81,11 @@ def import_form_rows(tab, rows):
         if not isinstance(row_number, int) or row_number < 2 or not isinstance(row, list) or len(row) > 30:
             summary['skipped'] += 1
             continue
+        # Rows appended by the Workspace registration page are already in the
+        # database. The periodic Apps Script sweep must not import them again.
+        if len(row) > 17 and clean(row[17]).startswith('WORKSPACE:'):
+            summary['skipped'] += 1
+            continue
         if len(row) < 13 or not clean(row[2]):
             summary['skipped'] += 1
             continue

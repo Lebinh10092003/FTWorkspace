@@ -54,13 +54,15 @@ def billing_payload(item):
     participation = item.participation
     candidate = participation.candidate
     session = participation.session
+    registration_data = participation.registration_data or {}
     return {
         'id': str(item.pk), 'candidateName': candidate.name,
         'candidateCode': candidate.code, 'competitionCode': session.code,
         'competitionName': session.name, 'sessionCode': session.code,
         'school': candidate.school or '', 'registeredAt': participation.created_at.isoformat(),
         'amount': int(item.amount) if item.amount is not None else None,
-        'paymentProof': str((participation.registration_data or {}).get('paymentProof') or ''),
+        'paymentProof': str(registration_data.get('paymentProof') or ''),
+        'paymentProofId': registration_data.get('publicRegistrationId') if str(registration_data.get('paymentProof') or '').startswith('Workspace #') else '',
         'transferStatus': item.transfer_status, 'transferReference': item.transfer_reference,
         'transferConfirmedAt': item.transfer_confirmed_at.isoformat() if item.transfer_confirmed_at else None,
         'transferConfirmedBy': item.transfer_confirmed_by or None,

@@ -146,6 +146,23 @@ class FormRegistrationLink(models.Model):
         )]
 
 
+class PublicExamRegistration(models.Model):
+    """One public submission, with an idempotent Sheet export and private proof."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request_key = models.UUIDField(unique=True)
+    candidate = models.ForeignKey(Candidate, on_delete=models.PROTECT, related_name='public_registrations')
+    contest_codes = models.JSONField(default=list)
+    payment_declared = models.BooleanField(default=False)
+    proof = models.BinaryField(null=True, blank=True)
+    proof_type = models.CharField(max_length=50, blank=True, default='')
+    sheet_rows = models.JSONField(default=dict, blank=True)
+    sheet_status = models.CharField(max_length=20, default='pending')
+    sheet_error = models.TextField(blank=True, default='')
+    source_ip_hash = models.CharField(max_length=64, blank=True, default='', db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class ExamRoom(models.Model):
     """A reusable room definition belonging to one configured session round."""
     MODE_IN_PERSON = 'IN_PERSON'
