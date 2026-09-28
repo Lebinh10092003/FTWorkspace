@@ -19,7 +19,7 @@ export default function FundingProposalPreview({ value }: { value: FundingPropos
       <table className="fp-letterhead">
         <tbody>
           <tr>
-            <td><b>CÔNG TY CỔ PHẦN</b><br /><b>CÔNG NGHỆ FERMAT</b></td>
+            <td><b>CÔNG TY CỔ PHẦN</b><br /><b className="fp-organization">CÔNG NGHỆ FERMAT</b></td>
             <td><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br /><b className="fp-motto">Độc lập - Tự do - Hạnh phúc</b></td>
           </tr>
           <tr>
@@ -31,7 +31,7 @@ export default function FundingProposalPreview({ value }: { value: FundingPropos
 
       <h1 className="fp-title">PHIẾU ĐỀ XUẤT KINH PHÍ</h1>
       <p className="fp-subtitle">Dùng cho đề xuất mới và điều chỉnh kinh phí</p>
-      <p className="fp-line">Kính gửi: Tổng Giám đốc Công ty Cổ phần Công nghệ Fermat.</p>
+      <p className="fp-line fp-recipient">Kính gửi: Tổng Giám đốc Công ty Cổ phần Công nghệ Fermat.</p>
 
       <h2 className="fp-section">1. Thông tin đề xuất</h2>
       <p className="fp-line">
@@ -163,7 +163,12 @@ export default function FundingProposalPreview({ value }: { value: FundingPropos
       <table className="fp-signatures">
         <tbody>
           <tr>
-            {['NGƯỜI LẬP PHIẾU', 'PHỤ TRÁCH BỘ PHẬN', 'KẾ TOÁN KIỂM TRA', 'NGƯỜI PHÊ DUYỆT'].map(label => (
+            {['NGƯỜI LẬP PHIẾU', 'PHỤ TRÁCH BỘ PHẬN'].map(label => (
+              <td key={label}><b>{label}</b><div className="fp-sign-space" />…………………</td>
+            ))}
+          </tr>
+          <tr>
+            {['KẾ TOÁN KIỂM TRA', 'NGƯỜI PHÊ DUYỆT'].map(label => (
               <td key={label}><b>{label}</b><div className="fp-sign-space" />…………………</td>
             ))}
           </tr>

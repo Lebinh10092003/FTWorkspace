@@ -187,7 +187,7 @@ export const proposalNumberDigits = (value: string) =>
 
 export const formatProposalNumber = (value: string) => {
   const digits = proposalNumberDigits(value);
-  return digits ? `${digits}/PĐXKP-FT` : '';
+  return digits ? `${digits.padStart(2, '0')}/PĐXKP-FT` : '';
 };
 
 /** The payload the .docx endpoint expects. */

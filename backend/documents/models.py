@@ -7,10 +7,23 @@ class FundingProposalRecord(models.Model):
     draft_id = models.UUIDField(unique=True)
     owner_email = models.EmailField()
     document_number = models.CharField(max_length=64, blank=True, default="")
+    number_year = models.PositiveSmallIntegerField(blank=True, null=True)
+    sequence_number = models.PositiveIntegerField(blank=True, null=True)
     drive_file_id = models.CharField(max_length=180, blank=True, default="")
     drive_url = models.URLField(max_length=500, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=["number_year", "sequence_number"],
+            name="unique_funding_proposal_number_per_year",
+        )]
+
+
+class FundingProposalNumberCounter(models.Model):
+    year = models.PositiveSmallIntegerField(unique=True)
+    last_number = models.PositiveIntegerField(default=0)
 
 
 class WeeklyReport(models.Model):

@@ -51,7 +51,6 @@ const FALLBACK_TYPES: DocumentType[] = [
   { label: 'Hướng dẫn', code: 'HD' },
   { label: 'Giấy mời', code: 'GM' },
   { label: 'Giấy giới thiệu', code: 'GGT' },
-  { label: 'Phiếu đề xuất kinh phí', code: 'PĐXKP' },
 ];
 
 const deriveCode = (label: string) =>

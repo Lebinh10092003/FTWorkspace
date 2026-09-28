@@ -2,7 +2,7 @@
 
 The layout follows the company's Google Docs master: a two-column letterhead,
 numbered sections 1-5, a cost table that carries its own CỘNG / VAT / CHI PHÍ
-KHÁC / TỔNG CỘNG rows, and a four-column signature strip. Word renders this
+KHÁC / TỔNG CỘNG rows, and a two-by-two signature grid. Word renders this
 directly; nothing here depends on the browser that filled the form in.
 """
 from datetime import date, datetime
@@ -90,7 +90,7 @@ def _short_date(value):
     return parsed.strftime("%d/%m/%Y") if parsed else "……/……/………"
 
 
-def _style(run, *, bold=False, italic=False, size=13):
+def _style(run, *, bold=False, italic=False, size=14):
     run.bold = bold
     run.italic = italic
     run.font.size = Pt(size)
@@ -98,7 +98,7 @@ def _style(run, *, bold=False, italic=False, size=13):
     run._element.rPr.rFonts.set(qn("w:eastAsia"), FONT)
 
 
-def _para(container, text="", *, bold=False, italic=False, size=13,
+def _para(container, text="", *, bold=False, italic=False, size=14,
           align=None, space_after=2, space_before=0, indent=None):
     paragraph = container.add_paragraph()
     paragraph.paragraph_format.space_after = Pt(space_after)
@@ -106,8 +106,11 @@ def _para(container, text="", *, bold=False, italic=False, size=13,
     paragraph.paragraph_format.line_spacing = 1.15
     if indent is not None:
         paragraph.paragraph_format.left_indent = Cm(indent)
-    if align is not None:
-        paragraph.alignment = align
+    paragraph.alignment = align if align is not None else WD_ALIGN_PARAGRAPH.JUSTIFY
+    if align is None:
+        paragraph.paragraph_format.first_line_indent = Cm(1.25)
+    if bold and align is None:
+        paragraph.paragraph_format.keep_with_next = True
     _style(paragraph.add_run(text), bold=bold, italic=italic, size=size)
     return paragraph
 
@@ -129,10 +132,10 @@ def _widths(table, centimeters):
             cell.width = Cm(width)
 
 
-def _motto_rule(paragraph):
-    """A short centered rule beneath the motto, inside its own paragraph."""
-    paragraph.paragraph_format.left_indent = Cm(2.0)
-    paragraph.paragraph_format.right_indent = Cm(2.0)
+def _centered_rule(paragraph, inset):
+    """A centered line beneath the motto or organization name."""
+    paragraph.paragraph_format.left_indent = Cm(inset)
+    paragraph.paragraph_format.right_indent = Cm(inset)
     ppr = paragraph._p.get_or_add_pPr()
     borders = OxmlElement("w:pBdr")
     bottom = OxmlElement("w:bottom")
@@ -142,7 +145,7 @@ def _motto_rule(paragraph):
     ppr.append(borders)
 
 
-def _cell_text(cell, text, *, bold=False, italic=False, size=13, align=WD_ALIGN_PARAGRAPH.LEFT):
+def _cell_text(cell, text, *, bold=False, italic=False, size=14, align=WD_ALIGN_PARAGRAPH.JUSTIFY):
     cell.text = ""
     paragraph = cell.paragraphs[0]
     paragraph.alignment = align
@@ -155,25 +158,31 @@ def _letterhead(document, data):
     table = document.add_table(rows=2, cols=2)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     _borderless(table)
-    _widths(table, [5.6, 10.4])
+    _widths(table, [5.8, 10.7])
 
-    _cell_text(table.cell(0, 0), "CÔNG TY CỔ PHẦN", bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
-    _para(table.cell(0, 0), "CÔNG NGHỆ FERMAT", bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0)
+    _cell_text(table.cell(0, 0), "CÔNG TY CỔ PHẦN", bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
+    _para(table.cell(0, 0), "CÔNG NGHỆ FERMAT", bold=True, size=12,
+          align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0)
+    organization_rule = _para(table.cell(0, 0), "", size=4,
+                              align=WD_ALIGN_PARAGRAPH.CENTER, space_after=4)
+    organization_rule.paragraph_format.line_spacing = 0.3
+    _centered_rule(organization_rule, 1.7)
     _cell_text(table.cell(0, 1), "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
     motto = _para(table.cell(0, 1), "Độc lập - Tự do - Hạnh phúc", bold=True, size=13,
                   align=WD_ALIGN_PARAGRAPH.CENTER, space_after=4)
-    _motto_rule(motto)
+    _centered_rule(motto, 2.0)
 
     number = _document_number(data)
     _cell_text(
         table.cell(1, 0),
         f"Số: {number}" if number else "Số: ……/PĐXKP-FT",
+        size=14,
         align=WD_ALIGN_PARAGRAPH.CENTER,
     )
     _cell_text(
         table.cell(1, 1),
         _date_phrase(data.get("issuedOn")),
-        italic=True,
+        italic=True, size=14,
         align=WD_ALIGN_PARAGRAPH.CENTER,
     )
     spacer = document.add_paragraph()
@@ -187,12 +196,12 @@ def _cost_table(document, data):
     table = document.add_table(rows=rows + 5, cols=6)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    widths = [1.0, 5.3, 1.4, 1.5, 3.1, 3.7]
+    widths = [1.2, 4.8, 1.65, 1.8, 3.2, 3.85]
     headers = ["TT", "Nội dung, quy cách\nvà cấu phần chi phí", "ĐVT",
                "Số\nlượng", "Đơn giá\nchưa thuế", "Thành tiền\nchưa thuế"]
     _widths(table, widths)
     for index, label in enumerate(headers):
-        _cell_text(table.cell(0, index), label, bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
+        _cell_text(table.cell(0, index), label, bold=True, size=14, align=WD_ALIGN_PARAGRAPH.CENTER)
 
     subtotal = 0.0
     for offset in range(rows):
@@ -208,7 +217,7 @@ def _cost_table(document, data):
             (_dotted(_money(amount) if amount else "", 6), WD_ALIGN_PARAGRAPH.RIGHT),
         ]
         for index, (text, align) in enumerate(cells):
-            _cell_text(table.cell(offset + 1, index), text, size=12, align=align)
+            _cell_text(table.cell(offset + 1, index), text, size=14, align=align)
 
     vat_rate = _number(data.get("vatRate"))
     vat_amount = subtotal * vat_rate / 100 if vat_rate else _number(data.get("vatAmount"))
@@ -226,8 +235,8 @@ def _cost_table(document, data):
         row = rows + 1 + offset
         merged = table.cell(row, 0).merge(table.cell(row, 4))
         strong = label in {"CỘNG", "TỔNG CỘNG"}
-        _cell_text(merged, label, bold=strong, size=12, align=WD_ALIGN_PARAGRAPH.RIGHT)
-        _cell_text(table.cell(row, 5), _dotted(value, 6), bold=strong, size=12,
+        _cell_text(merged, label, bold=strong, size=14, align=WD_ALIGN_PARAGRAPH.RIGHT)
+        _cell_text(table.cell(row, 5), _dotted(value, 6), bold=strong, size=14,
                    align=WD_ALIGN_PARAGRAPH.RIGHT)
     return total
 
@@ -251,17 +260,17 @@ def _line_amount(item):
 
 
 def _signature_strip(document):
-    table = document.add_table(rows=1, cols=4)
+    table = document.add_table(rows=2, cols=2)
     _borderless(table)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    _widths(table, [4.0] * 4)
-    labels = ["NGƯỜI LẬP\nPHIẾU", "PHỤ TRÁCH\nBỘ PHẬN", "KẾ TOÁN\nKIỂM TRA", "NGƯỜI\nPHÊ DUYỆT"]
+    _widths(table, [8.25, 8.25])
+    labels = ["NGƯỜI LẬP PHIẾU", "PHỤ TRÁCH BỘ PHẬN", "KẾ TOÁN KIỂM TRA", "NGƯỜI PHÊ DUYỆT"]
     for index, label in enumerate(labels):
-        cell = table.cell(0, index)
-        _cell_text(cell, label, bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
-        for _ in range(3):
-            _para(cell, "", size=12, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0)
-        _para(cell, "…………………", size=12, align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0)
+        cell = table.cell(index // 2, index % 2)
+        _cell_text(cell, label, bold=True, size=13, align=WD_ALIGN_PARAGRAPH.CENTER)
+        signature = _para(cell, "…………………", size=14,
+                          align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0, space_before=30)
+        signature.paragraph_format.keep_together = True
 
 
 def build_funding_proposal(data):
@@ -271,21 +280,21 @@ def build_funding_proposal(data):
     document = Document()
     section = document.sections[0]
     section.page_width, section.page_height = Cm(21.0), Cm(29.7)
-    section.top_margin, section.bottom_margin = Cm(2.2), Cm(2.2)
-    section.left_margin, section.right_margin = Cm(3.2), Cm(1.8)
+    section.top_margin, section.bottom_margin = Cm(2.0), Cm(2.0)
+    section.left_margin, section.right_margin = Cm(2.5), Cm(2.0)
 
     normal = document.styles["Normal"]
     normal.font.name = FONT
-    normal.font.size = Pt(13)
+    normal.font.size = Pt(14)
     normal.element.rPr.rFonts.set(qn("w:eastAsia"), FONT)
 
     _letterhead(document, data)
 
-    _para(document, "PHIẾU ĐỀ XUẤT KINH PHÍ", bold=True, size=16,
+    _para(document, "PHIẾU ĐỀ XUẤT KINH PHÍ", bold=True, size=13,
           align=WD_ALIGN_PARAGRAPH.CENTER, space_after=0)
     _para(document, "Dùng cho đề xuất mới và điều chỉnh kinh phí", italic=True, size=12,
           align=WD_ALIGN_PARAGRAPH.CENTER, space_after=8)
-    _para(document, "Kính gửi: Tổng Giám đốc Công ty Cổ phần Công nghệ Fermat.", space_after=8)
+    _para(document, "Kính gửi: Tổng Giám đốc Công ty Cổ phần Công nghệ Fermat.", size=13, space_after=8)
 
     kind = str(data.get("kind") or "new")
     _para(document, "1. Thông tin đề xuất", bold=True, space_before=4)
@@ -300,7 +309,7 @@ def build_funding_proposal(data):
     _para(document, f"Hạn cần duyệt: {_short_date(data.get('approvalDeadline'))}", space_after=8)
 
     _para(document, "2. Dự toán và phương án thực hiện", bold=True, space_before=4)
-    _para(document, f"Đơn vị tiền: {currency_unit}.", italic=True, size=12)
+    _para(document, f"Đơn vị tiền: {currency_unit}.", italic=True)
     total = _cost_table(document, data)
     _para(document, f"Tổng kinh phí đề nghị (A + B + C): {_dotted(_money(total) if total else '', 20)} {currency_unit}.",
           space_before=6)
@@ -314,8 +323,9 @@ def build_funding_proposal(data):
           f"{_date_phrase(data.get('advanceDate'), prefix='ngày')}", space_after=8)
 
     _para(document, "3. Đối chiếu điều chỉnh và hồ sơ kèm theo", bold=True, space_before=4)
-    _para(document, "Chỉ điền phần đối chiếu khi điều chỉnh; đề xuất mới ghi “Không áp dụng”.",
-          italic=True, size=12)
+    note = _para(document, "Chỉ điền phần đối chiếu khi điều chỉnh; đề xuất mới ghi “Không áp dụng”.",
+                 italic=True)
+    note.paragraph_format.keep_with_next = True
     _para(document, f"Căn cứ lần duyệt trước (số phiếu/email, ngày, người duyệt): "
                     f"{_dotted(data.get('previousApproval'), 16)}")
     _comparison_table(document, data)
@@ -346,12 +356,12 @@ def build_funding_proposal(data):
     _para(document, f"Tổng mức được duyệt (gồm thuế, phí): {_dotted(_money(data.get('approvedTotal')), 20)} {currency_unit}.")
     _para(document, f"Điều kiện; người thực hiện; thời hạn: {_dotted(data.get('conditions'), 24)}")
     _para(document, "Ký, ghi rõ họ tên, ngày ký; người phê duyệt ghi thêm chức vụ.",
-          italic=True, size=12, space_after=6)
+          italic=True, space_after=6)
 
     _signature_strip(document)
     _para(document, "Phiếu dùng để duyệt kinh phí; hồ sơ tạm ứng, thanh toán thực hiện riêng. "
                     "Phát sinh vượt mức/phạm vi đã duyệt phải trình lại trước khi cam kết chi.",
-          italic=True, size=11, space_before=8)
+          italic=True, space_before=2)
 
     stream = BytesIO()
     document.save(stream)
@@ -365,18 +375,18 @@ def _comparison_table(document, data):
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     headers = ["Nội dung", "Đã duyệt trước", "Đề nghị lần này", "Tăng/giảm"]
-    _widths(table, [4.8, 3.8, 3.8, 3.6])
+    _widths(table, [4.9, 3.9, 3.9, 3.8])
     for index, label in enumerate(headers):
-        _cell_text(table.cell(0, index), label, bold=True, size=12, align=WD_ALIGN_PARAGRAPH.CENTER)
+        _cell_text(table.cell(0, index), label, bold=True, size=14, align=WD_ALIGN_PARAGRAPH.CENTER)
     labels = [
         ("quantity", "Số lượng/đơn giá\nhạng mục thay đổi"),
         ("total", "Tổng kinh phí\ncùng phạm vi và cơ sở thuế"),
     ]
     for offset, (key, label) in enumerate(labels):
         entry = comparison.get(key) if isinstance(comparison.get(key), dict) else {}
-        _cell_text(table.cell(offset + 1, 0), label, size=12)
+        _cell_text(table.cell(offset + 1, 0), label, size=14, align=WD_ALIGN_PARAGRAPH.LEFT)
         for column, field in enumerate(("previous", "current", "delta"), start=1):
-            _cell_text(table.cell(offset + 1, column), _dotted(entry.get(field), 8), size=12,
+            _cell_text(table.cell(offset + 1, column), _dotted(entry.get(field), 8), size=14,
                        align=WD_ALIGN_PARAGRAPH.CENTER)
 
 
@@ -390,4 +400,4 @@ def _filename(data):
 def _document_number(data):
     prefix = str(data.get("documentNumber") or "").split("/", 1)[0]
     digits = "".join(char for char in prefix if char.isascii() and char.isdigit())
-    return f"{digits}/PĐXKP-FT" if digits else ""
+    return f"{int(digits):02d}/PĐXKP-FT" if digits else ""

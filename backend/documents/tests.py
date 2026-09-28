@@ -1,8 +1,11 @@
 import zipfile
+from importlib import import_module
 from datetime import date
 from io import BytesIO
 from unittest import mock
 
+from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.authtoken.models import Token
@@ -10,7 +13,7 @@ from rest_framework.authtoken.models import Token
 from authentication.models import UserProfile
 
 from .funding_proposal import build_funding_proposal
-from .models import FundingProposalRecord
+from .models import FundingProposalNumberCounter, FundingProposalRecord
 from .numbering import (
     derive_type_code,
     format_number,
@@ -211,6 +214,19 @@ class DocumentNumberApiTests(TestCase):
 
 
 class FundingProposalDocxTests(TestCase):
+    def test_existing_shared_register_number_becomes_first_proposal_number(self):
+        record = FundingProposalRecord.objects.create(
+            draft_id="2c510806-876b-45ba-b2f6-53d743979f25",
+            owner_email="owner@example.com", document_number="47/PĐXKP-FT",
+        )
+        migration = import_module("documents.migrations.0003_funding_proposal_numbering")
+        from django.apps import apps
+        migration.normalize_existing_proposals(apps, None)
+        record.refresh_from_db()
+        self.assertEqual(record.document_number, "01/PĐXKP-FT")
+        self.assertEqual(record.sequence_number, 1)
+        self.assertEqual(FundingProposalNumberCounter.objects.get(year=record.number_year).last_number, 1)
+
     def payload(self):
         return {
             "documentNumber": "46/PĐXKP-FT",
@@ -266,12 +282,23 @@ class FundingProposalDocxTests(TestCase):
 
     def test_a4_margins_and_centered_motto_rule(self):
         _, content = build_funding_proposal(self.payload())
+        word = Document(BytesIO(content))
+        self.assertAlmostEqual(word.sections[0].left_margin.cm, 2.5, places=1)
+        for edge in (word.sections[0].top_margin, word.sections[0].right_margin, word.sections[0].bottom_margin):
+            self.assertAlmostEqual(edge.cm, 2.0, places=1)
+        recipient = next(p for p in word.paragraphs if p.text.startswith("Kính gửi:"))
+        self.assertEqual(recipient.alignment, WD_ALIGN_PARAGRAPH.JUSTIFY)
+        self.assertAlmostEqual(recipient.paragraph_format.first_line_indent.cm, 1.25, places=1)
+        self.assertEqual(recipient.runs[0].font.size.pt, 13)
+        self.assertEqual(word.tables[-1].rows.__len__(), 2)
+        self.assertEqual(word.tables[-1].columns.__len__(), 2)
+        self.assertEqual(word.tables[1].cell(1, 1).paragraphs[0].runs[-1].font.size.pt, 14)
         with zipfile.ZipFile(BytesIO(content)) as archive:
             document = archive.read("word/document.xml").decode("utf-8")
             self.assertIn('w:pBdr', document)
             self.assertIn('w:bottom w:val="single"', document)
-            self.assertIn('w:left="1814"', document)  # 3.2 cm in twips
-            self.assertIn('w:right="1020"', document)  # 1.8 cm in twips
+            self.assertIn('w:left="1417"', document)  # 2.5 cm in twips
+            self.assertIn('w:right="1134"', document)  # 2.0 cm in twips
 
     def test_totals_are_computed_from_the_line_items(self):
         _, content = build_funding_proposal(self.payload())
@@ -341,7 +368,7 @@ class FundingProposalDocxTests(TestCase):
         self.assertIn("filename*=UTF-8''", disposition)
         self.assertGreater(len(response.content), 5000)
 
-    def test_number_and_drive_file_are_reused_for_the_same_draft(self):
+    def test_download_uses_a_separate_sequence_and_never_saves_to_drive(self):
         user = get_user_model().objects.create_user(
             username="funding@example.com", email="funding@example.com", password="StrongPassword9921"
         )
@@ -350,16 +377,49 @@ class FundingProposalDocxTests(TestCase):
         payload = self.payload()
         payload["draftId"] = "f392b695-66f2-4f6d-83ac-dd44568be5af"
         payload["documentNumber"] = "999/PĐXKP-FT"  # Browser number is untrusted.
-        with mock.patch("documents.views.issue_number", return_value={"number": "47/PĐXKP-FT"}) as issue, \
-                mock.patch("documents.views.save_proposal", return_value=("drive-file-1", "https://drive.google.com/file/d/drive-file-1/view")) as save:
+        with mock.patch("documents.views.issue_number") as common_register, \
+                mock.patch("documents.views.save_proposal") as save:
             for _ in range(2):
                 response = self.client.post(
                     "/api/documents/funding-proposal.docx", payload,
                     content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
                 )
                 self.assertEqual(response.status_code, 200)
-                self.assertEqual(response["X-Document-Number"], "47")
-        self.assertEqual(issue.call_count, 1)
+                self.assertEqual(response["X-Document-Number"], "01")
+                self.assertIn("01-PDXKP-FT.docx", response["Content-Disposition"])
+        common_register.assert_not_called()
+        save.assert_not_called()
+        self.assertEqual(FundingProposalRecord.objects.get().document_number, "01/PĐXKP-FT")
+
+        status_response = self.client.get(
+            "/api/documents/funding-proposal/status?draftId=" + payload["draftId"],
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(status_response.json()["documentNumber"], "01/PĐXKP-FT")
+
+        with mock.patch("documents.views.save_proposal", return_value=(
+            "drive-file-1", "https://drive.google.com/file/d/drive-file-1/view",
+        )) as save:
+            for _ in range(2):
+                saved = self.client.post(
+                    "/api/documents/funding-proposal/drive", payload,
+                    content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
+                )
+                self.assertEqual(saved.status_code, 200)
+                self.assertEqual(saved.json()["documentNumber"], "01/PĐXKP-FT")
         self.assertEqual(save.call_count, 2)
         self.assertEqual(save.call_args.kwargs["file_id"], "drive-file-1")
-        self.assertEqual(FundingProposalRecord.objects.get().document_number, "47/PĐXKP-FT")
+
+        second = dict(payload, draftId="28709d48-acd4-44fc-8365-d08498042731")
+        response = self.client.post(
+            "/api/documents/funding-proposal.docx", second,
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(response["X-Document-Number"], "02")
+
+        next_year = dict(payload, draftId="32a997ba-8315-46a7-a8ac-11de870036a1", issuedOn="2027-01-02")
+        response = self.client.post(
+            "/api/documents/funding-proposal.docx", next_year,
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(response["X-Document-Number"], "01")

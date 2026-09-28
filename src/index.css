@@ -2504,27 +2504,32 @@ body.workspace-app-theme .bndc-tree-name { color: var(--workspace-surface-text);
   margin: 0 auto;
   border: 1px solid #d8e1ec;
   background: #fff;
-  padding: 2.2cm 1.8cm 2.2cm 3.2cm;
+  padding: 2cm 2cm 2cm 2.5cm;
   box-shadow: 0 6px 24px rgba(15, 55, 95, .12);
   color: #111827;
   font-family: "Times New Roman", Times, serif;
-  font-size: 13pt;
-  line-height: 1.35;
+  font-size: 14pt;
+  line-height: 1.2;
 }
 .fp-letterhead { width: 100%; border-collapse: collapse; }
 .fp-letterhead td { padding: 2px 4px; text-align: center; vertical-align: middle; font-size: 12pt; }
 .fp-letterhead tr:first-child td { padding-bottom: 6px; }
 .fp-letterhead td:first-child { width: 35%; }
+.fp-letterhead tr:nth-child(2) td { font-size: 14pt; font-weight: 400; }
+.fp-organization { display: inline-block; white-space: nowrap; }
+.fp-organization::after { content: ""; display: block; width: 2.4cm; margin: 3px auto 0; border-bottom: 1px solid #111; }
 .fp-motto { display: inline-block; border-bottom: 1px solid #111; padding: 1px 1.15cm 3px; white-space: nowrap; }
 
-.fp-title { margin: 14px 0 2px; text-align: center; font-size: 16pt; font-weight: 700; }
+.fp-title { margin: 14px 0 2px; text-align: center; font-size: 13pt; font-weight: 700; }
 .fp-subtitle { margin: 0 0 10px; text-align: center; font-size: 12pt; font-style: italic; }
-.fp-section { margin: 12px 0 4px; font-size: 13pt; font-weight: 700; }
+.fp-section { margin: 12px 0 4px; font-size: 14pt; font-weight: 700; }
 .fp-line { margin: 0 0 3px; }
-.fp-note { margin: 0 0 4px; font-size: 12pt; font-style: italic; }
+.fp-note { margin: 0 0 4px; font-style: italic; }
+.fp-line, .fp-section, .fp-note { text-indent: 1.25cm; text-align: justify; }
+.fp-recipient { font-size: 13pt; }
 .fp-box { white-space: nowrap; margin-right: .5rem; }
 
-.fp-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 12pt; }
+.fp-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 14pt; }
 .fp-table th,
 .fp-table td { border: 1px solid #111827; padding: 3px 5px; vertical-align: top; }
 .fp-table th { text-align: center; font-weight: 700; }
@@ -2532,7 +2537,8 @@ body.workspace-app-theme .bndc-tree-name { color: var(--workspace-surface-text);
 .fp-right { text-align: right; }
 
 .fp-signatures { width: 100%; border-collapse: collapse; margin-top: 10px; }
-.fp-signatures td { width: 25%; padding: 4px; text-align: center; vertical-align: top; font-size: 12pt; }
+.fp-signatures td { width: 50%; padding: 4px; text-align: center; vertical-align: top; font-size: 14pt; }
+.fp-signatures td b { font-size: 13pt; }
 .fp-sign-space { height: 56px; }
 
 /* The sheet of paper stays white in dark mode: it is a print preview. */

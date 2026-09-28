@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Loader2, Plus, RotateCcw, Trash2, TriangleAlert, ZoomIn, ZoomOut } from 'lucide-react';
+import { Download, Loader2, Plus, RotateCcw, Save, Trash2, TriangleAlert, ZoomIn, ZoomOut } from 'lucide-react';
 import { appDialog } from '../AppDialog';
 import ModuleShellHeader from '../layout/ModuleShellHeader';
 import AccountMenu from '../AccountMenu';
@@ -43,6 +43,10 @@ function readDraft(key: string): FundingProposal {
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) return fallback;
     return {
       ...fallback, ...parsed,
+      draftId: typeof parsed.draftId === 'string' && parsed.draftId ? parsed.draftId : fallback.draftId,
+      // These values are owned by the server; an older local draft may still
+      // contain the former shared-register number (for example 47).
+      documentNumber: '', driveUrl: '',
       currency: typeof parsed.currency === 'string' ? parsed.currency : 'VND',
       items: parsed.items.filter((item: unknown) => item && typeof item === 'object' && typeof (item as ProposalItem).id === 'string'),
       comparison: {
@@ -62,6 +66,8 @@ export default function FundingProposalBuilder({
   const [value, setValue] = useState<FundingProposal>(() => readDraft(storageKey));
   const [zoom, setZoom] = useState(0.72);
   const [downloading, setDownloading] = useState(false);
+  const [savingToDrive, setSavingToDrive] = useState(false);
+  const [saveNotice, setSaveNotice] = useState('');
   const [error, setError] = useState('');
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [draftError, setDraftError] = useState(false);
@@ -81,6 +87,23 @@ export default function FundingProposalBuilder({
       setDraftError(true);
     }
   }, [storageKey, value]);
+
+  useEffect(() => {
+    const draftId = value.draftId;
+    let cancelled = false;
+    fetch(`/api/documents/funding-proposal/status?draftId=${encodeURIComponent(draftId)}`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    }).then(async response => {
+      if (!response.ok) return;
+      const state = await response.json();
+      if (!cancelled) setValue(current => current.draftId === draftId ? {
+        ...current,
+        documentNumber: state.documentNumber || '',
+        driveUrl: state.driveUrl || '',
+      } : current);
+    }).catch(() => { /* The draft remains available offline. */ });
+    return () => { cancelled = true; };
+  }, [idToken, value.draftId]);
 
   const monetaryInputs = [
     ...value.items.map((item, index) => [`Đơn giá hạng mục ${index + 1}`, item.unitPrice] as const),
@@ -111,16 +134,22 @@ export default function FundingProposalBuilder({
         : current.attachments.filter(item => item !== option),
     }));
 
-  const download = async () => {
+  const validate = () => {
     if (!currencyValid || invalidAmount) {
       setError(mismatch
         ? `${mismatch[0]} có ký hiệu tiền khác ${currencyUnit(value.currency)}. Hãy chọn đúng tiền tệ cho toàn phiếu.`
         : invalidAmount ? `${invalidAmount[0]} không phải số tiền hợp lệ.`
           : 'Mã tiền tệ phải gồm đúng 3 chữ cái, ví dụ USD.');
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const download = async () => {
+    if (!validate()) return;
     setDownloading(true);
     setError('');
+    setSaveNotice('');
     try {
       const response = await fetch('/api/documents/funding-proposal.docx', {
         method: 'POST',
@@ -132,11 +161,9 @@ export default function FundingProposalBuilder({
         throw new Error(payload.error || 'Không tạo được file Word.');
       }
       const documentNumber = response.headers.get('X-Document-Number') || '';
-      const driveUrl = response.headers.get('X-Drive-File-URL') || '';
-      if (documentNumber || driveUrl) setValue(current => ({
+      if (documentNumber) setValue(current => ({
         ...current,
-        documentNumber: documentNumber || current.documentNumber,
-        driveUrl: driveUrl || current.driveUrl,
+        documentNumber,
       }));
       const blob = await response.blob();
       const name = filenameFrom(response.headers.get('Content-Disposition'))
@@ -156,6 +183,28 @@ export default function FundingProposalBuilder({
     }
   };
 
+  const saveToDrive = async () => {
+    if (!validate()) return;
+    setSavingToDrive(true);
+    setError('');
+    setSaveNotice('');
+    try {
+      const response = await fetch('/api/documents/funding-proposal/drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify(toPayload(value)),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Không lưu được phiếu vào Drive.');
+      setValue(current => ({ ...current, documentNumber: result.documentNumber, driveUrl: result.driveUrl }));
+      setSaveNotice(`Đã lưu ${result.documentNumber} vào Drive.`);
+    } catch (cause: any) {
+      setError(cause.message || 'Không lưu được phiếu vào Drive.');
+    } finally {
+      setSavingToDrive(false);
+    }
+  };
+
   const adjusting = value.kind === 'adjustment';
 
   return (
@@ -172,12 +221,17 @@ export default function FundingProposalBuilder({
             <button type="button" onClick={async () => {
               if (await appDialog.confirm('Xóa nội dung bản nháp hiện tại và bắt đầu phiếu mới?', {
                 title: 'Làm lại phiếu', confirmText: 'Làm lại', tone: 'danger',
-              })) { setValue(blankProposal()); setError(''); }
+              })) { setValue(blankProposal()); setError(''); setSaveNotice(''); }
             }}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
               <RotateCcw className="h-4 w-4" /><span className="hidden sm:inline">Làm lại</span>
             </button>
-            <button type="button" onClick={() => void download()} disabled={downloading}
+            <button type="button" onClick={() => void saveToDrive()} disabled={downloading || savingToDrive}
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50">
+              {savingToDrive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {savingToDrive ? 'Đang lưu…' : 'Lưu vào Drive'}
+            </button>
+            <button type="button" onClick={() => void download()} disabled={downloading || savingToDrive}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50">
               {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {downloading ? 'Đang tạo…' : 'Tải file Word'}
@@ -204,8 +258,9 @@ export default function FundingProposalBuilder({
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" /><span>{error}</span>
             </div>
           )}
+          {saveNotice && <p role="status" className="mb-4 text-sm font-semibold text-emerald-800">{saveNotice}</p>}
           {value.driveUrl && <p className="mb-4 text-sm font-semibold text-emerald-800">
-            File Word đã lưu vào Drive: <a href={value.driveUrl} target="_blank" rel="noopener noreferrer" className="underline">Mở phiếu</a>
+            Bản đã lưu trên Drive: <a href={value.driveUrl} target="_blank" rel="noopener noreferrer" className="underline">Mở phiếu</a>. Các chỉnh sửa mới chỉ lên Drive khi thầy/cô bấm “Lưu vào Drive”.
           </p>}
 
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -215,7 +270,7 @@ export default function FundingProposalBuilder({
                 <h2 className="text-sm font-extrabold uppercase tracking-wide text-blue-700">1. Thông tin đề xuất</h2>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <label className="block"><span className={LABEL}>Số phiếu (tự động)</span>
-                    <input value={formatProposalNumber(value.documentNumber) || 'Cấp khi tạo file Word'}
+                    <input value={formatProposalNumber(value.documentNumber) || 'Cấp khi tải hoặc lưu'}
                       type="text" aria-label="Số phiếu" readOnly className={FIELD} />
                   </label>
                   <label className="block"><span className={LABEL}>Ngày lập</span>

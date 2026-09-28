@@ -50,7 +50,6 @@ DOCUMENT_TYPES = [
     {"label": "Hướng dẫn", "code": "HD"},
     {"label": "Giấy mời", "code": "GM"},
     {"label": "Giấy giới thiệu", "code": "GGT"},
-    {"label": "Phiếu đề xuất kinh phí", "code": "PĐXKP"},
 ]
 
 _SUFFIX = "FT"

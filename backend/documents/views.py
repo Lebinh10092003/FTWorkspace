@@ -19,6 +19,7 @@ from authentication.permissions import IsWorkspaceAuthenticated
 
 from .funding_proposal import build_funding_proposal
 from .funding_archive import save_proposal
+from .funding_numbering import assign_funding_number
 from .models import FundingProposalRecord, WeeklyReport
 from .numbering import (
     DOCUMENT_TYPES,
@@ -67,6 +68,9 @@ def document_number_issue(request):
         return Response({"error": "Vui lòng chọn loại văn bản."}, status=status.HTTP_400_BAD_REQUEST)
     if not subject:
         return Response({"error": "Vui lòng nhập nội dung công việc."}, status=status.HTTP_400_BAD_REQUEST)
+    if document_type.casefold() == "phiếu đề xuất kinh phí":
+        return Response({"error": "Phiếu đề xuất kinh phí dùng dãy số riêng trong trình tạo phiếu."},
+                        status=status.HTTP_400_BAD_REQUEST)
     try:
         issued = issue_number(
             document_type=document_type,
@@ -84,60 +88,16 @@ def document_number_issue(request):
 @api_view(["POST"])
 @permission_classes([IsWorkspaceAuthenticated])
 def funding_proposal_docx(request):
-    """Number, archive and download one funding proposal draft."""
+    """Number and download a proposal; downloading never writes to Drive."""
     payload = dict(request.data) if isinstance(request.data, dict) else {}
-    draft_text = str(payload.get("draftId") or "").strip()
-    record = None
-    if draft_text:
-        try:
-            draft_id = uuid.UUID(draft_text)
-        except ValueError:
-            return Response({"error": "Mã bản nháp không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
-        proposer = str(payload.get("proposer") or "").strip()
-        project = str(payload.get("project") or payload.get("purpose") or "").strip()
-        if not proposer or not project:
-            return Response({"error": "Vui lòng nhập người đề xuất và công việc/dự án trước khi tạo phiếu."}, status=status.HTTP_400_BAD_REQUEST)
-        owner_email = str(request.user.email or "").strip().lower()
-        with transaction.atomic():
-            record, _ = FundingProposalRecord.objects.get_or_create(
-                draft_id=draft_id, defaults={"owner_email": owner_email},
-            )
-            record = FundingProposalRecord.objects.select_for_update().get(pk=record.pk)
-            if record.owner_email != owner_email:
-                return Response({"error": "Bản nháp này thuộc tài khoản khác."}, status=status.HTTP_403_FORBIDDEN)
-            if not record.document_number:
-                try:
-                    issued = issue_number(
-                        document_type="Phiếu đề xuất kinh phí", subject=project,
-                        drafter=proposer, signer="Tổng Giám đốc",
-                        issued_on=payload.get("issuedOn"),
-                    )
-                except ValueError as error:
-                    return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
-                record.document_number = issued["number"]
-                record.save(update_fields=["document_number", "updated_at"])
-        payload["documentNumber"] = record.document_number
+    record, error = _numbered_funding_proposal(request, payload)
+    if error:
+        return error
     filename, content = build_funding_proposal(payload)
-    if record:
-        try:
-            file_id, drive_url = save_proposal(
-                draft_id=draft_id, filename=filename, content=content,
-                file_id=record.drive_file_id,
-            )
-        except Exception:
-            logger.exception("Could not archive funding proposal draft %s", draft_id)
-            return Response({"error": "Đã cấp số phiếu nhưng chưa lưu được lên Drive. Vui lòng thử lại; số phiếu sẽ được giữ nguyên."},
-                            status=status.HTTP_502_BAD_GATEWAY)
-        record.drive_file_id = file_id
-        record.drive_url = drive_url
-        record.save(update_fields=["drive_file_id", "drive_url", "updated_at"])
     response = HttpResponse(
         content,
         content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
-    # The name carries Vietnamese characters. Left whole, Django RFC2047-encodes
-    # the entire header and browsers save it under a mangled name, so send an
-    # ASCII fallback beside the UTF-8 form (RFC 6266).
     response["Content-Disposition"] = (
         f'attachment; filename="{_ascii_filename(filename)}"; '
         f"filename*=UTF-8''{quote(filename)}"
@@ -147,6 +107,76 @@ def funding_proposal_docx(request):
         response["X-Document-Number"] = record.document_number.split("/", 1)[0]
         response["X-Drive-File-URL"] = record.drive_url
     return response
+
+
+def _numbered_funding_proposal(request, payload):
+    draft_text = str(payload.get("draftId") or "").strip()
+    if not draft_text:  # Compatibility with callers that render an unsigned form.
+        return None, None
+    try:
+        draft_id = uuid.UUID(draft_text)
+    except ValueError:
+        return None, Response({"error": "Mã bản nháp không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
+    proposer = str(payload.get("proposer") or "").strip()
+    project = str(payload.get("project") or payload.get("purpose") or "").strip()
+    if not proposer or not project:
+        return None, Response({"error": "Vui lòng nhập người đề xuất và công việc/dự án trước khi tạo phiếu."}, status=status.HTTP_400_BAD_REQUEST)
+    owner_email = str(request.user.email or "").strip().lower()
+    with transaction.atomic():
+        record, _ = FundingProposalRecord.objects.get_or_create(
+            draft_id=draft_id, defaults={"owner_email": owner_email},
+        )
+        record = FundingProposalRecord.objects.select_for_update().get(pk=record.pk)
+        if record.owner_email != owner_email:
+            return None, Response({"error": "Bản nháp này thuộc tài khoản khác."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            assign_funding_number(record, payload.get("issuedOn"))
+        except ValueError as exc:
+            return None, Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    payload["documentNumber"] = record.document_number
+    return record, None
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def funding_proposal_save_to_drive(request):
+    """Save only when the user explicitly chooses the Drive action."""
+    payload = dict(request.data) if isinstance(request.data, dict) else {}
+    if not payload.get("draftId"):
+        return Response({"error": "Thiếu mã bản nháp."}, status=status.HTTP_400_BAD_REQUEST)
+    record, error = _numbered_funding_proposal(request, payload)
+    if error:
+        return error
+    filename, content = build_funding_proposal(payload)
+    try:
+        file_id, drive_url = save_proposal(
+            draft_id=record.draft_id, filename=filename, content=content,
+            file_id=record.drive_file_id,
+        )
+    except Exception:
+        logger.exception("Could not archive funding proposal draft %s", record.draft_id)
+        return Response({"error": "Chưa lưu được phiếu vào Drive. Vui lòng thử lại; số phiếu sẽ được giữ nguyên."},
+                        status=status.HTTP_502_BAD_GATEWAY)
+    record.drive_file_id = file_id
+    record.drive_url = drive_url
+    record.save(update_fields=["drive_file_id", "drive_url", "updated_at"])
+    return Response({"documentNumber": record.document_number, "driveUrl": drive_url, "fileName": filename})
+
+
+@api_view(["GET"])
+@permission_classes([IsWorkspaceAuthenticated])
+def funding_proposal_status(request):
+    """Reconcile an old browser draft with its authoritative proposal number."""
+    try:
+        draft_id = uuid.UUID(str(request.query_params.get("draftId") or ""))
+    except ValueError:
+        return Response({"error": "Mã bản nháp không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
+    record = FundingProposalRecord.objects.filter(draft_id=draft_id).first()
+    if not record:
+        return Response({"documentNumber": "", "driveUrl": ""})
+    if record.owner_email != str(request.user.email or "").strip().lower():
+        return Response({"error": "Bản nháp này thuộc tài khoản khác."}, status=status.HTTP_403_FORBIDDEN)
+    return Response({"documentNumber": record.document_number, "driveUrl": record.drive_url})
 
 
 def _ascii_filename(filename):
