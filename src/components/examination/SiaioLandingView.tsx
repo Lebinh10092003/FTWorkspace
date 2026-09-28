@@ -109,7 +109,7 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
     '--siaio-heading-size': numeric(c.style?.sectionTitleSize, 44, 24, 64),
     '--siaio-accent': /^#[0-9a-fA-F]{6}$/.test(c.style?.accentColor || '') ? c.style!.accentColor : '#aabaff',
   } as CSSProperties;
-  const buttons = c.buttons?.length ? c.buttons : [
+  const buttons = c.buttons?.length ? c.buttons.map(button => !preview && /đăng ký|tham gia/i.test(button.label) ? { ...button, url: reg.individualUrl || '#dang-ky' } : button) : [
     { label: 'Đăng ký dự thi', url: '#dang-ky' }, { label: 'Xem đề mẫu', url: '#de-mau' },
   ];
   const headline = c.headline || 'SIAIO · Khám phá trí tuệ nhân tạo';
