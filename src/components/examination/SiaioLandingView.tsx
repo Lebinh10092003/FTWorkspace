@@ -7,7 +7,7 @@ import { countdownLabel, describeMilestones, statusLabel, type MilestoneSummary 
 import { useActiveSection, usePointerTilt, useRevealScope, useScrollProgress, useScrolledPast } from './landingMotion';
 
 const navigation = [
-  ['gioi-thieu', 'Khám phá'], ['de-mau', 'Đề mẫu'], ['lo-trinh', 'Lộ trình'],
+  ['gioi-thieu', 'Khám phá'], ['de-mau', 'Đề mẫu'], ['tai-lieu', 'Tài liệu'], ['lo-trinh', 'Lộ trình'],
   ['dang-ky', 'Đăng ký'], ['lien-he', 'Liên hệ'],
 ];
 
@@ -122,7 +122,8 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
   const rootRef = useRevealScope<HTMLDivElement>(motion, site.id);
   const artRef = usePointerTilt<HTMLDivElement>(motion, 6);
   const progress = useScrollProgress(motion);
-  const activeSection = useActiveSection(navigation.map(([id]) => id), motion);
+  const navItems = navigation.filter(([id]) => id !== 'tai-lieu' || !!c.resources?.length);
+  const activeSection = useActiveSection(navItems.map(([id]) => id), motion);
   const scrolled = useScrolledPast(600, motion);
 
   async function submitLead(event: FormEvent<HTMLFormElement>) {
@@ -146,10 +147,10 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
   return <div ref={rootRef} className={`siaio-site ${motion ? 'landing-motion' : ''}`} style={pageStyle}>
     <header className={`siaio-header ${preview ? '' : 'is-sticky'}`}>
       <a href="#dau-trang" className="siaio-brand" aria-label="SIAIO về đầu trang"><span className="siaio-brand-mark">S<span>✳</span></span><span><strong>SIAIO</strong><small>FermatTech · SCO</small></span></a>
-      <nav className="siaio-nav" aria-label="Điều hướng SIAIO">{navigation.map(([id, label]) => <a key={id} href={`#${id}`} aria-current={activeSection === id ? 'true' : undefined} className={activeSection === id ? 'is-active' : ''}>{label}</a>)}</nav>
+      <nav className="siaio-nav" aria-label="Điều hướng SIAIO">{navItems.map(([id, label]) => <a key={id} href={`#${id}`} aria-current={activeSection === id ? 'true' : undefined} className={activeSection === id ? 'is-active' : ''}>{label}</a>)}</nav>
       <Action url={reg.individualUrl || '#dang-ky'} className="siaio-header-cta">Tham gia ngay <ArrowUpRight size={16} /></Action>
       <button className="siaio-menu-toggle" type="button" aria-label="Mở menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</button>
-      {menuOpen && <nav className="siaio-mobile-nav" aria-label="Điều hướng di động">{navigation.map(([id, label]) => <a key={id} href={`#${id}`} onClick={() => setMenuOpen(false)}>{label}</a>)}</nav>}
+      {menuOpen && <nav className="siaio-mobile-nav" aria-label="Điều hướng di động">{navItems.map(([id, label]) => <a key={id} href={`#${id}`} onClick={() => setMenuOpen(false)}>{label}</a>)}</nav>}
       <span className="lp-progress-rail siaio-progress"><span style={{ '--lp-progress': progress } as CSSProperties} /></span>
     </header>
 
@@ -184,6 +185,8 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
         <div className="siaio-paper-console" data-reveal="zoom"><div className="siaio-console-bar"><div><i /><i /><i /></div><span>SIAIO / PAPER_EXPLORER</span><span>● ONLINE</span></div><div className="siaio-console-body"><div className="siaio-console-prompt"><span>01 / CONFIGURE</span><h3>Thiết lập đề mẫu</h3><p>Chọn môn thi và lớp muốn xem.</p></div><div className="siaio-console-controls"><label>Môn thi<span className="siaio-select-wrap"><select aria-label="Chọn môn thi" value={subject} onChange={event => setChosenSubject(event.target.value)} disabled={!subjects.length}>{subjects.length ? subjects.map(item => <option key={item} value={item}>{item}</option>) : <option>Chưa có môn thi</option>}</select><ChevronDown size={18} /></span></label><label>Lớp<span className="siaio-select-wrap"><select aria-label="Chọn lớp xem đề mẫu" value={grade} onChange={event => setGrade(Number(event.target.value))}>{Array.from({ length: 12 }, (_, i) => i + 1).map(value => <option value={value} key={value}>Lớp {value}</option>)}</select><ChevronDown size={18} /></span></label></div><div className="siaio-paper-result"><div className="siaio-document-icon"><FileText size={30} /></div><div><span>02 / RESULT</span><h4>{subject || 'Môn thi'} · Lớp {grade}</h4><p>{paperUrl ? 'Đề mẫu PDF đã sẵn sàng' : 'Đề mẫu đang được cập nhật'}</p></div><Action url={paperUrl} newTab className="siaio-button siaio-button--primary lp-sheen">Xem đề mẫu <ArrowUpRight size={18} /></Action></div></div></div>
       </section>
 
+      {!!c.resources?.length && <section id="tai-lieu" className="siaio-resources siaio-section"><div className="siaio-resource-heading" data-reveal><span className="siaio-section-code">// TÀI LIỆU CHÍNH THỨC</span><h2>Học liệu và <em>hồ sơ tổ chức.</em></h2><p>Tra cứu thể lệ SIAIO, thông tin Ban tổ chức và học liệu của các môn khác trong hệ SCO.</p></div><div className="siaio-resource-grid">{c.resources.filter(item => safeUrl(item.url)).map((item, index) => <article key={`${item.title}-${index}`} className="siaio-resource-card" data-reveal style={delay(index * 70)}><span>{item.category}</span><h3>{item.title}</h3><p>{item.body}</p><Action url={item.url} newTab className="siaio-text-link">Xem tài liệu <ArrowUpRight size={17} /></Action></article>)}</div></section>}
+
       <section id="lo-trinh" className="siaio-timeline-section siaio-section">
         <div className="siaio-timeline-head" data-reveal><div><span className="siaio-section-code">// 03 · LỘ TRÌNH</span><h2>Những cột mốc<br /><em>trên hành trình.</em></h2></div><p>Ngày thi, hình thức và trạng thái của từng vòng, cập nhật theo thông báo của Ban tổ chức.</p></div>
         {schedule.items.length ? <SiaioRoadmap schedule={schedule} /> : <p className="siaio-timeline-empty" data-reveal>Lịch thi đang được Ban tổ chức hoàn thiện và sẽ công bố tại đây.</p>}
@@ -191,7 +194,7 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
 
       {!!c.awards?.length && <section id="giai-thuong" className="siaio-awards siaio-section"><div data-reveal><span className="siaio-section-code">// VINH DANH</span><h2>Ghi dấu hành trình.</h2></div><div className="siaio-award-grid">{c.awards.map((award, index) => <article key={index} data-reveal style={delay(index * 80)}><span>0{index + 1}</span><h3>{award.title}</h3><strong>{award.percent || '—'}</strong><p>{award.description}</p></article>)}</div></section>}
 
-      <section id="dang-ky" className="siaio-registration siaio-section"><div className="siaio-registration-head" data-reveal><span className="siaio-section-code">// 04 · THAM GIA</span><h2>Sẵn sàng bước vào<br /><em>hành trình SIAIO?</em></h2><p>Chọn cách đăng ký phù hợp với nhà trường hoặc cá nhân.</p></div><div className="siaio-registration-grid"><article data-reveal="left"><span className="siaio-reg-no">01 / NHÀ TRƯỜNG</span><h3>Đăng ký theo danh sách</h3><p>Tập hợp thông tin học sinh theo mẫu và gửi hồ sơ đăng ký tập thể.</p><div className="siaio-reg-actions"><Action url={reg.schoolUrl} className="siaio-button siaio-button--primary lp-sheen">Đăng ký trường <ArrowUpRight size={18} /></Action><Action url={reg.excelUrl} className="siaio-text-link">Tải mẫu Excel <ArrowRight size={17} /></Action></div></article><article data-reveal="right"><span className="siaio-reg-no">02 / CÁ NHÂN</span><h3>Đăng ký trực tiếp</h3><p>Hoàn thành biểu mẫu đăng ký và xem cẩm nang dự thi.</p><div className="siaio-reg-actions"><Action url={reg.individualUrl} className="siaio-button siaio-button--outline">Mở form đăng ký <ArrowUpRight size={18} /></Action><Action url={reg.handbookUrl} className="siaio-text-link">Xem cẩm nang <BookOpen size={17} /></Action></div></article></div></section>
+      <section id="dang-ky" className="siaio-registration siaio-section"><div className="siaio-registration-head" data-reveal><span className="siaio-section-code">// 04 · THAM GIA</span><h2>Sẵn sàng bước vào<br /><em>hành trình SIAIO?</em></h2><p>Chọn cách đăng ký phù hợp với nhà trường hoặc cá nhân.</p></div><div className="siaio-registration-grid"><article data-reveal="left"><span className="siaio-reg-no">01 / NHÀ TRƯỜNG</span><h3>Đăng ký theo danh sách</h3><p>Tập hợp thông tin học sinh theo mẫu và gửi hồ sơ đăng ký tập thể.</p><div className="siaio-reg-actions"><Action url={reg.schoolUrl} className="siaio-button siaio-button--primary lp-sheen">Đăng ký trường <ArrowUpRight size={18} /></Action><Action url={reg.excelUrl} className="siaio-text-link">Mở mẫu Excel <ArrowRight size={17} /></Action></div></article><article data-reveal="right"><span className="siaio-reg-no">02 / CÁ NHÂN</span><h3>Đăng ký trực tiếp</h3><p>Hoàn thành biểu mẫu đăng ký và xem hướng dẫn dự thi.</p><div className="siaio-reg-actions"><Action url={reg.individualUrl} className="siaio-button siaio-button--outline">Mở form đăng ký <ArrowUpRight size={18} /></Action><Action url={reg.handbookUrl} className="siaio-text-link">Xem hướng dẫn <BookOpen size={17} /></Action></div></article></div></section>
 
       {(c.customSections || []).map((item, index) => <section className="siaio-custom siaio-section" key={index}><div data-reveal><span className="siaio-section-code">// SIAIO · THÔNG TIN</span><h2>{item.title}</h2><p>{item.body}</p>{item.buttonLabel && <Action url={item.buttonUrl} className="siaio-button siaio-button--outline">{item.buttonLabel} <ArrowUpRight size={18} /></Action>}</div></section>)}
 

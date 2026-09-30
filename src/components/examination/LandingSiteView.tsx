@@ -16,6 +16,7 @@ export type LandingContent = {
   highlights?: Array<{ value: string; label: string }>;
   overview?: Array<{ title: string; body: string; url: string }>;
   papers?: Record<string, Record<string, string>>;
+  resources?: Array<{ category: string; title: string; body: string; url: string }>;
   timeline?: Array<{ title: string; date: string; mode: string }>;
   awards?: Array<{ title: string; percent: string; description: string }>;
   registration?: { schoolUrl?: string; excelUrl?: string; individualUrl?: string; handbookUrl?: string };
@@ -25,7 +26,7 @@ export type LandingContent = {
 export type LandingSite = { id: number; slug: string; title: string; template: string; layout: string; content: LandingContent; published: boolean; updatedAt: string; updatedBy: string };
 
 const nav = [
-  ['gioi-thieu', 'Giới thiệu'], ['de-mau', 'Đề mẫu'], ['lo-trinh', 'Lộ trình'],
+  ['gioi-thieu', 'Giới thiệu'], ['de-mau', 'Đề mẫu'], ['tai-lieu', 'Tài liệu'], ['lo-trinh', 'Lộ trình'],
   ['giai-thuong', 'Giải thưởng'], ['dang-ky', 'Đăng ký'], ['lien-he', 'Liên hệ'],
 ];
 const safeUrl = (url?: string) => {
@@ -33,14 +34,13 @@ const safeUrl = (url?: string) => {
   return /^(https?:\/\/|mailto:|tel:|\/(?!\/)|#)/i.test(value) ? value : '';
 };
 const external = (url: string) => /^https?:\/\//i.test(url);
-const pdfName = (subject: string, grade: number) => `${subject}-lop-${grade}.pdf`;
 const delay = (ms: number) => ({ '--reveal-delay': `${ms}ms` }) as CSSProperties;
 
-function Action({ url, children, className = '', download, newTab = false }: { url?: string; children: ReactNode; className?: string; download?: string; newTab?: boolean }) {
+function Action({ url, children, className = '', newTab = false }: { url?: string; children: ReactNode; className?: string; newTab?: boolean }) {
   const href = safeUrl(url);
   if (!href) return <span title="Chưa gắn liên kết" className={`${className} cursor-not-allowed opacity-45`}>{children}</span>;
-  const target = !download && (newTab || external(href)) ? '_blank' : undefined;
-  return <a href={href} target={target} rel={target ? 'noopener noreferrer' : undefined} download={download} className={className}>{children}</a>;
+  const target = newTab || external(href) ? '_blank' : undefined;
+  return <a href={href} target={target} rel={target ? 'noopener noreferrer' : undefined} className={className}>{children}</a>;
 }
 
 export default function LandingSiteView(props: { site: LandingSite; preview?: boolean }) {
@@ -128,9 +128,9 @@ function OlympiadLandingView({ site, preview = false }: { site: LandingSite; pre
     { label: 'Khám phá đề mẫu', url: '#de-mau' },
   ];
   const schedule = useMemo(() => describeMilestones(c.timeline), [c.timeline]);
-  const navItems = nav.filter(([id]) => id !== 'de-mau' || subject);
+  const navItems = nav.filter(([id]) => (id !== 'de-mau' || subject) && (id !== 'tai-lieu' || !!c.resources?.length));
   /** Đánh số khối theo đúng thứ tự hiển thị, bỏ qua khối Đề mẫu khi trang chưa chọn cuộc thi. */
-  const order = ['gioi-thieu', ...(subject ? ['de-mau'] : []), 'lo-trinh', 'giai-thuong', 'dang-ky'];
+  const order = ['gioi-thieu', ...(subject ? ['de-mau'] : []), ...(c.resources?.length ? ['tai-lieu'] : []), 'lo-trinh', 'giai-thuong', 'dang-ky'];
   const no = (id: string) => String(order.indexOf(id) + 1).padStart(2, '0');
   const motion = !preview;
   const rootRef = useRevealScope<HTMLDivElement>(motion, site.id);
@@ -246,19 +246,23 @@ function OlympiadLandingView({ site, preview = false }: { site: LandingSite; pre
       </div></section>
 
       {subject && <section id="de-mau" className="lp-papers scroll-mt-24 py-20"><div className="mx-auto max-w-7xl px-5 lg:px-8">
-        <Heading index={no('de-mau')} eyebrow={`Tài liệu ${subject}`} title={`Đề mẫu ${subjectName} · Lớp 1 đến lớp 9`} description="Chọn khối lớp để xem trực tuyến hoặc tải đề PDF." />
+        <Heading index={no('de-mau')} eyebrow={`Tài liệu ${subject}`} title={`Đề mẫu ${subjectName} · Lớp 1 đến lớp 9`} description="Chọn khối lớp để mở đề mẫu PDF trên Google Drive." />
         <div className="lp-paper-grid mt-12">{Array.from({ length: 9 }, (_, i) => i + 1).map((grade, index) => {
           const url = c.papers?.[subject]?.[String(grade)] || '';
           return <article key={`${subject}-${grade}`} className="lp-paper-card" data-reveal style={delay(index * 55)}>
             <span className="lp-paper-watermark" aria-hidden="true">{grade}</span>
             <div className="lp-paper-head"><span className="lp-paper-icon"><FileText className="h-5 w-5" /></span><div><h3>Lớp {grade}</h3><p>Đề mẫu {subject} · PDF</p></div></div>
             <div className="lp-paper-actions">
-              <Action url={url} newTab className="lp-paper-link"><ExternalLink className="h-3.5 w-3.5" />Đọc trực tuyến</Action>
-              <Action url={url} download={pdfName(subject, grade)} className="lp-paper-link lp-paper-link--solid"><ArrowDownToLine className="h-3.5 w-3.5" />Tải về (.PDF)</Action>
+              <Action url={url} newTab className="lp-paper-link lp-paper-link--solid"><ExternalLink className="h-3.5 w-3.5" />Xem đề PDF</Action>
             </div>
             {!url && <p className="lp-paper-empty">Đề mẫu đang được cập nhật</p>}
           </article>;
         })}</div>
+      </div></section>}
+
+      {!!c.resources?.length && <section id="tai-lieu" className="lp-resources scroll-mt-24 py-20"><div className="mx-auto max-w-7xl px-5 lg:px-8">
+        <Heading index={no('tai-lieu')} eyebrow="Tài liệu chính thức" title="Tìm hiểu cuộc thi và Ban tổ chức" description="Thể lệ, hướng dẫn đăng ký và hồ sơ tổ chức từ thư mục tài liệu của FermatTech." />
+        <div className="lp-resource-grid mt-10">{c.resources.filter(item => safeUrl(item.url)).map((item, index) => <article key={`${item.title}-${index}`} className="lp-resource-card" data-reveal style={delay(index * 55)}><span>{item.category}</span><h3>{item.title}</h3><p>{item.body}</p><Action url={item.url} newTab className="lp-resource-link">Xem tài liệu <ExternalLink className="h-4 w-4" /></Action></article>)}</div>
       </div></section>}
 
       <section id="lo-trinh" className="lp-timeline scroll-mt-24 py-20"><div className="mx-auto max-w-7xl px-5 lg:px-8">
@@ -279,8 +283,8 @@ function OlympiadLandingView({ site, preview = false }: { site: LandingSite; pre
       <section id="dang-ky" className="lp-registration scroll-mt-24 py-20"><div className="mx-auto max-w-7xl px-5 lg:px-8">
         <Heading index={no('dang-ky')} eyebrow={`Tham gia ${subject}`} title="Đăng ký dự thi" description="Chọn hình thức đăng ký phù hợp với nhà trường hoặc gia đình." />
         <div className="mt-12 grid gap-6 lg:grid-cols-2">
-          <article className="lp-reg-card" data-reveal="left"><span className="lp-reg-index">01</span><span className="lp-reg-kicker">Dành cho nhà trường</span><h3>Đăng ký theo danh sách</h3><p>Tập hợp thông tin học sinh theo mẫu và gửi hồ sơ đăng ký tập thể.</p><div className="lp-reg-actions"><Action url={reg.excelUrl} download="Phu-luc-4-danh-sach-thi-sinh.xlsx" className="lp-reg-ghost"><ArrowDownToLine className="h-4 w-4" />Tải Excel Phụ lục 4</Action><Action url={reg.schoolUrl} className="lp-reg-solid lp-sheen">Đăng ký trường <ArrowRight className="h-4 w-4" /></Action></div></article>
-          <article className="lp-reg-card" data-reveal="right"><span className="lp-reg-index">02</span><span className="lp-reg-kicker">Dành cho cá nhân</span><h3>Đăng ký trực tiếp</h3><p>Hoàn thành biểu mẫu đăng ký và xem cẩm nang dự thi.</p><div className="lp-reg-actions"><Action url={reg.individualUrl} className="lp-reg-solid lp-sheen">Mở form đăng ký <ArrowRight className="h-4 w-4" /></Action><Action url={reg.handbookUrl} className="lp-reg-ghost">Xem cẩm nang <BookOpen className="h-4 w-4" /></Action></div></article>
+          <article className="lp-reg-card" data-reveal="left"><span className="lp-reg-index">01</span><span className="lp-reg-kicker">Dành cho nhà trường</span><h3>Đăng ký theo danh sách</h3><p>Tập hợp thông tin học sinh theo mẫu và gửi hồ sơ đăng ký tập thể.</p><div className="lp-reg-actions"><Action url={reg.excelUrl} newTab className="lp-reg-ghost"><ArrowDownToLine className="h-4 w-4" />Mở mẫu danh sách</Action><Action url={reg.schoolUrl} className="lp-reg-solid lp-sheen">Đăng ký trường <ArrowRight className="h-4 w-4" /></Action></div></article>
+          <article className="lp-reg-card" data-reveal="right"><span className="lp-reg-index">02</span><span className="lp-reg-kicker">Dành cho cá nhân</span><h3>Đăng ký trực tiếp</h3><p>Hoàn thành biểu mẫu đăng ký và xem hướng dẫn dự thi.</p><div className="lp-reg-actions"><Action url={reg.individualUrl} className="lp-reg-solid lp-sheen">Mở form đăng ký <ArrowRight className="h-4 w-4" /></Action><Action url={reg.handbookUrl} className="lp-reg-ghost">Xem hướng dẫn <BookOpen className="h-4 w-4" /></Action></div></article>
         </div>
       </div></section>
 

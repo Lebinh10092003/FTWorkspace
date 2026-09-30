@@ -11,6 +11,9 @@ class LandingSiteTests(TestCase):
         self.assertFalse(site.published)
         self.assertEqual(site.layout, 'siaio')
         self.assertIn('Trí tuệ nhân tạo', site.content['paperSubjects'])
+        self.assertEqual(len(site.content['papers']['Trí tuệ nhân tạo']), 12)
+        self.assertIn('/file/d/', site.content['papers']['Trí tuệ nhân tạo']['12'])
+        self.assertTrue(any(item['category'] == 'Học liệu SCO' for item in site.content['resources']))
 
     def setUp(self):
         self.admin = UserProfile.objects.create(email='landing-studio@example.com', name='Landing Studio', role='ADMIN')
@@ -23,6 +26,8 @@ class LandingSiteTests(TestCase):
             self.assertEqual(response.status_code, 200, response.data)
             self.assertEqual(response.data['slug'], slug)
             self.assertEqual(len(response.data['content']['papers'][slug.upper()]), 9)
+            self.assertIn('/file/d/', response.data['content']['papers'][slug.upper()]['1'])
+            self.assertTrue(any(item['category'] == 'Tổ chức' for item in response.data['content']['resources']))
 
     def test_custom_page_can_be_created_edited_and_published(self):
         response = self.client.post('/api/landing-sites', {

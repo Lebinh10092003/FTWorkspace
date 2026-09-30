@@ -362,6 +362,15 @@ body.workspace-app-theme #root > .landing-site:first-child {
 .landing-site .lp-paper-link--solid { background: #e8f4ff; }
 .landing-site .lp-paper-empty { position: relative; margin-top: .8rem; font-size: .72rem; color: #8ba5bd; }
 
+.landing-site .lp-resources { background: #f6f9fd; }
+.landing-site .lp-resource-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 1rem; }
+.landing-site .lp-resource-card { display: flex; flex-direction: column; min-height: 235px; padding: 1.5rem; border: 1px solid #d7e4f1; border-radius: 1.25rem; background: #fff; box-shadow: 0 12px 30px rgba(13, 53, 105, .05); }
+.landing-site .lp-resource-card > span { color: var(--lp-royal); font-size: .7rem; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.landing-site .lp-resource-card h3 { margin-top: .8rem; color: var(--lp-ink); font-size: 1.1rem; font-weight: 850; }
+.landing-site .lp-resource-card p { margin-top: .65rem; color: var(--lp-ink-soft); font-size: .88rem; line-height: 1.6; }
+.landing-site .lp-resource-link { display: inline-flex; align-items: center; gap: .4rem; width: fit-content; margin-top: auto; padding-top: 1.35rem; color: var(--lp-royal); font-size: .84rem; font-weight: 800; }
+.landing-site .lp-resource-link:hover { text-decoration: underline; }
+
 /* ── Lộ trình mùa thi ─────────────────────────────────────────────── */
 .landing-site .lp-timeline { background: linear-gradient(180deg, #e8f2fb, #f5f9fd); }
 .landing-site .lp-timeline-empty { margin: 3rem auto 0; max-width: 38em; text-align: center; color: var(--lp-ink-soft); }
