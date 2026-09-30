@@ -1,4 +1,4 @@
-import { CalendarDays, GraduationCap, Handshake, LayoutDashboard, Trophy, UploadCloud, Users } from 'lucide-react';
+import { CalendarDays, FileSignature, GraduationCap, Handshake, LayoutDashboard, Trophy, UploadCloud, Users } from 'lucide-react';
 import type { Candidate, Competition, ExaminationPage, ExaminationSession } from './types';
 
 export const initialSessions: ExaminationSession[] = [
@@ -17,6 +17,7 @@ export const navigationItems: { id: Exclude<ExaminationPage, 'competition-detail
   { id: 'competitions', label: 'Cuộc thi', icon: Trophy },
   { id: 'sessions', label: 'Kỳ tổ chức', icon: CalendarDays },
   { id: 'candidates', label: 'Thí sinh', icon: Users },
+  { id: 'registration-forms', label: 'Form đăng ký', icon: FileSignature },
   { id: 'partners', label: 'Đối tác', icon: Handshake },
   { id: 'classes', label: 'Lớp ôn tập', icon: GraduationCap },
   { id: 'import', label: 'Nhập dữ liệu', icon: UploadCloud },

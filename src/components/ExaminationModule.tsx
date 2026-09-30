@@ -16,6 +16,7 @@ import LogNotes, { appendLogNote as saveLogNote, formatChangeLog } from "./exami
 import DetailEditDialogs from "./examination/DetailEditDialogs";
 import CandidateProfileDetail from "./examination/CandidateProfileDetail";
 import SessionRoster from "./examination/SessionRoster";
+import RegistrationPageStudio from "./examination/RegistrationPageStudio";
 import ConfirmModal from "./ConfirmModal";
 import AccountMenu from "./AccountMenu";
 import ModuleShellHeader from "./layout/ModuleShellHeader";
@@ -2029,6 +2030,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     competitions: competitionList,
     sessions: list,
     candidates: candidateList,
+    "registration-forms": !isGuest && <RegistrationPageStudio idToken={idToken || ''} />,
     "unmatched-transfers": <UnmatchedTransfers idToken={idToken} mode="examination" />,
     classes,
     teachers: teachersPage,
@@ -2081,7 +2083,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         <div className="ft-module-content mx-auto p-5 md:p-8">
           {bootstrapError && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{bootstrapError}</div>}
           {pendingSheetAlerts.length > 0 && <div role="alert" className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><strong>{pendingSheetAlerts.length} tab khảo thí cần cập nhật dữ liệu vào web</strong><div className="mt-2 flex flex-wrap gap-2">{pendingSheetAlerts.map(item => <button key={item.id} type="button" onClick={() => { const session = sessions.find(row => row.id === item.sessionId); if (session) setSelected(session); go('session-detail', item.sessionId); }} className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-semibold hover:bg-amber-100">{item.sheetTab || item.name || item.sessionId}</button>)}</div></div>}
-          {sessions === initialSessions && !bootstrapError ? (
+          {page !== 'registration-forms' && sessions === initialSessions && !bootstrapError ? (
             <div className="grid min-h-[60vh] place-items-center text-sm font-semibold text-slate-500">
               <span className="inline-flex items-center gap-3">
                 <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#001e40] border-t-transparent" />

@@ -7,6 +7,7 @@ const listRoutes: Record<string, ExaminationPage> = {
   'competitions': 'competitions',
   'sessions': 'sessions',
   'candidates': 'candidates',
+  'registration-forms': 'registration-forms',
   'unmatched-transfers': 'unmatched-transfers',
   'classes': 'classes',
   'teachers': 'teachers',
@@ -22,6 +23,7 @@ const decodePart = (value?: string) => {
 };
 
 export function examinationRouteFromPath(pathname: string): ExaminationRoute {
+  if (pathname === '/registration-forms' || pathname === '/registration-forms/') return { page: 'registration-forms' };
   const parts = pathname.replace(/^\/+|\/+$/g, '').split('/');
   if (parts[0] !== 'examination') return { page: 'overview' };
   const section = parts[1] || '';
@@ -46,6 +48,7 @@ export function examinationPathFor(page: ExaminationPage, id = ''): string {
     case 'sessions': return '/examination/sessions';
     case 'session-detail': return encoded ? `/examination/sessions/${encoded}` : '/examination/sessions';
     case 'candidates': return '/examination/candidates';
+    case 'registration-forms': return '/examination/registration-forms';
     case 'unmatched-transfers': return '/examination/unmatched-transfers';
     case 'candidate-detail': return encoded ? `/examination/candidates/${encoded}` : '/examination/candidates';
     case 'classes': return '/examination/classes';
