@@ -191,7 +191,7 @@ const sheetKind = (sheet: SheetSource) => sheet.stage === 'session-output' ? 'ou
 const sheetKindLabel = (sheet: SheetSource) => sheetKind(sheet) === 'output' ? 'Sheet tổng hợp' : 'Sheet đầu vào';
 const sheetScheduleLabel = (sheet: SheetSource) => {
   if (!sheet.automationEnabled) return 'Tự động: Tắt';
-  const hours = sheetKind(sheet) === 'output' ? '11:00, 16:00' : '10:00, 15:00';
+  const hours = sheetKind(sheet) === 'output' ? '11:00, 16:00' : 'Khi Sheet thay đổi · mỗi 5 phút';
   const window = [sheet.automationStartDate, sheet.automationEndDate].filter(Boolean).map(value => value!.split('-').reverse().join('/')).join(' – ');
   return `${hours}${window ? ` · ${window}` : ''}`;
 };
@@ -235,7 +235,7 @@ export default function ImportData({ idToken, googleAccessToken, canImport, sess
   const [newSheetSessionId, setNewSheetSessionId] = useState('');
   const [newSheetTab, setNewSheetTab] = useState('');
   const [newSheetStage, setNewSheetStage] = useState('registration-source');
-  const [newSheetAutomationEnabled, setNewSheetAutomationEnabled] = useState(false);
+  const [newSheetAutomationEnabled, setNewSheetAutomationEnabled] = useState(true);
   const [newSheetAutomationStart, setNewSheetAutomationStart] = useState('');
   const [newSheetAutomationEnd, setNewSheetAutomationEnd] = useState('');
   const [importSheetId, setImportSheetId] = useState('');
@@ -475,7 +475,7 @@ export default function ImportData({ idToken, googleAccessToken, canImport, sess
       await loadSheets();
       setNewSheetName('');
       setNewSheetUrl('');
-      setNewSheetAutomationEnabled(false);
+      setNewSheetAutomationEnabled(true);
       setNewSheetAutomationStart('');
       setNewSheetAutomationEnd('');
       setEditingSheetId(null);
@@ -624,11 +624,11 @@ export default function ImportData({ idToken, googleAccessToken, canImport, sess
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label><span className="mb-1 block text-sm font-bold text-slate-700">Kỳ tổ chức</span><select value={newSheetSessionId} onChange={event => setNewSheetSessionId(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">Chưa gán kỳ</option>{selectableSessions.map(item => <option key={item.id} value={item.id}>{sessionOptionLabel(item)}</option>)}</select></label>
-                <label><span className="mb-1 block text-sm font-bold text-slate-700">Loại Sheet</span><select value={newSheetStage} onChange={event => setNewSheetStage(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="registration-source">Sheet đầu vào</option><option value="session-output">Sheet tổng hợp</option></select></label>
+                <label><span className="mb-1 block text-sm font-bold text-slate-700">Loại Sheet</span><select value={newSheetStage} onChange={event => { setNewSheetStage(event.target.value); setNewSheetAutomationEnabled(event.target.value === 'registration-source'); }} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="registration-source">Sheet đầu vào</option><option value="session-output">Sheet tổng hợp</option></select></label>
                 <label className="sm:col-span-2"><span className="mb-1 block text-sm font-bold text-slate-700">Tên tab</span><input value={newSheetTab} onChange={event => setNewSheetTab(event.target.value)} placeholder="Ví dụ: Danh sách thí sinh" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"/></label>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <label className="flex items-start gap-3"><input type="checkbox" checked={newSheetAutomationEnabled} onChange={event => setNewSheetAutomationEnabled(event.target.checked)} className="mt-1 h-4 w-4"/><span><b className="block text-sm text-slate-800">Bật lịch tự động</b><small className="text-slate-500">{newSheetStage==='session-output'?'Xuất lúc 11:00 và 16:00':'Nhập lúc 10:00 và 15:00'}</small></span></label>
+                <label className="flex items-start gap-3"><input type="checkbox" checked={newSheetAutomationEnabled} onChange={event => setNewSheetAutomationEnabled(event.target.checked)} className="mt-1 h-4 w-4"/><span><b className="block text-sm text-slate-800">Bật đồng bộ tự động</b><small className="text-slate-500">{newSheetStage==='session-output'?'Xuất lúc 11:00 và 16:00':'Tự nhập khi Sheet thay đổi; kiểm tra mỗi 5 phút'}</small></span></label>
                 {newSheetAutomationEnabled&&<div className="mt-3 grid gap-3 sm:grid-cols-2"><label><span className="mb-1 block text-xs font-bold text-slate-600">Từ ngày</span><input type="date" value={newSheetAutomationStart} onChange={event=>setNewSheetAutomationStart(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"/></label><label><span className="mb-1 block text-xs font-bold text-slate-600">Đến ngày</span><input type="date" value={newSheetAutomationEnd} onChange={event=>setNewSheetAutomationEnd(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"/></label></div>}
               </div>
               <div className="flex justify-end gap-2 pt-2">

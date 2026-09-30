@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { candidateBelongsToSession } from './examination/candidateMembership';
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, BarChart3, Bell, Bot, CalendarDays, Check, ChevronDown, ChevronRight, CircleHelp, ClipboardCheck, GraduationCap, Handshake, LayoutDashboard, Layers3, Link2, Mail, MapPin, Pencil, FileSpreadsheet, FileText, Phone, Plus, Search, RefreshCw, School, Trophy, Trash2, UploadCloud, Users, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { initialCandidates, initialCompetitions, initialSessions, navigationItems as nav } from "./examination/fixtures";
@@ -67,6 +67,8 @@ const OverviewChartTick = ({ x, y, payload }: { x?: number; y?: number; payload?
 };
 const EXAMINATION_CACHE_KEY = "ft-examination-bootstrap-v4";
 const EXAMINATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const sheetImportVersion = (rows: any[]) => rows.filter(item => item.stage === 'registration-source')
+  .map(item => `${item.id}:${item.lastImportAt || ''}`).sort().join('|');
 const loadExaminationCache = () => {
   try {
     const record = JSON.parse(window.localStorage.getItem(EXAMINATION_CACHE_KEY) || "null");
@@ -94,6 +96,7 @@ const storeExaminationCache = (payload: unknown) => {
 };
 export default function ExaminationModule({ onBackToWorkspace, onAccountClick, onLogout, userName, userEmail, photoURL, idToken, googleAccessToken, userRole, isGuest }: Props) {
   const [bootstrapCache] = useState(() => (isGuest ? null : loadExaminationCache()));
+  const syncedSheetVersion = useRef(sheetImportVersion(bootstrapCache?.sheetLinks || []));
   const [page, setPage] = useState<Page>(() => examinationRouteFromPath(window.location.pathname).page),
     [routePath, setRoutePath] = useState(() => window.location.pathname),
     [query, setQuery] = useState(""),
@@ -310,18 +313,32 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
   };
   useEffect(() => {
     if (isGuest || !idToken) return;
+    let active = true;
     const refreshAlerts = async () => {
+      if (document.hidden) return;
       try {
         const response = await fetch('/api/examination/sheets', { headers: { Authorization: `Bearer ${idToken}` } });
-        if (response.ok) {
+        if (response.ok && active) {
           const rows = await response.json();
-          if (Array.isArray(rows)) setSheetLinks(rows);
+          if (!Array.isArray(rows) || !active) return;
+          setSheetLinks(rows);
+          const version = sheetImportVersion(rows);
+          if (version !== syncedSheetVersion.current && !editing && !dialog && !showCreate && !showCandidateAdd && page !== 'registration-forms') {
+            const data = await api('/bootstrap');
+            if (!active) return;
+            setSessions(data.sessions || []);
+            setCandidates(data.candidates || []);
+            setCompetitions(data.competitions || []);
+            storeExaminationCache({ ...data, sheetLinks: rows });
+            syncedSheetVersion.current = version;
+          }
         }
       } catch { /* Next poll will retry. */ }
     };
     const timer = window.setInterval(refreshAlerts, 60_000);
-    return () => window.clearInterval(timer);
-  }, [idToken, isGuest]);
+    window.addEventListener('focus', refreshAlerts);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', refreshAlerts); };
+  }, [idToken, isGuest, editing, dialog, showCreate, showCandidateAdd, page]);
   useEffect(() => {
     let active = true;
     Promise.all([api("/bootstrap"), isGuest ? Promise.resolve([]) : api("/sheets")])
@@ -334,6 +351,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         });
         setSessions(data.sessions || []);
         setSheetLinks(Array.isArray(sheetRows) ? sheetRows : []);
+        syncedSheetVersion.current = sheetImportVersion(Array.isArray(sheetRows) ? sheetRows : []);
         setCandidates(data.candidates || []);
         setPartners((current) => (Array.isArray(data.partners) && data.partners.length ? data.partners : current));
         setCompetitions(data.competitions || []);
@@ -2082,7 +2100,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-8">
           {bootstrapError && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{bootstrapError}</div>}
-          {pendingSheetAlerts.length > 0 && <div role="alert" className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><strong>{pendingSheetAlerts.length} tab khảo thí cần cập nhật dữ liệu vào web</strong><div className="mt-2 flex flex-wrap gap-2">{pendingSheetAlerts.map(item => <button key={item.id} type="button" onClick={() => { const session = sessions.find(row => row.id === item.sessionId); if (session) setSelected(session); go('session-detail', item.sessionId); }} className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-semibold hover:bg-amber-100">{item.sheetTab || item.name || item.sessionId}</button>)}</div></div>}
+          {pendingSheetAlerts.length > 0 && <div role="alert" className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><strong>{pendingSheetAlerts.length} nguồn Sheet khảo thí cần kiểm tra</strong><div className="mt-2 flex flex-wrap gap-2">{pendingSheetAlerts.map(item => <button key={item.id} type="button" onClick={() => { const session = sessions.find(row => row.id === item.sessionId); if (session) setSelected(session); go('session-detail', item.sessionId); }} className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-semibold hover:bg-amber-100">{item.sheetTab || item.name || item.sessionId}</button>)}</div></div>}
           {page !== 'registration-forms' && sessions === initialSessions && !bootstrapError ? (
             <div className="grid min-h-[60vh] place-items-center text-sm font-semibold text-slate-500">
               <span className="inline-flex items-center gap-3">

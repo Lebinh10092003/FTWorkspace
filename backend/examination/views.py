@@ -2291,7 +2291,7 @@ def sheets_list(request):
             session_id=session_id,
             sheet_tab=data.get('sheetTab', '').strip(),
             stage=stage,
-            automation_enabled=bool(data.get('automationEnabled', False)),
+            automation_enabled=bool(data.get('automationEnabled', stage == 'registration-source')),
             automation_start_date=automation_start,
             automation_end_date=automation_end,
             created_at=timezone.now(),

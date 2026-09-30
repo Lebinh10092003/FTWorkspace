@@ -192,7 +192,7 @@ def parse_dob(raw):
         return date_value.isoformat()
     except (TypeError, ValueError):
         return ''
-def resolve_column_indices(header):
+def resolve_column_indices(header, include_defaults=True):
     """Resolve both legacy sheets and the official two-row candidate template."""
     idx = {}
     for i, title in enumerate(header):
@@ -266,6 +266,8 @@ def resolve_column_indices(header):
         elif 'note' not in idx and ('ghichusuco' in nh or nh == 'note' or 'ghichu' in nh):
             idx['note'] = i
 
+    if not include_defaults or len(header) < 13:
+        return idx
     is_am_format = len(header) <= 15 or idx.get('contests') == 12
     if is_am_format:
         defaults = {'timestamp': 0, 'name': 1, 'dob': 2, 'className': 3, 'school': 4, 'city': 5, 'phone': 6, 'email': 7, 'cccd': 8, 'fullAddress': 9, 'paymentStatus': 10, 'note': 11, 'contests': 12}
@@ -1392,7 +1394,7 @@ def public_sheet_fingerprint(spreadsheet_url, sheet_tab=''):
     raise ValueError(str(last_error or 'Kh?ng ??c ???c CSV c?ng khai c?a Google Sheet.'))
 
 
-def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None, preview=False, sheet_tab='', preview_update_mode='replace-nonempty', preview_import_empty_values=True):
+def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None, preview=False, sheet_tab='', preview_update_mode='replace-nonempty', preview_import_empty_values=True, automatic=False):
     def update_state(data):
         if sheet_doc_id:
             try:
@@ -1452,14 +1454,15 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
             
         header_candidates = []
         for index in range(min(len(grid), 20)):
-            candidate_header = merged_headers(grid, index)
-            candidate_columns = resolve_column_indices(candidate_header)
+            # Inspect labels in the row itself. Adding defaults or inheriting
+            # the preceding header would misclassify data rows as new headers.
+            candidate_columns = resolve_column_indices(grid[index], include_defaults=False)
             if 'name' in candidate_columns:
                 header_candidates.append((len(candidate_columns), index))
         header_index = max(header_candidates, default=(0, 0))[1]
         header_row = merged_headers(grid, header_index)
         col = resolve_column_indices(header_row)
-        if 'name' not in col:
+        if not header_candidates or 'name' not in col:
             raise Exception('Không tìm thấy cột họ tên thí sinh trong tab đã chọn. Kiểm tra lại tab và dòng tiêu đề.')
         
         incoming = []
@@ -1502,6 +1505,37 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
             incoming.append(cand)
             if len(incoming) > 1000:
                 raise Exception('Mỗi lần chỉ được xử lý tối đa 1.000 hồ sơ. Hãy chia tab nguồn thành nhiều đợt nhỏ hơn.')
+        fingerprint = 'csv:' + hashlib.sha256(raw.encode('utf-8')).hexdigest()
+        if automatic and not preview:
+            comparison = build_sheet_preview(incoming, header_row, col, raw, session_id, spreadsheet_url, sheet_tab, header_index + 2)
+            # An explicit code must not silently redirect a different person's
+            # registration, even when the manual preview accepts that code.
+            existing_by_code = {candidate.code.upper(): candidate for candidate in Candidate.objects.all()}
+            code_conflicts = 0
+            incoming_codes = {}
+            for candidate in incoming:
+                code = candidate['code'].upper()
+                if not code:
+                    continue
+                previous = incoming_codes.get(code)
+                if previous and normalise_str(previous['name']) != normalise_str(candidate['name']):
+                    code_conflicts += 1
+                incoming_codes[code] = candidate
+                existing_candidate = existing_by_code.get(code)
+                if existing_candidate:
+                    different_identity = candidate['identity'] and existing_candidate.identity and candidate['identity'] != existing_candidate.identity
+                    same_identity = candidate['identity'] and candidate['identity'] == existing_candidate.identity
+                    different_name = normalise_str(candidate['name']) != normalise_str(existing_candidate.name)
+                    if different_identity or (different_name and not same_identity):
+                        code_conflicts += 1
+            conflicts = comparison['summary']['conflicts'] + code_conflicts
+            if conflicts:
+                return {'success': False, 'needsReview': True, 'conflicts': conflicts,
+                        'message': f'Có {conflicts} hồ sơ trùng hoặc không khớp danh tính cần kiểm tra; chưa tự động nhập tab này.',
+                        'fingerprint': fingerprint, 'created': 0, 'updated': 0, 'total': len(incoming)}
+            if incoming and not comparison['summary']['new'] and not comparison['summary']['changed']:
+                return {'success': True, 'unchanged': True, 'created': 0, 'updated': 0,
+                        'total': len(incoming), 'fingerprint': fingerprint, 'timestamp': ts_vn}
         if not incoming:
             if preview:
                 result = build_sheet_preview([], header_row, col, raw, session_id, spreadsheet_url, sheet_tab, header_index + 2, preview_update_mode, preview_import_empty_values)
@@ -1517,6 +1551,7 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
                 'created': 0,
                 'updated': 0,
                 'total': 0,
+                'fingerprint': fingerprint,
                 'timestamp': ts_vn
             }
 
@@ -1612,6 +1647,7 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
             'updated': updated,
             'linkedExisting': linked_existing,
             'total': len(incoming),
+            'fingerprint': fingerprint,
             'timestamp': ts_vn
         }
     except Exception as e:

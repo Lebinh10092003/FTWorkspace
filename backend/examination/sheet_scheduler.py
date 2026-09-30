@@ -1,6 +1,7 @@
 import uuid
 
 from django.utils import timezone
+from django.db import transaction
 from authentication.notifications import notify_workspace
 
 from .models import ExaminationSheet, LogNote
@@ -41,10 +42,42 @@ def output_sheet_has_unreviewed_changes(sheet, google_access_token=None):
     return current != sheet.last_content_fingerprint, current
 
 
+def import_registration_sheet(sheet, now, observed_fingerprint=''):
+    """Apply one verified source atomically; never remove web-only registrations."""
+    timestamp = timezone.localtime(now).strftime('%d/%m/%Y %H:%M:%S')
+    previous_pending = sheet.pending_manual_import
+    previous_error = sheet.last_error
+    with transaction.atomic():
+        result = sync_single_sheet(sheet.url, timestamp, sheet.id, sheet.session_id,
+                                   sheet_tab=sheet.sheet_tab, automatic=True)
+        if not result.get('success'):
+            transaction.set_rollback(True)
+    needs_review = bool(result.get('needsReview'))
+    sheet.status = 'success' if result.get('success') else ('attention' if needs_review else 'failed')
+    sheet.last_error = '' if result.get('success') else str(result.get('message') or 'Không thể tự động nhập dữ liệu.')
+    sheet.pending_manual_import = needs_review
+    sheet.change_detected_at = (sheet.change_detected_at or now) if needs_review else None
+    sheet.updated_at = now
+    if result.get('success'):
+        sheet.last_import_at = now
+        sheet.last_observed_fingerprint = result.get('fingerprint') or observed_fingerprint
+        if result.get('created') or result.get('updated') or previous_pending:
+            record_sheet_log(sheet, f'Tự động nhập Sheet đầu vào: {result.get("created", 0)} hồ sơ mới, {result.get("updated", 0)} hồ sơ cập nhật.')
+    elif not previous_pending or previous_error != sheet.last_error:
+        record_sheet_log(sheet, f'Tự động nhập Sheet đầu vào: {sheet.last_error}')
+        if needs_review:
+            notify_workspace(event_key=f'examination:sheet-review:{sheet.id}:{result.get("fingerprint") or observed_fingerprint}',
+                title=f'Sheet khảo thí cần kiểm tra: {sheet.sheet_tab or sheet.name}', message=sheet.last_error,
+                severity='warning', category='examination', action_url='/examination/import', target_modules=['examination'])
+    sheet.save(update_fields=['last_import_at', 'last_observed_fingerprint', 'pending_manual_import',
+                             'change_detected_at', 'status', 'last_error', 'updated_at'])
+    return result
+
+
 def scan_sheet_changes(now=None, sheets=None):
-    """Flag an edited competition tab for manual review without importing data."""
+    """Import enabled registration sources on change; flag other tabs for review."""
     now = now or timezone.now()
-    summary = {'operation': 'change-scan', 'checked': 0, 'changed': 0, 'failed': 0, 'baselined': 0}
+    summary = {'operation': 'change-scan', 'checked': 0, 'changed': 0, 'failed': 0, 'baselined': 0, 'autoImported': 0, 'needsReview': 0}
     watched = sheets if sheets is not None else ExaminationSheet.objects.exclude(url='').exclude(stage='form-webhook').order_by('session_id', 'id')
     for sheet in watched:
         # Bound Apps Script handles private form tabs. The generic scanner cannot
@@ -60,6 +93,16 @@ def scan_sheet_changes(now=None, sheets=None):
             sheet.last_error = str(exc)
             sheet.updated_at = now
             sheet.save(update_fields=['status', 'last_error', 'updated_at'])
+            continue
+        if sheet.stage == 'registration-source' and sheet_is_in_automation_window(sheet, timezone.localtime(now).date()):
+            if sheet.pending_manual_import or current != sheet.last_observed_fingerprint:
+                result = import_registration_sheet(sheet, now, current)
+                if result.get('success'):
+                    summary['autoImported'] += 1
+                elif result.get('needsReview'):
+                    summary['needsReview'] += 1
+                else:
+                    summary['failed'] += 1
             continue
         if not sheet.last_observed_fingerprint or sheet.last_observed_fingerprint[:4] != current[:4]:
             sheet.last_observed_fingerprint = current
@@ -91,29 +134,19 @@ def run_registration_imports(now=None):
     now = now or timezone.now()
     local_now = timezone.localtime(now)
     rows = ExaminationSheet.objects.filter(stage='registration-source').order_by('session_id', 'id')
-    summary = {'operation': 'registration-import', 'processed': 0, 'success': 0, 'failed': 0, 'skipped': 0}
+    summary = {'operation': 'registration-import', 'processed': 0, 'success': 0, 'failed': 0, 'skipped': 0, 'blocked': 0}
     for sheet in rows:
         if not sheet_is_in_automation_window(sheet, local_now.date()):
             summary['skipped'] += 1
             continue
         summary['processed'] += 1
-        timestamp = local_now.strftime('%d/%m/%Y %H:%M:%S')
-        result = sync_single_sheet(sheet.url, timestamp, sheet.id, sheet.session_id, sheet_tab=sheet.sheet_tab)
-        sheet.last_import_at = now
-        sheet.status = 'success' if result.get('success') else 'failed'
-        sheet.last_error = '' if result.get('success') else str(result.get('message') or 'Không thể nhập dữ liệu.')
-        sheet.updated_at = now
-        sheet.save(update_fields=['last_import_at', 'status', 'last_error', 'updated_at'])
+        result = import_registration_sheet(sheet, now)
         if result.get('success'):
-            sheet.pending_manual_import = False
-            sheet.change_detected_at = None
-            sheet.last_observed_fingerprint = ''
-            sheet.save(update_fields=['pending_manual_import', 'change_detected_at', 'last_observed_fingerprint'])
             summary['success'] += 1
-            record_sheet_log(sheet, f'Tự động nhập Sheet đầu vào: {result.get("created", 0)} hồ sơ mới, {result.get("updated", 0)} hồ sơ cập nhật.')
+        elif result.get('needsReview'):
+            summary['blocked'] += 1
         else:
             summary['failed'] += 1
-            record_sheet_log(sheet, f'Tự động nhập Sheet đầu vào thất bại: {sheet.last_error}')
     return summary
 
 

@@ -1,8 +1,8 @@
 [Unit]
-Description=Check examination Google Sheet tabs every 15 minutes
+Description=Synchronize examination registration sources every 5 minutes
 
 [Timer]
-OnCalendar=*-*-* *:00,15,30,45:00
+OnCalendar=*-*-* *:00/5:00
 Persistent=true
 Unit=workspace-examination-sheet-scan.service
 

@@ -1248,6 +1248,7 @@ class SessionOutputSheetTests(TestCase):
 
 class ExaminationSheetAutomationTests(TestCase):
     def setUp(self):
+        ExaminationSheet.objects.all().delete()
         self.session = ExamSession.objects.create(
             id='sheet-auto-session', competition_id='iso', code='ISO', name='ISO automatic sheets',
             parent='ISO', organizer='SCO', time='2026', sort_key='sheet-auto-session',
@@ -1587,6 +1588,111 @@ class SheetChangeScanTests(TestCase):
             name='FMO', parent='FermatTech', organizer='FermatTech',
             time='2026 - 2027', sort_key='fmo-sheet-watch',
         )
+
+    def automatic_source(self, pending=False):
+        return ExaminationSheet.objects.create(id='auto-watch', name='FT - FIMO',
+            url='https://docs.google.com/spreadsheets/d/watched/edit',
+            session_id=self.session.pk, sheet_tab='FT - FIMO', stage='registration-source',
+            automation_enabled=True, pending_manual_import=pending,
+            created_at=timezone.now(), updated_at=timezone.now())
+
+    def scan_csv(self, raw):
+        import hashlib
+        from .sheet_scheduler import scan_sheet_changes
+        response = MagicMock(status_code=200, text=raw, url='https://docs.google.com/spreadsheets/d/watched/export')
+        fingerprint = 'csv:' + hashlib.sha256(raw.encode('utf-8')).hexdigest()
+        with patch('examination.sheet_scheduler.tab_content_fingerprint', return_value=fingerprint), \
+             patch('examination.sync.requests.get', return_value=response):
+            return scan_sheet_changes()
+
+    def test_enabled_source_imports_on_change_and_does_not_repeat_unchanged_import(self):
+        source = self.automatic_source()
+        raw = 'Họ và tên,Email\nNguyễn Minh An,an@example.test\n'
+        self.assertEqual(self.scan_csv(raw)['autoImported'], 1)
+        source.refresh_from_db()
+        self.assertFalse(source.pending_manual_import)
+        self.assertEqual(source.status, 'success')
+        imported_at = source.last_import_at
+        self.assertEqual(Candidate.objects.count(), 1)
+        self.assertEqual(CandidateParticipation.objects.get().session_id, self.session.pk)
+        self.assertEqual(self.scan_csv(raw)['autoImported'], 0)
+        source.refresh_from_db()
+        self.assertEqual(source.last_import_at, imported_at)
+
+    def test_empty_tab_clears_stale_warning_and_preserves_web_registration_and_accounting(self):
+        source = self.automatic_source(pending=True)
+        candidate = Candidate.objects.create(id='FT-WEB', code='FT-WEB', name='Thí sinh đăng ký trên web', sort_key='web')
+        membership = CandidateParticipation.objects.create(candidate=candidate, session=self.session)
+        billing = membership.billing
+        billing.amount = 650000
+        billing.transfer_status = 'confirmed'
+        billing.save()
+        self.assertEqual(self.scan_csv('Họ và tên,Email\n')['autoImported'], 1)
+        source.refresh_from_db()
+        self.assertFalse(source.pending_manual_import)
+        self.assertEqual(source.last_error, '')
+        self.assertTrue(CandidateParticipation.objects.filter(pk=membership.pk).exists())
+        billing.refresh_from_db()
+        self.assertEqual(billing.amount, 650000)
+        self.assertEqual(billing.transfer_status, 'confirmed')
+
+    def test_ambiguous_profile_requires_review_without_writing_or_repeating_alerts(self):
+        source = self.automatic_source()
+        candidate = Candidate.objects.create(id='FT-OLD', code='FT-OLD', name='Nguyễn Minh An', email='same@example.test', sort_key='old')
+        raw = 'Họ và tên,Email\nNguyễn Minh Bình,same@example.test\n'
+        self.assertEqual(self.scan_csv(raw)['needsReview'], 1)
+        source.refresh_from_db()
+        self.assertTrue(source.pending_manual_import)
+        self.assertEqual(source.status, 'attention')
+        candidate.refresh_from_db()
+        self.assertEqual(candidate.name, 'Nguyễn Minh An')
+        self.assertEqual(Candidate.objects.count(), 1)
+        alerts = WorkspaceNotification.objects.filter(category='examination').count()
+        self.scan_csv(raw)
+        self.assertEqual(WorkspaceNotification.objects.filter(category='examination').count(), alerts)
+
+    def test_failed_import_rolls_back_partially_created_profiles(self):
+        source = self.automatic_source()
+        with patch('examination.sync.upsert_participation_history', side_effect=RuntimeError('Test failure')):
+            self.assertEqual(self.scan_csv('Họ và tên,Email\nNguyễn Minh An,an@example.test\n')['failed'], 1)
+        self.assertEqual(Candidate.objects.count(), 0)
+        self.assertEqual(CandidateParticipation.objects.count(), 0)
+        source.refresh_from_db()
+        self.assertEqual(source.status, 'failed')
+
+    def test_verified_profile_updates_only_columns_present_in_the_source(self):
+        self.automatic_source()
+        candidate = Candidate.objects.create(id='FT-EXISTING', code='FT-EXISTING', name='Nguyễn Minh An',
+            email='an@example.test', school='Trường cũ', class_name='6A', phone='0912345678', sort_key='existing')
+        participation = CandidateParticipation.objects.create(candidate=candidate, session=self.session)
+        billing = participation.billing
+        billing.amount = 650000
+        billing.transfer_status = 'confirmed'
+        billing.save()
+        raw = 'Mã hồ sơ,Họ và tên,Email,Trường\nFT-EXISTING,Nguyễn Minh An,an@example.test,Trường mới\n'
+        self.assertEqual(self.scan_csv(raw)['autoImported'], 1)
+        candidate.refresh_from_db()
+        self.assertEqual(candidate.school, 'Trường mới')
+        self.assertEqual(candidate.class_name, '6A')
+        self.assertEqual(candidate.phone, '0912345678')
+        self.assertEqual(Candidate.objects.count(), 1)
+        billing.refresh_from_db()
+        self.assertEqual(billing.transfer_status, 'confirmed')
+        self.assertEqual(billing.amount, 650000)
+
+    def test_conflicting_explicit_code_never_overwrites_a_different_person(self):
+        self.automatic_source()
+        candidate = Candidate.objects.create(id='FT-CODE', code='FT-CODE', name='Nguyễn Minh An', sort_key='code')
+        raw = 'Mã hồ sơ,Họ và tên,Email\nFT-CODE,Trần Minh Bình,binh@example.test\n'
+        self.assertEqual(self.scan_csv(raw)['needsReview'], 1)
+        candidate.refresh_from_db()
+        self.assertEqual(candidate.name, 'Nguyễn Minh An')
+        self.assertEqual(candidate.email or '', '')
+
+    def test_source_without_a_candidate_name_header_is_not_imported(self):
+        self.automatic_source()
+        self.assertEqual(self.scan_csv('Trường,Email\nTrường A,an@example.test\n')['failed'], 1)
+        self.assertEqual(Candidate.objects.count(), 0)
 
     @patch('examination.sheet_scheduler.tab_content_fingerprint')
     def test_change_scan_alerts_once_after_baseline(self, fingerprint):

@@ -7,12 +7,12 @@ type Props = { sources: SheetSource[]; sessionId: string; sessionLabel: string; 
 type ExportPreview = { currentFingerprint: string; sheetTab: string; changedCells: number; changedRows: number; matchedRows?: number; appendedRows?: number; appendedCandidates?: { code?: string; name?: string; birth_date?: string; identity?: string; email?: string; phone?: string }[]; unmatchedSheetRows?: number[]; matchConflicts?: { row: number; rowLabel: string; reason: string; sheetIdentity?: string; candidateOptions?: string[] }[]; changes: { cell: string; row?: number; rowLabel?: string; column?: string; field?: string; current: string; next: string }[]; changesTruncated?: boolean };
 type ImportPreview = { source?: { name?: string; id?: string; fingerprint?: string; sheetTab?: string }; summary?: { total?: number; new?: number; matched?: number; changed?: number; unchanged?: number; conflicts?: number; webOnly?: number }; webOnlyRecords?: { code?: string; name?: string; birthDate?: string; identity?: string; email?: string; phone?: string }[]; records: { code?: string; name?: string; _preview?: { sourceRow?: number; status?: 'new' | 'changed' | 'unchanged' | 'conflict'; matchedCode?: string; changedFields?: string[]; changes?: { field: string; label?: string; current?: string; next?: string }[] } }[] };
 const sheetType = (source: SheetSource) => source.stage === 'form-webhook' ? 'Form đăng ký' : source.stage === 'session-output' ? 'Sheet tổng hợp' : 'Sheet đầu vào';
-const schedule = (source: SheetSource) => source.stage === 'form-webhook' ? 'Tự động khi có đăng ký / chỉnh sửa' : !source.automationEnabled ? 'Chưa bật lịch tự động' : `${source.stage === 'session-output' ? 'Xuất 11:00 và 16:00' : 'Nhập 10:00 và 15:00'}${[source.automationStartDate, source.automationEndDate].filter(Boolean).length ? ` · ${[source.automationStartDate, source.automationEndDate].filter(Boolean).join(' – ')}` : ''}`;
+const schedule = (source: SheetSource) => source.stage === 'form-webhook' ? 'Tự động khi có đăng ký / chỉnh sửa' : !source.automationEnabled ? 'Chưa bật đồng bộ tự động' : `${source.stage === 'session-output' ? 'Xuất 11:00 và 16:00' : 'Tự nhập khi Sheet thay đổi · kiểm tra mỗi 5 phút'}${[source.automationStartDate, source.automationEndDate].filter(Boolean).length ? ` · ${[source.automationStartDate, source.automationEndDate].filter(Boolean).join(' – ')}` : ''}`;
 
 export default function SessionSheetSources({ sources, sessionId, sessionLabel, idToken, canManage, onImport, onSourcesChanged }: Props) {
   const [editing, setEditing] = useState<SheetSource | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', url: '', stage: 'registration-source', sheetTab: '', automationEnabled: false, automationStartDate: '', automationEndDate: '' });
+  const [form, setForm] = useState({ name: '', url: '', stage: 'registration-source', sheetTab: '', automationEnabled: true, automationStartDate: '', automationEndDate: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [exportingId, setExportingId] = useState<string | null>(null);
@@ -25,7 +25,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
   const [exportSelectedCodes, setExportSelectedCodes] = useState<string[]>([]);
   const [importPreview, setImportPreview] = useState<{ source: SheetSource; data: ImportPreview } | null>(null);
   const [exportPreview, setExportPreview] = useState<{ source: SheetSource; data: ExportPreview } | null>(null);
-  const openForm = (source?: SheetSource) => { setEditing(source || null); setFormOpen(true); setError(''); setForm({ name: source?.name || '', url: source?.url || '', stage: source?.stage === 'session-output' ? 'session-output' : 'registration-source', sheetTab: source?.sheetTab || '', automationEnabled: Boolean(source?.automationEnabled), automationStartDate: source?.automationStartDate || '', automationEndDate: source?.automationEndDate || '' }); };
+  const openForm = (source?: SheetSource) => { setEditing(source || null); setFormOpen(true); setError(''); setForm({ name: source?.name || '', url: source?.url || '', stage: source?.stage === 'session-output' ? 'session-output' : 'registration-source', sheetTab: source?.sheetTab || '', automationEnabled: source ? Boolean(source.automationEnabled) : true, automationStartDate: source?.automationStartDate || '', automationEndDate: source?.automationEndDate || '' }); };
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!form.name.trim() || !form.url.trim()) { setError('Nhập tên nguồn dữ liệu và liên kết Google Sheets.'); return; }
@@ -155,7 +155,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 <p className="mt-1 text-sm text-slate-500">Nguồn dữ liệu được gắn cố định với kỳ: <b>
 {sessionLabel}</b>.</p>
 </div>
-<button type="button" onClick={() => { setEditing(null); setFormOpen(false); setForm({ name: '', url: '', stage: 'registration-source', sheetTab: '', automationEnabled: false, automationStartDate: '', automationEndDate: '' }); }} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
+<button type="button" onClick={() => { setEditing(null); setFormOpen(false); setForm({ name: '', url: '', stage: 'registration-source', sheetTab: '', automationEnabled: true, automationStartDate: '', automationEndDate: '' }); }} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
 <X className="h-4 w-4" />
 </button>
 </div>
@@ -171,7 +171,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 <div className="grid gap-3 sm:grid-cols-2">
 <label>
 <span className="mb-1 block text-sm font-bold">Loại Sheet</span>
-<select value={form.stage} onChange={event => setForm({ ...form, stage: event.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2">
+<select value={form.stage} onChange={event => setForm({ ...form, stage: event.target.value, automationEnabled: event.target.value === 'registration-source' })} className="w-full rounded-lg border border-slate-300 px-3 py-2">
 <option value="registration-source">Sheet đầu vào</option>
 <option value="session-output">Sheet tổng hợp</option>
 </select>
@@ -184,15 +184,15 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
 <input type="checkbox" checked={form.automationEnabled} onChange={event => setForm({ ...form, automationEnabled: event.target.checked })} />
 <span>
-<b className="block text-sm">Bật lịch tự động</b>
+<b className="block text-sm">Bật đồng bộ tự động</b>
 <small>
-{form.stage === 'session-output' ? 'Xuất lúc 11:00 và 16:00' : 'Nhập lúc 10:00 và 15:00'}</small>
+{form.stage === 'session-output' ? 'Xuất lúc 11:00 và 16:00' : 'Tự nhập khi Sheet thay đổi; kiểm tra định kỳ mỗi 5 phút'}</small>
 </span>
 </label>
 {error && <p className="text-sm font-semibold text-rose-600">
 {error}</p>}</div>
 <div className="mt-6 flex justify-end gap-2">
-<button type="button" onClick={() => { setEditing(null); setFormOpen(false); setForm({ name: '', url: '', stage: 'registration-source', sheetTab: '', automationEnabled: false, automationStartDate: '', automationEndDate: '' }); }} className="rounded-lg border px-4 py-2 text-sm font-bold">Hủy</button>
+<button type="button" onClick={() => { setEditing(null); setFormOpen(false); setForm({ name: '', url: '', stage: 'registration-source', sheetTab: '', automationEnabled: true, automationStartDate: '', automationEndDate: '' }); }} className="rounded-lg border px-4 py-2 text-sm font-bold">Hủy</button>
 <button disabled={saving} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
 {saving ? 'Đang lưu…' : 'Lưu lại'}</button>
 </div>
