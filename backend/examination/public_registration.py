@@ -23,7 +23,8 @@ from authentication.permissions import IsWorkspaceAuthenticated, request_modules
 from .form_registration import SESSION_IDS, TAB_CODES, matching_candidate
 from .models import Candidate, CandidateParticipation, Competition, ExamSession, PublicExamRegistration
 from .public_registration_sheet import row_for
-from .sync import format_person_name, merge_contest_codes, next_code, sync_session_candidate_totals
+from .sync import format_person_name, merge_contest_codes, next_code, sync_session_candidate_totals, valid_candidate_name
+from .registration_page import get_page, page_content, competitions
 
 
 MAX_PROOF_BYTES = 5 * 1024 * 1024
@@ -70,20 +71,57 @@ def proof_type(upload):
     raise ValueError('Chỉ nhận ảnh PNG, JPEG, WebP hoặc PDF.')
 
 
+def submission_values(content, data):
+    from .registration_page import BUILTIN_FIELDS
+    try:
+        extra = json.loads(str(data.get('customAnswers') or '{}'))
+    except (TypeError, ValueError):
+        raise ValueError('Thông tin bổ sung không hợp lệ.')
+    if not isinstance(extra, dict):
+        raise ValueError('Thông tin bổ sung không hợp lệ.')
+    values = {key: '' for key in BUILTIN_FIELDS}
+    answers = []
+    for field in content['fields']:
+        if not field['enabled']:
+            continue
+        key = field['key']
+        raw = data.get(key) if key in BUILTIN_FIELDS else extra.get(key)
+        if raw is not None and not isinstance(raw, str):
+            raise ValueError(f'Thông tin {field["label"]} không hợp lệ.')
+        value = str(raw or '').strip()
+        if len(value) > (1000 if key == 'address' else 4000 if key not in BUILTIN_FIELDS else 255):
+            raise ValueError(f'{field["label"]} quá dài.')
+        if field['required'] and not value:
+            raise ValueError(f'Vui lòng điền {field["label"]}.')
+        if value:
+            try:
+                if field['type'] == 'email':
+                    validate_email(value)
+                elif field['type'] == 'date':
+                    timezone.datetime.strptime(value, '%Y-%m-%d')
+                elif field['type'] == 'select' and value not in field['options']:
+                    raise ValueError()
+            except (ValueError, ValidationError):
+                raise ValueError(f'{field["label"]} không hợp lệ.')
+        if key in BUILTIN_FIELDS:
+            values[key] = value
+        elif value:
+            answers.append(dict(key=key, label=field['label'], value=value))
+    return values, answers
+
+
 @api_view(['GET', 'POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
 @parser_classes([MultiPartParser, FormParser])
 def public_registration(request):
+    page = get_page()
+    if not page.published:
+        return Response({'error': 'Trang đăng ký đang tạm đóng. Vui lòng quay lại sau.'}, status=403)
+    content = page_content(page.published_content)
     if request.method == 'GET':
-        sessions = open_sessions()
-        names = dict(Competition.objects.filter(pk__in=[session.competition_id for _, session in sessions]).values_list('id', 'name'))
         return Response({
-            'academicYear': '2026–2027',
-            'competitions': [
-                {'code': code, 'displayCode': session.code, 'name': names.get(session.competition_id) or session.name, 'sessionId': session.id, 'time': session.time}
-                for code, session in sessions
-            ],
+            'content': content, 'competitions': competitions(content),
         })
 
     data = request.data
@@ -102,9 +140,16 @@ def public_registration(request):
     except (TypeError, ValueError):
         codes = None
     available = dict(open_sessions())
-    if not isinstance(codes, list) or not codes or len(codes) > len(available) or len(set(map(str, codes))) != len(codes) or any(code not in available for code in codes):
+    if content['competitionCodes']:
+        available = {code: session for code, session in available.items() if code in content['competitionCodes']}
+    if not isinstance(codes, list) or not codes or any(not isinstance(code, str) for code in codes) or len(codes) > len(available) or len(set(codes)) != len(codes) or any(code not in available for code in codes):
         return Response({'error': 'Vui lòng chọn ít nhất một cuộc thi đang nhận đăng ký.'}, status=400)
 
+    try:
+        values, custom_answers = submission_values(content, data)
+    except ValueError as exc:
+        return Response({'error': str(exc)}, status=400)
+    data = {**data.dict(), **values}
     name = format_person_name(clean(data, 'name', 255))
     dob = clean(data, 'birthDate', 10)
     identity = re.sub(r'\s+', '', clean(data, 'identity', 100))
@@ -116,15 +161,14 @@ def public_registration(request):
     ward = clean(data, 'ward', 255)
     address = clean(data, 'address', 1000)
     try:
-        birthday = timezone.datetime.strptime(dob, '%Y-%m-%d').date()
-        validate_email(email)
-        mime, proof = proof_type(request.FILES.get('proof'))
+        birthday = timezone.datetime.strptime(dob, '%Y-%m-%d').date() if dob else None
+        mime, proof = proof_type(request.FILES.get('proof') if content['paymentEnabled'] else None)
     except (ValueError, ValidationError):
         return Response({'error': 'Ngày sinh, email hoặc tệp xác nhận không hợp lệ.'}, status=400)
-    if not name or len(name) < 2 or birthday >= timezone.localdate() or birthday.year < 1900:
+    if not valid_candidate_name(name) or (birthday and (birthday >= timezone.localdate() or birthday.year < 1900)):
         return Response({'error': 'Vui lòng kiểm tra họ tên và ngày sinh.'}, status=400)
-    if not PHONE_PATTERN.fullmatch(phone) or not school or not GRADE_PATTERN.fullmatch(grade) or not city or not ward or not address:
-        return Response({'error': 'Vui lòng điền đầy đủ số điện thoại, trường, khối lớp và địa chỉ.'}, status=400)
+    if (phone and not PHONE_PATTERN.fullmatch(phone)) or (grade and not GRADE_PATTERN.fullmatch(grade)):
+        return Response({'error': 'Số điện thoại hoặc khối lớp không hợp lệ.'}, status=400)
     if identity and (len(identity) < 6 or len(identity) > 100):
         return Response({'error': 'CCCD/Hộ chiếu không hợp lệ.'}, status=400)
 
@@ -162,7 +206,7 @@ def public_registration(request):
             candidate.save()
         registration = PublicExamRegistration.objects.create(
             request_key=request_key, candidate=candidate, contest_codes=codes,
-            payment_declared=str(data.get('paymentDeclared') or '').lower() == 'true',
+            payment_declared=content['paymentEnabled'] and str(data.get('paymentDeclared') or '').lower() == 'true',
             proof=proof, proof_type=mime, source_ip_hash=ip_hash,
         )
         for code in codes:
@@ -173,6 +217,7 @@ def public_registration(request):
                     'publicRegistrationId': str(registration.id),
                     'paymentProof': f'Workspace #{registration.id}' if proof else '',
                     'paymentDeclared': registration.payment_declared,
+                    'customAnswers': custom_answers,
                 },
             )
         sync_session_candidate_totals()

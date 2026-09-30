@@ -11,7 +11,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from .models import Candidate, CandidateParticipation, ExamSession, FormRegistrationLink
-from .sync import format_person_name, merge_contest_codes, next_code, parse_dob, sync_session_candidate_totals
+from .sync import format_person_name, merge_contest_codes, next_code, parse_dob, sync_session_candidate_totals, valid_candidate_name
 
 
 SPREADSHEET_ID = '1gqO1Tp4YSBp0UVBgXjJgvL8CuqftVKGNd74PPRX9i8E'
@@ -90,6 +90,9 @@ def import_form_rows(tab, rows):
             summary['skipped'] += 1
             continue
         name = format_person_name(row[2])
+        if not valid_candidate_name(name):
+            summary['skipped'] += 1
+            continue
         birth_date = parse_dob(row[3])
         identity = re.sub(r'\s+', '', clean(row[4]))
         email = clean(row[5]) or clean(row[1])

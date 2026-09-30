@@ -48,6 +48,7 @@ from .sync import (
     next_code,
     parse_dob,
     format_person_name,
+    valid_candidate_name,
     export_session_to_google_sheet,
     remote_sheet_fingerprint,
     output_sheet_export_preview,
@@ -966,6 +967,7 @@ def serialize_candidate_participations(cand, include_private=True):
                 'registrationMethod': participation.registration_method, 'registrationUnit': participation.registration_unit,
                 'teamName': participation.team_name, 'examLanguage': participation.exam_language,
                 'generalNote': participation.general_note, 'certificateLink': participation.certificate_link,
+                'customAnswers': (participation.registration_data or {}).get('customAnswers', []) if include_private else [],
             },
             'rounds': [{
                 'id': str(result.id),
@@ -2656,7 +2658,9 @@ def import_candidates(request):
         if update_mode not in {'add-only', 'fill-empty', 'replace-nonempty'}:
             return Response({'error': 'Chính sách cập nhật dữ liệu không hợp lệ.'}, status=status.HTTP_400_BAD_REQUEST)
         
-        if not input_records:
+        if not isinstance(input_records, list):
+            return Response({'error': 'Danh sách hồ sơ không hợp lệ.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not input_records and not remove_session_candidate_codes:
             return Response({'error': 'Không có hồ sơ để nhập.'}, status=status.HTTP_400_BAD_REQUEST)
 
         ensure_examination_seed()
@@ -2691,6 +2695,20 @@ def import_candidates(request):
                         status=status.HTTP_409_CONFLICT,
                     )
 
+        if remove_session_candidate_codes:
+            if not source_sheet or not source_fingerprint:
+                return Response({'error': 'Hãy xem trước nguồn Sheet trước khi gỡ hồ sơ.'}, status=400)
+            preview = sync_single_sheet(source_sheet.url, timezone.now().isoformat(), session_id=session_id,
+                                        preview=True, sheet_tab=source_sheet.sheet_tab)
+            if not preview.get('success'):
+                return Response({'error': preview.get('message') or 'Không thể kiểm tra lại Sheet.'}, status=400)
+            fingerprint = remote_sheet_fingerprint(source_sheet, getattr(request, 'google_access_token', None)) if source_sheet.stage == 'session-output' else preview['source']['fingerprint']
+            if fingerprint != source_fingerprint or preview['summary']['conflicts']:
+                return Response({'error': 'Sheet đã thay đổi hoặc có hồ sơ chưa đối chiếu được. Hãy xem trước lại.'}, status=409)
+            web_only_codes = {item['code'].upper() for item in preview['webOnlyRecords']}
+            if not remove_session_candidate_codes.issubset(web_only_codes):
+                return Response({'error': 'Chỉ được gỡ hồ sơ không có dòng khớp trên Sheet.'}, status=409)
+
         if len(input_records) > 1000:
             return Response({'error': 'Mỗi lần chỉ được nhập tối đa 1.000 hồ sơ.'}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -2710,7 +2728,7 @@ def import_candidates(request):
             # legacy code remains usable for re-import matching.
             rec_code = '' if raw_code in {'', '-', '—', 'N/A', 'NA'} else raw_code
             rec_name = format_person_name(rec.get('name', ''))
-            if not rec_name:
+            if not valid_candidate_name(rec_name):
                 continue
                 
             rec_cand = {

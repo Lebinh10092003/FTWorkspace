@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import SheetDialog from './SheetDialog';
 import { Clock3, ExternalLink, FileSpreadsheet, Pencil, Plus, RefreshCw, UploadCloud, X } from 'lucide-react';
 
 type SheetSource = { id: string; name?: string; url: string; stage?: string; sheetTab?: string; automationEnabled?: boolean; automationStartDate?: string; automationEndDate?: string; pendingManualImport?: boolean; changeDetectedAt?: string | null };
@@ -73,7 +74,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || '\u004b\u0068\u00f4\u006e\u0067 th\u1ec3 nh\u1eadp d\u1eef li\u1ec7u t\u1eeb ngu\u1ed3n n\u00e0y.');
       setImportPreview(null);
-      setImportMessage(`\u0110\u00e3 nh\u1eadp t\u1eeb ngu\u1ed3n \u201c${source.name || 'Google Sheets'}\u201d: ${body.created || 0} m\u1edbi, ${body.updated || 0} c\u1eadp nh\u1eadt.`);
+      setImportMessage(`\u0110\u00e3 nh\u1eadp t\u1eeb ngu\u1ed3n \u201c${source.name || 'Google Sheets'}\u201d: ${body.created || 0} m\u1edbi, ${body.updated || 0} c\u1eadp nh\u1eadt, gỡ ${body.removedFromSession || 0} khỏi kỳ thi.`);
       await Promise.resolve(onImport());
     } catch (requestError: any) { setImportMessage(requestError.message || '\u004b\u0068\u00f4\u006e\u0067 th\u1ec3 nh\u1eadp d\u1eef li\u1ec7u t\u1eeb ngu\u1ed3n n\u00e0y.'); }
     finally { setImportingId(null); }
@@ -145,7 +146,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 </button>
 </div>}</div>
 </div>; })}</div>}
-    {canManage && formOpen && <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/40 p-4">
+    {canManage && formOpen && <SheetDialog onClose={() => setFormOpen(false)} busy={saving}>
 <form onSubmit={save} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
 <div className="flex items-start justify-between gap-4">
 <div>
@@ -196,9 +197,9 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 {saving ? 'Đang lưu…' : 'Lưu lại'}</button>
 </div>
 </form>
-</div>}
-    {importPreview && <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/50 p-4">
-<div className="flex max-h-[calc(100vh-1rem)] w-[96vw] max-w-[1600px] flex-col overflow-hidden rounded-2xl bg-white p-7 shadow-2xl">
+</SheetDialog>}
+    {importPreview && <SheetDialog onClose={() => setImportPreview(null)} busy={Boolean(importingId)}>
+<div className="flex max-h-[calc(100dvh-2rem)] w-[96vw] max-w-[1600px] flex-col overflow-y-auto rounded-2xl bg-white p-7 shadow-2xl">
 <div className="flex items-start justify-between gap-4">
 <div>
 <p className="text-xs font-bold uppercase text-indigo-700">
@@ -206,7 +207,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 <h3 className="mt-1 text-xl font-extrabold text-slate-900">
 {'So s\u00e1nh d\u1eef li\u1ec7u ngu\u1ed3n'} {importPreview.source.name || 'Google Sheets'}</h3>
 <p className="mt-2 text-sm text-slate-600">
-{'Ch\u1ec9 b\u1ed5 sung v\u00e0o c\u00e1c tr\u01b0\u1eddng c\u00f2n tr\u1ed1ng tr\u00ean h\u1ec7 th\u1ed1ng; d\u1eef li\u1ec7u \u0111ang c\u00f3 \u0111\u01b0\u1ee3c gi\u1eef nguy\u00ean.'}</p>
+Các thay đổi chỉ được áp dụng sau khi bạn xác nhận theo lựa chọn bên dưới.</p>
 </div>
 <button onClick={() => setImportPreview(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
 <X className="h-5 w-5" />
@@ -270,7 +271,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 </tr>; })}</tbody>
 </table>
 </div>
-{tableRecords.length > 250 && <p className="mt-2 text-xs text-slate-500">
+{(importPreview.data.records.filter(record => record._preview?.status !== 'unchanged' && isSelectedRecord(record)).length) > 250 && <p className="mt-2 text-xs text-slate-500">
 {'Chỉ hiển thị 250 dòng thay đổi đầu tiên.'}</p>}<div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-sm">
 <p className="font-bold text-indigo-950">Bảng chỉ hiển thị các thay đổi đang được chọn.</p>
 <p className="mt-1 text-xs text-indigo-800">Màu xanh là điền vào ô đang trống; màu vàng là ghi đè giá trị đã có. Không có lựa chọn nào tự xóa dữ liệu.</p>
@@ -283,13 +284,13 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 <div className="mt-6 flex justify-end gap-3">
 <button onClick={() => setImportPreview(null)} className="rounded-lg border px-4 py-2 text-sm font-bold">
 {'H\u1ee7y'}</button>
-<button disabled={importingId === importPreview.source.id || selectedImportRecords.length === 0 || Number(importPreview.data.summary?.conflicts || 0) > 0} onClick={confirmImport} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+<button disabled={importingId === importPreview.source.id || (selectedImportRecords.length === 0 && !(removeWebOnlyCandidates && importPreview.data.webOnlyRecords?.length)) || Number(importPreview.data.summary?.conflicts || 0) > 0} onClick={confirmImport} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
 {importingId === importPreview.source.id ? '\u0110ang nh\u1eadp\u2026' : 'X\u00e1c nh\u1eadn nh\u1eadp d\u1eef li\u1ec7u'}</button>
 </div>
 </div>
-</div>}
-    {exportPreview && <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/50 p-4">
-<div className="w-full max-w-3xl resize overflow-auto rounded-2xl bg-white p-6 shadow-2xl">
+</SheetDialog>}
+    {exportPreview && <SheetDialog onClose={() => setExportPreview(null)} busy={Boolean(exportingId)}>
+<div className="max-h-[calc(100dvh-2rem)] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-6 shadow-2xl">
 <div className="flex items-start justify-between gap-4">
 <div>
 <p className="text-xs font-bold uppercase text-amber-700">Đối soát trước khi xuất</p>
@@ -365,5 +366,5 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 <button onClick={() => setExportPreview(null)} className="rounded-lg border px-4 py-2 text-sm font-bold">Hủy</button>
 {Number(exportPreview.data.appendedRows || 0) > 0 ? <button disabled={exportingId === exportPreview.source.id || exportSelectedCodes.length === 0} onClick={() => requestExport(exportPreview.source, true, exportPreview.data.currentFingerprint, 'merge', exportSelectedCodes)} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Ghi đè và thêm thí sinh đã chọn</button> : <button disabled={exportingId === exportPreview.source.id} onClick={() => requestExport(exportPreview.source, true, exportPreview.data.currentFingerprint, 'merge')} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Ghi đè dữ liệu trên Sheet</button>}</div>
 </div>
-</div>}  </section>;
+</SheetDialog>}  </section>;
 }

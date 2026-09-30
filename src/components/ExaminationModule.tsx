@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { candidateBelongsToSession } from './examination/candidateMembership';
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BarChart3, Bell, Bot, CalendarDays, Check, ChevronDown, ChevronRight, CircleHelp, ClipboardCheck, GraduationCap, Handshake, LayoutDashboard, Layers3, Link2, Mail, MapPin, Pencil, FileSpreadsheet, FileText, Phone, Plus, Search, RefreshCw, School, Trophy, Trash2, UploadCloud, Users, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -1453,7 +1454,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
               {!selectedRounds.length && <p className="text-sm text-slate-500">Chưa có thông tin vòng thi.</p>}
             </div>
           </section>
-          <Metric label="Tổng thí sinh" value={candidates.filter((c) => (c.sessionIds?.length ? c.sessionIds.includes(selected.id) : (c.contests || "").includes(selected.code))).length.toLocaleString("vi-VN")} icon={Users} onClick={() => document.getElementById("session-students")?.scrollIntoView({ behavior: "smooth" })} />
+          <Metric label="Tổng thí sinh" value={candidates.filter((c) => candidateBelongsToSession(c, selected.id, selected.code)).length.toLocaleString("vi-VN")} icon={Users} onClick={() => document.getElementById("session-students")?.scrollIntoView({ behavior: "smooth" })} />
         </div>
       )}
       {sessionTab === "info" && (
@@ -1861,7 +1862,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         </section>
         <div className="grid gap-4">
           <Metric label="Tổng số kỳ" value="01" icon={CalendarDays} onClick={() => go("sessions")} />
-          <Metric label="Thí sinh tích lũy" value={candidates.filter((c) => (c.sessionIds?.length ? c.sessionIds.includes(selected.id) : (c.contests || "").includes(selected.code))).length.toLocaleString("vi-VN")} icon={Users} onClick={() => go("candidates")} />
+          <Metric label="Thí sinh tích lũy" value={candidates.filter((c) => candidateBelongsToSession(c, selected.id, selected.code)).length.toLocaleString("vi-VN")} icon={Users} onClick={() => go("candidates")} />
         </div>
       </div>
     </>

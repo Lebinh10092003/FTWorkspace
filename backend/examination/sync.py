@@ -21,6 +21,11 @@ def clean_txt(value):
         return ''
     return str(value).strip()
 
+def valid_candidate_name(value):
+    """Ignore template cells containing only punctuation, numbers or placeholders."""
+    text = clean_txt(value)
+    return any(char.isalpha() for char in text) and text.casefold() not in {'n/a', 'na', 'null', 'none'}
+
 def normalise_str(value):
     text = clean_txt(value).casefold().replace(chr(273), 'd')
     text = unicodedata.normalize('NFD', text)
@@ -714,24 +719,18 @@ def append_existing_candidate_link_note(candidate, session_id, previous_session_
 def sync_session_candidate_totals():
     sessions = ExamSession.objects.all()
     totals = {}
-    for session_id in CandidateParticipation.objects.values_list('session_id', flat=True):
-        totals[session_id] = totals.get(session_id, 0) + 1
+    for candidate_id, session_id in CandidateParticipation.objects.values_list('candidate_id', 'session_id'):
+        totals.setdefault(session_id, set()).add(candidate_id)
 
-    # Preserve older imports until their data migration has linked them.
-    if not totals:
-        sessions_by_code = {}
-        for session in sessions:
-            sessions_by_code.setdefault(clean_txt(session.code).upper(), []).append(session.id)
-        for candidate in Candidate.objects.all():
-            linked = list(candidate.session_ids or [])
-            if not linked:
-                for code in get_contest_codes(candidate.contests):
-                    linked.extend(sessions_by_code.get(code, []))
-            for session_id in set(linked):
-                totals[session_id] = totals.get(session_id, 0) + 1
+    # Include explicit legacy memberships; a contest label alone is not a
+    # registration and must never re-add a removed candidate to a session.
+    for candidate in Candidate.objects.all():
+        if valid_candidate_name(candidate.name):
+            for session_id in candidate.session_ids or []:
+                totals.setdefault(session_id, set()).add(candidate.pk)
 
     for session in sessions:
-        next_count = totals.get(session.id, 0)
+        next_count = len(totals.get(session.id, set()))
         if session.candidates_count == next_count:
             continue
         session.candidates_count = next_count
@@ -1448,8 +1447,8 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
         reader = csv.reader(f)
         grid = list(reader)
         
-        if len(grid) < 2:
-            raise Exception('Không tìm thấy dữ liệu trong tệp (cần ít nhất 1 dòng tiêu đề + 1 dòng dữ liệu).')
+        if not grid:
+            raise Exception('Không tìm thấy dòng tiêu đề trong tệp.')
             
         header_candidates = []
         for index in range(min(len(grid), 20)):
@@ -1460,6 +1459,8 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
         header_index = max(header_candidates, default=(0, 0))[1]
         header_row = merged_headers(grid, header_index)
         col = resolve_column_indices(header_row)
+        if 'name' not in col:
+            raise Exception('Không tìm thấy cột họ tên thí sinh trong tab đã chọn. Kiểm tra lại tab và dòng tiêu đề.')
         
         incoming = []
         session_code = clean_txt(ExamSession.objects.filter(id=session_id).values_list('code', flat=True).first()) if session_id else ''
@@ -1472,7 +1473,7 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
                 return clean_txt(row[index]) if index is not None and index < len(row) else ''
 
             name = format_person_name(value('name'))
-            if not name:
+            if not valid_candidate_name(name):
                 continue
             raw_contests = value('contests')
             contests = merge_contest_codes(raw_contests, session_code)

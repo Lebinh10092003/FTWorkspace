@@ -146,6 +146,17 @@ class FormRegistrationLink(models.Model):
         )]
 
 
+class ExamRegistrationPage(models.Model):
+    """Singleton editor with separate draft and published registration content."""
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    draft_content = models.JSONField(default=dict, blank=True)
+    published_content = models.JSONField(default=dict, blank=True)
+    published = models.BooleanField(default=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.CharField(max_length=255, blank=True, default='')
+
+
 class PublicExamRegistration(models.Model):
     """One public submission, with an idempotent Sheet export and private proof."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

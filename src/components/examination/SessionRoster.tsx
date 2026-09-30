@@ -1,3 +1,4 @@
+import { candidateBelongsToSession } from './candidateMembership';
 import React, { useEffect, useMemo, useState } from 'react';
 import { appDialog } from '../AppDialog';
 import { ChevronDown, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
@@ -52,7 +53,7 @@ export default function SessionRoster({ session, candidates, toolbar, onOpenCand
       if (!cancelled) setRoomsByRound(Object.fromEntries(entries));
     }).catch(() => { /* The allocation dialog still reports a load failure on demand. */ });
     return () => { cancelled = true; };
-  }, [canEdit, idToken, session.id, session.rounds, session.national, session.nationalDate, session.international, session.internationalDate]);  const rows = useMemo(() => candidates.filter(candidate => candidate.sessionIds?.includes(session.id) || candidate.participations?.some(item => item.sessionId === session.id) || (!candidate.sessionIds?.length && (candidate.contests || '').includes(session.code))).sort(compareSessionCandidates), [candidates, session]);
+  }, [canEdit, idToken, session.id, session.rounds, session.national, session.nationalDate, session.international, session.internationalDate]);  const rows = useMemo(() => candidates.filter(candidate => candidateBelongsToSession(candidate, session.id, session.code)).sort(compareSessionCandidates), [candidates, session]);
   const filtered = rows.filter(candidate => { const participation = candidate.participations?.find(item => item.sessionId === session.id); return matchesSearch([candidate.code, candidate.name, candidate.birthDate, candidate.className, candidate.school, candidate.city, ...Object.values(participation?.registration || {}), ...(participation?.rounds || []).flatMap(round => Object.values(round))].join(' '), query); });
   const entryForRound = (candidate: Candidate, index: number, occurrenceId = '') => {
     const participation = candidate.participations?.find(item => item.sessionId === session.id);
