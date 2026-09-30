@@ -12,6 +12,7 @@ on:
           - sync-work-schedule
           - rename-sco-competitions
           - set-round-date
+          - audit-registrations
         required: true
         default: sync-work-schedule
       only:
@@ -83,6 +84,9 @@ jobs:
           FLAG=""
           if [ "$APPLY" = "true" ]; then FLAG="--apply"; fi
           case "$TASK" in
+            audit-registrations)
+              CMD="audit_examination_registrations"
+              if [ -n "$ONLY" ]; then CMD="$CMD --only '$ONLY'"; fi ;;
             sync-work-schedule)
               CMD="sync_examination_work_schedule $FLAG" ;;
             rename-sco-competitions)
