@@ -50,6 +50,39 @@ def parse_amount(value):
     return amount
 
 
+def session_is_past(session, today=None):
+    """Keep sessions with future or undated later rounds in current accounting."""
+    from .views import dated_session_rounds, _phase_key
+    today = today or timezone.localdate()
+    if _phase_key(session.phase) in {'hoan thanh', 'ket thuc', 'da ket thuc'}:
+        return True
+    dated = dated_session_rounds(session)
+    if not dated or dated[-1][0] >= today:
+        return False
+    last_position = max(item[1] for item in dated)
+    if any(position > last_position and isinstance(item, dict) and str(item.get('name') or '').strip()
+           for position, item in enumerate(session.rounds or [])):
+        return False
+    return True
+
+
+def scoped_billing_rows(request):
+    scope = request.query_params.get('scope', 'active')
+    if scope not in {'active', 'past', 'all'}:
+        raise ValueError('Bộ lọc kỳ thi không hợp lệ.')
+    rows = ExaminationBillingRecord.objects.select_related('participation__candidate', 'participation__session').order_by('-participation__created_at')
+    past_sessions = {}
+    selected = []
+    today = timezone.localdate()
+    for item in rows:
+        session = item.participation.session
+        if session.pk not in past_sessions:
+            past_sessions[session.pk] = session_is_past(session, today)
+        if scope == 'all' or past_sessions[session.pk] == (scope == 'past'):
+            selected.append(item)
+    return selected
+
+
 def billing_payload(item):
     participation = item.participation
     candidate = participation.candidate
@@ -59,6 +92,7 @@ def billing_payload(item):
         'id': str(item.pk), 'candidateName': candidate.name,
         'candidateCode': candidate.code, 'competitionCode': session.code,
         'competitionName': session.name, 'sessionCode': session.code,
+        'sessionId': session.pk, 'sessionPeriod': session.time,
         'school': candidate.school or '', 'registeredAt': participation.created_at.isoformat(),
         'amount': int(item.amount) if item.amount is not None else None,
         'paymentProof': str(registration_data.get('paymentProof') or ''),
@@ -94,7 +128,10 @@ def finance_or_exam(request):
 def records(request):
     if not allowed(request, 'finance-report'):
         return Response({'error': 'Không có quyền xem đối soát.'}, status=403)
-    rows = ExaminationBillingRecord.objects.select_related('participation__candidate', 'participation__session').order_by('-participation__created_at')
+    try:
+        rows = scoped_billing_rows(request)
+    except ValueError as exc:
+        return Response({'error': str(exc)}, status=400)
     return Response([billing_payload(item) for item in rows])
 
 
@@ -103,7 +140,10 @@ def records(request):
 def stats(request):
     if not allowed(request, 'finance-report'):
         return Response({'error': 'Không có quyền xem đối soát.'}, status=403)
-    rows = list(ExaminationBillingRecord.objects.all())
+    try:
+        rows = scoped_billing_rows(request)
+    except ValueError as exc:
+        return Response({'error': str(exc)}, status=400)
     settled = {'checked', 'not_required'}
     return Response({
         'newCandidates': sum(not x.seen_by_accountant for x in rows),

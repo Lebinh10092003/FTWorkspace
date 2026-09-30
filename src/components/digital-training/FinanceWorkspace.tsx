@@ -5,14 +5,15 @@ import ModuleShellHeader from "../layout/ModuleShellHeader";
 import { FINANCE_NAV, withNavBadges } from "../../config/workspaceNavigation";
 import ContractExpiryReview from "../finance/ContractExpiryReview";
 import ExaminationBillingReview from "../finance/ExaminationBillingReview";
+import UnmatchedTransfers from "../finance/UnmatchedTransfers";
 import examinationBillingService, { type ExaminationBillingStats } from "../finance/examinationBillingService";
 import FinanceReport, { type FinancePartner } from "./FinanceReport";
 
-type FinanceTab = "report" | "examination-billing" | "contracts";
+type FinanceTab = "report" | "examination-billing" | "unmatched-transfers" | "contracts";
 
 const financeRouteTab = (): FinanceTab => {
   const segment = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/")[1];
-  return segment === "examination-billing" || segment === "contracts" ? segment : "report";
+  return segment === "examination-billing" || segment === "unmatched-transfers" || segment === "contracts" ? segment : "report";
 };
 
 export default function FinanceWorkspace({
@@ -125,7 +126,9 @@ export default function FinanceWorkspace({
       />
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
-          {tab === "contracts" ? (
+          {tab === "unmatched-transfers" ? (
+            <UnmatchedTransfers idToken={idToken} mode="finance" canCreate={canEdit} />
+          ) : tab === "contracts" ? (
             <ContractExpiryReview idToken={idToken} onCountsChange={handleContractCounts} />
           ) : tab === "examination-billing" ? (
             <ExaminationBillingReview
@@ -133,6 +136,7 @@ export default function FinanceWorkspace({
               actorName={userName || "Kế toán"}
               canEdit={canEdit}
               onStatsChange={handleBillingStats}
+              onReportTransfer={() => goTab('unmatched-transfers')}
             />
           ) : loading ? (
             <div className="py-20 text-center text-sm text-slate-500">Đang tải Báo cáo thu chi...</div>

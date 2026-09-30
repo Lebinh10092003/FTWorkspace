@@ -8,6 +8,7 @@ import {
   CalendarRange,
   ChartColumnBig,
   ClipboardList,
+  CircleDollarSign,
   ContactRound,
   FileCheck2,
   FileClock,
@@ -333,6 +334,7 @@ export const ACCOUNT_MANAGEMENT_NAV: ModuleNavItem[] = [
 export const FINANCE_NAV: ModuleNavItem[] = [
   { id: 'report', label: 'Báo cáo thu chi', icon: BadgeDollarSign },
   { id: 'examination-billing', label: 'Đối soát khảo thí', icon: ReceiptText },
+  { id: 'unmatched-transfers', label: 'Báo chuyển khoản', icon: CircleDollarSign },
   { id: 'contracts', label: 'Hạn hợp đồng', icon: FileClock },
 ];
 

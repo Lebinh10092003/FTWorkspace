@@ -1,10 +1,12 @@
 /** Persistent examination billing and unmatched transfer API. */
 export type BillingTransferStatus = 'pending' | 'confirmed' | 'mismatch';
 export type BillingInvoiceStatus = 'pending' | 'checked' | 'issue' | 'not_required';
+export type BillingSessionScope = 'active' | 'past' | 'all';
 
 export type ExaminationBillingRecord = {
   id: string; candidateName: string; candidateCode: string;
   competitionCode: string; competitionName: string; sessionCode: string;
+  sessionId: string; sessionPeriod: string;
   school: string; registeredAt: string; amount: number | null; paymentProof?: string; paymentProofId?: string;
   transferStatus: BillingTransferStatus; transferReference: string;
   transferConfirmedAt: string | null; transferConfirmedBy: string | null;
@@ -53,8 +55,8 @@ const post = <T>(path: string, data: unknown, options: BillingRequestOptions = {
   request<T>(path, { ...options, method: 'POST', body: JSON.stringify(data) });
 
 export const examinationBillingService = {
-  listRecords: (options: BillingRequestOptions = {}) => request<ExaminationBillingRecord[]>('/records', options),
-  getStats: (options: BillingRequestOptions = {}) => request<ExaminationBillingStats>('/stats', options),
+  listRecords: (options: BillingRequestOptions = {}, scope: BillingSessionScope = 'active') => request<ExaminationBillingRecord[]>(`/records?scope=${scope}`, options),
+  getStats: (options: BillingRequestOptions = {}, scope: BillingSessionScope = 'active') => request<ExaminationBillingStats>(`/stats?scope=${scope}`, options),
   markSeen: (ids: string[], options: BillingRequestOptions = {}) => post<{ seen: number }>('/seen', { ids }, options),
   setAmount: (id: string, amount: number, options: BillingRequestOptions = {}) => post<ExaminationBillingRecord>(`/records/${id}/amount`, { amount }, options),
   confirmTransfer: (id: string, input: { reference: string; actor: string }, options: BillingRequestOptions = {}) => post<ExaminationBillingRecord>(`/records/${id}/transfer`, input, options),

@@ -6,10 +6,10 @@ import examinationBillingService, {
   BILLING_TRANSFER_LABELS,
   type BillingInvoiceStatus,
   type BillingTransferStatus,
+  type BillingSessionScope,
   type ExaminationBillingRecord,
   type ExaminationBillingStats,
 } from './examinationBillingService';
-import UnmatchedTransfers from './UnmatchedTransfers';
 
 const money = (value: number | null) => value === null ? 'Chưa nhập' : `${value.toLocaleString('vi-VN')}đ`;
 
@@ -57,6 +57,7 @@ export type ExaminationBillingReviewProps = {
   actorName: string;
   canEdit: boolean;
   onStatsChange?: (stats: ExaminationBillingStats) => void;
+  onReportTransfer: () => void;
 };
 
 /**
@@ -64,7 +65,7 @@ export type ExaminationBillingReviewProps = {
  * checked for each candidate Khảo thí registers. New candidates surface as an
  * unread count so accounting does not have to poll the examination module.
  */
-export default function ExaminationBillingReview({ idToken, actorName, canEdit, onStatsChange }: ExaminationBillingReviewProps) {
+export default function ExaminationBillingReview({ idToken, actorName, canEdit, onStatsChange, onReportTransfer }: ExaminationBillingReviewProps) {
   const [records, setRecords] = useState<ExaminationBillingRecord[]>([]);
   const [stats, setStats] = useState<ExaminationBillingStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,6 +74,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
   const [keyword, setKeyword] = useState('');
   const [transferFilter, setTransferFilter] = useState<'all' | BillingTransferStatus>('all');
   const [invoiceFilter, setInvoiceFilter] = useState<'all' | BillingInvoiceStatus>('all');
+  const [sessionScope, setSessionScope] = useState<BillingSessionScope>('active');
   const [proofUrl, setProofUrl] = useState('');
 
   useEffect(() => () => { if (proofUrl) URL.revokeObjectURL(proofUrl); }, [proofUrl]);
@@ -85,19 +87,19 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
   const reload = useCallback(async () => {
     try {
       const [nextRecords, nextStats] = await Promise.all([
-        examinationBillingService.listRecords({ idToken }),
-        examinationBillingService.getStats({ idToken }),
+        examinationBillingService.listRecords({ idToken }, sessionScope),
+        examinationBillingService.getStats({ idToken }, sessionScope),
       ]);
       setRecords(nextRecords);
       setStats(nextStats);
-      onStatsChange?.(nextStats);
+      if (sessionScope === 'active') onStatsChange?.(nextStats);
       setError('');
     } catch (loadError: any) {
       setError(loadError?.message || 'Không thể tải dữ liệu đối soát khảo thí.');
     } finally {
       setLoading(false);
     }
-  }, [idToken, onStatsChange]);
+  }, [idToken, onStatsChange, sessionScope]);
 
   useEffect(() => {
     void reload();
@@ -130,10 +132,10 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
   };
 
   const confirmTransfer = async (record: ExaminationBillingRecord) => {
-    if (record.amount === null) { setError('Cần nhập số tiền phải thu trước khi xác nhận chuyển khoản.'); return; }
+    if (record.amount === null) throw new Error('Cần nhập số tiền phải thu trước khi xác nhận chuyển khoản.');
     const reference = await appDialog.prompt(
       `Nhập mã giao dịch / nội dung chuyển khoản của ${record.candidateName} (${money(record.amount)}).`,
-      { title: 'Xác nhận đã chuyển khoản', placeholder: 'VCB 0918.221540', confirmText: 'Xác nhận' },
+      { title: 'Xác nhận đã nhận tiền', placeholder: 'VCB 0918.221540', confirmText: 'Xác nhận' },
     );
     if (reference === null) return;
     await examinationBillingService.confirmTransfer(record.id, { reference: reference.trim(), actor: actorName }, { idToken });
@@ -217,6 +219,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
             Theo dõi thí sinh mới đăng ký từ mô-đun Khảo thí, xác nhận đã nhận chuyển khoản và đánh dấu đã kiểm hóa đơn.
           </p>
         </div>
+        <button type="button" onClick={onReportTransfer} className="ft-btn ft-btn-primary">Báo chuyển khoản chưa xác định</button>
       </header>
 
       {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-800">{error}</p>}
@@ -248,6 +251,16 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
       </div>
 
       <div className="ft-surface rounded-2xl border p-4">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm font-bold text-slate-700">Kỳ thi
+            <select value={sessionScope} onChange={event => { setLoading(true); setSessionScope(event.target.value as BillingSessionScope); }} className="ws-input w-auto py-2 text-sm">
+              <option value="active">Các kỳ còn hoạt động</option>
+              <option value="past">Các kỳ đã kết thúc</option>
+              <option value="all">Tất cả các kỳ</option>
+            </select>
+          </label>
+          <p className="text-xs text-slate-500">Mặc định bỏ qua kỳ đã kết thúc. Số liệu tổng hợp tính theo bộ lọc kỳ thi.</p>
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="ft-input-wrap flex min-w-[16rem] flex-1 items-center gap-2 px-3">
             <Search className="h-4 w-4 text-slate-400" />
@@ -304,7 +317,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
                     </td>
                     <td>
                       <b className="text-xs">{record.competitionCode}</b>
-                      <p className="mt-0.5 text-xs text-slate-500">{record.sessionCode}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{record.sessionPeriod || record.sessionCode}</p>
                     </td>
                     <td className="text-xs">{dateTime(record.registeredAt)}</td>
                     <td className="whitespace-nowrap font-bold">{money(record.amount)}{canEdit && <button type="button" className="ml-2 text-xs text-sky-700 underline" onClick={() => void setAmount(record)}>Sửa</button>}</td>
@@ -331,7 +344,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
                         <div className="flex flex-wrap gap-1.5">
                           {record.transferStatus !== 'confirmed' && (
                             <>
-                              <button type="button" onClick={() => void runAction(confirmTransfer(record))} className="ws-bulk-btn text-emerald-700">Đã chuyển khoản</button>
+                              <button type="button" onClick={() => void runAction(confirmTransfer(record))} className="ws-bulk-btn text-emerald-700">Xác nhận đã nhận tiền</button>
                               <button type="button" onClick={() => void runAction(flagTransfer(record))} className="ws-bulk-btn text-amber-700">Lệch tiền</button>
                             </>
                           )}
@@ -363,7 +376,6 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
           </table>
         </div>
       </div>
-      <UnmatchedTransfers idToken={idToken} mode="finance" canCreate={canEdit} />
       {proofUrl && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/80 p-4" role="dialog" aria-label="Chứng từ đăng ký"><button type="button" onClick={() => setProofUrl('')} className="absolute right-5 top-5 rounded-lg bg-white px-3 py-2 text-sm font-bold">Đóng</button><iframe src={proofUrl} title="Chứng từ đăng ký" className="h-[85vh] w-[95vw] max-w-5xl rounded-lg bg-white" /></div>}
     </section>
   );

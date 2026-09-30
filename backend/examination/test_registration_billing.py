@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock, patch
+from datetime import timedelta
 import json
 import uuid
 
@@ -172,6 +173,56 @@ class RegistrationAndBillingTests(TestCase):
         self.assertEqual(resolved.status_code, 200)
         self.assertEqual(resolved.data['status'], 'matched')
         self.assertEqual(UnmatchedTransfer.objects.get(pk=item_id).matched_participation, participation)
+
+    def test_past_sessions_are_excluded_from_records_and_totals_without_deleting_history(self):
+        today = timezone.localdate()
+        current = ExamSession.objects.get(pk=SESSION_IDS['FIMO'])
+        current.rounds = [{'name': 'Vòng cuối', 'date': (today + timedelta(days=7)).isoformat()}]
+        current.save()
+        past = ExamSession.objects.create(id='fimo-past', competition_id='fimo', code='FIMO',
+            name='FIMO cũ', parent='FIMO', organizer='Test', time='Kỳ cũ', sort_key='past',
+            rounds=[{'name': 'Vòng cuối', 'date': (today - timedelta(days=1)).isoformat()}])
+        candidate = Candidate.objects.create(id='billing-scope', code='FT-09991', name='Thí sinh đối soát', sort_key='test')
+        active_record = CandidateParticipation.objects.create(candidate=candidate, session=current).billing
+        active_record.amount = 650000
+        active_record.save()
+        old_record = CandidateParticipation.objects.create(candidate=candidate, session=past).billing
+        old_record.amount = 900000
+        old_record.transfer_status = 'confirmed'
+        old_record.invoice_status = 'checked'
+        old_record.save()
+        self.client.force_authenticate(self.finance)
+        active = self.client.get('/api/examination/billing/records')
+        self.assertEqual([row['sessionId'] for row in active.data], [current.pk])
+        totals = self.client.get('/api/examination/billing/stats').data
+        self.assertEqual(totals['newCandidates'], 1)
+        self.assertEqual(totals['awaitingTransfer'], 1)
+        self.assertEqual(totals['totalAmount'], 650000)
+        self.assertEqual(totals['collectedAmount'], 0)
+        history = self.client.get('/api/examination/billing/records?scope=past')
+        self.assertEqual([row['sessionId'] for row in history.data], [past.pk])
+        self.assertEqual(self.client.get('/api/examination/billing/stats?scope=past').data['collectedAmount'], 900000)
+        self.assertEqual(len(self.client.get('/api/examination/billing/records?scope=all').data), 2)
+        self.assertEqual(ExaminationBillingRecord.objects.count(), 2)
+        self.assertEqual(self.client.get('/api/examination/billing/records?scope=unknown').status_code, 400)
+
+    def test_past_round_does_not_hide_an_upcoming_or_undated_later_round(self):
+        from .billing_views import session_is_past
+        today = timezone.localdate()
+        session = ExamSession.objects.get(pk=SESSION_IDS['FIMO'])
+        session.rounds = [
+            {'name': 'Quốc gia', 'date': (today - timedelta(days=60)).isoformat()},
+            {'name': 'Quốc tế', 'date': '', 'slots': [{'date': (today + timedelta(days=10)).isoformat()}]},
+        ]
+        self.assertFalse(session_is_past(session, today))
+        session.rounds[1]['slots'] = []
+        self.assertFalse(session_is_past(session, today))
+        session.rounds = []
+        session.national_date = None
+        session.international_date = None
+        self.assertFalse(session_is_past(session, today))
+        session.phase = 'Hoàn thành'
+        self.assertTrue(session_is_past(session, today))
 
     def test_private_form_source_is_not_scanned_by_generic_sheet_import(self):
         now = timezone.now()
