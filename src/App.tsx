@@ -50,10 +50,11 @@ const DocumentNumberGenerator = lazyWithRecovery(() => import('./components/docu
 const WeeklyReportCenter = lazyWithRecovery(() => import('./components/documents/WeeklyReportCenter'));
 const WorkSchedule = lazyWithRecovery(() => import('./components/WorkSchedule'));
 const CompetitionLandingManager = lazyWithRecovery(() => import('./components/examination/CompetitionLandingManager'));
+const RegistrationPageStudio = lazyWithRecovery(() => import('./components/examination/RegistrationPageStudio'));
 const CompetitionLandingPublic = lazyWithRecovery(() => import('./components/examination/CompetitionLandingPublic'));
 const PublicExamRegistration = lazyWithRecovery(() => import('./components/examination/PublicExamRegistration'));
 
-type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'public-exam-registration' | 'attendance' | 'account-management';
+type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'registration-forms' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'public-exam-registration' | 'attendance' | 'account-management';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -155,6 +156,7 @@ function userFromApi(value: any): AppUser {
 function getInitialViewMode(): ViewMode {
   const path = window.location.pathname;
   if (path === '/dang-ky-du-thi' || path === '/dang-ky-du-thi/') return 'public-exam-registration';
+  if (path === '/registration-forms' || path === '/registration-forms/') return 'registration-forms';
   if (path.startsWith('/cuoc-thi/')) return 'competition-landing-public';
   if (path.startsWith('/training-assessment/')) return 'training-assessment-public';
   if (path.startsWith('/training-assessments')) return 'training-assessments';
@@ -254,7 +256,7 @@ export default function App() {
   );
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
-  const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
+  const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', 'registration-forms': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
   const canAccessView = (mode: ViewMode) => { if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
 
@@ -636,6 +638,13 @@ export default function App() {
         icon: ClipboardList,
       },
       {
+        mode: 'registration-forms',
+        title: 'Form đăng ký',
+        description: 'Chỉnh nội dung, thêm trường thông tin và xuất bản form đăng ký dự thi.',
+        gradient: 'from-indigo-600 to-[#0055DA]',
+        icon: FileSignature,
+      },
+      {
         mode: 'digital-training',
         title: 'Công nghệ & đào tạo số',
         description: 'Quản lý lịch gặp khách hàng, nội dung đào tạo chuyển đổi số và ứng dụng AI.',
@@ -943,6 +952,28 @@ export default function App() {
         </Suspense>
         {loginModal}{profileModal}
       </>
+    );
+  }
+
+  if (viewMode === 'registration-forms' && !canAccessView('registration-forms')) return null;
+
+  if (viewMode === 'registration-forms') {
+    return (
+      <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans">
+        <ModuleShellHeader
+          title="Form đăng ký"
+          items={[]}
+          activeId="registration-forms"
+          onSelect={id => setViewMode(id as ViewMode)}
+          account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />}
+        />
+        <main className="ft-module-content mx-auto w-full max-w-7xl p-5 md:p-8">
+          <Suspense fallback={<div className="py-16 text-center text-sm font-semibold text-slate-500">Đang nạp quản lý form đăng ký...</div>}>
+            <RegistrationPageStudio idToken={idToken || ''} />
+          </Suspense>
+        </main>
+        {loginModal}{profileModal}
+      </div>
     );
   }
 

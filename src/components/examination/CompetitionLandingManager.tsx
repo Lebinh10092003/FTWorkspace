@@ -3,7 +3,6 @@ import { ArrowUpRight, Check, Copy, Eye, Plus, Save, Trash2 } from 'lucide-react
 import { appDialog } from '../AppDialog';
 import { CompetitionLandingView, type CompetitionLanding } from './CompetitionLandingPublic';
 import LandingStudio from './LandingStudio';
-import RegistrationPageStudio from './RegistrationPageStudio';
 
 type LandingSessions = CompetitionLanding['sessions'];
 type LandingStats = CompetitionLanding['stats'];
@@ -72,7 +71,6 @@ export function previewPayload(row: LandingRow): CompetitionLanding {
 
 export default function CompetitionLandingManager({ idToken }: { idToken: string }) {
   const [studio, setStudio] = useState(true);
-  const [registrationEditor, setRegistrationEditor] = useState(false);
   const [rows, setRows] = useState<LandingRow[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<LandingRow | null>(null);
@@ -128,8 +126,7 @@ export default function CompetitionLandingManager({ idToken }: { idToken: string
     }
   };
 
-  if (registrationEditor) return <div><button onClick={() => setRegistrationEditor(false)} className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold">← Quản lý landing page</button><RegistrationPageStudio idToken={idToken} /></div>;
-  if (studio) return <div><div className="mb-4 flex flex-wrap gap-3"><button type="button" onClick={() => setStudio(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-[#0369A1]">Trang giới thiệu gắn với Khảo thí →</button><button type="button" onClick={() => setRegistrationEditor(true)} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">Chỉnh sửa trang đăng ký</button></div><LandingStudio idToken={idToken} /></div>;
+  if (studio) return <div><div className="mb-4 flex flex-wrap gap-3"><button type="button" onClick={() => setStudio(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-[#0369A1]">Trang giới thiệu gắn với Khảo thí →</button></div><LandingStudio idToken={idToken} /></div>;
   if (loading) return <div className="py-16 text-center text-sm font-semibold text-slate-500">Đang tải cuộc thi từ mô-đun Khảo thí...</div>;
   if (error) return <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm font-semibold text-rose-700">{error}</div>;
   if (!rows.length) return <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">Chưa có cuộc thi nào trong mô-đun Khảo thí.</div>;

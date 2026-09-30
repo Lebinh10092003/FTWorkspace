@@ -53,6 +53,7 @@ export type WorkspaceAreaId =
   | 'workspace'
   | 'work-schedule'
   | 'examination'
+  | 'registration-forms'
   | 'digital-training'
   | 'social-dashboard'
   | 'communication-tools'
@@ -97,6 +98,14 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     description: 'Quản lý cuộc thi, kỳ tổ chức, thí sinh và nguồn dữ liệu.',
     icon: ClipboardList,
     path: '/examination',
+  },
+  {
+    id: 'registration-forms',
+    label: 'Form đăng ký',
+    shortLabel: 'Form đăng ký',
+    description: 'Chỉnh sửa nội dung, trường thông tin và xuất bản form đăng ký dự thi.',
+    icon: FileSignature,
+    path: '/registration-forms',
   },
   {
     id: 'digital-training',
