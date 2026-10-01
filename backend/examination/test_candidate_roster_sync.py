@@ -62,7 +62,7 @@ class CandidateRosterSyncTests(TestCase):
             {'properties': {'sheetId': 1, 'title': 'Giáo viên đối tác từng tham gia'}},
             {'properties': {'sheetId': 2, 'title': TAB_TITLE, 'gridProperties': {'rowCount': 1000, 'columnCount': 26}}},
         ]}
-        service.spreadsheets().values().get().execute.side_effect = [{'values': [['Old data']]}, {'values': candidate_rows()}]
+        service.spreadsheets().values().get().execute.side_effect = [{'values': [['Mã hồ sơ', 'Mã kỳ tổ chức']]}, {'values': candidate_rows()}]
 
         result = sync_candidate_roster()
         self.assertEqual(result, {'status': 'synced', 'candidates': 1, 'rows': 1})
@@ -109,7 +109,7 @@ class CandidateRosterSyncTests(TestCase):
         drain_candidate_sheet_queue()
         self.assertEqual(CandidateSheetOutbox.objects.count(), 0)
         service.spreadsheets().values().clear.assert_called_once()
-        self.assertEqual(service.spreadsheets().values().clear.call_args.kwargs['range'], f"'{TAB_TITLE}'!A4:Z4")
+        self.assertEqual(service.spreadsheets().values().clear.call_args.kwargs['range'], f"'{TAB_TITLE}'!A4:P4")
         updates = service.spreadsheets().values().batchUpdate.call_args.kwargs['body']['data']
         self.assertEqual([item['values'][0][0] for item in updates], ['FT-001', 'FT-00002'])
 
@@ -121,6 +121,16 @@ class CandidateRosterSyncTests(TestCase):
         with self.assertRaisesMessage(ValueError, 'giữ hàng đợi'):
             drain_candidate_sheet_queue()
         self.assertEqual(CandidateSheetOutbox.objects.get(candidate_id=self.candidate.pk).attempts, 1)
+
+    @patch('examination.candidate_roster_sync.build_sheets_service')
+    def test_profile_resync_preserves_mail_merge_extension_columns(self, build):
+        service = build.return_value
+        service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {'sheetId': 2, 'title': TAB_TITLE}}]}
+        service.spreadsheets().values().get().execute.return_value = {'values': candidate_rows()}
+        sync_candidate_roster(force=True)
+        self.assertEqual(service.spreadsheets().values().clear.call_args.kwargs['range'], f"'{TAB_TITLE}'!A:P")
+        ranges = [call.kwargs['range'] for call in service.spreadsheets().values().get.call_args_list if 'range' in call.kwargs]
+        self.assertEqual(ranges, [f"'{TAB_TITLE}'!A:P"] * 2)
 
     @patch('examination.candidate_roster_sync.build_sheets_service')
     def test_missing_target_does_not_create_a_new_tab_or_erase_other_tabs(self, build):
@@ -156,6 +166,8 @@ class CandidateRosterSyncTests(TestCase):
         service.spreadsheets().values().clear.assert_not_called()
         self.assertEqual(service.spreadsheets().values().batchUpdate.call_args.kwargs['body']['data'][0]['values'][0][0], 'FT-001')
         service.spreadsheets().values().append.assert_not_called()
+        ranges = [call.kwargs['range'] for call in service.spreadsheets().values().get.call_args_list if 'range' in call.kwargs]
+        self.assertEqual(ranges, [f"'{TAB_TITLE}'!A:P"] * 2)
 
     @patch('examination.candidate_sheet_queue.build_sheets_service')
     def test_sheet_failure_retains_candidate_for_retry(self, build):

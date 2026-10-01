@@ -84,7 +84,7 @@ def audit_candidate_roster():
     service = build_sheets_service('', (main.data if main else {}) or {})
     spreadsheet_id = os.getenv('EXAMINATION_PARTNER_CONTACT_SHEET_ID', SPREADSHEET_ID).strip()
     tab = "'" + TAB_TITLE.replace("'", "''") + "'"
-    current = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:Z').execute().get('values', [])
+    current = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:P').execute().get('values', [])
     codes = [str(row[0]).strip() for row in current[1:] if row and row[0]]
     return {'webCandidates': len(expected) - 1, 'sheetRows': len(current) - 1,
             'uniqueProfileCodes': len({code.casefold() for code in codes}),
@@ -120,18 +120,21 @@ def sync_candidate_roster(*, force=False):
                     }}, 'fields': 'gridProperties.rowCount,gridProperties.columnCount'}},
                 ]}).execute()
             tab = "'" + TAB_TITLE.replace("'", "''") + "'"
-            current = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:Z').execute().get('values', [])
+            current = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:P').execute().get('values', [])
             if not force and _sheet_values_equal(current, rows) and (config.data or {}).get('layoutVersion') == LAYOUT_VERSION:
                 result = {'status': 'unchanged', 'candidates': len({row[0] for row in rows[1:]}), 'rows': len(rows) - 1}
             else:
-                sheets.values().clear(spreadsheetId=spreadsheet_id, range=f'{tab}!A:Z', body={}).execute()
+                # Remove old per-session columns once; preserve mail-merge
+                # extension columns after the profile layout is established.
+                legacy_layout = 'Mã kỳ tổ chức' in (current[0] if current else [])
+                clear_end = 'Z' if legacy_layout else 'P'
+                sheets.values().clear(spreadsheetId=spreadsheet_id, range=f'{tab}!A:{clear_end}', body={}).execute()
                 for start in range(0, len(rows), 300):
                     sheets.values().update(
                         spreadsheetId=spreadsheet_id, range=f'{tab}!A{start + 1}',
                         valueInputOption='RAW', body={'values': rows[start:start + 300]},
                     ).execute()
                 requests = [
-                    {'repeatCell': {'range': {'sheetId': target['sheetId'], 'startColumnIndex': len(HEADERS), 'endColumnIndex': 26}, 'cell': {}, 'fields': 'userEnteredFormat'}},
                     {'updateDimensionProperties': {'range': {'sheetId': target['sheetId'], 'dimension': 'COLUMNS', 'startIndex': 0, 'endIndex': len(HEADERS)}, 'properties': {'hiddenByUser': False, 'pixelSize': 140}, 'fields': 'hiddenByUser,pixelSize'}},
                     {'updateSheetProperties': {'properties': {'sheetId': target['sheetId'], 'gridProperties': {'frozenRowCount': 1, 'frozenColumnCount': 2}}, 'fields': 'gridProperties.frozenRowCount,gridProperties.frozenColumnCount'}},
                     {'updateDimensionProperties': {'range': {'sheetId': target['sheetId'], 'dimension': 'ROWS', 'startIndex': 0, 'endIndex': len(rows)}, 'properties': {'pixelSize': 28}, 'fields': 'pixelSize'}},
@@ -140,10 +143,12 @@ def sync_candidate_roster(*, force=False):
                     {'updateDimensionProperties': {'range': {'sheetId': target['sheetId'], 'dimension': 'ROWS', 'startIndex': 0, 'endIndex': 1}, 'properties': {'pixelSize': 38}, 'fields': 'pixelSize'}},
                     {'setBasicFilter': {'filter': {'range': {'sheetId': target['sheetId'], 'startRowIndex': 0, 'startColumnIndex': 0, 'endColumnIndex': len(HEADERS)}}}},
                 ]
+                if legacy_layout:
+                    requests.append({'repeatCell': {'range': {'sheetId': target['sheetId'], 'startColumnIndex': len(HEADERS), 'endColumnIndex': 26}, 'cell': {}, 'fields': 'userEnteredFormat'}})
                 for index, width in {1: 185, 2: 230, 4: 230, 5: 170, 7: 185, 10: 220, 15: 320}.items():
                     requests.append({'updateDimensionProperties': {'range': {'sheetId': target['sheetId'], 'dimension': 'COLUMNS', 'startIndex': index, 'endIndex': index + 1}, 'properties': {'pixelSize': width}, 'fields': 'pixelSize'}})
                 sheets.batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
-                verified = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:Z').execute().get('values', [])
+                verified = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:P').execute().get('values', [])
                 if not _sheet_values_equal(verified, rows):
                     raise ValueError('Sheet chưa khớp danh sách chuẩn sau khi ghi; cần thử lại.')
                 result = {'status': 'synced', 'candidates': len({row[0] for row in rows[1:]}), 'rows': len(rows) - 1}

@@ -90,7 +90,7 @@ def drain_candidate_sheet_queue(*, limit=100):
             if target is None or target.get('hidden'):
                 raise ValueError(f'Không tìm thấy tab đang hiển thị: {TAB_TITLE}')
             tab = "'" + TAB_TITLE.replace("'", "''") + "'"
-            current = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:Z').execute().get('values', [])
+            current = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:P').execute().get('values', [])
             if not current or current[0] != HEADERS:
                 raise ValueError('Cấu trúc tab thí sinh đã thay đổi; cần chạy đồng bộ danh sách chuẩn trước khi ghi.')
             expected = [HEADERS, *proposed]
@@ -112,8 +112,8 @@ def drain_candidate_sheet_queue(*, limit=100):
                 sheets.values().batchUpdate(spreadsheetId=spreadsheet_id,
                     body={'valueInputOption': 'RAW', 'data': updates[start:start + 300]}).execute()
             if len(current) > len(expected):
-                sheets.values().clear(spreadsheetId=spreadsheet_id, range=f'{tab}!A{len(expected) + 1}:Z{len(current)}', body={}).execute()
-            verified = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:Z').execute().get('values', [])
+                sheets.values().clear(spreadsheetId=spreadsheet_id, range=f'{tab}!A{len(expected) + 1}:P{len(current)}', body={}).execute()
+            verified = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:P').execute().get('values', [])
             if not _sheet_values_equal(verified, expected):
                 raise ValueError('Sheet chưa khớp danh sách thí sinh trên web; giữ hàng đợi để thử lại.')
         except Exception as exc:
