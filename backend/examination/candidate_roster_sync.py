@@ -18,6 +18,7 @@ from .sync import format_sheet_date
 logger = logging.getLogger(__name__)
 TAB_TITLE = 'Phụ huynh Thí sinh từng tham gi'
 SYNC_CONFIG_KEY = 'examination_candidate_roster_sheet_sync'
+LAYOUT_VERSION = 2
 HEADERS = [
     'Mã hồ sơ', 'Họ và tên thí sinh', 'Ngày sinh', 'Trường', 'Lớp', 'Khối',
     'Tỉnh / Thành phố', 'Phường / Xã', 'Họ tên phụ huynh', 'Số điện thoại', 'Email',
@@ -91,7 +92,7 @@ def _sheet_values_equal(remote, expected):
     return True
 
 
-def sync_candidate_roster():
+def sync_candidate_roster(*, force=False):
     """Replace the managed roster tab when it differs from the web database."""
     with _single_worker():
         rows = candidate_rows()
@@ -119,7 +120,7 @@ def sync_candidate_roster():
                 ]}).execute()
             tab = "'" + TAB_TITLE.replace("'", "''") + "'"
             current = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:X').execute().get('values', [])
-            if _sheet_values_equal(current, rows):
+            if not force and _sheet_values_equal(current, rows) and (config.data or {}).get('layoutVersion') == LAYOUT_VERSION:
                 result = {'status': 'unchanged', 'candidates': len({row[0] for row in rows[1:]}), 'registrations': len(rows) - 1}
             else:
                 sheets.values().clear(spreadsheetId=spreadsheet_id, range=f'{tab}!A:X', body={}).execute()
@@ -128,17 +129,24 @@ def sync_candidate_roster():
                         spreadsheetId=spreadsheet_id, range=f'{tab}!A{start + 1}',
                         valueInputOption='RAW', body={'values': rows[start:start + 300]},
                     ).execute()
-                sheets.batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': [
-                    {'updateSheetProperties': {'properties': {'sheetId': target['sheetId'], 'gridProperties': {'frozenRowCount': 1}}, 'fields': 'gridProperties.frozenRowCount'}},
-                    {'repeatCell': {'range': {'sheetId': target['sheetId'], 'startRowIndex': 0, 'endRowIndex': 1, 'startColumnIndex': 0, 'endColumnIndex': len(HEADERS)}, 'cell': {'userEnteredFormat': {'textFormat': {'bold': True}, 'backgroundColor': {'red': 0.89, 'green': 0.94, 'blue': 1.0}, 'wrapStrategy': 'WRAP'}}, 'fields': 'userEnteredFormat'}},
+                requests = [
+                    {'updateDimensionProperties': {'range': {'sheetId': target['sheetId'], 'dimension': 'COLUMNS', 'startIndex': 0, 'endIndex': len(HEADERS)}, 'properties': {'hiddenByUser': False, 'pixelSize': 140}, 'fields': 'hiddenByUser,pixelSize'}},
+                    {'updateSheetProperties': {'properties': {'sheetId': target['sheetId'], 'gridProperties': {'frozenRowCount': 1, 'frozenColumnCount': 2}}, 'fields': 'gridProperties.frozenRowCount,gridProperties.frozenColumnCount'}},
+                    {'updateDimensionProperties': {'range': {'sheetId': target['sheetId'], 'dimension': 'ROWS', 'startIndex': 0, 'endIndex': len(rows)}, 'properties': {'pixelSize': 28}, 'fields': 'pixelSize'}},
+                    {'repeatCell': {'range': {'sheetId': target['sheetId'], 'startRowIndex': 0, 'endRowIndex': len(rows), 'startColumnIndex': 0, 'endColumnIndex': len(HEADERS)}, 'cell': {'userEnteredFormat': {'textFormat': {'fontFamily': 'Arial', 'fontSize': 10, 'bold': False}, 'backgroundColor': {'red': 1, 'green': 1, 'blue': 1}, 'verticalAlignment': 'MIDDLE', 'wrapStrategy': 'CLIP'}}, 'fields': 'userEnteredFormat'}},
+                    {'repeatCell': {'range': {'sheetId': target['sheetId'], 'startRowIndex': 0, 'endRowIndex': 1, 'startColumnIndex': 0, 'endColumnIndex': len(HEADERS)}, 'cell': {'userEnteredFormat': {'textFormat': {'fontFamily': 'Arial', 'fontSize': 10, 'bold': True}, 'backgroundColor': {'red': 0.89, 'green': 0.94, 'blue': 1.0}, 'verticalAlignment': 'MIDDLE', 'wrapStrategy': 'WRAP'}}, 'fields': 'userEnteredFormat'}},
+                    {'updateDimensionProperties': {'range': {'sheetId': target['sheetId'], 'dimension': 'ROWS', 'startIndex': 0, 'endIndex': 1}, 'properties': {'pixelSize': 38}, 'fields': 'pixelSize'}},
                     {'setBasicFilter': {'filter': {'range': {'sheetId': target['sheetId'], 'startRowIndex': 0, 'startColumnIndex': 0, 'endColumnIndex': len(HEADERS)}}}},
-                ]}).execute()
+                ]
+                for index, width in {1: 185, 3: 210, 8: 185, 10: 220, 12: 190, 14: 190, 20: 190, 21: 230, 22: 230}.items():
+                    requests.append({'updateDimensionProperties': {'range': {'sheetId': target['sheetId'], 'dimension': 'COLUMNS', 'startIndex': index, 'endIndex': index + 1}, 'properties': {'pixelSize': width}, 'fields': 'pixelSize'}})
+                sheets.batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
                 result = {'status': 'synced', 'candidates': len({row[0] for row in rows[1:]}), 'registrations': len(rows) - 1}
         except Exception as exc:
             config.data = {'error': str(exc), 'failedAt': timezone.now().isoformat()}
             config.save(update_fields=['data'])
             logger.exception('Không đồng bộ được danh sách thí sinh vào Google Sheet.')
             raise
-        config.data = {**result, 'syncedAt': timezone.now().isoformat()}
+        config.data = {**result, 'layoutVersion': LAYOUT_VERSION, 'syncedAt': timezone.now().isoformat()}
         config.save(update_fields=['data'])
         return result

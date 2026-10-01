@@ -17,7 +17,7 @@ class Command(BaseCommand):
         errors = []
         for label, sync in (('partners', sync_partner_contacts), ('candidates', sync_candidate_roster)):
             try:
-                result[label] = sync(force=options['force']) if label == 'partners' else sync()
+                result[label] = sync(force=options['force'])
             except Exception as exc:
                 errors.append(f'{label}: {exc}')
         if errors:

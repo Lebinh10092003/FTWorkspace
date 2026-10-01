@@ -65,7 +65,10 @@ class CandidateRosterSyncTests(TestCase):
         written = service.spreadsheets().values().update.call_args.kwargs['body']['values']
         self.assertEqual(len(written), 3)
         self.assertEqual(written[1][0], 'FT-001')
-        self.assertFalse(any('addSheet' in request for call in service.spreadsheets().batchUpdate.call_args_list for request in call.kwargs['body']['requests']))
+        requests = [request for call in service.spreadsheets().batchUpdate.call_args_list for request in call.kwargs['body']['requests']]
+        self.assertFalse(any('addSheet' in request for request in requests))
+        self.assertTrue(any(request.get('updateDimensionProperties', {}).get('properties', {}).get('hiddenByUser') is False for request in requests))
+        self.assertTrue(any(request.get('repeatCell', {}).get('cell', {}).get('userEnteredFormat', {}).get('backgroundColor', {}).get('red') == 1 for request in requests))
 
         service.spreadsheets().get().execute.return_value = {'sheets': [
             {'properties': {'sheetId': 2, 'title': TAB_TITLE, 'gridProperties': {'rowCount': 1000}}},
@@ -93,4 +96,4 @@ class CandidateRosterSyncTests(TestCase):
         candidates.return_value = {'status': 'synced', 'candidates': 1, 'registrations': 2}
         with self.assertRaises(CommandError):
             call_command('sync_examination_partner_contacts', stdout=StringIO())
-        candidates.assert_called_once_with()
+        candidates.assert_called_once_with(force=False)
