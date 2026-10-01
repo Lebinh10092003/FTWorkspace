@@ -4,6 +4,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Count
 
 from examination.candidate_sheet_queue import drain_candidate_sheet_queue
+from examination.candidate_roster_sync import LAYOUT_VERSION, SYNC_CONFIG_KEY, audit_candidate_roster, sync_candidate_roster
+from authentication.models import SystemConfig
 from examination.session_sheet_queue import drain_session_sheet_queue
 from examination.models import CandidateSheetOutbox, SessionSheetOutbox
 
@@ -13,16 +15,22 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--audit-only', action='store_true')
+        parser.add_argument('--verify-roster', action='store_true')
 
     def handle(self, *args, **options):
         results = {}
         errors = []
         if not options['audit_only']:
             try:
+                config = SystemConfig.objects.filter(key=SYNC_CONFIG_KEY).first()
+                if not config or (config.data or {}).get('layoutVersion') != LAYOUT_VERSION:
+                    results['roster'] = sync_candidate_roster(force=True)
                 results['contacts'] = drain_candidate_sheet_queue()
             except Exception as exc:
                 errors.append(str(exc))
             results['sessions'] = drain_session_sheet_queue()
+        if options['verify_roster']:
+            results['rosterAudit'] = audit_candidate_roster()
         results['remaining'] = {
             'contacts': CandidateSheetOutbox.objects.count(),
             'sessions': SessionSheetOutbox.objects.count(),

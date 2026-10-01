@@ -97,7 +97,7 @@ jobs:
               [[ "$ONLY" =~ ^[0-9]+(,[0-9]+)*$ ]]
               CMD="restore_detached_work_items --backup /home/workspace/ft-workspace-data/backups/$BACKUP --ids $ONLY $FLAG" ;;
             audit-candidate-queue)
-              CMD="sync_examination_candidate_queue --audit-only" ;;
+              CMD="sync_examination_candidate_queue --audit-only --verify-roster" ;;
             audit-training-calendars)
               CMD="detach_training_calendars" ;;
             audit-registrations)

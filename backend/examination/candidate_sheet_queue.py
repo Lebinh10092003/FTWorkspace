@@ -15,7 +15,7 @@ from django.db.models import F
 from authentication.models import SystemConfig
 from integrations.google_sheets import build_sheets_service
 
-from .candidate_roster_sync import HEADERS, TAB_TITLE, candidate_rows
+from .candidate_roster_sync import HEADERS, TAB_TITLE, _sheet_values_equal, candidate_rows
 from .models import CandidateSheetOutbox
 from .partner_contact_sync import SPREADSHEET_ID, _single_worker
 
@@ -68,60 +68,54 @@ def _same_row(current, proposed):
 
 
 def _row_key(row):
-    # A competition code can be reused in several years/organisation batches.
-    return tuple(row[index] if len(row) > index else '' for index in (0, 13, 14, 15))
+    return str(row[0] if row else '').strip().casefold()
 
 
 def drain_candidate_sheet_queue(*, limit=100):
-    """Upsert only queued candidate rows; leave jobs intact after any failed write."""
+    """Process events and reconcile profile rows in web order; retry failed writes."""
     with _single_worker():
         jobs = list(CandidateSheetOutbox.objects.order_by('attempts', 'enqueued_at')[:limit])
         if not jobs:
             return {'status': 'empty', 'candidates': 0, 'rows': 0}
         ids = [job.candidate_id for job in jobs]
-        proposed = candidate_rows(ids)[1:]
         try:
+            proposed = candidate_rows()[1:]
             config = SystemConfig.objects.filter(key='main').first()
             service = build_sheets_service('', (config.data if config else {}) or {})
             spreadsheet_id = os.getenv('EXAMINATION_PARTNER_CONTACT_SHEET_ID', SPREADSHEET_ID).strip()
             sheets = service.spreadsheets()
-            metadata = sheets.get(spreadsheetId=spreadsheet_id, fields='sheets(properties(title,hidden))').execute()
+            metadata = sheets.get(spreadsheetId=spreadsheet_id, fields='sheets(properties(sheetId,title,hidden,gridProperties))').execute()
             target = next((item['properties'] for item in metadata.get('sheets', [])
                            if item.get('properties', {}).get('title') == TAB_TITLE), None)
             if target is None or target.get('hidden'):
                 raise ValueError(f'Không tìm thấy tab đang hiển thị: {TAB_TITLE}')
             tab = "'" + TAB_TITLE.replace("'", "''") + "'"
-            current = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:X').execute().get('values', [])
+            current = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:Z').execute().get('values', [])
             if not current or current[0] != HEADERS:
-                raise ValueError('Cấu trúc tab thí sinh đã thay đổi; cần kiểm tra trước khi ghi.')
-            existing = {}
-            for number, row in enumerate(current[1:], start=2):
-                if row and row[0]:
-                    existing.setdefault(_row_key(row), (number, row))
+                raise ValueError('Cấu trúc tab thí sinh đã thay đổi; cần chạy đồng bộ danh sách chuẩn trước khi ghi.')
+            expected = [HEADERS, *proposed]
+            existing_codes = {_row_key(row) for row in current[1:] if _row_key(row)}
+            appends = [row for row in proposed if _row_key(row) not in existing_codes]
             updates = []
-            appends = []
-            for row in proposed:
-                key = _row_key(row)
-                found = existing.get(key)
-                if not found and row[13]:
-                    found = existing.pop((row[0], '', '', ''), None)
-                if found:
-                    if not _same_row(found[1], row):
-                        updates.append({'range': f'{tab}!A{found[0]}:X{found[0]}', 'values': [row]})
-                else:
-                    appends.append(row)
-                    existing[key] = (None, row)
-            if updates:
-                sheets.values().batchUpdate(
-                    spreadsheetId=spreadsheet_id,
-                    body={'valueInputOption': 'RAW', 'data': updates},
-                ).execute()
-            if appends:
-                sheets.values().append(
-                    spreadsheetId=spreadsheet_id, range=f'{tab}!A:X',
-                    valueInputOption='RAW', insertDataOption='INSERT_ROWS',
-                    body={'values': appends},
-                ).execute()
+            # Sorted canonical rows also remove legacy per-session duplicates.
+            # Write changed positions only; shared emails never identify a row.
+            for number, row in enumerate(expected, start=1):
+                previous = current[number - 1] if number <= len(current) else []
+                if not _same_row(previous, row):
+                    updates.append({'range': f'{tab}!A{number}:P{number}', 'values': [row]})
+            grid = target.get('gridProperties', {})
+            if len(expected) > grid.get('rowCount', 1000):
+                sheets.batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': [
+                    {'updateSheetProperties': {'properties': {'sheetId': target['sheetId'], 'gridProperties': {'rowCount': len(expected)}}, 'fields': 'gridProperties.rowCount'}},
+                ]}).execute()
+            for start in range(0, len(updates), 300):
+                sheets.values().batchUpdate(spreadsheetId=spreadsheet_id,
+                    body={'valueInputOption': 'RAW', 'data': updates[start:start + 300]}).execute()
+            if len(current) > len(expected):
+                sheets.values().clear(spreadsheetId=spreadsheet_id, range=f'{tab}!A{len(expected) + 1}:Z{len(current)}', body={}).execute()
+            verified = sheets.values().get(spreadsheetId=spreadsheet_id, range=f'{tab}!A:Z').execute().get('values', [])
+            if not _sheet_values_equal(verified, expected):
+                raise ValueError('Sheet chưa khớp danh sách thí sinh trên web; giữ hàng đợi để thử lại.')
         except Exception as exc:
             CandidateSheetOutbox.objects.filter(candidate_id__in=ids).update(
                 attempts=F('attempts') + 1, last_error=str(exc)[:1000],

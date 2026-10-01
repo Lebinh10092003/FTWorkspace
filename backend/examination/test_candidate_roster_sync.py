@@ -33,6 +33,8 @@ class CandidateRosterSyncTests(TestCase):
             id='roster-candidate', code='FT-001', name='Nguyễn Minh An',
             birth_date='2015-04-03', school='Trường A', phone='0900000000',
             session_ids=[self.session.id, self.legacy_session.id], sort_key='an',
+            contests='SCO, SILSO', updated='01/10/2026 10:21', identity='000012345678', nationality='Việt Nam',
+            class_name='6A', city='Hà Nội', ward='Phường A', address='Địa chỉ kiểm thử', parent='Phụ huynh A',
         )
         self.participation = CandidateParticipation.objects.create(
             candidate=self.candidate, session=self.session, subject='Toán',
@@ -42,16 +44,15 @@ class CandidateRosterSyncTests(TestCase):
             attendance='Có mặt', result='Giải Nhất',
         )
 
-    def test_rows_include_current_and_legacy_memberships_once(self):
+    def test_rows_match_web_profiles_once_regardless_of_memberships(self):
         rows = candidate_rows()
         self.assertEqual(rows[0], HEADERS)
-        self.assertEqual(len(rows), 3)
-        self.assertEqual([row[13] for row in rows[1:]], ['SCO-1', 'SCO-2'])
-        self.assertEqual(rows[1][1:4], ['Nguyễn Minh An', '03/04/2015', 'Trường A'])
-        self.assertEqual(rows[1][16], 'Toán')
-        self.assertEqual(rows[1][20:23], ['Vòng 1', 'Vòng 1: Có mặt', 'Vòng 1: Giải Nhất'])
-        self.assertEqual(rows[2][16], '')
-        self.assertEqual(rows[2][19], '')
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(len(rows[1]), 16)
+        self.assertEqual(rows[1][:6], ['FT-001', 'Nguyễn Minh An', 'Trường A', '', 'SCO, SILSO', '01/10/2026 10:21'])
+        self.assertEqual(rows[1][6:11], ['03/04/2015', 'Phụ huynh A', '0900000000', '000012345678', ''])
+        self.assertEqual(rows[1][11:], ['Việt Nam', '6A', 'Hà Nội', 'Phường A', 'Địa chỉ kiểm thử'])
+        self.assertFalse(any('kỳ' in header.lower() for header in HEADERS))
 
     @patch('examination.candidate_roster_sync.build_sheets_service')
     def test_replaces_existing_parent_candidate_tab_and_restores_changed_content(self, build):
@@ -61,13 +62,13 @@ class CandidateRosterSyncTests(TestCase):
             {'properties': {'sheetId': 1, 'title': 'Giáo viên đối tác từng tham gia'}},
             {'properties': {'sheetId': 2, 'title': TAB_TITLE, 'gridProperties': {'rowCount': 1000, 'columnCount': 26}}},
         ]}
-        service.spreadsheets().values().get().execute.return_value = {'values': [['Old data']]}
+        service.spreadsheets().values().get().execute.side_effect = [{'values': [['Old data']]}, {'values': candidate_rows()}]
 
         result = sync_candidate_roster()
-        self.assertEqual(result, {'status': 'synced', 'candidates': 1, 'registrations': 2})
-        self.assertEqual(service.spreadsheets().values().clear.call_args.kwargs['range'], f"'{TAB_TITLE}'!A:X")
+        self.assertEqual(result, {'status': 'synced', 'candidates': 1, 'rows': 1})
+        self.assertEqual(service.spreadsheets().values().clear.call_args.kwargs['range'], f"'{TAB_TITLE}'!A:Z")
         written = service.spreadsheets().values().update.call_args.kwargs['body']['values']
-        self.assertEqual(len(written), 3)
+        self.assertEqual(len(written), 2)
         self.assertEqual(written[1][0], 'FT-001')
         requests = [request for call in service.spreadsheets().batchUpdate.call_args_list for request in call.kwargs['body']['requests']]
         self.assertFalse(any('addSheet' in request for request in requests))
@@ -77,9 +78,49 @@ class CandidateRosterSyncTests(TestCase):
         service.spreadsheets().get().execute.return_value = {'sheets': [
             {'properties': {'sheetId': 2, 'title': TAB_TITLE, 'gridProperties': {'rowCount': 1000}}},
         ]}
+        service.spreadsheets().values().get().execute.side_effect = None
         service.spreadsheets().values().get().execute.return_value = {'values': candidate_rows()}
         self.assertEqual(sync_candidate_roster()['status'], 'unchanged')
         self.assertEqual(service.spreadsheets().values().clear.call_count, 1)
+
+    def test_code_order_shared_parent_email_and_web_profile_are_preserved(self):
+        self.candidate.email = 'parent@example.test'
+        self.candidate.contests = 'SCO, SILSO'
+        self.candidate.save()
+        for code, name in [('FT-00010', 'A'), ('FT-00002', 'Z')]:
+            Candidate.objects.create(id=code, code=code, name=name, email=self.candidate.email, sort_key=name.lower())
+        before = list(Candidate.objects.order_by('pk').values())
+        rows = candidate_rows()
+        self.assertEqual([row[0] for row in rows[1:]], ['FT-001', 'FT-00002', 'FT-00010'])
+        self.assertEqual([row[10] for row in rows[1:]], ['parent@example.test'] * 3)
+        self.assertEqual(rows[1][4], 'SCO, SILSO')
+        self.assertEqual(list(Candidate.objects.order_by('pk').values()), before)
+
+    @patch('examination.candidate_sheet_queue.build_sheets_service')
+    def test_events_remove_session_duplicates_sort_codes_and_keep_shared_emails(self, build):
+        Candidate.objects.create(id='second', code='FT-00002', name='Second', email='shared@example.test', sort_key='a')
+        self.candidate.email = 'shared@example.test'
+        self.candidate.save()
+        expected = candidate_rows()
+        duplicate_rows = [HEADERS, expected[2], expected[1], expected[1]]
+        service = build.return_value
+        service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {'title': TAB_TITLE}}]}
+        service.spreadsheets().values().get().execute.side_effect = [{'values': duplicate_rows}, {'values': expected}]
+        drain_candidate_sheet_queue()
+        self.assertEqual(CandidateSheetOutbox.objects.count(), 0)
+        service.spreadsheets().values().clear.assert_called_once()
+        self.assertEqual(service.spreadsheets().values().clear.call_args.kwargs['range'], f"'{TAB_TITLE}'!A4:Z4")
+        updates = service.spreadsheets().values().batchUpdate.call_args.kwargs['body']['data']
+        self.assertEqual([item['values'][0][0] for item in updates], ['FT-001', 'FT-00002'])
+
+    @patch('examination.candidate_sheet_queue.build_sheets_service')
+    def test_verification_failure_keeps_event_for_retry(self, build):
+        service = build.return_value
+        service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {'title': TAB_TITLE}}]}
+        service.spreadsheets().values().get().execute.return_value = {'values': [HEADERS]}
+        with self.assertRaisesMessage(ValueError, 'giữ hàng đợi'):
+            drain_candidate_sheet_queue()
+        self.assertEqual(CandidateSheetOutbox.objects.get(candidate_id=self.candidate.pk).attempts, 1)
 
     @patch('examination.candidate_roster_sync.build_sheets_service')
     def test_missing_target_does_not_create_a_new_tab_or_erase_other_tabs(self, build):
@@ -107,13 +148,14 @@ class CandidateRosterSyncTests(TestCase):
         service.spreadsheets().get().execute.return_value = {'sheets': [
             {'properties': {'title': TAB_TITLE, 'hidden': False}},
         ]}
-        service.spreadsheets().values().get().execute.return_value = {'values': [HEADERS]}
+        service.spreadsheets().values().get().execute.side_effect = [{'values': [HEADERS]}, {'values': candidate_rows()}]
 
         result = drain_candidate_sheet_queue()
-        self.assertEqual(result['appended'], 2)
+        self.assertEqual(result['appended'], 1)
         self.assertEqual(CandidateSheetOutbox.objects.count(), 0)
         service.spreadsheets().values().clear.assert_not_called()
-        self.assertEqual(service.spreadsheets().values().append.call_args.kwargs['body']['values'][0][0], 'FT-001')
+        self.assertEqual(service.spreadsheets().values().batchUpdate.call_args.kwargs['body']['data'][0]['values'][0][0], 'FT-001')
+        service.spreadsheets().values().append.assert_not_called()
 
     @patch('examination.candidate_sheet_queue.build_sheets_service')
     def test_sheet_failure_retains_candidate_for_retry(self, build):
@@ -136,9 +178,9 @@ class CandidateRosterSyncTests(TestCase):
     def test_new_event_during_export_is_retained(self, build):
         service = build.return_value
         service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {'title': TAB_TITLE}}]}
-        service.spreadsheets().values().get().execute.return_value = {'values': [HEADERS]}
+        service.spreadsheets().values().get().execute.side_effect = [{'values': [HEADERS]}, {'values': candidate_rows()}]
         old_revision = CandidateSheetOutbox.objects.get(candidate_id=self.candidate.pk).revision
-        service.spreadsheets().values().append().execute.side_effect = lambda: enqueue_candidate(self.candidate.pk)
+        service.spreadsheets().values().batchUpdate().execute.side_effect = lambda: enqueue_candidate(self.candidate.pk)
         drain_candidate_sheet_queue()
         self.assertNotEqual(CandidateSheetOutbox.objects.get(candidate_id=self.candidate.pk).revision, old_revision)
 
