@@ -106,12 +106,9 @@ def _bank_normalized(value):
     return "".join(char for char in text if unicodedata.category(char) != "Mn")
 
 
-def _accepts_notebooklm_image_upload(question):
-    """Only NotebookLM practical tasks collect a screenshot as evidence."""
-    return (
-        question.get("type") == "practical_submission"
-        and "notebooklm" in _bank_normalized(question.get("category"))
-    )
+def _accepts_image_upload(question):
+    """The submission type determines upload permission for every topic."""
+    return question.get("type") == "file_upload"
 
 
 def _question_bank_inventory(questions):
@@ -1546,27 +1543,17 @@ def public_attempt_upload(request, token):
     )
     if not question or question.get("type") not in {"file_upload", "practical_submission"}:
         return _assessment_error("Câu thực hành không hợp lệ.")
-    if not _accepts_notebooklm_image_upload(question):
-        return _assessment_error("Chỉ câu thực hành thuộc chủ đề NotebookLM mới cho phép tải ảnh; các câu khác chỉ nhận link chia sẻ.")
+    if not _accepts_image_upload(question):
+        return _assessment_error("Chỉ câu hỏi có kiểu “Tải tệp ảnh” mới cho phép tải ảnh; câu này nhận link chia sẻ.")
     uploaded = request.FILES.get("file")
     if not uploaded:
         return _assessment_error("Vui lòng chọn ảnh.")
-    image_only = True
-    maximum_size = 5 if image_only else 10
+    maximum_size = 5
     if uploaded.size > maximum_size * 1024 * 1024:
         return _assessment_error(f"Tệp không được vượt quá {maximum_size} MB.")
     content_type = str(uploaded.content_type or "").lower()
-    allowed_types = {
-        "image/jpeg", "image/png", "image/webp", "image/gif",
-        "application/pdf",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "text/plain",
-    }
-    if (image_only and not content_type.startswith("image/")) or (not image_only and content_type not in allowed_types):
-        return _assessment_error("Loại tệp không được hỗ trợ. Hãy dùng ảnh, PDF, Word, Excel hoặc TXT.")
+    if content_type not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
+        return _assessment_error("Loại tệp không được hỗ trợ. Hãy dùng ảnh JPG, PNG, WEBP hoặc GIF.")
     drive_data = {}
     if attempt.assessment.drive_folder_id:
         try:

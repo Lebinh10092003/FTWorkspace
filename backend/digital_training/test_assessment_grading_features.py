@@ -129,6 +129,8 @@ class AssessmentGradingFeatureTests(TestCase):
         self.assertEqual(new_note["grader"], "Grader")
 
     def test_multiple_images_can_be_uploaded_and_deleted_individually(self):
+        self.assessment.questions[1].update(type="file_upload", category="Học liệu số với Gemini")
+        self.assessment.save(update_fields=["questions"])
         attempt = self.attempt("Chi")
         attempt.status = "in_progress"
         attempt.save(update_fields=["status"])
@@ -153,6 +155,29 @@ class AssessmentGradingFeatureTests(TestCase):
         self.assertEqual(attempt.uploads.count(), 1)
         attempt.refresh_from_db()
         self.assertEqual(attempt.answers["practice-1"]["upload_id"], str(second.data["id"]))
+
+    def test_link_question_in_notebooklm_cannot_upload_images(self):
+        attempt = self.attempt("Link")
+        attempt.status = "in_progress"
+        attempt.save(update_fields=["status"])
+        response = APIClient().post(f"/api/training-assessment-attempts/{attempt.access_token}/upload", {
+            "question_id": "practice-1", "file": SimpleUploadedFile("one.png", b"image", content_type="image/png"),
+        }, format="multipart")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(attempt.uploads.count(), 0)
+
+    def test_image_question_rejects_documents_and_oversized_images(self):
+        self.assessment.questions[1].update(type="file_upload", category="Gemini")
+        self.assessment.save(update_fields=["questions"])
+        attempt = self.attempt("Image")
+        attempt.status = "in_progress"
+        attempt.save(update_fields=["status"])
+        for name, content, mime in [("one.pdf", b"document", "application/pdf"), ("large.png", b"x" * (5 * 1024 * 1024 + 1), "image/png")]:
+            response = APIClient().post(f"/api/training-assessment-attempts/{attempt.access_token}/upload", {
+                "question_id": "practice-1", "file": SimpleUploadedFile(name, content, content_type=mime),
+            }, format="multipart")
+            self.assertEqual(response.status_code, 400)
+        self.assertEqual(attempt.uploads.count(), 0)
 
     def test_sheet_layout_and_practical_cells_use_clear_clickable_urls(self):
         layout = _assessment_output_layout(self.assessment)

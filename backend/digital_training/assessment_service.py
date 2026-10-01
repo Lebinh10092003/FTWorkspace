@@ -41,7 +41,7 @@ COLUMN_ALIASES = {
     "points": {"diem", "sodiem", "points", "score"},
     "required": {"batbuoc", "required"},
     "explanation": {"giaithich", "huongdan", "explanation"},
-    "media_url": {"hinhanh", "anh", "image", "imageurl", "anhvideominhhoa", "anhvideominhhoaneuco", "media", "mediaurl"},
+    "media_url": {"hinhanh", "anh", "image", "imageurl", "linkanhminhhoa", "anhminhhoa", "anhvideominhhoa", "anhvideominhhoaneuco", "media", "mediaurl"},
     "media_type": {"loaiminhhoa", "loaimedia", "mediatype", "kieumedia", "mediaformat"},
     "answer_image_url": {"anhdapan", "anhdapanneuco", "answerimage", "answerimageurl"},
     "category": {"chude", "nhomcau", "nhom", "category", "topic"},
@@ -79,9 +79,9 @@ def _question_type(value):
         return "matching"
     if normalized in {"sapxepthutu", "ordering", "sorting", "reorder"}:
         return "ordering"
-    if normalized in {"fileupload", "uploadtep", "noptep", "tailen"}:
+    if normalized in {"fileupload", "uploadtep", "noptep", "tailen", "taitepanh", "taianh", "uploadanh"}:
         return "file_upload"
-    if normalized in {"practicalsubmission", "taianh", "uploadanh", "upload", "thuchanh", "ganlinktaianh", "diendapanganlink", "ganlink", "linkupload"}:
+    if normalized in {"practicalsubmission", "upload", "thuchanh", "ganlinktaianh", "diendapanganlink", "ganlink", "linkupload"}:
         return "practical_submission"
     return normalized
 
@@ -120,6 +120,9 @@ def _drive_reference(value):
 
 def _option_answer_key(value, option_keys):
     part = str(value or "").strip().upper()
+    # Numeric cells exported from Sheets can arrive as 3.0 instead of "3".
+    if re.fullmatch(r"[1-5]\.0+", part):
+        part = part.split(".", 1)[0]
     if part in option_keys:
         return part
     if part in "ABCDE":
@@ -583,20 +586,22 @@ def generate_variants_from_import(questions, variant_count=5, questions_per_vari
                         len([item for item in category_questions if normalize_knowledge(item.get("knowledge_type")) == "theory"]),
                         len([item for item in category_questions if normalize_knowledge(item.get("knowledge_type")) == "practice"]),
                     ))
-                def assign_topic_knowledge(index, theory_left):
-                    if index == len(topic_rules):
-                        return theory_left == 0
-                    total = topic_rules[index]["count"]
-                    theory_available, practice_available = capacities[index]
-                    minimum = max(0, total - practice_available)
-                    maximum = min(total, theory_available, theory_left)
-                    for theory_count in range(maximum, minimum - 1, -1):
-                        topic_knowledge_plan[index] = theory_count
-                        if assign_topic_knowledge(index + 1, theory_left - theory_count):
-                            return True
-                    return False
-                if not assign_topic_knowledge(0, knowledge_rule["theory"]):
+                # Apportion practical questions by the requested topic sizes,
+                # bounded by each topic's available theory and practice pool.
+                # Explicit per-topic knowledge counts are handled separately.
+                minimums = [max(0, rule["count"] - capacities[index][0]) for index, rule in enumerate(topic_rules)]
+                maximums = [min(rule["count"], capacities[index][1]) for index, rule in enumerate(topic_rules)]
+                practice_total = knowledge_rule["practice"]
+                if any(low > high for low, high in zip(minimums, maximums)) or not sum(minimums) <= practice_total <= sum(maximums):
                     raise ValueError("Ngân hàng không đủ câu theo cơ cấu Lý thuyết/Thực hành và các chủ đề đã chọn.")
+                practice_counts = minimums[:]
+                targets = [practice_total * rule["count"] / questions_per_variant for rule in topic_rules]
+                for _ in range(practice_total - sum(practice_counts)):
+                    eligible = [index for index in range(len(topic_rules)) if practice_counts[index] < maximums[index]]
+                    rng.shuffle(eligible)
+                    chosen = max(eligible, key=lambda index: targets[index] - practice_counts[index])
+                    practice_counts[chosen] += 1
+                topic_knowledge_plan = {index: rule["count"] - practice_counts[index] for index, rule in enumerate(topic_rules)}
             for rule_index, rule in enumerate(topic_rules):
                 candidates = [
                     question for question in unique_questions
@@ -851,6 +856,7 @@ def public_questions(assessment, variant):
                 "media_file_id", "media_type", "answer_image_url", "category", "difficulty",
             )
         }
+        question["type"] = _question_type(question.get("type"))
         if question.get("type") == "matching":
             question["options"] = _normalized_matching_options(question.get("options") or [])
         result.append(question)

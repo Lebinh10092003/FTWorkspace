@@ -6,8 +6,8 @@ export const questionTypeLabels: Record<string, string> = {
   short_answer: "Trả lời ngắn",
   matching: "Ghép nối",
   ordering: "Sắp xếp",
-  practical_submission: "Điền đáp án / nộp sản phẩm",
-  file_upload: "Tải tệp",
+  practical_submission: "Điền đáp án (Gắn link)",
+  file_upload: "Tải tệp ảnh",
 };
 export const questionTypes = Object.entries(questionTypeLabels);
 const optionText = (question: any) => (question.options || []).map((option: any) => question.type === "matching"
