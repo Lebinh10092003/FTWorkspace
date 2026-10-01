@@ -39,6 +39,7 @@ with sqlite3.connect(backup_path.as_uri() + '?mode=ro', uri=True) as old, sqlite
         ORDER BY p.name, w.work_date, w.id
     ''').fetchall()
     current_work_ids = {row[0] for row in current.execute('SELECT id FROM work_schedule_workitem')}
+    current.row_factory = sqlite3.Row
     current_training_ids = {row[0] for row in current.execute('SELECT id FROM digital_training_trainingsession')}
     report = []
     for raw in rows:
@@ -50,6 +51,24 @@ with sqlite3.connect(backup_path.as_uri() + '?mode=ro', uri=True) as old, sqlite
         row['timesMatch'] = (row['start_time'], row['end_time']) == (row['training_start'], row['training_end'])
         row['hasProgressNote'] = bool(row.pop('progress_note'))
         row['hasReviewNote'] = bool(row.pop('review_note'))
+        row['workDataPreserved'] = False
+        row['relationsPreserved'] = False
+        if row['workRowStillExists']:
+            before = dict(old.execute('SELECT * FROM work_schedule_workitem WHERE id = ?', (row['id'],)).fetchone())
+            after = dict(current.execute('SELECT * FROM work_schedule_workitem WHERE id = ?', (row['id'],)).fetchone())
+            for values in (before, after):
+                values.pop('training_session_id', None)
+                for column in ('title_format_runs',):
+                    if values.get(column) is not None:
+                        values[column] = json.loads(values[column])
+            row['workDataPreserved'] = before == after
+            row['relationsPreserved'] = all(
+                sorted(entry[0] for entry in old.execute(
+                    f'SELECT userprofile_id FROM work_schedule_workitem_{relation} WHERE workitem_id = ?', (row['id'],),
+                )) == sorted(entry[0] for entry in current.execute(
+                    f'SELECT userprofile_id FROM work_schedule_workitem_{relation} WHERE workitem_id = ?', (row['id'],),
+                )) for relation in ('supporters', 'managers')
+            )
         report.append(row)
     removed = [row for row in report if row['source'] != 'work_schedule' and not row['workRowStillExists']]
     queues = {}
