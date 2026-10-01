@@ -1674,7 +1674,8 @@ class WorkScheduleApiTests(TestCase):
         original = WorkItem.objects.create(creator=self.executor, executor=self.executor, title='Chuẩn bị tập huấn',
             work_date='2026-09-18', training_session=projected)
         call_command('detach_training_calendars', '--apply', stdout=StringIO())
-        self.assertFalse(WorkItem.objects.filter(pk__in=[item.pk for item in mirrors]).exists())
+        self.assertEqual(WorkItem.objects.filter(pk__in=[item.pk for item in mirrors]).count(), 2)
+        self.assertFalse(WorkItem.objects.filter(training_session__isnull=False).exists())
         original.refresh_from_db()
         self.assertIsNone(original.training_session_id)
         self.assertEqual(TrainingSession.objects.filter(pk__in=[session.pk for session in sessions] + [projected.pk]).count(), 3)

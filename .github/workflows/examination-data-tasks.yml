@@ -15,10 +15,15 @@ on:
           - audit-registrations
           - audit-candidate-queue
           - audit-training-calendars
+          - restore-detached-work-items
         required: true
         default: sync-work-schedule
       only:
         description: 'rename-sco: chỉ đổi các mã này, cách nhau bằng dấu phẩy. Bỏ trống là tất cả.'
+        required: false
+        default: ''
+      backup:
+        description: 'restore-detached-work-items: pre-cleanup backup filename'
         required: false
         default: ''
       session:
@@ -76,6 +81,7 @@ jobs:
         env:
           TASK: ${{ inputs.task }}
           ONLY: ${{ inputs.only }}
+          BACKUP: ${{ inputs.backup }}
           SESSION: ${{ inputs.session }}
           ROUND: ${{ inputs.round }}
           BATCH: ${{ inputs.batch }}
@@ -86,6 +92,10 @@ jobs:
           FLAG=""
           if [ "$APPLY" = "true" ]; then FLAG="--apply"; fi
           case "$TASK" in
+            restore-detached-work-items)
+              [[ "$BACKUP" =~ ^workspace-[0-9]{8}-[0-9]{6}\.sqlite3$ ]]
+              [[ "$ONLY" =~ ^[0-9]+(,[0-9]+)*$ ]]
+              CMD="restore_detached_work_items --backup /home/workspace/ft-workspace-data/backups/$BACKUP --ids $ONLY $FLAG" ;;
             audit-candidate-queue)
               CMD="sync_examination_candidate_queue --audit-only" ;;
             audit-training-calendars)
