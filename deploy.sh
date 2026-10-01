@@ -103,7 +103,7 @@ sudo systemctl enable --now "$EXAM_SHEET_SCAN_TIMER_NAME"
 sudo systemctl enable --now workspace-examination-partner-contacts.timer
 "$VENV_DIR/bin/python" backend/manage.py queue_examination_schedule_format
 if ! "$VENV_DIR/bin/python" backend/manage.py sync_examination_partner_contacts; then
-  echo "WARNING: Partner contact Sheet sync deferred to the retry timer." >&2
+  echo "WARNING: Examination partner/candidate Sheet sync deferred to the retry timer." >&2
 fi
 sudo systemctl enable --now "$DB_BACKUP_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_REPORT_TIMER_NAME"

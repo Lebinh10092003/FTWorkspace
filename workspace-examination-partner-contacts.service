@@ -1,5 +1,5 @@
 [Unit]
-Description=Sync Examination partners to teacher contact Google Sheet
+Description=Sync Examination partners and candidates to shared Google Sheet
 After=network-online.target workspace-django.service
 Wants=network-online.target
 
