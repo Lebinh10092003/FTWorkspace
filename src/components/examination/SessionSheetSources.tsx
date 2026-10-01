@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import SheetDialog from './SheetDialog';
 import { Clock3, ExternalLink, FileSpreadsheet, Pencil, Plus, RefreshCw, UploadCloud, X } from 'lucide-react';
 
-type SheetSource = { id: string; name?: string; url: string; stage?: string; sheetTab?: string; automationEnabled?: boolean; automationStartDate?: string; automationEndDate?: string; pendingManualImport?: boolean; changeDetectedAt?: string | null };
+type SheetSource = { id: string; name?: string; url: string; stage?: string; sheetTab?: string; automationEnabled?: boolean; automationStartDate?: string; automationEndDate?: string; pendingManualImport?: boolean; changeDetectedAt?: string | null; lastError?: string };
 type Props = { sources: SheetSource[]; sessionId: string; sessionLabel: string; idToken?: string | null; canManage: boolean; onImport: () => void; onSourcesChanged: (sources: SheetSource[]) => void };
 type ExportPreview = { currentFingerprint: string; sheetTab: string; changedCells: number; changedRows: number; matchedRows?: number; appendedRows?: number; appendedCandidates?: { code?: string; name?: string; birth_date?: string; identity?: string; email?: string; phone?: string }[]; unmatchedSheetRows?: number[]; matchConflicts?: { row: number; rowLabel: string; reason: string; sheetIdentity?: string; candidateOptions?: string[] }[]; changes: { cell: string; row?: number; rowLabel?: string; column?: string; field?: string; current: string; next: string }[]; changesTruncated?: boolean };
 type ImportPreview = { source?: { name?: string; id?: string; fingerprint?: string; sheetTab?: string }; summary?: { total?: number; new?: number; matched?: number; changed?: number; unchanged?: number; conflicts?: number; webOnly?: number }; webOnlyRecords?: { code?: string; name?: string; birthDate?: string; identity?: string; email?: string; phone?: string }[]; records: { code?: string; name?: string; _preview?: { sourceRow?: number; status?: 'new' | 'changed' | 'unchanged' | 'conflict'; matchedCode?: string; changedFields?: string[]; changes?: { field: string; label?: string; current?: string; next?: string }[] } }[] };
 const sheetType = (source: SheetSource) => source.stage === 'form-webhook' ? 'Form đăng ký' : source.stage === 'session-output' ? 'Sheet tổng hợp' : 'Sheet đầu vào';
-const schedule = (source: SheetSource) => source.stage === 'form-webhook' ? 'Tự động khi có đăng ký / chỉnh sửa' : !source.automationEnabled ? 'Chưa bật đồng bộ tự động' : `${source.stage === 'session-output' ? 'Xuất 11:00 và 16:00' : 'Tự nhập khi Sheet thay đổi · kiểm tra mỗi 5 phút'}${[source.automationStartDate, source.automationEndDate].filter(Boolean).length ? ` · ${[source.automationStartDate, source.automationEndDate].filter(Boolean).join(' – ')}` : ''}`;
+const schedule = (source: SheetSource) => source.stage === 'form-webhook' ? 'Tự động khi có đăng ký / chỉnh sửa' : `Tự ghi thí sinh mới từ web${source.automationEnabled ? ` · ${source.stage === 'session-output' ? 'Đối soát xuất 11:00 và 16:00' : 'Tự nhập khi Sheet thay đổi · kiểm tra mỗi 5 phút'}` : ''}${[source.automationStartDate, source.automationEndDate].filter(Boolean).length ? ` · ${[source.automationStartDate, source.automationEndDate].filter(Boolean).join(' – ')}` : ''}`;
 
 export default function SessionSheetSources({ sources, sessionId, sessionLabel, idToken, canManage, onImport, onSourcesChanged }: Props) {
   const [editing, setEditing] = useState<SheetSource | null>(null);
@@ -132,6 +132,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 <Clock3 className="h-4 w-4" />
 {schedule(source)}</p>
 </div>
+{source.lastError && <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">Đồng bộ đang chờ xử lý: {source.lastError}</p>}
 <a href={source.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex max-w-full items-center gap-1.5 truncate text-sm font-bold text-indigo-700 hover:underline">
 <ExternalLink className="h-4 w-4 shrink-0" />Mở Google Sheet</a>
 </div>

@@ -13,6 +13,8 @@ on:
           - rename-sco-competitions
           - set-round-date
           - audit-registrations
+          - audit-candidate-queue
+          - audit-training-calendars
         required: true
         default: sync-work-schedule
       only:
@@ -84,6 +86,10 @@ jobs:
           FLAG=""
           if [ "$APPLY" = "true" ]; then FLAG="--apply"; fi
           case "$TASK" in
+            audit-candidate-queue)
+              CMD="sync_examination_candidate_queue --audit-only" ;;
+            audit-training-calendars)
+              CMD="detach_training_calendars" ;;
             audit-registrations)
               CMD="audit_examination_registrations"
               if [ -n "$ONLY" ]; then CMD="$CMD --only '$ONLY'"; fi ;;

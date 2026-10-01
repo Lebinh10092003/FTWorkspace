@@ -1251,7 +1251,12 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         headers = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=f'{range_title}!A2:O2',
         ).execute().get('values', [])
-        if not headers or [normalise_str(value) for value in headers[0]] != [normalise_str(value) for value in PROFILE_EXPORT_HEADERS]:
+        # Older official templates include usage hints such as
+        # "Ngày sinh (DD/MM/YYYY hoặc YYYY)" and "Lớp đang học (ví dụ: 6A1)".
+        # Compare the field labels while retaining the exact column order.
+        def profile_header(value):
+            return normalise_str(re.sub(r'\([^)]*\)', '', str(value or '')))
+        if not headers or [profile_header(value) for value in headers[0]] != [profile_header(value) for value in PROFILE_EXPORT_HEADERS]:
             raise ValueError(f'Tab {tab_name} chưa đúng mẫu hồ sơ thí sinh để tự động ghi thêm; cần kiểm tra hàng tiêu đề 2.')
     current = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,

@@ -44,8 +44,15 @@ def drain_session_sheet_queue(limit=100):
         for session_id, jobs in grouped.items():
             try:
                 codes = list(Candidate.objects.filter(pk__in=[job.candidate_id for job in jobs]).values_list('code', flat=True))
+                failures = []
                 for sheet in destinations(session_id):
-                    result = export_session_to_google_sheet(sheet, export_mode='append-only', append_candidate_codes=codes, validate_template=True)
+                    try:
+                        result = export_session_to_google_sheet(sheet, export_mode='append-only', append_candidate_codes=codes, validate_template=True)
+                    except Exception as exc:
+                        failures.append(f'{sheet.name}: {exc}')
+                        ExaminationSheet.objects.filter(pk=sheet.pk).update(last_error=str(exc)[:1000])
+                        continue
+                    ExaminationSheet.objects.filter(pk=sheet.pk).update(last_error='')
                     if result.get('exported'):
                         summary['appended'] += result['exported']
                         sheet.last_export_at = timezone.now()
@@ -57,6 +64,8 @@ def drain_session_sheet_queue(limit=100):
                         sheet.save(update_fields=fields)
                         from .sheet_scheduler import record_sheet_log
                         record_sheet_log(sheet, f'Hàng đợi đã ghi thêm {result["exported"]} thí sinh từ web vào tab {sheet.sheet_tab}.')
+                if failures:
+                    raise ValueError('; '.join(failures))
                 for job in jobs:
                     SessionSheetOutbox.objects.filter(pk=job.pk, revision=job.revision).delete()
                 summary['synced'] += len(jobs)

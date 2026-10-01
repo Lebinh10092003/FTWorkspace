@@ -1,4 +1,5 @@
 from io import StringIO
+import json
 from unittest.mock import MagicMock, patch
 
 from django.core.management import call_command
@@ -8,6 +9,7 @@ from django.utils import timezone
 from .candidate_roster_sync import HEADERS, TAB_TITLE, candidate_rows, sync_candidate_roster
 from .candidate_sheet_queue import drain_candidate_sheet_queue, enqueue_candidate
 from .session_sheet_queue import drain_session_sheet_queue
+from .sync import PROFILE_EXPORT_HEADERS, export_session_to_google_sheet
 from .models import Candidate, CandidateParticipation, CandidateSheetOutbox, Competition, ExamSession, RoundResult, ExaminationSheet, SessionSheetOutbox
 
 
@@ -153,3 +155,45 @@ class CandidateRosterSyncTests(TestCase):
         self.assertEqual(SessionSheetOutbox.objects.count(), 1)
         for call in export.call_args_list:
             self.assertEqual(call.kwargs, {'export_mode': 'append-only', 'append_candidate_codes': ['FT-001'], 'validate_template': True})
+
+    @patch('examination.session_sheet_queue.export_session_to_google_sheet')
+    def test_broken_destination_does_not_block_other_tab_in_same_session(self, export):
+        for index in range(2):
+            ExaminationSheet.objects.create(id=f'destination-{index}', name=f'Roster {index}',
+                url='https://docs.google.com/spreadsheets/d/roster', sheet_tab=f'Tab {index}',
+                session_id=self.session.pk, stage='session-output', created_at=timezone.now(), updated_at=timezone.now())
+        export.side_effect = [ValueError('wrong tab'), {'exported': 1}]
+        result = drain_session_sheet_queue()
+        self.assertEqual(export.call_count, 2)
+        self.assertEqual(result['appended'], 1)
+        self.assertEqual(result['failed'], 1)
+        self.assertEqual(SessionSheetOutbox.objects.count(), 1)
+        self.assertEqual(ExaminationSheet.objects.get(pk='destination-0').last_error, 'wrong tab')
+
+    @patch('examination.sync.build_sheets_service')
+    def test_event_export_accepts_legacy_header_hints_but_rejects_wrong_fields(self, build):
+        sheet = ExaminationSheet.objects.create(id='legacy-template', name='Roster',
+            url='https://docs.google.com/spreadsheets/d/roster', sheet_tab='Roster',
+            session_id=self.session.pk, stage='session-output', created_at=timezone.now(), updated_at=timezone.now())
+        service = build.return_value
+        service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {'sheetId': 1, 'title': 'Roster'}}]}
+        headers = list(PROFILE_EXPORT_HEADERS)
+        headers[3] = 'Ngày sinh\n (DD/MM/YYYY hoặc YYYY)'
+        headers[13] = 'Lớp đang học\n (ví dụ: 6A1)'
+        service.spreadsheets().values().get().execute.side_effect = [{'values': [headers]}, {'values': []}]
+        result = export_session_to_google_sheet(sheet, export_mode='append-only', validate_template=True)
+        self.assertEqual(result['exported'], 1)
+        service.spreadsheets().values().append.assert_called_once()
+        headers[3] = 'Ngày đăng ký'
+        service.spreadsheets().values().get().execute.side_effect = [{'values': [headers]}]
+        with self.assertRaisesMessage(ValueError, 'chưa đúng mẫu'):
+            export_session_to_google_sheet(sheet, export_mode='append-only', validate_template=True)
+
+    @patch('examination.management.commands.sync_examination_candidate_queue.drain_session_sheet_queue')
+    @patch('examination.management.commands.sync_examination_candidate_queue.drain_candidate_sheet_queue')
+    def test_queue_audit_counts_pending_without_sending_data(self, contacts, sessions):
+        output = StringIO()
+        call_command('sync_examination_candidate_queue', audit_only=True, stdout=output)
+        self.assertEqual(json.loads(output.getvalue())['remaining']['contacts'], 1)
+        contacts.assert_not_called()
+        sessions.assert_not_called()
