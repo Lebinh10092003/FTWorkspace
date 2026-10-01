@@ -619,7 +619,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     [query, tasks],
   );
   const todayIso = iso(new Date()),
-    notificationStart = `${todayIso.slice(0, 7)}-01`,
+    notificationStart = retentionStart,
     overdueTasks = tasks.filter((task) => task.executor.email === userEmail && task.date >= notificationStart && task.date < todayIso && (task.status === "todo" || task.status === "doing")),
     overdueDates = [...new Set(overdueTasks.map((task) => task.date))].sort(),
     dailyTasks = filtered.filter((task) => task.date === selectedDate && task.executor.email === userEmail),

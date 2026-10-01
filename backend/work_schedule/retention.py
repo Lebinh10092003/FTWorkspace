@@ -14,9 +14,8 @@ def retained_from(value=None):
 
 
 def notification_from(value=None):
-    """Old-task reminders only concern the current calendar month."""
-    value = value or timezone.localdate()
-    return value.replace(day=1)
+    """Unfinished-task reminders include the retained history across months."""
+    return retained_from(value)
 
 
 def purge_expired_work_schedule(value=None):

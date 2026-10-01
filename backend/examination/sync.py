@@ -1232,7 +1232,7 @@ def tab_content_fingerprint(sheet, google_access_token=None):
             f'CSV công khai: {public_failure}; Google API: {api_error}'
         ) from api_error
 
-def export_session_to_google_sheet(sheet, google_access_token=None, export_mode='merge', append_candidate_codes=None):
+def export_session_to_google_sheet(sheet, google_access_token=None, export_mode='merge', append_candidate_codes=None, validate_template=False):
     session = ExamSession.objects.filter(id=sheet.session_id).first()
     if not session:
         raise ValueError('Không tìm thấy kỳ tổ chức được gắn với nguồn Google Sheets.')
@@ -1247,6 +1247,12 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
     tab_name = _output_sheet_target(sheet, service).get('title')
 
     range_title = _sheet_range_title(tab_name)
+    if validate_template:
+        headers = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id, range=f'{range_title}!A2:O2',
+        ).execute().get('values', [])
+        if not headers or [normalise_str(value) for value in headers[0]] != [normalise_str(value) for value in PROFILE_EXPORT_HEADERS]:
+            raise ValueError(f'Tab {tab_name} chưa đúng mẫu hồ sơ thí sinh để tự động ghi thêm; cần kiểm tra hàng tiêu đề 2.')
     current = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
         range=f'{range_title}!A3:ZZ',
@@ -1276,7 +1282,13 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
             range=f'{range_title}!A3:ZZ',
             body={},
         ).execute()
-    if values_to_write:
+    if values_to_write and export_mode == 'append-only' and validate_template:
+        service.spreadsheets().values().append(
+            spreadsheetId=spreadsheet_id, range=f'{range_title}!A3:BR',
+            valueInputOption='RAW', insertDataOption='INSERT_ROWS',
+            body={'values': values_to_write},
+        ).execute()
+    elif values_to_write:
         service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
             range=f'{range_title}!A{start_row}',
@@ -1290,6 +1302,7 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         'sessionId': session.id,
         'sheetTab': tab_name,
         'exported': exported_count,
+        'currentFingerprint': sheet_values_fingerprint(current),
         'fingerprint': sheet_values_fingerprint(resulting_values),
         'message': '\u0110\u00e3 xu\u1ea5t {} h\u1ed3 s\u01a1 sang Google Sheets.'.format(exported_count),
     }

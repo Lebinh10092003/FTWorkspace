@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.authtoken.models import Token
@@ -133,7 +134,9 @@ class WorkScheduleSheetParserTests(TestCase):
     def test_rolling_history_and_notification_windows(self):
         today = date(2026, 9, 10)
         self.assertEqual(retained_from(today), date(2026, 7, 1))
-        self.assertEqual(notification_from(today), date(2026, 9, 1))
+        self.assertEqual(notification_from(today), date(2026, 7, 1))
+        self.assertEqual(notification_from(date(2026, 10, 1)), date(2026, 8, 1))
+        self.assertLess(notification_from(date(2027, 1, 1)), date(2026, 12, 31))
 
     def test_attendance_value_uses_the_visible_multiline_format(self):
         class Shift:
@@ -900,7 +903,7 @@ class WorkScheduleApiTests(TestCase):
 
         self.assertEqual(deleted.status_code, 200, deleted.data)
         self.assertFalse(WorkItem.objects.filter(pk=item.id).exists())
-        self.assertFalse(TrainingSession.objects.filter(pk=session.id).exists())
+        self.assertTrue(TrainingSession.objects.filter(pk=session.id).exists())
 
     def test_progress_note_can_be_updated_independently_in_any_status(self):
         item = self.create_item()
@@ -1260,7 +1263,7 @@ class WorkScheduleApiTests(TestCase):
         self.assertEqual(rejected.status_code, 403, rejected.data)
         self.assertFalse(WorkItem.objects.filter(title="Không được tạo dở dang").exists())
 
-    @override_settings(WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED=True)
+    @override_settings(WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED=True, TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED=True)
     def test_training_schedule_syncs_both_ways_with_three_hour_duration(self):
         response = self.request(self.manager_token, "post", "/api/work-schedule/items", {
             "title": "Tập huấn B1 TH Trung Văn", "date": "2026-09-15",
@@ -1284,7 +1287,7 @@ class WorkScheduleApiTests(TestCase):
         self.assertEqual(item.work_date.isoformat(), "2026-09-16")
         self.assertEqual(item.status, "completed")
 
-    @override_settings(WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED=True)
+    @override_settings(WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED=True, TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED=True)
     def test_training_schedule_preserves_an_explicit_end_time_when_edited(self):
         from digital_training.models import TrainingSession
 
@@ -1338,6 +1341,7 @@ class WorkScheduleApiTests(TestCase):
             "a Đào tạo số session must not create a row on the personal schedule",
         )
 
+    @override_settings(TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED=True)
     def test_deleting_a_mirrored_row_keeps_the_digital_training_session(self):
         """Removing the stray row must not delete the real Đào tạo số session."""
         from digital_training.models import TrainingSession
@@ -1656,10 +1660,34 @@ class WorkScheduleApiTests(TestCase):
             time_prefix_in_title=False,
         )
 
-        self.assertEqual(sync_training_from_work_item(item), session)
+        self.assertIsNone(sync_training_from_work_item(item))
         self.assertTrue(TrainingSession.objects.filter(pk=session.pk).exists())
         item.refresh_from_db()
         self.assertEqual(item.training_session_id, session.pk)
+
+    def test_detach_training_calendars_covers_all_staff_and_preserves_originals(self):
+        from digital_training.models import TrainingSession
+        sessions = [TrainingSession.objects.create(title=f'Tập huấn {index}', session_date='2026-09-18') for index in range(2)]
+        mirrors = [WorkItem.objects.create(creator=self.manager, executor=person, title=session.title,
+            work_date=session.session_date, training_session=session) for person, session in zip([self.executor, self.supporter], sessions)]
+        projected = TrainingSession.objects.create(title='Lịch từ công tác cũ', source='work_schedule', session_date='2026-09-18')
+        original = WorkItem.objects.create(creator=self.executor, executor=self.executor, title='Chuẩn bị tập huấn',
+            work_date='2026-09-18', training_session=projected)
+        call_command('detach_training_calendars', '--apply', stdout=StringIO())
+        self.assertFalse(WorkItem.objects.filter(pk__in=[item.pk for item in mirrors]).exists())
+        original.refresh_from_db()
+        self.assertIsNone(original.training_session_id)
+        self.assertEqual(TrainingSession.objects.filter(pk__in=[session.pk for session in sessions] + [projected.pk]).count(), 3)
+
+    def test_legacy_training_link_does_not_update_work_item_completion(self):
+        from digital_training.models import TrainingSession
+        from digital_training.completion_service import complete_past_training_schedules
+        session = TrainingSession.objects.create(title='Tập huấn cũ', session_date=timezone.localdate() - timedelta(days=1))
+        item = WorkItem.objects.create(creator=self.executor, executor=self.executor, title=session.title,
+            work_date=session.session_date, training_session=session)
+        complete_past_training_schedules()
+        item.refresh_from_db()
+        self.assertEqual(item.status, WorkItem.STATUS_TODO)
 
     def test_organisational_manager_views_report_only_in_team_schedule(self):
         self.executor.manager = self.manager

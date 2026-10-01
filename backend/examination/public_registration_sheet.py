@@ -27,10 +27,10 @@ def row_for(item, tab):
         candidate.grade or '',
     ]
     if tab == 'SIAIO':
-        values[12] = f'Chứng từ trên Workspace #{item.id}' if item.proof else ''
+        values[12] = f'Chứng từ trên Workspace #{item.id}' if item.proof_type else ''
     else:
         values[12] = ', '.join(chosen)
-        values[13] = ('Có' if item.payment_declared else 'Chưa xác nhận') if tab == 'FIMO, FIEO' else (f'Chứng từ trên Workspace #{item.id}' if item.proof else '')
+        values[13] = ('Có' if item.payment_declared else 'Chưa xác nhận') if tab == 'FIMO, FIEO' else (f'Chứng từ trên Workspace #{item.id}' if item.proof_type else '')
     values[17] = f'WORKSPACE:{item.id}'
     return values
 
@@ -91,7 +91,7 @@ def sync_registration(item, service=None):
 
 def sync_pending(limit=30):
     result = {'synced': 0, 'failed': 0}
-    for item in PublicExamRegistration.objects.select_related('candidate').exclude(sheet_status='synced').order_by('created_at')[:limit]:
+    for item in PublicExamRegistration.objects.select_related('candidate').defer('proof').exclude(sheet_status='synced').order_by('created_at')[:limit]:
         try:
             sync_registration(item)
             result['synced'] += 1

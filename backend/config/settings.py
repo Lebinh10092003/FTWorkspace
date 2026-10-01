@@ -97,19 +97,13 @@ MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE_BYTES", str(10 * 1024 * 1024)))
 # Work-schedule rows are currently treated as unconfirmed training suggestions.
 # Keep direct/customer-created Digital Training sessions authoritative while the
 # reconciliation workflow is being introduced.
-WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED = env_bool(
-    "WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED",
-    False,
-)
+WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED = False
 # The mirror image of the setting above. Đào tạo số sessions used to copy
 # themselves onto the instructor's personal schedule, so Lịch cá nhân filled up
 # with identically shaped rows their owner never wrote. The two calendars are
 # separate: a training session belongs to Đào tạo số, and staff add their own
 # work-schedule row when they want one.
-TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED = env_bool(
-    "TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED",
-    False,
-)
+TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED = False
 # Friday reporting destinations. These defaults are the Fermat shared
 # workbooks; deployments may point to an alternate test or production copy.
 WEEKLY_REPORT_SHEET_ID = os.getenv(

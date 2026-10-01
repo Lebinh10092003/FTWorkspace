@@ -1,0 +1,10 @@
+[Unit]
+Description=Retry pending candidate Sheet exports every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+Unit=workspace-examination-candidate-queue.service
+
+[Install]
+WantedBy=timers.target

@@ -97,6 +97,8 @@ def _normalise_orders(executor_id, work_date):
 
 
 def sync_training_from_work_item(item):
+    if not settings.WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED:
+        return None
     # A TrainingSession created inside Digital Training (manually or from a
     # customer) owns its data. Sheet synchronization must never delete or
     # rewrite it merely because its mirrored WorkItem later changes.
@@ -159,6 +161,8 @@ def sync_training_from_work_item(item):
 
 
 def sync_work_item_from_training(session, actor):
+    if not settings.TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED:
+        return None
     try:
         item = session.work_schedule_item
     except WorkItem.DoesNotExist:
@@ -217,11 +221,13 @@ def delete_training_for_work_item(item):
     session = item.training_session
     WorkItem.objects.filter(pk=item.pk).update(training_session=None)
     item.training_session = None
-    if session.source == TrainingSession.SOURCE_WORK_SCHEDULE:
+    if settings.WORK_SCHEDULE_TRAINING_PROJECTION_ENABLED and session.source == TrainingSession.SOURCE_WORK_SCHEDULE:
         session.delete()
 
 
 def delete_work_item_for_training(session):
+    if not settings.TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED:
+        return
     try:
         item = session.work_schedule_item
     except WorkItem.DoesNotExist:

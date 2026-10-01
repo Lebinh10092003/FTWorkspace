@@ -257,7 +257,7 @@ def workspace_pending(request):
     if not signed_script_request(request):
         return Response({'error': 'Khóa đồng bộ không hợp lệ.'}, status=403)
     rows = []
-    for item in PublicExamRegistration.objects.select_related('candidate').exclude(sheet_status='synced').order_by('created_at')[:50]:
+    for item in PublicExamRegistration.objects.select_related('candidate').defer('proof').exclude(sheet_status='synced').order_by('created_at')[:20]:
         tabs = {tab: row_for(item, tab) for tab in export_tabs(item) if tab not in (item.sheet_rows or {})}
         if tabs:
             rows.append({'registrationId': str(item.id), 'tabs': tabs})

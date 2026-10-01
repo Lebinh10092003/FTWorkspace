@@ -2,11 +2,13 @@ from io import StringIO
 from unittest.mock import MagicMock, patch
 
 from django.core.management import call_command
-from django.core.management.base import CommandError
 from django.test import TestCase
+from django.utils import timezone
 
 from .candidate_roster_sync import HEADERS, TAB_TITLE, candidate_rows, sync_candidate_roster
-from .models import Candidate, CandidateParticipation, Competition, ExamSession, RoundResult
+from .candidate_sheet_queue import drain_candidate_sheet_queue, enqueue_candidate
+from .session_sheet_queue import drain_session_sheet_queue
+from .models import Candidate, CandidateParticipation, CandidateSheetOutbox, Competition, ExamSession, RoundResult, ExaminationSheet, SessionSheetOutbox
 
 
 class CandidateRosterSyncTests(TestCase):
@@ -89,11 +91,65 @@ class CandidateRosterSyncTests(TestCase):
         service.spreadsheets().batchUpdate.assert_not_called()
         service.spreadsheets().values().clear.assert_not_called()
 
-    @patch('examination.management.commands.sync_examination_partner_contacts.sync_candidate_roster')
     @patch('examination.management.commands.sync_examination_partner_contacts.sync_partner_contacts')
-    def test_scheduled_command_attempts_both_exports(self, partners, candidates):
-        partners.side_effect = ValueError('Partner tab unavailable')
-        candidates.return_value = {'status': 'synced', 'candidates': 1, 'registrations': 2}
-        with self.assertRaises(CommandError):
-            call_command('sync_examination_partner_contacts', stdout=StringIO())
-        candidates.assert_called_once_with(force=False)
+    def test_scheduled_command_only_exports_partners(self, partners):
+        partners.return_value = {'status': 'unchanged', 'partners': 1}
+        call_command('sync_examination_partner_contacts', stdout=StringIO())
+        partners.assert_called_once_with(force=False)
+
+    @patch('examination.candidate_sheet_queue.build_sheets_service')
+    def test_candidate_events_upsert_only_their_rows_and_clear_queue(self, build):
+        self.assertEqual(CandidateSheetOutbox.objects.filter(candidate_id=self.candidate.id).count(), 1)
+        service = MagicMock()
+        build.return_value = service
+        service.spreadsheets().get().execute.return_value = {'sheets': [
+            {'properties': {'title': TAB_TITLE, 'hidden': False}},
+        ]}
+        service.spreadsheets().values().get().execute.return_value = {'values': [HEADERS]}
+
+        result = drain_candidate_sheet_queue()
+        self.assertEqual(result['appended'], 2)
+        self.assertEqual(CandidateSheetOutbox.objects.count(), 0)
+        service.spreadsheets().values().clear.assert_not_called()
+        self.assertEqual(service.spreadsheets().values().append.call_args.kwargs['body']['values'][0][0], 'FT-001')
+
+    @patch('examination.candidate_sheet_queue.build_sheets_service')
+    def test_sheet_failure_retains_candidate_for_retry(self, build):
+        build.side_effect = RuntimeError('temporary Google outage')
+        with self.assertRaisesRegex(RuntimeError, 'temporary Google outage'):
+            drain_candidate_sheet_queue()
+        job = CandidateSheetOutbox.objects.get(candidate_id=self.candidate.id)
+        self.assertEqual(job.attempts, 1)
+        self.assertIn('temporary Google outage', job.last_error)
+
+    @patch('examination.candidate_sheet_queue.build_sheets_service')
+    def test_retry_finds_previously_written_rows_without_appending_duplicates(self, build):
+        service = build.return_value
+        service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {'title': TAB_TITLE}}]}
+        service.spreadsheets().values().get().execute.return_value = {'values': candidate_rows()}
+        self.assertEqual(drain_candidate_sheet_queue()['appended'], 0)
+        service.spreadsheets().values().append.assert_not_called()
+
+    @patch('examination.candidate_sheet_queue.build_sheets_service')
+    def test_new_event_during_export_is_retained(self, build):
+        service = build.return_value
+        service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {'title': TAB_TITLE}}]}
+        service.spreadsheets().values().get().execute.return_value = {'values': [HEADERS]}
+        old_revision = CandidateSheetOutbox.objects.get(candidate_id=self.candidate.pk).revision
+        service.spreadsheets().values().append().execute.side_effect = lambda: enqueue_candidate(self.candidate.pk)
+        drain_candidate_sheet_queue()
+        self.assertNotEqual(CandidateSheetOutbox.objects.get(candidate_id=self.candidate.pk).revision, old_revision)
+
+    @patch('examination.session_sheet_queue.export_session_to_google_sheet')
+    def test_all_linked_sessions_append_new_candidates_and_failed_jobs_retry(self, export):
+        for index, session in enumerate([self.session, self.legacy_session]):
+            ExaminationSheet.objects.create(id=f'queue-source-{index}', name='Roster', url=f'https://docs.google.com/spreadsheets/d/roster-{index}',
+                sheet_tab=f'Contest {index}', session_id=session.pk, stage='registration-source', created_at=timezone.now(), updated_at=timezone.now())
+        self.assertEqual(SessionSheetOutbox.objects.count(), 2)
+        export.side_effect = [RuntimeError('temporary outage'), {'exported': 1}]
+        result = drain_session_sheet_queue()
+        self.assertEqual(result['failed'], 1)
+        self.assertEqual(result['synced'], 1)
+        self.assertEqual(SessionSheetOutbox.objects.count(), 1)
+        for call in export.call_args_list:
+            self.assertEqual(call.kwargs, {'export_mode': 'append-only', 'append_candidate_codes': ['FT-001'], 'validate_template': True})

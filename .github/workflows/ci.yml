@@ -21,6 +21,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: node apps-script/registration-2026-2027/Code.test.cjs
       - run: npm run build
 
   backend:

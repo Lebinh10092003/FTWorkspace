@@ -95,6 +95,28 @@ class CandidateParticipation(models.Model):
         return f"{self.candidate.code} / {self.session.code}"
 
 
+class CandidateSheetOutbox(models.Model):
+    """Durable, coalesced export request for one candidate."""
+    candidate_id = models.CharField(max_length=255, primary_key=True)
+    revision = models.UUIDField(default=uuid.uuid4)
+    enqueued_at = models.DateTimeField(auto_now=True)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True, default='')
+
+
+class SessionSheetOutbox(models.Model):
+    """New session memberships waiting to be appended to their linked Sheets."""
+    candidate_id = models.CharField(max_length=255)
+    session_id = models.CharField(max_length=255)
+    revision = models.UUIDField(default=uuid.uuid4)
+    enqueued_at = models.DateTimeField(auto_now=True)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True, default='')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['candidate_id', 'session_id'], name='unique_session_sheet_outbox')]
+
+
 class ExaminationBillingRecord(models.Model):
     """Accounting facts for one registration; Sheet imports never overwrite these."""
     participation = models.OneToOneField(CandidateParticipation, on_delete=models.CASCADE, related_name='billing')

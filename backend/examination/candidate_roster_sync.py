@@ -46,31 +46,35 @@ def _round_summary(participation):
     return '; '.join(names), '; '.join(attendance), '; '.join(results), latest
 
 
-def candidate_rows():
+def candidate_rows(candidate_ids=None):
     """One row per candidate and session, including explicit legacy memberships."""
     sessions = {item.id: item for item in ExamSession.objects.all()}
     competitions = {item.id: item for item in Competition.objects.all()}
     records = []
-    candidates = Candidate.objects.prefetch_related('participations__round_results').iterator(chunk_size=500)
+    candidates = Candidate.objects.all()
+    if candidate_ids is not None:
+        candidates = candidates.filter(pk__in=candidate_ids)
+    candidates = candidates.prefetch_related('participations__round_results').iterator(chunk_size=500)
     for candidate in candidates:
         participations = {item.session_id: item for item in candidate.participations.all()}
         session_ids = set(participations) | {str(item) for item in candidate.session_ids or []}
-        for session_id in session_ids:
+        session_ids = {session_id for session_id in session_ids if session_id in sessions}
+        for session_id in session_ids or {''}:
             session = sessions.get(session_id)
-            if session is None:
+            if session_id and session is None:
                 continue
             participation = participations.get(session_id)
-            competition = competitions.get(session.competition_id)
+            competition = competitions.get(session.competition_id) if session else None
             round_names, attendance, results, round_updated = _round_summary(participation)
             updated = max(value for value in (candidate.updated_at, participation.updated_at if participation else None, round_updated) if value)
-            records.append((session.sort_key, candidate.sort_key, candidate.code, session_id, [
+            records.append((session.sort_key if session else '', candidate.sort_key, candidate.code, session_id, [
                 candidate.code, candidate.name, format_sheet_date(candidate.birth_date),
                 candidate.school or '', candidate.class_name or '', candidate.grade or '',
                 candidate.city or '', candidate.ward or '', candidate.parent or '',
                 candidate.phone or '', candidate.email or '',
-                competition.code if competition else session.code,
-                competition.name if competition else session.parent,
-                session.code, session.name, session.time,
+                competition.code if competition else session.code if session else '',
+                competition.name if competition else session.parent if session else '',
+                session.code if session else '', session.name if session else '', session.time if session else '',
                 participation.subject if participation else '',
                 participation.category if participation else '',
                 participation.registration_method if participation else '',

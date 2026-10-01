@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.conf import settings
 from django.utils import timezone
 
 from .models import TrainingCustomerMeeting, TrainingSession
@@ -46,7 +47,7 @@ def complete_past_training_schedules(now=None):
     )
     session_ids = list(sessions.values_list("id", flat=True))
     session_count = sessions.update(status="completed", updated_at=moment)
-    if session_ids:
+    if session_ids and settings.TRAINING_WORK_SCHEDULE_PROJECTION_ENABLED:
         from work_schedule.models import WorkItem
         WorkItem.objects.filter(training_session_id__in=session_ids).update(
             status=WorkItem.STATUS_COMPLETED,

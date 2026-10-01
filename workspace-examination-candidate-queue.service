@@ -1,5 +1,5 @@
 [Unit]
-Description=Sync Examination partners to shared Google Sheet
+Description=Retry queued examination candidate exports to Google Sheet
 After=network-online.target workspace-django.service
 Wants=network-online.target
 
@@ -11,4 +11,4 @@ WorkingDirectory=/var/www/ft-workspace/backend
 EnvironmentFile=/var/www/ft-workspace/backend/.env
 Environment=PYTHONUNBUFFERED=1
 Environment=DJANGO_DB_PATH=/home/workspace/ft-workspace-data/workspace.sqlite3
-ExecStart=/var/www/ft-workspace/.venv/bin/python manage.py sync_examination_partner_contacts
+ExecStart=/var/www/ft-workspace/.venv/bin/python manage.py sync_examination_candidate_queue

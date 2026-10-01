@@ -1,11 +1,57 @@
 from django.db import transaction
 from django.db.models import Q
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 
 from authentication.models import UserProfile
 from authentication.notifications import notify_workspace
-from .models import CandidateParticipation, ExaminationBillingRecord
+from .models import Candidate, CandidateParticipation, ExaminationBillingRecord, ExaminationSheet, RoundResult
+from .candidate_sheet_queue import enqueue_candidate
+from .session_sheet_queue import enqueue_session_candidate
+
+
+@receiver(post_save, sender=Candidate)
+def candidate_changed(sender, instance, **kwargs):
+    enqueue_candidate(instance.pk)
+    session_ids = set(instance.session_ids or []) | set(instance.participations.values_list('session_id', flat=True))
+    for session_id in session_ids:
+        enqueue_session_candidate(instance.pk, session_id)
+
+
+@receiver(post_save, sender=CandidateParticipation)
+@receiver(post_delete, sender=CandidateParticipation)
+def participation_changed(sender, instance, **kwargs):
+    enqueue_candidate(instance.candidate_id)
+    enqueue_session_candidate(instance.candidate_id, instance.session_id)
+
+
+@receiver(post_save, sender=RoundResult)
+@receiver(post_delete, sender=RoundResult)
+def round_result_changed(sender, instance, **kwargs):
+    candidate_id = CandidateParticipation.objects.filter(pk=instance.participation_id).values_list('candidate_id', flat=True).first()
+    if candidate_id:
+        enqueue_candidate(candidate_id)
+        session_id = CandidateParticipation.objects.filter(pk=instance.participation_id).values_list('session_id', flat=True).first()
+        enqueue_session_candidate(candidate_id, session_id)
+
+
+@receiver(pre_save, sender=ExaminationSheet)
+def linked_sheet_configuration_changed(sender, instance, **kwargs):
+    fields = ('session_id', 'url', 'sheet_tab', 'stage')
+    previous = ExaminationSheet.objects.filter(pk=instance.pk).values_list(*fields).first()
+    instance._queue_memberships = previous is None or previous != tuple(getattr(instance, field) for field in fields)
+
+
+@receiver(post_save, sender=ExaminationSheet)
+def linked_sheet_created(sender, instance, created, **kwargs):
+    if not created and not getattr(instance, '_queue_memberships', False):
+        return
+    candidate_ids = set(CandidateParticipation.objects.filter(session_id=instance.session_id).values_list('candidate_id', flat=True))
+    for candidate in Candidate.objects.all().only('id', 'session_ids'):
+        if instance.session_id in (candidate.session_ids or []):
+            candidate_ids.add(candidate.pk)
+    for candidate_id in candidate_ids:
+        enqueue_session_candidate(candidate_id, instance.session_id)
 
 
 @receiver(post_save, sender=CandidateParticipation)

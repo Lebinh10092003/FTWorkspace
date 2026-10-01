@@ -84,6 +84,8 @@ sudo install -m 0644 workspace-examination-sheet-scan.service "/etc/systemd/syst
 sudo install -m 0644 workspace-examination-sheet-scan.timer "/etc/systemd/system/$EXAM_SHEET_SCAN_TIMER_NAME"
 sudo install -m 0644 workspace-examination-partner-contacts.service /etc/systemd/system/workspace-examination-partner-contacts.service
 sudo install -m 0644 workspace-examination-partner-contacts.timer /etc/systemd/system/workspace-examination-partner-contacts.timer
+sudo install -m 0644 workspace-examination-candidate-queue.service /etc/systemd/system/workspace-examination-candidate-queue.service
+sudo install -m 0644 workspace-examination-candidate-queue.timer /etc/systemd/system/workspace-examination-candidate-queue.timer
 sudo install -m 0644 workspace-db-backup.service "/etc/systemd/system/$DB_BACKUP_SERVICE_NAME"
 sudo install -m 0644 workspace-db-backup.timer "/etc/systemd/system/$DB_BACKUP_TIMER_NAME"
 sudo install -m 0644 workspace-weekly-report.service "/etc/systemd/system/$WEEKLY_REPORT_SERVICE_NAME"
@@ -101,9 +103,14 @@ sudo systemctl enable --now "$EXAM_SHEET_IMPORT_TIMER_NAME"
 sudo systemctl enable --now "$EXAM_SHEET_EXPORT_TIMER_NAME"
 sudo systemctl enable --now "$EXAM_SHEET_SCAN_TIMER_NAME"
 sudo systemctl enable --now workspace-examination-partner-contacts.timer
+sudo systemctl enable --now workspace-examination-candidate-queue.timer
+"$VENV_DIR/bin/python" backend/manage.py detach_training_calendars --apply
 "$VENV_DIR/bin/python" backend/manage.py queue_examination_schedule_format
 if ! "$VENV_DIR/bin/python" backend/manage.py sync_examination_partner_contacts; then
-  echo "WARNING: Examination partner/candidate Sheet sync deferred to the retry timer." >&2
+  echo "WARNING: Examination partner Sheet sync deferred to the retry timer." >&2
+fi
+if ! "$VENV_DIR/bin/python" backend/manage.py sync_examination_candidate_queue; then
+  echo "WARNING: Candidate Sheet queue deferred to the retry timer." >&2
 fi
 sudo systemctl enable --now "$DB_BACKUP_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_REPORT_TIMER_NAME"
