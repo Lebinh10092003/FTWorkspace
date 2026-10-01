@@ -1,0 +1,42 @@
+name: Audit training calendar detachment
+on:
+  workflow_dispatch:
+    inputs:
+      backup:
+        description: 'Pre-cleanup SQLite backup filename'
+        required: true
+      public_key:
+        description: 'Operator RSA public key (base64 DER); results are encrypted'
+        required: true
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: workspace-production-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare backup with current calendars without changing data
+        env:
+          VPS_HOST: ${{ secrets.DEPLOY_HOST }}
+          VPS_PORT: ${{ secrets.DEPLOY_PORT }}
+          VPS_USERNAME: ${{ secrets.DEPLOY_USER }}
+          SSHPASS: ${{ secrets.DEPLOY_PASSWORD }}
+          AUDIT_BACKUP_NAME: ${{ inputs.backup }}
+          AUDIT_PUBLIC_KEY: ${{ inputs.public_key }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$AUDIT_BACKUP_NAME" =~ ^workspace-[0-9]{8}-[0-9]{6}\.sqlite3$ ]]
+          [[ "$AUDIT_PUBLIC_KEY" =~ ^[A-Za-z0-9+/=]+$ ]]
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -qq -o Acquire::Retries=3
+          sudo apt-get install -y -qq sshpass
+          install -d -m 700 ~/.ssh
+          ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" > ~/.ssh/known_hosts
+          INNER="cd /var/www/ft-workspace/backend && AUDIT_BACKUP_NAME=$AUDIT_BACKUP_NAME AUDIT_PUBLIC_KEY=$AUDIT_PUBLIC_KEY PYTHONIOENCODING=utf-8 ../.venv/bin/python -"
+          sshpass -e ssh -p "$VPS_PORT" -o StrictHostKeyChecking=yes "$VPS_USERNAME@$VPS_HOST" \
+            "if [ \"\$(id -u)\" -eq 0 ]; then exec sudo -u workspace -H bash -lc '$INNER'; else bash -lc '$INNER'; fi" \
+            < backend/scripts/audit_training_detach.py
