@@ -39,4 +39,9 @@ jobs:
           INNER="cd /var/www/ft-workspace/backend && AUDIT_BACKUP_NAME=$AUDIT_BACKUP_NAME AUDIT_PUBLIC_KEY=$AUDIT_PUBLIC_KEY PYTHONIOENCODING=utf-8 ../.venv/bin/python -"
           sshpass -e ssh -p "$VPS_PORT" -o StrictHostKeyChecking=yes "$VPS_USERNAME@$VPS_HOST" \
             "if [ \"\$(id -u)\" -eq 0 ]; then exec sudo -u workspace -H bash -lc '$INNER'; else bash -lc '$INNER'; fi" \
-            < backend/scripts/audit_training_detach.py
+            < backend/scripts/audit_training_detach.py > training-audit.enc.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-training-audit
+          path: training-audit.enc.txt
+          retention-days: 1
