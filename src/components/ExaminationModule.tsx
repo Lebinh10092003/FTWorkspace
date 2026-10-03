@@ -1031,6 +1031,8 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
       canImport={canContribute}
       sessionId={importSessionId}
       sessions={sessions}
+      onPartnersImported={setPartners}
+      onSessionsImported={items => setSessions(current => current.map(session => items.find(item => item.id === session.id) || session))}
       onImported={(items) =>
         setCandidates((list) => {
           const map = new Map(list.map((item) => [item.code, item]));

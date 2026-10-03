@@ -25,6 +25,18 @@ def participation_changed(sender, instance, **kwargs):
     enqueue_session_candidate(instance.candidate_id, instance.session_id)
 
 
+@receiver(pre_save, sender=CandidateParticipation)
+def preserve_school_accounting_metadata(sender, instance, **kwargs):
+    if not instance.school_registration_id:
+        return
+    previous = CandidateParticipation.objects.filter(pk=instance.pk).values_list('registration_data', flat=True).first() or {}
+    data = dict(instance.registration_data or {})
+    for key in ('schoolFee', 'schoolPartnerId'):
+        if key in previous:
+            data[key] = previous[key]
+    instance.registration_data = data
+
+
 @receiver(post_save, sender=RoundResult)
 @receiver(post_delete, sender=RoundResult)
 def round_result_changed(sender, instance, **kwargs):
@@ -56,7 +68,7 @@ def linked_sheet_created(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=CandidateParticipation)
 def registration_created(sender, instance, created, **kwargs):
-    if not created:
+    if not created or instance.school_registration_id:
         return
     ExaminationBillingRecord.objects.get_or_create(participation=instance)
 

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BellRing, CheckCheck, CircleDollarSign, Clock, ReceiptText, Search, TriangleAlert, UserPlus } from 'lucide-react';
 import { appDialog } from '../AppDialog';
+import PaymentImagesInput from './PaymentImagesInput';
 import examinationBillingService, {
   BILLING_INVOICE_LABELS,
   BILLING_TRANSFER_LABELS,
@@ -76,6 +77,24 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
   const [invoiceFilter, setInvoiceFilter] = useState<'all' | BillingInvoiceStatus>('all');
   const [sessionScope, setSessionScope] = useState<BillingSessionScope>('active');
   const [proofUrl, setProofUrl] = useState('');
+  const [uploadTarget, setUploadTarget] = useState<ExaminationBillingRecord | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const uploadImages = async () => {
+    if (!uploadTarget || !uploadFiles.length) return;
+    setUploadBusy(true); setUploadError('');
+    try {
+      await examinationBillingService.uploadProofs(uploadTarget.id, uploadFiles, { idToken });
+      setUploadTarget(null); setUploadFiles([]); await reload();
+      setNotice('Đã bổ sung ảnh chuyển khoản.');
+    } catch (cause: any) { setUploadError(cause?.message || 'Không thể tải ảnh lên.'); }
+    finally { setUploadBusy(false); }
+  };
+  const viewTransferProof = async (id: string) => {
+    try { setProofUrl(await examinationBillingService.proofImage(id, { idToken })); }
+    catch (cause: any) { setError(cause?.message || 'Không thể tải ảnh.'); }
+  };
 
   useEffect(() => () => { if (proofUrl) URL.revokeObjectURL(proofUrl); }, [proofUrl]);
 
@@ -128,7 +147,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
     if (!newRecords.length) return;
     await examinationBillingService.markSeen(newRecords.map(item => item.id), { idToken });
     await reload();
-    setNotice(`Đã đánh dấu ${newRecords.length} thí sinh mới là đã xem.`);
+    setNotice(`Đã đánh dấu ${newRecords.length} hồ sơ đối soát mới là đã xem.`);
   };
 
   const confirmTransfer = async (record: ExaminationBillingRecord) => {
@@ -216,7 +235,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
           <p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-sky-600">Kế toán · Khảo thí</p>
           <h2 className="text-xl font-extrabold text-[#0b4275]">Đối soát khảo thí</h2>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Theo dõi thí sinh mới đăng ký từ mô-đun Khảo thí, xác nhận đã nhận chuyển khoản và đánh dấu đã kiểm hóa đơn.
+            Theo dõi đăng ký cá nhân và đăng ký theo trường, xác nhận chuyển khoản và kiểm hóa đơn theo từng kỳ thi.
           </p>
         </div>
         <button type="button" onClick={onReportTransfer} className="ft-btn ft-btn-primary">Báo chuyển khoản chưa xác định</button>
@@ -229,10 +248,10 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
           <p className="flex min-w-[16rem] flex-1 items-center gap-2.5 text-sm font-bold text-amber-900">
             <BellRing className="h-5 w-5 shrink-0 text-amber-600" />
-            Khảo thí vừa có {newRecords.length} thí sinh mới cần đối soát
+            Khảo thí vừa có {newRecords.length} hồ sơ mới cần đối soát
             <span className="font-semibold text-amber-800">
               ({newRecords.slice(0, 3).map(item => item.candidateName).join(', ')}
-              {newRecords.length > 3 ? `, +${newRecords.length - 3} thí sinh` : ''})
+              {newRecords.length > 3 ? `, +${newRecords.length - 3} hồ sơ` : ''})
             </span>
           </p>
           <button type="button" onClick={() => void runAction(acknowledgeNew())} className="ft-btn ft-btn-secondary text-xs">
@@ -242,7 +261,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
       )}
 
       <div className="bndc-stat-grid">
-        <Stat label="Thí sinh mới chưa xem" value={String(stats?.newCandidates ?? 0)} icon={UserPlus} tone="text-amber-600" />
+        <Stat label="Hồ sơ mới chưa xem" value={String(stats?.newCandidates ?? 0)} icon={UserPlus} tone="text-amber-600" />
         <Stat label="Chờ chuyển khoản" value={String(stats?.awaitingTransfer ?? 0)} icon={Clock} tone="text-sky-600" />
         <Stat label="Chờ kiểm hóa đơn" value={String(stats?.awaitingInvoice ?? 0)} icon={ReceiptText} tone="text-violet-600" />
         <Stat label="Đã hoàn tất" value={String(stats?.completed ?? 0)} icon={CheckCheck} tone="text-emerald-600" />
@@ -296,7 +315,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
           <table className="ft-table min-w-[1080px]">
             <thead>
               <tr>
-                <th>Thí sinh</th>
+                <th>Thí sinh / Trường đăng ký</th>
                 <th>Cuộc thi</th>
                 <th>Đăng ký</th>
                 <th>Số tiền</th>
@@ -314,6 +333,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
                       <b className="text-[#0b4275]">{record.candidateName}</b>
                       {!record.seenByAccountant && <span className="ml-2 bndc-chip bndc-chip-amber">Mới</span>}
                       <p className="mt-0.5 text-xs text-slate-500">{record.candidateCode} · {record.school}</p>
+                      {record.kind === 'school' && <><p className="text-xs font-bold text-sky-700">Đăng ký theo trường · {record.candidateCount} học sinh</p><p className="text-xs text-slate-500">{record.contact?.representative} · {record.contact?.phone}<br />{record.contact?.email}</p></>}
                     </td>
                     <td>
                       <b className="text-xs">{record.competitionCode}</b>
@@ -326,6 +346,8 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
                       {record.transferReference && <p className="mt-1 text-[11px] text-slate-500">{record.transferReference}</p>}
                       {record.paymentProof?.split(' | ').filter(link => /^https:\/\//i.test(link)).map((link, index) => <a key={`${link}-${index}`} href={link} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] text-sky-700 underline">Ảnh người đăng ký gửi {index + 1}</a>)}
                       {record.paymentProofId && <button type="button" onClick={() => void viewProof(record.paymentProofId!)} className="mt-1 block text-[11px] text-sky-700 underline">Xem chứng từ đăng ký</button>}
+                      {record.proofs?.map((proof, index) => <button key={proof.id} type="button" onClick={() => void viewTransferProof(proof.id)} className="mt-1 block text-[11px] text-sky-700 underline">Ảnh chuyển khoản {index + 1} · {proof.filename}</button>)}
+                      {canEdit && <button type="button" onClick={() => { setUploadTarget(record); setUploadFiles([]); setUploadError(''); }} className="mt-2 block text-xs font-bold text-sky-700">Thêm ảnh chuyển khoản</button>}
                       {record.transferConfirmedAt && (
                         <p className="mt-0.5 text-[11px] text-slate-400">{record.transferConfirmedBy} · {dateTime(record.transferConfirmedAt)}</p>
                       )}
@@ -377,6 +399,7 @@ export default function ExaminationBillingReview({ idToken, actorName, canEdit, 
         </div>
       </div>
       {proofUrl && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/80 p-4" role="dialog" aria-label="Chứng từ đăng ký"><button type="button" onClick={() => setProofUrl('')} className="absolute right-5 top-5 rounded-lg bg-white px-3 py-2 text-sm font-bold">Đóng</button><iframe src={proofUrl} title="Chứng từ đăng ký" className="h-[85vh] w-[95vw] max-w-5xl rounded-lg bg-white" /></div>}
+      {uploadTarget && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-label="Thêm ảnh chuyển khoản"><div className="max-h-[90vh] w-full max-w-xl space-y-4 overflow-auto rounded-2xl bg-white p-6"><h3 className="text-lg font-extrabold">Ảnh chuyển khoản · {uploadTarget.candidateName}</h3><p className="text-sm text-slate-600">{uploadTarget.competitionCode} · {uploadTarget.sessionPeriod}. Ảnh bổ sung được lưu cùng các ảnh đã có.</p><PaymentImagesInput files={uploadFiles} onChange={setUploadFiles} onError={setUploadError} disabled={uploadBusy} />{uploadError && <p role="alert" className="text-sm text-rose-700">{uploadError}</p>}<div className="flex justify-end gap-3"><button disabled={uploadBusy} type="button" className="ft-btn ft-btn-secondary" onClick={() => setUploadTarget(null)}>Đóng</button><button disabled={uploadBusy || !uploadFiles.length} type="button" className="ft-btn ft-btn-primary disabled:opacity-50" onClick={() => void uploadImages()}>{uploadBusy ? 'Đang lưu...' : `Lưu ${uploadFiles.length} ảnh`}</button></div></div></div>}
     </section>
   );
 }

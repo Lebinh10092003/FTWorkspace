@@ -7,6 +7,8 @@ import {
   Trash2, Pencil, Plus,
 } from 'lucide-react';
 import type { Candidate, ExaminationSession } from './types';
+import SchoolImportDialog from './SchoolImportDialog';
+import type { Partner } from './Partners';
 import { LIST_PAGE_SIZE, TablePagination, formatBirthDate, formatPersonName, normaliseBirthDate, sessionDisplayName, sessionRecencyKey, sessionTimelineLabel } from './ui';
 
 type ImportRow = Record<string, unknown>;
@@ -17,6 +19,8 @@ type Props = {
   sessionId?: string;
   sessions: ExaminationSession[];
   onImported: (items: Candidate[]) => void;
+  onPartnersImported?: (partners: Partner[]) => void;
+  onSessionsImported?: (sessions: ExaminationSession[]) => void;
 };
 
 interface SyncState {
@@ -198,7 +202,8 @@ const sheetScheduleLabel = (sheet: SheetSource) => {
 const DEFAULT_SYNC_URL =
   'https://docs.google.com/spreadsheets/d/1kqztN_iCeZ9uR1mO7gz9j1TcUt8ZmCdpEv0TagTf4VA/edit?usp=sharing';
 
-export default function ImportData({ idToken, googleAccessToken, canImport, sessionId, sessions, onImported }: Props) {
+export default function ImportData({ idToken, googleAccessToken, canImport, sessionId, sessions, onImported, onPartnersImported, onSessionsImported }: Props) {
+  const [schoolImportOpen, setSchoolImportOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const duplicateCheckRef = useRef(0);
   const [sourceUrl, setSourceUrl] = useState('');
@@ -584,6 +589,11 @@ export default function ImportData({ idToken, googleAccessToken, canImport, sess
         </button>
       </div>
 
+      <section className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+        <div><h2 className="font-extrabold text-[#001e40]">Trường đăng ký nhiều học sinh / nhiều cuộc thi</h2><p className="mt-1 text-sm text-slate-600">Nhập một file, đối chiếu hồ sơ, chọn kỳ và gom đối soát theo trường trong cùng popup.</p></div>
+        <button type="button" disabled={!canImport} onClick={() => setSchoolImportOpen(true)} className="ft-primary disabled:opacity-50"><UploadCloud className="h-4 w-4" />Nhập Excel theo trường</button>
+      </section>
+      {schoolImportOpen && <SchoolImportDialog idToken={idToken} sessions={sessions} onClose={() => setSchoolImportOpen(false)} onImported={result => { onImported(result.items); onPartnersImported?.(result.partners); onSessionsImported?.(result.sessions); }} />}
       <section className="mb-5 rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
         <div className="grid gap-3 md:grid-cols-3">
           <label className="block"><span className="text-sm font-bold text-[#001e40]">Năm</span><select value={sessionYearFilter} onChange={event => { setSessionYearFilter(event.target.value); setTargetSessionId(''); }} className="mt-2 w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm"><option value="">Tất cả năm</option>{sessionYearOptions.map(item => <option key={item} value={item}>{item}</option>)}</select></label>

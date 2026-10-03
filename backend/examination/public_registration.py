@@ -21,7 +21,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsWorkspaceAuthenticated, request_modules, request_role
 from .form_registration import SESSION_IDS, TAB_CODES, matching_candidate
-from .models import Candidate, CandidateParticipation, Competition, ExamSession, PublicExamRegistration
+from .models import Candidate, CandidateParticipation, Competition, ExamSession, PublicExamRegistration, TransferProof
 from .public_registration_sheet import row_for
 from .sync import format_person_name, merge_contest_codes, next_code, sync_session_candidate_totals, valid_candidate_name
 from .registration_page import get_page, page_content, competitions
@@ -210,7 +210,7 @@ def public_registration(request):
             proof=proof, proof_type=mime, source_ip_hash=ip_hash,
         )
         for code in codes:
-            CandidateParticipation.objects.create(
+            participation = CandidateParticipation.objects.create(
                 candidate=candidate, session=available[code],
                 source=f'Workspace #{registration.id}',
                 registration_data={
@@ -220,6 +220,9 @@ def public_registration(request):
                     'customAnswers': custom_answers,
                 },
             )
+            if proof:
+                TransferProof.objects.create(billing=participation.billing, session=available[code], image=proof, image_type=mime,
+                                            filename=f'registration-{registration.id}', created_by=email)
         sync_session_candidate_totals()
     return Response(registration_payload(registration), status=201)
 

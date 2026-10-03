@@ -2,9 +2,11 @@
 export type BillingTransferStatus = 'pending' | 'confirmed' | 'mismatch';
 export type BillingInvoiceStatus = 'pending' | 'checked' | 'issue' | 'not_required';
 export type BillingSessionScope = 'active' | 'past' | 'all';
+export type TransferProof = { id: string; filename: string; driveStatus: string; sessionId?: string };
 
 export type ExaminationBillingRecord = {
   id: string; candidateName: string; candidateCode: string;
+  kind?: 'school' | 'candidate'; candidateCount?: number; contact?: { representative?: string; phone?: string; email?: string }; proofs?: TransferProof[];
   competitionCode: string; competitionName: string; sessionCode: string;
   sessionId: string; sessionPeriod: string;
   school: string; registeredAt: string; amount: number | null; paymentProof?: string; paymentProofId?: string;
@@ -22,6 +24,7 @@ export type ExaminationBillingStats = {
 
 export type UnmatchedTransfer = {
   id: string; amount: number; reference: string; note: string; hasImage: boolean;
+  proofs?: TransferProof[];
   status: 'open' | 'reviewed' | 'matched'; resolutionNote: string;
   candidateCode: string; competitionCode: string; createdBy: string;
   resolvedBy: string; createdAt: string; updatedAt: string;
@@ -65,12 +68,13 @@ export const examinationBillingService = {
   flagInvoiceIssue: (id: string, note: string, options: BillingRequestOptions = {}) => post<ExaminationBillingRecord>(`/records/${id}/invoice-issue`, { note }, options),
   skipInvoice: (id: string, options: BillingRequestOptions = {}) => post<ExaminationBillingRecord>(`/records/${id}/invoice-skip`, {}, options),
   listUnmatched: (options: BillingRequestOptions = {}) => request<UnmatchedTransfer[]>('/unmatched', options),
-  async createUnmatched(input: { amount: number; reference: string; note: string; image?: File | null }, options: BillingRequestOptions = {}): Promise<UnmatchedTransfer> {
+  async createUnmatched(input: { amount: number; reference: string; note: string; image?: File | null; images?: File[] }, options: BillingRequestOptions = {}): Promise<UnmatchedTransfer> {
     const body = new FormData();
     body.append('amount', String(input.amount));
     body.append('reference', input.reference);
     body.append('note', input.note);
     if (input.image) body.append('image', input.image);
+    input.images?.forEach(image => body.append('images', image));
     const response = await fetch(`${BASE}/unmatched`, {
       method: 'POST', body, headers: options.idToken ? { Authorization: `Bearer ${options.idToken}` } : {},
     });
@@ -94,6 +98,19 @@ export const examinationBillingService = {
       headers: options.idToken ? { Authorization: `Bearer ${options.idToken}` } : {},
     });
     if (!response.ok) throw new Error('Không thể tải chứng từ đăng ký.');
+    return URL.createObjectURL(await response.blob());
+  },
+  async uploadProofs(id: string, images: File[], options: BillingRequestOptions = {}): Promise<ExaminationBillingRecord> {
+    const body = new FormData();
+    images.forEach(image => body.append('images', image));
+    const response = await fetch(`${BASE}/records/${encodeURIComponent(id)}/proofs`, { method: 'POST', body, headers: options.idToken ? { Authorization: `Bearer ${options.idToken}` } : {} });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Không thể lưu ảnh chuyển khoản.');
+    return result;
+  },
+  async proofImage(id: string, options: BillingRequestOptions = {}): Promise<string> {
+    const response = await fetch(`${BASE}/proofs/${encodeURIComponent(id)}/image`, { headers: options.idToken ? { Authorization: `Bearer ${options.idToken}` } : {} });
+    if (!response.ok) throw new Error('Không thể tải ảnh chuyển khoản.');
     return URL.createObjectURL(await response.blob());
   },
 };

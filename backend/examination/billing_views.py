@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 import unicodedata
 
 from django.db import transaction
+from django.db.models import Prefetch, Q
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status
@@ -13,7 +14,19 @@ from rest_framework.response import Response
 
 from authentication.notifications import notify_workspace
 from authentication.permissions import IsWorkspaceAuthenticated, request_modules, request_role
-from .models import CandidateParticipation, ExaminationBillingRecord, UnmatchedTransfer
+from .models import CandidateParticipation, ExaminationBillingRecord, UnmatchedTransfer, TransferProof
+
+
+def visible_billing_rows():
+    return ExaminationBillingRecord.objects.filter(Q(school_registration__isnull=False) | Q(participation__school_registration__isnull=True, participation__isnull=False)).select_related('participation__candidate', 'participation__session', 'school_registration__session').prefetch_related(Prefetch('proofs', queryset=TransferProof.objects.defer('image').order_by('created_at', 'pk')))
+
+
+def billing_session(item):
+    return item.school_registration.session if item.school_registration_id else item.participation.session
+
+
+def proof_payload(proof):
+    return {'id': str(proof.pk), 'filename': proof.filename, 'driveStatus': proof.drive_status, 'sessionId': proof.session_id}
 
 
 def allowed(request, module):
@@ -45,7 +58,7 @@ def parse_amount(value):
         amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
         raise ValueError('Số tiền không hợp lệ.')
-    if amount != amount.to_integral_value() or amount <= 0 or amount > 999999999999:
+    if not amount.is_finite() or amount != amount.to_integral_value() or amount <= 0 or amount > 999999999999:
         raise ValueError('Số tiền phải là số nguyên dương, tối đa 999.999.999.999đ.')
     return amount
 
@@ -70,12 +83,12 @@ def scoped_billing_rows(request):
     scope = request.query_params.get('scope', 'active')
     if scope not in {'active', 'past', 'all'}:
         raise ValueError('Bộ lọc kỳ thi không hợp lệ.')
-    rows = ExaminationBillingRecord.objects.select_related('participation__candidate', 'participation__session').order_by('-participation__created_at')
+    rows = visible_billing_rows().order_by('-pk')
     past_sessions = {}
     selected = []
     today = timezone.localdate()
     for item in rows:
-        session = item.participation.session
+        session = billing_session(item)
         if session.pk not in past_sessions:
             past_sessions[session.pk] = session_is_past(session, today)
         if scope == 'all' or past_sessions[session.pk] == (scope == 'past'):
@@ -85,15 +98,19 @@ def scoped_billing_rows(request):
 
 def billing_payload(item):
     participation = item.participation
-    candidate = participation.candidate
-    session = participation.session
-    registration_data = participation.registration_data or {}
+    group = item.school_registration if item.school_registration_id else None
+    candidate = participation.candidate if participation else None
+    session = billing_session(item)
+    registration_data = participation.registration_data or {} if participation else {}
     return {
-        'id': str(item.pk), 'candidateName': candidate.name,
-        'candidateCode': candidate.code, 'competitionCode': session.code,
+        'id': str(item.pk), 'candidateName': group.school if group else candidate.name,
+        'candidateCode': '' if group else candidate.code, 'competitionCode': session.code,
+        'kind': 'school' if group else 'candidate', 'candidateCount': group.participations.count() if group else 1,
+        'contact': group.contact if group else {},
         'competitionName': session.name, 'sessionCode': session.code,
         'sessionId': session.pk, 'sessionPeriod': session.time,
-        'school': candidate.school or '', 'registeredAt': participation.created_at.isoformat(),
+        'school': group.school if group else candidate.school or '', 'registeredAt': (group.created_at if group else participation.created_at).isoformat(),
+        'proofs': [proof_payload(p) for p in item.proofs.all()],
         'amount': int(item.amount) if item.amount is not None else None,
         'paymentProof': str(registration_data.get('paymentProof') or ''),
         'paymentProofId': registration_data.get('publicRegistrationId') if str(registration_data.get('paymentProof') or '').startswith('Workspace #') else '',
@@ -112,6 +129,7 @@ def unmatched_payload(item):
     return {
         'id': str(item.pk), 'amount': int(item.amount), 'reference': item.reference,
         'note': item.note, 'hasImage': bool(item.image), 'status': item.status,
+        'proofs': [proof_payload(p) for p in item.proofs.defer('image').order_by('created_at', 'pk')],
         'resolutionNote': item.resolution_note, 'candidateCode': participation.candidate.code if participation else '',
         'competitionCode': participation.session.code if participation else '',
         'createdBy': item.created_by, 'resolvedBy': item.resolved_by,
@@ -163,7 +181,7 @@ def seen(request):
     ids = request.data.get('ids') or []
     if not isinstance(ids, list) or len(ids) > 1000:
         return Response({'error': 'Danh sách không hợp lệ.'}, status=400)
-    count = ExaminationBillingRecord.objects.filter(pk__in=ids, seen_by_accountant=False).update(seen_by_accountant=True)
+    count = visible_billing_rows().filter(pk__in=ids, seen_by_accountant=False).update(seen_by_accountant=True)
     return Response({'seen': count})
 
 
@@ -172,7 +190,7 @@ def seen(request):
 def record_action(request, pk, action):
     if not finance_writer(request):
         return Response({'error': 'Chỉ kế toán được cập nhật đối soát.'}, status=403)
-    item = ExaminationBillingRecord.objects.select_related('participation__candidate', 'participation__session').filter(pk=pk).first()
+    item = visible_billing_rows().filter(pk=pk).first()
     if not item:
         return Response({'error': 'Không tìm thấy hồ sơ đối soát.'}, status=404)
     data = request.data or {}
@@ -230,26 +248,18 @@ def unmatched_list(request):
         amount = parse_amount(request.data.get('amount'))
     except ValueError as exc:
         return Response({'error': str(exc)}, status=400)
-    image = request.FILES.get('image')
-    image_bytes = None
-    image_type = ''
-    if image:
-        if image.size > 5 * 1024 * 1024:
-            return Response({'error': 'Ảnh tối đa 5 MB.'}, status=400)
-        image_bytes = image.read()
-        if image_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
-            image_type = 'image/png'
-        elif image_bytes.startswith(b'\xff\xd8\xff'):
-            image_type = 'image/jpeg'
-        elif image_bytes.startswith(b'RIFF') and image_bytes[8:12] == b'WEBP':
-            image_type = 'image/webp'
-        else:
-            return Response({'error': 'Chỉ nhận ảnh PNG, JPEG hoặc WebP.'}, status=400)
-    item = UnmatchedTransfer.objects.create(
-        amount=amount, reference=str(request.data.get('reference') or '').strip()[:255],
-        note=str(request.data.get('note') or '').strip()[:3000],
-        image=image_bytes, image_type=image_type, created_by=actor(request),
-    )
+    try:
+        images = validated_images(request.FILES.getlist('images') + request.FILES.getlist('image'))
+    except ValueError as exc:
+        return Response({'error': str(exc)}, status=400)
+    with transaction.atomic():
+        item = UnmatchedTransfer.objects.create(
+            amount=amount, reference=str(request.data.get('reference') or '').strip()[:255],
+            note=str(request.data.get('note') or '').strip()[:3000],
+            image=images[0][1] if images else None, image_type=images[0][2] if images else '', created_by=actor(request),
+        )
+        for name, content, mime in images:
+            TransferProof.objects.create(unmatched=item, filename=name, image=content, image_type=mime, created_by=actor(request))
     notify_workspace(
         event_key=f'examination:unmatched-transfer:{item.pk}',
         title='Khoản chuyển khoản chưa xác định',
@@ -297,11 +307,14 @@ def resolve_unmatched(request, pk):
             return Response({'error': 'Cần chỉ rõ mã thí sinh và cuộc thi để xác định đúng một lượt đăng ký.'}, status=400)
         participation = matches.first()
     with transaction.atomic():
+        if item.proofs.exclude(drive_file_id='').exists() and (not participation or participation.pk != item.matched_participation_id):
+            return Response({'error': 'Ảnh đã lưu Drive theo cuộc thi đã xác minh. Cần xử lý lưu trữ trước khi đổi cuộc thi.'}, status=409)
         item.status = 'matched' if participation else 'reviewed'
         item.matched_participation = participation
         item.resolution_note = note
         item.resolved_by = actor(request)
         item.save()
+        item.proofs.filter(drive_file_id='').update(session=participation.session if participation else None)
     notify_workspace(
         event_key=f'examination:unmatched-resolved:{item.pk}:{item.updated_at.timestamp()}',
         title='Khảo thí đã phản hồi khoản thu',
@@ -310,3 +323,61 @@ def resolve_unmatched(request, pk):
         target_modules=['finance-report'],
     )
     return Response(unmatched_payload(item))
+
+
+def validated_images(files):
+    if len(files) > 20:
+        raise ValueError('Mỗi lần tối đa 20 ảnh.')
+    if sum(f.size for f in files) > 10 * 1024 * 1024:
+        raise ValueError('Tổng dung lượng ảnh mỗi lần tối đa 10 MB.')
+    result = []
+    for file in files:
+        if file.size > 5 * 1024 * 1024:
+            raise ValueError('Mỗi ảnh tối đa 5 MB.')
+        content = file.read()
+        if content.startswith(b'\x89PNG\r\n\x1a\n'):
+            mime = 'image/png'
+        elif content.startswith(b'\xff\xd8\xff'):
+            mime = 'image/jpeg'
+        elif content.startswith(b'RIFF') and content[8:12] == b'WEBP':
+            mime = 'image/webp'
+        else:
+            raise ValueError('Chỉ nhận ảnh PNG, JPEG hoặc WebP.')
+        result.append((file.name.replace('\\', '/').rsplit('/', 1)[-1][:255], content, mime))
+    return result
+
+
+@api_view(['POST'])
+@parser_classes([MultiPartParser])
+@permission_classes([IsWorkspaceAuthenticated])
+def upload_proofs(request, pk):
+    if not finance_writer(request):
+        return Response({'error': 'Chỉ kế toán được thêm ảnh chuyển khoản.'}, status=403)
+    try:
+        images = validated_images(request.FILES.getlist('images'))
+    except ValueError as exc:
+        return Response({'error': str(exc)}, status=400)
+    if not images:
+        return Response({'error': 'Chọn ít nhất một ảnh.'}, status=400)
+    with transaction.atomic():
+        item = visible_billing_rows().select_for_update().filter(pk=pk).first()
+        if not item:
+            return Response({'error': 'Không tìm thấy hồ sơ đối soát.'}, status=404)
+        for name, content, mime in images:
+            TransferProof.objects.create(billing=item, session=billing_session(item), filename=name, image=content, image_type=mime, created_by=actor(request))
+        item._prefetched_objects_cache.pop('proofs', None)
+    return Response(billing_payload(item))
+
+
+@api_view(['GET'])
+@permission_classes([IsWorkspaceAuthenticated])
+def proof_image(request, pk):
+    if not finance_or_exam(request):
+        return Response({'error': 'Không có quyền xem ảnh.'}, status=403)
+    proof = TransferProof.objects.filter(pk=pk).first()
+    if not proof:
+        return Response({'error': 'Không tìm thấy ảnh.'}, status=404)
+    response = HttpResponse(bytes(proof.image), content_type=proof.image_type)
+    response['Cache-Control'] = 'private, no-store'
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response

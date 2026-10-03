@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views, paper_views, blueprint_views, landing_views, landing_site_views, sheet_webhook, billing_views, form_registration, public_registration
 from .registration_page import registration_page
+from .school_import import school_import
 
 urlpatterns = [
     path('examination/registration-page', registration_page),
@@ -23,6 +24,8 @@ urlpatterns = [
     path('examination/billing/records', billing_views.records),
     path('examination/billing/stats', billing_views.stats),
     path('examination/billing/seen', billing_views.seen),
+    path('examination/billing/records/<int:pk>/proofs', billing_views.upload_proofs),
+    path('examination/billing/proofs/<uuid:pk>/image', billing_views.proof_image),
     path('examination/billing/records/<int:pk>/<str:action>', billing_views.record_action),
     path('examination/billing/unmatched', billing_views.unmatched_list),
     path('examination/billing/unmatched/<uuid:pk>/image', billing_views.unmatched_image),
@@ -76,6 +79,7 @@ urlpatterns = [
     path('examination/sync/google-sheet', views.sheets_sync, name='sheets_sync'),
     path('examination/sync/status', views.sync_status, name='sync_status'),
     path('examination/import/candidates/duplicates', views.import_candidate_duplicates, name='import_candidate_duplicates'),
+    path('examination/import/school', school_import),
     path('examination/import/candidates', views.import_candidates, name='import_candidates'),
     path('examination/lognotes/<str:entityKey>', views.lognotes_detail, name='lognotes_detail'),
     path('examination/<str:resource>', views.get_resource_list, name='get_resource_list'),

@@ -83,6 +83,7 @@ class CandidateParticipation(models.Model):
     general_note = models.TextField(blank=True, default='')
     certificate_link = models.CharField(max_length=2000, blank=True, default='')
     registration_data = models.JSONField(default=dict, blank=True)
+    school_registration = models.ForeignKey('SchoolRegistration', null=True, blank=True, on_delete=models.PROTECT, related_name='participations')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -117,9 +118,22 @@ class SessionSheetOutbox(models.Model):
         constraints = [models.UniqueConstraint(fields=['candidate_id', 'session_id'], name='unique_session_sheet_outbox')]
 
 
+class SchoolRegistration(models.Model):
+    """One school account per session, shared across successive file imports."""
+    partner_id = models.CharField(max_length=255)
+    session = models.ForeignKey(ExamSession, on_delete=models.PROTECT)
+    school = models.CharField(max_length=255)
+    contact = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['partner_id', 'session'], name='unique_school_registration_session')]
+
+
 class ExaminationBillingRecord(models.Model):
     """Accounting facts for one registration; Sheet imports never overwrite these."""
-    participation = models.OneToOneField(CandidateParticipation, on_delete=models.CASCADE, related_name='billing')
+    participation = models.OneToOneField(CandidateParticipation, null=True, blank=True, on_delete=models.CASCADE, related_name='billing')
+    school_registration = models.OneToOneField(SchoolRegistration, null=True, blank=True, on_delete=models.CASCADE, related_name='billing')
     amount = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True)
     transfer_status = models.CharField(max_length=20, default='pending')
     transfer_reference = models.CharField(max_length=255, blank=True, default='')
@@ -132,6 +146,9 @@ class ExaminationBillingRecord(models.Model):
     seen_by_accountant = models.BooleanField(default=False)
     note = models.TextField(blank=True, default='')
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(check=(models.Q(participation__isnull=False, school_registration__isnull=True) | models.Q(participation__isnull=True, school_registration__isnull=False)), name='billing_has_one_owner')]
 
 
 class UnmatchedTransfer(models.Model):
@@ -149,6 +166,26 @@ class UnmatchedTransfer(models.Model):
     resolved_by = models.CharField(max_length=255, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class TransferProof(models.Model):
+    """Private images with an explicit destination session and durable Drive status."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    billing = models.ForeignKey(ExaminationBillingRecord, null=True, blank=True, on_delete=models.CASCADE, related_name='proofs')
+    unmatched = models.ForeignKey(UnmatchedTransfer, null=True, blank=True, on_delete=models.CASCADE, related_name='proofs')
+    session = models.ForeignKey(ExamSession, null=True, blank=True, on_delete=models.PROTECT)
+    image = models.BinaryField()
+    image_type = models.CharField(max_length=50)
+    filename = models.CharField(max_length=255)
+    created_by = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    drive_file_id = models.CharField(max_length=255, blank=True, default='')
+    drive_folder_id = models.CharField(max_length=255, blank=True, default='')
+    drive_status = models.CharField(max_length=30, default='pending_configuration')
+    drive_error = models.TextField(blank=True, default='')
+
+    class Meta:
+        constraints = [models.CheckConstraint(check=(models.Q(billing__isnull=False, unmatched__isnull=True) | models.Q(billing__isnull=True, unmatched__isnull=False)), name='proof_has_one_owner')]
 
 
 class FormRegistrationLink(models.Model):

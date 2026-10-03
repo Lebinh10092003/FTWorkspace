@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import examinationBillingService, { type UnmatchedTransfer } from './examinationBillingService';
+import PaymentImagesInput from './PaymentImagesInput';
 
 const formatMoney = (value: number) => `${value.toLocaleString('vi-VN')}đ`;
 
@@ -10,7 +11,7 @@ export default function UnmatchedTransfers({ idToken, mode, canCreate = true }: 
   const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
-  const [image, setImage] = useState<File | null>(null);
+  const [images, setImages] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [resolving, setResolving] = useState<UnmatchedTransfer | null>(null);
   const [candidateCode, setCandidateCode] = useState('');
@@ -25,18 +26,11 @@ export default function UnmatchedTransfers({ idToken, mode, canCreate = true }: 
   useEffect(() => { void reload(); }, [reload]);
   useEffect(() => () => { if (imageUrl) URL.revokeObjectURL(imageUrl); }, [imageUrl]);
 
-  const acceptImage = (file?: File | null) => {
-    if (!file) return;
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { setError('Chỉ nhận ảnh PNG, JPEG hoặc WebP.'); return; }
-    if (file.size > 5 * 1024 * 1024) { setError('Ảnh tối đa 5 MB.'); return; }
-    setImage(file); setError('');
-  };
-
   const create = async (event: React.FormEvent) => {
     event.preventDefault(); setBusy(true);
     try {
-      await examinationBillingService.createUnmatched({ amount: Number(amount), reference, note, image }, { idToken: idToken || undefined });
-      setAmount(''); setReference(''); setNote(''); setImage(null);
+      await examinationBillingService.createUnmatched({ amount: Number(amount), reference, note, images }, { idToken: idToken || undefined });
+      setAmount(''); setReference(''); setNote(''); setImages([]);
       setNotice('Đã báo khoản chuyển khoản chưa xác định cho khảo thí.');
       await reload();
     } catch (cause: any) { setError(cause?.message || 'Không thể lưu khoản thu.'); }
@@ -53,8 +47,8 @@ export default function UnmatchedTransfers({ idToken, mode, canCreate = true }: 
     finally { setBusy(false); }
   };
 
-  const viewImage = async (id: string) => {
-    try { setImageUrl(await examinationBillingService.unmatchedImage(id, { idToken: idToken || undefined })); }
+  const viewImage = async (id: string, isProof = false) => {
+    try { setImageUrl(await (isProof ? examinationBillingService.proofImage(id, { idToken: idToken || undefined }) : examinationBillingService.unmatchedImage(id, { idToken: idToken || undefined }))); }
     catch (cause: any) { setError(cause?.message || 'Không thể tải ảnh.'); }
   };
 
@@ -67,18 +61,12 @@ export default function UnmatchedTransfers({ idToken, mode, canCreate = true }: 
       <label className="text-sm font-bold">Mã hoặc nội dung giao dịch<input className="ft-input mt-1 w-full" value={reference} onChange={event => setReference(event.target.value)} /></label>
       <label className="text-sm font-bold sm:col-span-2">Ghi chú cho khảo thí<textarea className="ft-input mt-1 w-full" rows={2} value={note} onChange={event => setNote(event.target.value)} /></label>
       <div className="sm:col-span-2">
-        <label className="block cursor-pointer rounded-xl border-2 border-dashed border-amber-300 bg-white p-4 text-center text-sm text-slate-600"
-          tabIndex={0} onPaste={event => acceptImage(Array.from(event.clipboardData.files).find(file => file.type.startsWith('image/')))}
-          onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); acceptImage(event.dataTransfer.files[0]); }}>
-          Ảnh chuyển khoản (nếu có): bấm để chọn, kéo thả, hoặc chọn vùng này rồi Ctrl+V
-          <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={event => acceptImage(event.target.files?.[0])} />
-          {image && <b className="mt-2 block text-[#0b4275]">{image.name}</b>}
-        </label>
+        <PaymentImagesInput files={images} onChange={setImages} onError={setError} disabled={busy} />
       </div>
       <button disabled={busy} className="ft-btn ft-btn-primary w-fit disabled:opacity-50">{busy ? 'Đang lưu...' : 'Báo khảo thí kiểm tra'}</button>
     </form>}
     <div className="overflow-x-auto"><table className="ft-table min-w-[780px]"><thead><tr><th>Số tiền</th><th>Giao dịch / ghi chú</th><th>Trạng thái</th><th>Phản hồi khảo thí</th><th>Ảnh / thao tác</th></tr></thead><tbody>
-      {rows.map(row => <tr key={row.id}><td className="font-bold">{formatMoney(row.amount)}</td><td><b>{row.reference || 'Chưa có mã giao dịch'}</b><p className="mt-1 text-xs text-slate-500">{row.note || '—'}</p><p className="text-xs text-slate-400">{new Date(row.createdAt).toLocaleString('vi-VN')}</p></td><td>{row.status === 'open' ? 'Chờ khảo thí' : row.status === 'matched' ? 'Đã tìm thấy thí sinh' : 'Đã kiểm tra'}</td><td><p>{row.resolutionNote || '—'}</p>{row.candidateCode && <p className="text-xs font-semibold text-emerald-700">{row.candidateCode} · {row.competitionCode}</p>}</td><td><div className="flex flex-wrap gap-2">{row.hasImage && <button type="button" className="ws-bulk-btn" onClick={() => void viewImage(row.id)}>Xem ảnh</button>}{mode === 'examination' && <button type="button" className="ws-bulk-btn text-sky-700" onClick={() => { setResolving(row); setCandidateCode(row.candidateCode); setCompetitionCode(row.competitionCode); setResolutionNote(row.resolutionNote); }}>Phản hồi</button>}</div></td></tr>)}
+      {rows.map(row => <tr key={row.id}><td className="font-bold">{formatMoney(row.amount)}</td><td><b>{row.reference || 'Chưa có mã giao dịch'}</b><p className="mt-1 text-xs text-slate-500">{row.note || '—'}</p><p className="text-xs text-slate-400">{new Date(row.createdAt).toLocaleString('vi-VN')}</p></td><td>{row.status === 'open' ? 'Chờ khảo thí' : row.status === 'matched' ? 'Đã tìm thấy thí sinh' : 'Đã kiểm tra'}</td><td><p>{row.resolutionNote || '—'}</p>{row.candidateCode && <p className="text-xs font-semibold text-emerald-700">{row.candidateCode} · {row.competitionCode}</p>}</td><td><div className="flex flex-wrap gap-2">{row.proofs?.length ? row.proofs.map((proof, index) => <button key={proof.id} type="button" className="ws-bulk-btn" onClick={() => void viewImage(proof.id, true)}>Ảnh {index + 1}</button>) : row.hasImage && <button type="button" className="ws-bulk-btn" onClick={() => void viewImage(row.id)}>Xem ảnh</button>}{mode === 'examination' && <button type="button" className="ws-bulk-btn text-sky-700" onClick={() => { setResolving(row); setCandidateCode(row.candidateCode); setCompetitionCode(row.competitionCode); setResolutionNote(row.resolutionNote); }}>Phản hồi</button>}</div></td></tr>)}
       {!rows.length && <tr><td colSpan={5} className="py-6 text-center text-sm text-slate-500">Chưa có khoản thu chưa xác định.</td></tr>}
     </tbody></table></div>
     {resolving && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><form onSubmit={resolve} className="w-full max-w-lg space-y-3 rounded-2xl bg-white p-6 shadow-xl"><h4 className="text-lg font-bold">Phản hồi khoản {formatMoney(resolving.amount)}</h4><p className="text-sm text-slate-500">Nếu tìm thấy thí sinh, nhập cả mã thí sinh và mã cuộc thi. Nếu chưa tìm thấy, để trống hai ô và ghi rõ kết quả kiểm tra.</p><label className="block text-sm font-bold">Mã thí sinh<input className="ft-input mt-1 w-full" value={candidateCode} onChange={e => setCandidateCode(e.target.value)} /></label><label className="block text-sm font-bold">Mã cuộc thi<input className="ft-input mt-1 w-full" value={competitionCode} onChange={e => setCompetitionCode(e.target.value)} /></label><label className="block text-sm font-bold">Kết quả kiểm tra *<textarea required className="ft-input mt-1 w-full" rows={3} value={resolutionNote} onChange={e => setResolutionNote(e.target.value)} /></label><div className="flex justify-end gap-2"><button type="button" className="ft-btn ft-btn-secondary" onClick={() => setResolving(null)}>Hủy</button><button disabled={busy} className="ft-btn ft-btn-primary">Gửi kế toán</button></div></form></div>}
