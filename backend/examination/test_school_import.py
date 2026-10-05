@@ -190,7 +190,7 @@ class SchoolImportTests(TestCase):
         from .sync import format_identity, format_phone
         for raw, expected in [('', ''), ('B1234567', 'B1234567'), ('123456789012', '123456789012'), ('1234567890123', '1234567890123')]:
             self.assertEqual(format_identity(raw), expected)
-        for raw, expected in [('', ''), ('901234567', '0901234567'), ('+84 901 234 567', '0901234567'), ('0084901234567', '0901234567'), ('0901234567', '0901234567'), ('12345678901', '12345678901'), ('0901234567 / 0907654321', '0901234567 / 0907654321')]:
+        for raw, expected in [('', ''), ('901234567', '0901234567'), ('+84 901 234 567', '0901234567'), ('0084901234567', '0901234567'), ('0901234567', '0901234567'), ('0901234567,', '0901234567'), ('12345678901', '12345678901'), ('0901234567 / 0907654321', '0901234567 / 0907654321')]:
             self.assertEqual(format_phone(raw), expected)
 
     def test_repeated_student_with_one_blank_birth_date_reuses_complete_row(self):

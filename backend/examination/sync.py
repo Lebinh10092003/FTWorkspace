@@ -71,7 +71,7 @@ def format_identity(value):
 
 def format_phone(value):
     text = clean_txt(value)
-    if not text or not re.fullmatch(r'[\d\s+().\-]+', text):
+    if not text or not re.fullmatch(r'[\d\s+(),.\-]+', text):
         return text
     digits = re.sub(r'\D', '', text)
     if digits.startswith('0084') and len(digits) == 13:
