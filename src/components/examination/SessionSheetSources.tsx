@@ -7,7 +7,7 @@ type Props = { sources: SheetSource[]; sessionId: string; sessionLabel: string; 
 type ExportPreview = { currentFingerprint: string; sheetTab: string; changedCells: number; changedRows: number; matchedRows?: number; appendedRows?: number; appendedCandidates?: { code?: string; name?: string; birth_date?: string; identity?: string; email?: string; phone?: string }[]; unmatchedSheetRows?: number[]; matchConflicts?: { row: number; rowLabel: string; reason: string; sheetIdentity?: string; candidateOptions?: string[] }[]; changes: { cell: string; row?: number; rowLabel?: string; column?: string; field?: string; current: string; next: string }[]; changesTruncated?: boolean };
 type ImportPreview = { source?: { name?: string; id?: string; fingerprint?: string; sheetTab?: string }; summary?: { total?: number; new?: number; matched?: number; changed?: number; unchanged?: number; conflicts?: number; webOnly?: number }; webOnlyRecords?: { code?: string; name?: string; birthDate?: string; identity?: string; email?: string; phone?: string }[]; records: { code?: string; name?: string; _preview?: { sourceRow?: number; status?: 'new' | 'changed' | 'unchanged' | 'conflict'; matchedCode?: string; changedFields?: string[]; changes?: { field: string; label?: string; current?: string; next?: string }[] } }[] };
 const sheetType = (source: SheetSource) => source.stage === 'form-webhook' ? 'Form đăng ký' : source.stage === 'session-output' ? 'Sheet tổng hợp' : 'Sheet đầu vào';
-const schedule = (source: SheetSource) => source.stage === 'form-webhook' ? 'Tự động khi có đăng ký / chỉnh sửa' : `Tự ghi thí sinh mới từ web${source.automationEnabled ? ` · ${source.stage === 'session-output' ? 'Đối soát xuất 11:00 và 16:00' : 'Tự nhập khi Sheet thay đổi · kiểm tra mỗi 5 phút'}` : ''}${[source.automationStartDate, source.automationEndDate].filter(Boolean).length ? ` · ${[source.automationStartDate, source.automationEndDate].filter(Boolean).join(' – ')}` : ''}`;
+const schedule = (source: SheetSource) => source.stage === 'form-webhook' ? 'Tự động khi có đăng ký / chỉnh sửa' : `Tự ghi thí sinh mới từ web${source.automationEnabled ? ` · ${source.stage === 'session-output' ? 'Đối soát xuất 11:00 và 16:00' : 'Tự nhập khi Sheet thay đổi · kiểm tra mỗi giờ'}` : ''}${[source.automationStartDate, source.automationEndDate].filter(Boolean).length ? ` · ${[source.automationStartDate, source.automationEndDate].filter(Boolean).join(' – ')}` : ''}`;
 
 export default function SessionSheetSources({ sources, sessionId, sessionLabel, idToken, canManage, onImport, onSourcesChanged }: Props) {
   const [editing, setEditing] = useState<SheetSource | null>(null);
@@ -187,7 +187,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
 <span>
 <b className="block text-sm">Bật đồng bộ tự động</b>
 <small>
-{form.stage === 'session-output' ? 'Xuất lúc 11:00 và 16:00' : 'Tự nhập khi Sheet thay đổi; kiểm tra định kỳ mỗi 5 phút'}</small>
+{form.stage === 'session-output' ? 'Xuất lúc 11:00 và 16:00' : 'Tự nhập khi Sheet thay đổi; kiểm tra định kỳ mỗi giờ'}</small>
 </span>
 </label>
 {error && <p className="text-sm font-semibold text-rose-600">

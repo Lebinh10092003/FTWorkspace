@@ -1,8 +1,8 @@
 [Unit]
-Description=Synchronize examination registration sources every 5 minutes
+Description=Synchronize examination registration sources hourly
 
 [Timer]
-OnCalendar=*-*-* *:00/5:00
+OnCalendar=*-*-* *:00:00 Asia/Ho_Chi_Minh
 Persistent=true
 Unit=workspace-examination-sheet-scan.service
 
