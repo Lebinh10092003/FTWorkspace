@@ -1,5 +1,5 @@
 """Read-only audit scoped to THCS Nguyen Du, with encrypted output."""
-import base64,json,os,re,sqlite3
+import base64,json,os,re,sqlite3,unicodedata
 from pathlib import Path
 from cryptography.hazmat.primitives import hashes,serialization
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -57,18 +57,23 @@ try:
  sheets=build('sheets','v4',credentials=credentials,cache_discovery=False)
  drive=build('drive','v3',credentials=credentials,cache_discovery=False)
  report['driveCandidates']=[]
- candidates=drive.files().list(q="(fullText contains 'Nguyễn Du' or name contains 'kiểm tra' or name contains 'KIEM TRA') and (mimeType = 'application/vnd.google-apps.spreadsheet' or mimeType = 'application/vnd.google-apps.folder')",pageSize=100,fields='nextPageToken,files(id,name,mimeType,trashed,webViewLink,parents,driveId,createdTime)',supportsAllDrives=True,includeItemsFromAllDrives=True).execute()
+ candidates=drive.files().list(corpora='drive',driveId='0AFGREfQ-E4DTUk9PVA',q="mimeType = 'application/vnd.google-apps.spreadsheet' or mimeType = 'application/vnd.google-apps.folder'",pageSize=1000,fields='nextPageToken,files(id,name,mimeType,trashed,webViewLink,parents,driveId,createdTime)',supportsAllDrives=True,includeItemsFromAllDrives=True).execute()
  report['driveSearchHasMore']=bool(candidates.get('nextPageToken'))
+ report['driveInventoryCount']=len(candidates.get('files',[]))
+ def normal(value): return ''.join(c for c in unicodedata.normalize('NFD',value.lower()) if not unicodedata.combining(c))
+ school_folders={f['id'] for f in candidates.get('files',[]) if f['mimeType']=='application/vnd.google-apps.folder' and 'thcs' in normal(f['name']) and 'nguyen du' in normal(f['name'])}
+ for _ in range(5):
+  school_folders.update(f['id'] for f in candidates.get('files',[]) if f['mimeType']=='application/vnd.google-apps.folder' and set(f.get('parents',[])) & school_folders)
  for candidate in candidates.get('files',[]):
   if candidate['mimeType']=='application/vnd.google-apps.folder':
-   if 'nguyễn du' in candidate['name'].lower(): report['driveCandidates'].append(candidate)
+   if 'nguyen du' in normal(candidate['name']) or candidate['id'] in school_folders: report['driveCandidates'].append(candidate)
    continue
   try:
    meta=sheets.spreadsheets().get(spreadsheetId=candidate['id'],fields='spreadsheetUrl,properties(title),sheets(properties(title,sheetId))').execute()
    titles=[t['properties']['title'] for t in meta.get('sheets',[])]
    if 'TỔNG QUAN' not in titles: continue
    values=sheets.spreadsheets().values().get(spreadsheetId=candidate['id'],range="'TỔNG QUAN'!A1:F15").execute().get('values',[])
-   if 'thcs nguyễn du' not in json.dumps(values,ensure_ascii=False).lower(): continue
+   if 'thcs nguyen du' not in normal(json.dumps(values,ensure_ascii=False)) and not set(candidate.get('parents',[])) & school_folders: continue
    candidate['sheet']=meta
    candidate['sheetCounts']=[]
    for title in titles:
@@ -77,7 +82,7 @@ try:
      candidate['sheetCounts'].append({'tab':title,'nonemptyRowsAfterHeader':sum(bool(r and r[0]) for r in vals[1:])})
    report['driveCandidates'].append(candidate)
   except Exception as error:
-   if 'nguyễn du' in candidate['name'].lower(): candidate['error']=str(error)[:350];report['driveCandidates'].append(candidate)
+   if 'nguyen du' in normal(candidate['name']) or set(candidate.get('parents',[])) & school_folders: candidate['error']=str(error)[:350];report['driveCandidates'].append(candidate)
  for item in report['current'] or report['recovered']:
   remote={'assessmentId':item['id'],'files':[]}
   match=re.search(r'/spreadsheets/d/([^/]+)',item.get('output_sheet_url') or '')
