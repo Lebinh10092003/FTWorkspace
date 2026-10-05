@@ -30,7 +30,9 @@ from .numbering import (
 )
 from .weekly_report_docx import build_weekly_report_docx
 from .weekly_reports import (
+    report_document_id,
     report_generation_options,
+    report_sheet_id,
     resolve_report_week_start,
     run_weekly_report_pipeline,
     sync_reports_from_google_doc,
@@ -226,6 +228,10 @@ def weekly_reports(request):
         reports = reports.filter(completed_week=int(week))
     return Response({
         "reports": [_weekly_report_payload(report) for report in reports[:100]],
+        "sources": {
+            "sheetUrl": f"https://docs.google.com/spreadsheets/d/{quote(report_sheet_id(), safe='')}/edit",
+            "documentUrl": f"https://docs.google.com/document/d/{quote(report_document_id(), safe='')}/edit",
+        } if getattr(request, "user_role", "") == "ADMIN" else None,
     })
 
 

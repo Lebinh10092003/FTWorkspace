@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarPlus, CheckCircle2, FileText, Loader2, TriangleAlert, X } from 'lucide-react';
+import { CalendarPlus, CheckCircle2, Download, ExternalLink, FileSpreadsheet, FileText, Loader2, TriangleAlert, X } from 'lucide-react';
 
 import AccountMenu from '../AccountMenu';
 import ModuleShellHeader from '../layout/ModuleShellHeader';
@@ -29,6 +29,11 @@ type WeekOption = {
   isDefault: boolean;
 };
 
+type ReportSources = {
+  sheetUrl: string;
+  documentUrl: string;
+};
+
 type Props = {
   idToken: string;
   userName: string;
@@ -51,6 +56,8 @@ export default function WeeklyReportCenter({
   const [reports, setReports] = useState<Report[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sources, setSources] = useState<ReportSources | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -75,6 +82,7 @@ export default function WeeklyReportCenter({
       if (!response.ok) throw new Error(payload.error || 'Không tải được báo cáo tuần.');
       const next = Array.isArray(payload.reports) ? payload.reports as Report[] : [];
       setReports(next);
+      setSources(payload.sources || null);
       setSelectedId(current => next.some(report => report.id === current) ? current : (next[0]?.id || null));
     } catch (cause: any) {
       setError(cause.message || 'Không tải được báo cáo tuần.');
@@ -84,9 +92,45 @@ export default function WeeklyReportCenter({
   };
 
   useEffect(() => {
+    setSources(null);
     void load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idToken]);
+
+  const downloadReport = async () => {
+    if (!selected || downloading) return;
+    setDownloading(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/documents/weekly-reports/${selected.id}.docx`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || 'Không tải được file Word. Vui lòng thử lại.');
+      }
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+      const filename = encodedName ? decodeURIComponent(encodedName)
+        : disposition.match(/filename="([^"]+)"/i)?.[1]
+          || `Bao-cao-tuan-${selected.completedWeek}-${selected.id}.docx`;
+      const url = URL.createObjectURL(await response.blob());
+      try {
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch (cause: any) {
+      setError(cause.message || 'Không tải được file Word. Vui lòng thử lại.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const openCreate = async () => {
     setCreateOpen(true);
@@ -160,6 +204,24 @@ export default function WeeklyReportCenter({
           {error && <div role="alert" className="mb-5 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800"><TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" />{error}</div>}
           {notice && <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">{notice}</div>}
 
+          {sources && userRole === 'ADMIN' && (
+            <section aria-labelledby="weekly-report-sources-title" className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 id="weekly-report-sources-title" className="text-sm font-extrabold text-slate-800">Tài liệu nguồn · Admin</h2>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <a href={sources.sheetUrl} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-start gap-3 rounded-xl border border-slate-200 p-3 hover:border-emerald-300 hover:bg-emerald-50">
+                  <FileSpreadsheet className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Xem Google Sheet</span><span className="mt-1 block break-all text-xs leading-5 text-slate-500">{sources.sheetUrl}</span></span>
+                  <ExternalLink className="h-4 w-4 shrink-0 text-slate-400" />
+                </a>
+                <a href={sources.documentUrl} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-start gap-3 rounded-xl border border-slate-200 p-3 hover:border-blue-300 hover:bg-blue-50">
+                  <FileText className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Xem Google Docs</span><span className="mt-1 block break-all text-xs leading-5 text-slate-500">{sources.documentUrl}</span></span>
+                  <ExternalLink className="h-4 w-4 shrink-0 text-slate-400" />
+                </a>
+              </div>
+            </section>
+          )}
+
           {loading ? <div className="grid min-h-72 place-items-center text-sm font-semibold text-slate-500"><Loader2 className="h-5 w-5 animate-spin" /></div> : !reports.length ? (
             <section className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><FileText className="mx-auto h-9 w-9 text-slate-400" /><h2 className="mt-3 text-lg font-extrabold">Chưa có gói báo cáo tuần</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Bấm “Tạo báo cáo tuần” để chuyển dữ liệu của bạn vào Google Sheets.</p></section>
           ) : (
@@ -169,12 +231,21 @@ export default function WeeklyReportCenter({
                 <div className="space-y-1.5">{reports.map(report => <button key={report.id} type="button" onClick={() => setSelectedId(report.id)} className={`w-full rounded-xl px-3 py-3 text-left transition ${selected?.id === report.id ? 'bg-blue-600 text-white shadow-sm' : 'hover:bg-slate-50'}`}><span className="block text-sm font-extrabold">{report.employeeName}</span><span className={`mt-1 block text-xs ${selected?.id === report.id ? 'text-blue-100' : 'text-slate-500'}`}>Tuần {report.completedWeek} → {report.plannedWeek} · Đã chuyển Sheet</span></button>)}</div>
               </aside>
 
-              {selected && <article className="mx-auto w-full max-w-[794px] bg-white px-8 py-10 shadow-lg ring-1 ring-slate-200 sm:px-14" style={{ minHeight: '1040px' }}>
+              {selected && <div className="mx-auto w-full min-w-0 max-w-[794px]">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-sm font-bold text-slate-700">{selected.employeeName} · Tuần {selected.completedWeek} → {selected.plannedWeek}</p>
+                  <button type="button" onClick={() => void downloadReport()} disabled={downloading} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
+                    {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    {downloading ? 'Đang tải…' : 'Tải Word (.docx)'}
+                  </button>
+                </div>
+                <article className="w-full bg-white px-8 py-10 shadow-lg ring-1 ring-slate-200 sm:px-14" style={{ minHeight: '1040px' }}>
                 <header className="text-center"><h1 className="text-lg font-extrabold leading-7">GÓI DỮ LIỆU BÁO CÁO</h1><p className="font-extrabold leading-6">Kết quả tuần {selected.completedWeek}, nhiệm vụ dự kiến tuần {selected.plannedWeek}</p><p className="font-extrabold leading-6">({selected.employeeName})</p></header>
                 <section className="mt-7"><h2 className="font-extrabold">1. Công việc đã thực hiện tuần {selected.completedWeek}</h2>{list(selected.completedItems, 'Chưa có công việc được đánh dấu hoàn thành.')}</section>
                 <section className="mt-6"><h2 className="font-extrabold">2. Tồn tại, khó khăn, vướng mắc</h2>{list(selected.difficulties, 'Không có nội dung được ghi nhận.')}</section>
                 <section className="mt-6"><h2 className="font-extrabold">3. Nhiệm vụ tuần {selected.plannedWeek}</h2>{list(selected.plannedItems, 'Chưa có nhiệm vụ dự kiến.')}</section>
-              </article>}
+                </article>
+              </div>}
             </div>
           )}
         </div>

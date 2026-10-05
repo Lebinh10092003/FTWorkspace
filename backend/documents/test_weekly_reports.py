@@ -4,7 +4,7 @@ from unittest import mock
 from zipfile import ZipFile
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.authtoken.models import Token
 
 from authentication.models import UserProfile, WorkspaceNotification
@@ -234,6 +234,93 @@ class WeeklyReportGenerationApiTests(TestCase):
             report_week_start=date(2026, 9, 14),
             employee_email="manager@example.com",
         )
+
+
+class WeeklyReportAccessApiTests(TestCase):
+    def setUp(self):
+        self.tokens = {}
+        for role in ("ADMIN", "MANAGER", "EMPLOYEE"):
+            email = f"{role.lower()}@example.com"
+            user = get_user_model().objects.create_user(username=email, email=email)
+            UserProfile.objects.create(
+                email=email, name=role, role=role, employment_status="ACTIVE", access_modules=[],
+            )
+            self.tokens[role] = Token.objects.create(user=user).key
+        self.report = WeeklyReport.objects.create(
+            report_key="employee-download", employee_email="employee@example.com",
+            employee_name="Nhân viên", completed_week=39, planned_week=40,
+            completed_items=["Hoàn thành hồ sơ"], planned_items=["Họp triển khai"],
+        )
+        self.other_report = WeeklyReport.objects.create(
+            report_key="other-download", employee_email="other@example.com",
+            employee_name="Đồng nghiệp", completed_week=39, planned_week=40,
+        )
+
+    def _get(self, path, role):
+        return self.client.get(path, HTTP_AUTHORIZATION=f"Bearer {self.tokens[role]}")
+
+    @override_settings(WEEKLY_REPORT_SHEET_ID="custom-sheet", WEEKLY_REPORT_DOCUMENT_ID="custom-doc")
+    def test_admin_gets_configured_source_links_even_without_reports(self):
+        WeeklyReport.objects.all().delete()
+
+        response = self._get("/api/documents/weekly-reports", "ADMIN")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            "reports": [],
+            "sources": {
+                "sheetUrl": "https://docs.google.com/spreadsheets/d/custom-sheet/edit",
+                "documentUrl": "https://docs.google.com/document/d/custom-doc/edit",
+            },
+        })
+
+    @override_settings(WEEKLY_REPORT_SHEET_ID="", WEEKLY_REPORT_DOCUMENT_ID="")
+    def test_source_links_use_the_same_defaults_as_the_pipeline(self):
+        from .weekly_reports import DEFAULT_REPORT_DOCUMENT_ID, DEFAULT_REPORT_SHEET_ID
+
+        response = self._get("/api/documents/weekly-reports", "ADMIN")
+
+        self.assertEqual(response.json()["sources"], {
+            "sheetUrl": f"https://docs.google.com/spreadsheets/d/{DEFAULT_REPORT_SHEET_ID}/edit",
+            "documentUrl": f"https://docs.google.com/document/d/{DEFAULT_REPORT_DOCUMENT_ID}/edit",
+        })
+
+    def test_non_admins_do_not_receive_shared_source_links(self):
+        for role in ("EMPLOYEE", "MANAGER"):
+            with self.subTest(role=role):
+                response = self._get("/api/documents/weekly-reports", role)
+                self.assertEqual(response.status_code, 200)
+                self.assertIsNone(response.json()["sources"])
+        employee_reports = self._get("/api/documents/weekly-reports", "EMPLOYEE").json()["reports"]
+        self.assertEqual([report["id"] for report in employee_reports], [self.report.pk])
+
+    def test_employee_can_download_own_report_with_filename_and_content(self):
+        response = self._get(f"/api/documents/weekly-reports/{self.report.pk}.docx", "EMPLOYEE")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        self.assertIn('attachment; filename="Bao-cao-tuan-39-ke-hoach-tuan-40-nhan-vien.docx"', response["Content-Disposition"])
+        with ZipFile(BytesIO(response.content)) as archive:
+            document_xml = archive.read("word/document.xml").decode("utf-8")
+        self.assertIn("Hoàn thành hồ sơ", document_xml)
+        self.assertIn("Họp triển khai", document_xml)
+
+    def test_employee_cannot_download_another_employees_report(self):
+        response = self._get(f"/api/documents/weekly-reports/{self.other_report.pk}.docx", "EMPLOYEE")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_admin_can_download_selected_employees_report(self):
+        response = self._get(f"/api/documents/weekly-reports/{self.other_report.pk}.docx", "ADMIN")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.content.startswith(b"PK"))
+
+    def test_anonymous_requests_cannot_list_or_download_reports(self):
+        for path in ("/api/documents/weekly-reports", f"/api/documents/weekly-reports/{self.report.pk}.docx"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertIn(response.status_code, (401, 403))
 
 
 class WeeklyReportWebhookTests(TestCase):
