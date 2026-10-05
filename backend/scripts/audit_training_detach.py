@@ -28,6 +28,15 @@ def inspect(path):
    result.append(item)
   return result
 report['current']=inspect(root/'workspace.sqlite3')
+report['otherDatabaseFiles']=[]
+for path in [Path('/var/www/ft-workspace/backend/db.sqlite3'),*sorted(root.glob('*.sqlite3*')),*sorted((root/'backups').glob('*'))]:
+ if not path.is_file() or path.name.startswith('workspace-') or path == root/'workspace.sqlite3': continue
+ report['otherDatabaseFiles'].append({'name':str(path),'size':path.stat().st_size})
+ if 'sqlite' in path.name or path.suffix == '.bak':
+  try:
+   rows=inspect(path)
+   if rows: report['recovered'].extend(rows);report['otherSource']=str(path)
+  except Exception as error: report['otherDatabaseFiles'][-1]['error']=str(error)[:250]
 for path in sorted((root/'backups').glob('workspace-*.sqlite3'),reverse=True):
  try:
   rows=inspect(path)
@@ -47,6 +56,28 @@ try:
  credentials=service_account.Credentials.from_service_account_info(info,scopes=['https://www.googleapis.com/auth/spreadsheets.readonly','https://www.googleapis.com/auth/drive.readonly'])
  sheets=build('sheets','v4',credentials=credentials,cache_discovery=False)
  drive=build('drive','v3',credentials=credentials,cache_discovery=False)
+ report['driveCandidates']=[]
+ candidates=drive.files().list(q="(fullText contains 'Nguyễn Du' or name contains 'kiểm tra' or name contains 'KIEM TRA') and (mimeType = 'application/vnd.google-apps.spreadsheet' or mimeType = 'application/vnd.google-apps.folder')",pageSize=100,fields='nextPageToken,files(id,name,mimeType,trashed,webViewLink,parents,driveId,createdTime)',supportsAllDrives=True,includeItemsFromAllDrives=True).execute()
+ report['driveSearchHasMore']=bool(candidates.get('nextPageToken'))
+ for candidate in candidates.get('files',[]):
+  if candidate['mimeType']=='application/vnd.google-apps.folder':
+   if 'nguyễn du' in candidate['name'].lower(): report['driveCandidates'].append(candidate)
+   continue
+  try:
+   meta=sheets.spreadsheets().get(spreadsheetId=candidate['id'],fields='spreadsheetUrl,properties(title),sheets(properties(title,sheetId))').execute()
+   titles=[t['properties']['title'] for t in meta.get('sheets',[])]
+   if 'TỔNG QUAN' not in titles: continue
+   values=sheets.spreadsheets().values().get(spreadsheetId=candidate['id'],range="'TỔNG QUAN'!A1:F15").execute().get('values',[])
+   if 'thcs nguyễn du' not in json.dumps(values,ensure_ascii=False).lower(): continue
+   candidate['sheet']=meta
+   candidate['sheetCounts']=[]
+   for title in titles:
+    if title.startswith('BÀI LÀM') or title=='DANH SÁCH BÀI LÀM':
+     vals=sheets.spreadsheets().values().get(spreadsheetId=candidate['id'],range="'"+title.replace("'","''")+"'!A1:A500").execute().get('values',[])
+     candidate['sheetCounts'].append({'tab':title,'nonemptyRowsAfterHeader':sum(bool(r and r[0]) for r in vals[1:])})
+   report['driveCandidates'].append(candidate)
+  except Exception as error:
+   if 'nguyễn du' in candidate['name'].lower(): candidate['error']=str(error)[:350];report['driveCandidates'].append(candidate)
  for item in report['current'] or report['recovered']:
   remote={'assessmentId':item['id'],'files':[]}
   match=re.search(r'/spreadsheets/d/([^/]+)',item.get('output_sheet_url') or '')
