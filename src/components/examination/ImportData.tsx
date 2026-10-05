@@ -218,7 +218,8 @@ export default function ImportData({ idToken, googleAccessToken, canImport, sess
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [duplicates, setDuplicates] = useState<DuplicateCandidate[]>([]);
-  const [confirmedMatches, setConfirmedMatches] = useState<Record<string, string>>({});
+  // null records an explicit decision to keep a possible match separate.
+  const [confirmedMatches, setConfirmedMatches] = useState<Record<string, string | null>>({});
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [updateMode, setUpdateMode] = useState<'fill-empty' | 'replace-nonempty'>('replace-nonempty');
   const [historicalImport, setHistoricalImport] = useState(false);
@@ -797,6 +798,7 @@ export default function ImportData({ idToken, googleAccessToken, canImport, sess
                 <thead><tr><th>Dòng trong file</th><th>Thông tin nhập</th><th>Hồ sơ cũ nghi ngờ</th><th>Trạng thái</th><th>Căn cứ đối chiếu</th><th>Các kỳ đã tham gia</th><th>Quyết định</th></tr></thead>
                 <tbody>{duplicates.map(item => {
                   const selected = confirmedMatches[String(item.row)] === item.existing.code;
+                  const keptSeparate = confirmedMatches[String(item.row)] === null;
                   return <tr key={`${item.row}-${item.existing.code}`}>
                     <td>{item.row}</td>
                     <td><b>{item.importedName}</b></td>
@@ -805,10 +807,13 @@ export default function ImportData({ idToken, googleAccessToken, canImport, sess
                       <p className="mt-1 text-xs text-slate-500">{item.existing.code} · {formatBirthDate(item.existing.birthDate)} · {item.existing.school || 'Chưa có trường'}{item.existing.className ? ` · ${item.existing.className}` : ''}</p>
                       <p className="mt-1 text-xs text-slate-500">CCCD: {item.existing.identity || '—'} · SĐT: {item.existing.phone || '—'} · Email: {item.existing.email || '—'}</p>
                     </td>
-                    <td><span className={item.status === 'confirmed' ? 'rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700' : 'rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800'}>{item.status === 'confirmed' ? 'Đủ căn cứ' : 'Cần xác nhận'}</span></td>
+                    <td><span className={item.status === 'confirmed' || selected || keptSeparate ? 'rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700' : 'rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800'}>{item.status === 'confirmed' ? 'Đủ căn cứ' : selected ? 'Đã xác nhận trùng' : keptSeparate ? 'Đã chọn giữ riêng' : 'Cần xác nhận'}</span></td>
                     <td>{item.matchBy}</td>
                     <td>{item.existing.sessions?.length ? item.existing.sessions.map(session => `${session.code} · ${session.name}`).join(', ') : 'Chưa ghi nhận kỳ trước'}</td>
-                    <td>{item.status === 'confirmed' ? <span className="text-xs font-semibold text-emerald-700">Tự động dùng {item.existing.code}</span> : <div className="flex min-w-[220px] flex-col gap-2"><button type="button" onClick={() => setConfirmedMatches(current => selected ? Object.fromEntries(Object.entries(current).filter(([row]) => row !== String(item.row))) : { ...current, [String(item.row)]: item.existing.code })} className={selected ? 'rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white' : 'rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50'}>{selected ? `✓ Xác nhận dùng ${item.existing.code}` : `Xác nhận trùng với ${item.existing.code}`}</button><button type="button" onClick={() => setConfirmedMatches(current => Object.fromEntries(Object.entries(current).filter(([row]) => row !== String(item.row))))} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Giữ là hai hồ sơ riêng</button></div>}</td>
+                    <td>{item.status === 'confirmed' ? <span className="text-xs font-semibold text-emerald-700">Tự động dùng {item.existing.code}</span> : <div className="flex min-w-[220px] flex-col gap-2">
+                      <button type="button" aria-pressed={selected} onClick={() => setConfirmedMatches(current => selected ? Object.fromEntries(Object.entries(current).filter(([row]) => row !== String(item.row))) : { ...current, [String(item.row)]: item.existing.code })} className={selected ? 'rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white' : 'rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50'}>{selected ? `✓ Xác nhận dùng ${item.existing.code}` : `Xác nhận trùng với ${item.existing.code}`}</button>
+                      <button type="button" aria-pressed={keptSeparate} onClick={() => setConfirmedMatches(current => ({ ...current, [String(item.row)]: null }))} className={keptSeparate ? 'rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold text-white' : 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50'}>{keptSeparate ? '✓ Đã chọn giữ hai hồ sơ riêng' : 'Giữ là hai hồ sơ riêng'}</button>
+                    </div>}</td>
                   </tr>;
                 })}</tbody>
               </table>
