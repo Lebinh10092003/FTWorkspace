@@ -8,7 +8,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 from unittest.mock import MagicMock, patch
 
-from .models import Candidate, CandidateParticipation, Competition, ExamRoom, ExamSession, ExaminationSheet, LogNote, RoundResult
+from .models import Candidate, CandidateParticipation, Competition, ExamRoom, ExamSession, ExaminationBillingRecord, ExaminationSheet, LogNote, RoundResult
 
 
 class AysbcOrganisationBatchMigrationTests(TestCase):
@@ -817,6 +817,73 @@ class CandidateImportReuseTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.candidate.refresh_from_db()
         self.assertEqual(self.candidate.birth_date, '2014-03-20')
+
+    def test_historical_import_creates_codes_and_memberships_without_billing_or_notifications(self):
+        billing_before = list(ExaminationBillingRecord.objects.values())
+        payload = {
+            'sessionId': self.target.pk, 'source': 'Dữ liệu cũ', 'historicalImport': True, 'updateMode': 'fill-empty',
+            'records': [
+                {'name': self.candidate.name, 'identity': self.candidate.identity, 'school': 'Trường cũ', 'className': 'Lớp 6', 'registrationMethod': 'Trường học'},
+                {'name': 'Trần Minh Bình', 'identity': '002214012345', 'registrationMethod': 'Cá nhân'},
+            ],
+        }
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post('/api/examination/import/candidates', payload, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data['historicalImport'])
+        self.assertEqual(response.data['created'], 1)
+        self.assertEqual(response.data['linkedExisting'], 1)
+        imported = CandidateParticipation.objects.filter(session=self.target)
+        self.assertEqual(imported.count(), 2)
+        self.assertTrue(all(p.registration_data['historicalImport'] for p in imported))
+        self.assertTrue(Candidate.objects.get(name='Trần Minh Bình').code.startswith('FT-'))
+        self.assertEqual(list(ExaminationBillingRecord.objects.values()), billing_before)
+        self.assertFalse(WorkspaceNotification.objects.filter(title__in=['Thí sinh mới cần đối soát', 'Thí sinh mới đăng ký']).exists())
+        self.candidate.refresh_from_db()
+        self.assertEqual(self.candidate.school, 'Trường A')
+        self.assertTrue(LogNote.objects.filter(entity_key='session-' + self.target.pk, content__contains='không tạo khoản đối soát').exists())
+        retry = self.client.post('/api/examination/import/candidates', payload, format='json')
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(retry.data['created'], 0)
+        self.assertEqual(Candidate.objects.count(), 2)
+        self.assertEqual(CandidateParticipation.objects.count(), 3)
+        self.assertEqual(list(ExaminationBillingRecord.objects.values()), billing_before)
+
+    def test_historical_marker_survives_subsequent_sheet_update(self):
+        from .views import upsert_participation_history
+        participation = upsert_participation_history(self.candidate, self.target.pk, [], 'Dữ liệu cũ', {'registrationMethod': 'Cá nhân'}, historical_import=True)
+        self.assertFalse(ExaminationBillingRecord.objects.filter(participation=participation).exists())
+        from .sync import upsert_participation_history as sync_participation
+        sync_participation(self.candidate, self.target.pk, [], 'Sheet', {'generalNote': 'New note'})
+        participation.refresh_from_db()
+        self.assertTrue(participation.registration_data['historicalImport'])
+        self.assertEqual(participation.registration_data['generalNote'], 'New note')
+        self.assertFalse(ExaminationBillingRecord.objects.filter(participation=participation).exists())
+
+    def test_historical_import_keeps_existing_bill_unchanged(self):
+        participation = CandidateParticipation.objects.get(candidate=self.candidate, session=self.previous)
+        bill = participation.billing
+        bill.amount = 250000
+        bill.transfer_status = 'confirmed'
+        bill.save()
+        before = ExaminationBillingRecord.objects.filter(pk=bill.pk).values().get()
+        response = self.client.post('/api/examination/import/candidates', {
+            'sessionId': self.previous.pk, 'historicalImport': True, 'updateMode': 'fill-empty',
+            'records': [{'name': self.candidate.name, 'identity': self.candidate.identity}],
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ExaminationBillingRecord.objects.filter(pk=bill.pk).values().get(), before)
+        participation.refresh_from_db()
+        self.assertFalse(participation.registration_data.get('historicalImport'))
+
+    def test_regular_import_still_creates_billing_and_invalid_mode_is_rejected(self):
+        payload = {'sessionId': self.target.pk, 'records': [{'name': self.candidate.name, 'identity': self.candidate.identity}]}
+        response = self.client.post('/api/examination/import/candidates', payload | {'historicalImport': 'false'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(CandidateParticipation.objects.filter(session=self.target).exists())
+        response = self.client.post('/api/examination/import/candidates', payload, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(ExaminationBillingRecord.objects.filter(participation__session=self.target).exists())
 
 class SessionCompetitionConsistencyTests(TestCase):
     def test_legacy_session_is_relinked_and_serialized_with_the_competition_name(self):

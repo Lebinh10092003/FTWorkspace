@@ -670,7 +670,7 @@ def occurrence_id_from_round(round_config, occurrence_id='', exam_date=''):
     return ''
 
 
-def upsert_participation_history(candidate, session_id, history, source='', registration=None, update_mode='replace-nonempty', import_empty_values=True):
+def upsert_participation_history(candidate, session_id, history, source='', registration=None, update_mode='replace-nonempty', import_empty_values=True, historical_import=False):
     """Store a source tab as one session and each populated round independently."""
     if not session_id:
         return None
@@ -680,7 +680,7 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
     participation, participation_created = CandidateParticipation.objects.get_or_create(
         candidate=candidate,
         session=session,
-        defaults={'source': source or ''},
+        defaults={'source': source or '', 'registration_data': {'historicalImport': True} if historical_import else {}},
     )
     updates = []
     if source and participation.source != source:
@@ -2655,6 +2655,9 @@ def import_candidates(request):
         remove_session_candidate_codes = {str(code or '').strip().upper() for code in remove_session_candidate_codes if str(code or '').strip()}
         update_mode = str(data.get('updateMode') or 'replace-nonempty').strip()
         import_empty_values = bool(data.get('importEmptyValues', True))
+        historical_import = data.get('historicalImport', False)
+        if not isinstance(historical_import, bool):
+            return Response({'error': 'Tùy chọn nhập dữ liệu cũ cần là đúng hoặc sai.'}, status=status.HTTP_400_BAD_REQUEST)
         if update_mode not in {'add-only', 'fill-empty', 'replace-nonempty'}:
             return Response({'error': 'Chính sách cập nhật dữ liệu không hợp lệ.'}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -2831,7 +2834,7 @@ def import_candidates(request):
                 base.exam_history = merge_exam_history(base.exam_history, rec_cand['exam_history'], session_id, source, update_mode, import_empty_values)
                 base.updated = ts_vn
                 base.save()
-                upsert_participation_history(base, session_id, rec_cand['exam_history'], source, rec_cand['registration'], update_mode, import_empty_values)
+                upsert_participation_history(base, session_id, rec_cand['exam_history'], source, rec_cand['registration'], update_mode, import_empty_values, historical_import=historical_import)
 
                 after_values = {
                     field: getattr(base, field)
@@ -2886,7 +2889,7 @@ def import_candidates(request):
                     updated=ts_vn,
                     sort_key=f"{rec_cand['name'].lower()}_{rec_cand['identity'] or code}"
                 )
-                upsert_participation_history(new_c, session_id, rec_cand['exam_history'], source, rec_cand['registration'], update_mode, True)
+                upsert_participation_history(new_c, session_id, rec_cand['exam_history'], source, rec_cand['registration'], update_mode, True, historical_import=historical_import)
                 existing.append(new_c)
                 existing_codes_set.add(code)
                 created += 1
@@ -2908,6 +2911,8 @@ def import_candidates(request):
         existing_summary = f'; trong đó {linked_existing} hồ sơ đã có được bổ sung vào kỳ tổ chức này' if linked_existing else ''
         policy_label = {'add-only': 'chỉ nhập hồ sơ chưa có trên hệ thống', 'fill-empty': 'chỉ bổ sung trường còn trống', 'replace-nonempty': 'cập nhật theo giá trị có nội dung trong nguồn'}[update_mode]
         import_summary = f'Hệ thống nhập dữ liệu từ {source_label}: thêm {created} thí sinh, cập nhật {updated} thí sinh, gỡ {removed_from_session} thí sinh khỏi kỳ thi{existing_summary}; chính sách: {policy_label}. Không xóa dữ liệu do ô nguồn trống.'
+        if historical_import:
+            import_summary += ' Nhập dữ liệu lịch sử: không tạo khoản đối soát hoặc thông báo đăng ký mới.'
         append_audit(f'session-{session_id}', import_summary, request, system=True)
         append_competition_scope_audit(target_session, import_summary, request, system=True)
         if source_sheet:
@@ -2920,7 +2925,7 @@ def import_candidates(request):
             source_sheet.last_error = ''
             source_sheet.updated_at = timezone.now()
             source_sheet.save(update_fields=['last_import_at', 'last_content_fingerprint', 'last_observed_fingerprint', 'change_detected_at', 'pending_manual_import', 'status', 'last_error', 'updated_at'])
-        return Response({'created': created, 'updated': updated, 'linkedExisting': linked_existing, 'removedFromSession': removed_from_session, 'items': items_returned})
+        return Response({'created': created, 'updated': updated, 'linkedExisting': linked_existing, 'removedFromSession': removed_from_session, 'historicalImport': historical_import, 'items': items_returned})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

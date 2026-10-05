@@ -221,6 +221,7 @@ export default function ImportData({ idToken, googleAccessToken, canImport, sess
   const [confirmedMatches, setConfirmedMatches] = useState<Record<string, string>>({});
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [updateMode, setUpdateMode] = useState<'fill-empty' | 'replace-nonempty'>('replace-nonempty');
+  const [historicalImport, setHistoricalImport] = useState(false);
   const [sheetPreview, setSheetPreview] = useState<SheetImportPreview | null>(null);
   const previewPageCount = Math.max(1, Math.ceil(rows.length / LIST_PAGE_SIZE));
   const activePreviewPage = Math.min(previewPage, previewPageCount);
@@ -439,7 +440,7 @@ export default function ImportData({ idToken, googleAccessToken, canImport, sess
     try {
       const res = await fetch('/api/examination/import/candidates', {
         method: 'POST', headers: authHeaders,
-        body: JSON.stringify({ records: rows, source, sessionId: resolvedSessionId, confirmedMatches, updateMode, sheetId: importSheetId, sourceFingerprint: importSourceFingerprint }),
+        body: JSON.stringify({ records: rows, source, sessionId: resolvedSessionId, confirmedMatches, updateMode, historicalImport, sheetId: importSheetId, sourceFingerprint: importSourceFingerprint }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || 'Không thể nhập dữ liệu.');
@@ -451,7 +452,7 @@ export default function ImportData({ idToken, googleAccessToken, canImport, sess
       duplicateCheckRef.current += 1;
       setRows([]); setDuplicates([]); setCheckingDuplicates(false); setConfirmedMatches({}); setSource(''); setImportSheetId(''); setImportSourceFingerprint('');
       if (inputRef.current) inputRef.current.value = '';
-      setMessage(`✅ Đã nhập ${importedCount} hồ sơ: ${body.created} mới, ${body.updated} cập nhật từ ${source}.${linkedExisting ? ` ${linkedExisting} hồ sơ đã có được bổ sung vào kỳ tổ chức này.` : ''}`);
+      setMessage(`✅ Đã nhập ${importedCount} hồ sơ: ${body.created} mới, ${body.updated} cập nhật từ ${source}.${linkedExisting ? ` ${linkedExisting} hồ sơ đã có được bổ sung vào kỳ tổ chức này.` : ''}${body.historicalImport ? ' Dữ liệu cũ: không tạo khoản đối soát hoặc thông báo đăng ký mới.' : ''}`);
     } catch (err: any) { setMessage(err.message || 'Không thể nhập dữ liệu.'); }
     finally { setLoading(false); }
   };
@@ -828,6 +829,11 @@ export default function ImportData({ idToken, googleAccessToken, canImport, sess
             </button>
           </div>
           <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <label className="mb-4 block rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-[#001e40]">
+              <input type="checkbox" className="mr-2" checked={historicalImport} onChange={event => { setHistoricalImport(event.target.checked); if (event.target.checked) setUpdateMode('fill-empty'); }} />
+              <b>Nhập dữ liệu cũ, không tạo khoản đối soát</b>
+              <span className="mt-1 block pl-5 text-xs">Cấp mã hồ sơ và ghi lịch sử tham gia. Không tạo phiếu thu hoặc thông báo đăng ký mới; giữ nguyên khoản đối soát đã có.</span>
+            </label>
             <p className="text-sm font-extrabold text-slate-900">Cách cập nhật hồ sơ đã có</p>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <label className={`cursor-pointer rounded-xl border p-3 ${updateMode === 'fill-empty' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white'}`}>

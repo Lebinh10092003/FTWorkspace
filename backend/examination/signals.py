@@ -27,13 +27,16 @@ def participation_changed(sender, instance, **kwargs):
 
 @receiver(pre_save, sender=CandidateParticipation)
 def preserve_school_accounting_metadata(sender, instance, **kwargs):
-    if not instance.school_registration_id:
+    if instance._state.adding:
         return
     previous = CandidateParticipation.objects.filter(pk=instance.pk).values_list('registration_data', flat=True).first() or {}
     data = dict(instance.registration_data or {})
-    for key in ('schoolFee', 'schoolPartnerId'):
-        if key in previous:
-            data[key] = previous[key]
+    if previous.get('historicalImport') is True:
+        data['historicalImport'] = True
+    if instance.school_registration_id:
+        for key in ('schoolFee', 'schoolPartnerId'):
+            if key in previous:
+                data[key] = previous[key]
     instance.registration_data = data
 
 
@@ -68,7 +71,7 @@ def linked_sheet_created(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=CandidateParticipation)
 def registration_created(sender, instance, created, **kwargs):
-    if not created or instance.school_registration_id:
+    if not created or instance.school_registration_id or (instance.registration_data or {}).get('historicalImport') is True:
         return
     ExaminationBillingRecord.objects.get_or_create(participation=instance)
 
