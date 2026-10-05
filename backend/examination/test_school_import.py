@@ -213,6 +213,83 @@ class SchoolImportTests(TestCase):
         self.assertEqual(len(sheets), 2)
         self.commit(content, {'academicYear': '2026-2027'})
 
+    def individual_registration(self, paid=True):
+        candidate = Candidate.objects.create(id='EXISTING', code='EXISTING', name='Nguyễn Minh An', birth_date='2015-07-12', identity='001215012345', school='Trường A', class_name='', sort_key='a')
+        participation = CandidateParticipation.objects.create(candidate=candidate, session=self.sessions['TESTA'], registration_method='Cá nhân', source='Google Form', registration_data={'paymentProof': 'original-proof', 'generalNote': 'Original'})
+        billing = participation.billing
+        if paid:
+            billing.amount = 250000
+            billing.transfer_status = 'confirmed'
+            billing.transfer_reference = 'original-transfer'
+            billing.invoice_status = 'issued'
+            billing.invoice_number = 'original-invoice'
+            billing.seen_by_accountant = True
+            billing.save()
+        return participation
+
+    def test_paid_individual_is_preserved_and_only_missing_contests_are_added(self):
+        participation = self.individual_registration()
+        room = ExamRoom.objects.create(session=self.sessions['TESTA'], round_id='round-1', round_name='Vòng 1', label='Original room', room_number='1', mode='IN_PERSON', capacity=10)
+        round_result = RoundResult.objects.create(participation=participation, round_id='round-1', round_name='Vòng 1', exam_room=room, room_name='Original room', exam_date='2026-10-25', eligibility='Đủ điều kiện')
+        proof = TransferProof.objects.create(billing=participation.billing, session=self.sessions['TESTA'], image=b'original', image_type='image/png', filename='original.png', created_by=self.finance.email)
+        models = [(CandidateParticipation, participation.pk), (ExaminationBillingRecord, participation.billing.pk), (RoundResult, round_result.pk), (TransferProof, proof.pk)]
+        snapshots = [model.objects.filter(pk=pk).values().get() for model, pk in models]
+        preview = self.preview()
+        self.assertTrue(preview.data['canCommit'], preview.data['issues'])
+        self.assertEqual(preview.data['summary']['newCandidates'], 1)
+        self.assertEqual(preview.data['summary']['preservedIndividualRegistrations'], 1)
+        self.assertEqual(preview.data['summary']['newRegistrations'], 2)
+        report = {g['competitionCode']: g for g in preview.data['groups']}
+        self.assertEqual(report['TESTA']['amount'], 250000)
+        self.assertEqual(report['TESTA']['alreadyAssigned'], 1)
+        self.commit()
+        self.assertEqual(Candidate.objects.count(), 2)
+        self.assertEqual(CandidateParticipation.objects.count(), 3)
+        for (model, pk), snapshot in zip(models, snapshots):
+            self.assertEqual(model.objects.filter(pk=pk).values().get(), snapshot)
+        participation.candidate.refresh_from_db()
+        self.assertEqual(participation.candidate.class_name, 'Lớp 6')
+        self.assertEqual(ExaminationBillingRecord.objects.get(school_registration__session=self.sessions['TESTA']).amount, 250000)
+        self.assertEqual(ExaminationBillingRecord.objects.get(school_registration__session=self.sessions['TESTB']).amount, 450000)
+        again = self.commit()
+        self.assertEqual(again.data['summary']['newRegistrations'], 0)
+        self.assertEqual(again.data['summary']['preservedIndividualRegistrations'], 1)
+        self.assertEqual(CandidateParticipation.objects.count(), 3)
+        self.assertEqual(ExaminationBillingRecord.objects.count(), 3)
+
+    def test_only_existing_individual_creates_no_school_bill_or_room_assignment(self):
+        for paid in (False, True):
+            with self.subTest(paid=paid):
+                if not Candidate.objects.exists():
+                    participation = self.individual_registration(paid=paid)
+                else:
+                    participation.billing.amount = 250000
+                    participation.billing.transfer_status = 'confirmed'
+                    participation.billing.save()
+                room = ExamRoom.objects.create(session=self.sessions['TESTA'], round_id='round-1', round_name='Vòng 1', label='Available room', room_number=str(paid), mode='IN_PERSON', capacity=10)
+                snapshot = CandidateParticipation.objects.filter(pk=participation.pk).values().get()
+                result = self.commit(self.workbook([self.rows[0]]))
+                self.assertEqual(result.data['summary']['newRegistrations'], 0)
+                self.assertEqual(result.data['summary']['preservedIndividualRegistrations'], 1)
+                self.assertEqual(result.data['report'][0]['assigned'], 0)
+                self.assertEqual(result.data['report'][0]['waiting'], 0)
+                self.assertEqual(len(result.data['sessions']), 1)
+                self.assertEqual(SchoolRegistration.objects.count(), 0)
+                self.assertEqual(ExaminationBillingRecord.objects.count(), 1)
+                self.assertEqual(room.assignments.count(), 0)
+                self.assertEqual(CandidateParticipation.objects.filter(pk=participation.pk).values().get(), snapshot)
+
+    def test_individual_changed_since_preview_requires_new_preview(self):
+        participation = self.individual_registration()
+        content = self.workbook()
+        preview = self.preview(content)
+        participation.general_note = 'Changed after preview'
+        participation.save()
+        response = self.post(content, self.options | {'action': 'commit', 'previewToken': preview.data['previewToken']})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(Candidate.objects.count(), 1)
+        self.assertEqual(CandidateParticipation.objects.count(), 1)
+
     def test_unknown_contest_and_invalid_date_block_all_writes(self):
         rows = [r[:] for r in self.rows]
         rows[0][5] = 'UNKNOWN'

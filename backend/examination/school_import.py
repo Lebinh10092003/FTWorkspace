@@ -279,15 +279,12 @@ def build_plan(content, options):
                 else:
                     participation = CandidateParticipation.objects.filter(candidate=candidate, session=target).select_related('school_registration').first() if candidate else None
                     entry['participationVersion'] = participation.updated_at.isoformat() if participation else ''
+                    entry['preserveIndividual'] = bool(participation and not participation.school_registration_id)
                     if participation:
                         if not participation.school_registration_id:
-                            issue('warning', 'Lượt đăng ký đã có sẽ được chuyển sang đối soát theo trường.', row)
+                            issue('warning', 'Giữ nguyên lượt đăng ký cá nhân và dữ liệu thanh toán đã có; không tính lại vào khoản thu của trường.', row)
                         if participation.school_registration_id and participation.school_registration.partner_id != partner.get('id'):
                             issue('error', 'Lượt đăng ký đã thuộc nhóm đối soát của trường khác.', row)
-                        elif not participation.school_registration_id:
-                            billing = ExaminationBillingRecord.objects.filter(participation=participation).first()
-                            if billing and (billing.amount is not None or billing.transfer_status != 'pending' or billing.invoice_status != 'pending' or billing.proofs.exists() or (participation.registration_data or {}).get('paymentProof')):
-                                issue('error', 'Lượt đăng ký cá nhân đã có dữ liệu thanh toán. Cần kế toán xử lý trước khi gom theo trường.', row)
                         prior_fee = (participation.registration_data or {}).get('schoolFee')
                         if participation.school_registration_id and prior_fee != amount:
                             issue('error', 'Lệ phí khác lượt đăng ký đã nhập. Sửa ở đối soát trước khi nhập lại.', row)
@@ -299,6 +296,7 @@ def build_plan(content, options):
     for session_id in sorted({entry['sessionId'] for entry in registrations.values()}):
         session = next(s for s in sessions if s.pk == session_id)
         entries = [entry for entry in registrations.values() if entry['sessionId'] == session_id]
+        school_entries = [entry for entry in entries if not entry['preserveIndividual']]
         group = SchoolRegistration.objects.filter(partner_id=partner.get('id', ''), session=session).first()
         billing = ExaminationBillingRecord.objects.filter(school_registration=group).first() if group else None
         additions = sum(not e['participationVersion'] for e in entries)
@@ -315,6 +313,10 @@ def build_plan(content, options):
         for entry in entries:
             candidate_id = profiles[entry['profileIndex']]['candidateId']
             existing_result = RoundResult.objects.filter(participation__candidate_id=candidate_id, participation__session_id=session_id, round_id=str(first_round.get('id') or ''), occurrence_id=occurrence).first() if candidate_id else None
+            if entry['preserveIndividual']:
+                already_assigned += bool(existing_result and existing_result.exam_room_id)
+                entry['roomId'] = ''
+                continue
             if existing_result and (existing_result.exam_room_id or existing_result.eligibility != 'Đủ điều kiện'):
                 if existing_result.exam_room_id:
                     already_assigned += 1
@@ -331,10 +333,11 @@ def build_plan(content, options):
                 waiting += 1
         if waiting:
             issue('warning', f'{session.code}: {waiting} lượt chờ phân phòng (chưa cấu hình phòng/đợt hoặc hết sức chứa).')
-        groups.append({'sessionId': session_id, 'competitionCode': session.code, 'competitionName': session.name, 'label': f'{session.code} · {session.name} · {session.time}', 'registrations': len(entries), 'newCandidates': sum(not profiles[e['profileIndex']]['candidateId'] for e in entries), 'existingCandidates': sum(bool(profiles[e['profileIndex']]['candidateId']) for e in entries), 'newRegistrations': additions, 'existingRegistrations': len(entries) - additions, 'amount': sum(e['amount'] or 0 for e in entries) if all(e['amount'] is not None for e in entries) else None, 'assigned': assigned, 'alreadyAssigned': already_assigned, 'waiting': waiting, 'round': first_round, 'occurrenceId': occurrence, 'billingVersion': billing.updated_at.isoformat() if billing else '', 'sessionVersion': session.updated_at.isoformat()})
+        groups.append({'sessionId': session_id, 'competitionCode': session.code, 'competitionName': session.name, 'label': f'{session.code} · {session.name} · {session.time}', 'registrations': len(entries), 'newCandidates': sum(not profiles[e['profileIndex']]['candidateId'] for e in entries), 'existingCandidates': sum(bool(profiles[e['profileIndex']]['candidateId']) for e in entries), 'newRegistrations': additions, 'existingRegistrations': len(entries) - additions, 'schoolRegistrations': len(school_entries), 'preservedIndividualRegistrations': len(entries) - len(school_entries), 'amount': sum(e['amount'] or 0 for e in school_entries) if all(e['amount'] is not None for e in school_entries) else None, 'assigned': assigned, 'alreadyAssigned': already_assigned, 'waiting': waiting, 'round': first_round, 'occurrenceId': occurrence, 'billingVersion': billing.updated_at.isoformat() if billing else '', 'sessionVersion': session.updated_at.isoformat()})
     plan = {'partner': partner, 'newPartner': new_partner, 'sheet': sheet, 'sheets': sheets, 'rows': rows, 'profiles': profiles, 'registrations': list(registrations.values()), 'routes': list(routes.values()), 'groups': groups, 'issues': issues, 'roomState': room_state, 'fileHash': hashlib.sha256(content).hexdigest(), 'candidateState': fingerprint([(c.pk, c.updated_at.isoformat()) for c in existing])}
     plan['canCommit'] = not any(i['level'] == 'error' for i in issues)
     plan['summary'] = {'rows': len(raw_rows), 'candidates': len(profiles), 'newCandidates': sum(not p['candidateId'] for p in profiles), 'existingCandidates': sum(bool(p['candidateId']) for p in profiles), 'registrations': len(registrations), 'newRegistrations': sum(g['newRegistrations'] for g in groups), 'existingRegistrations': sum(g['existingRegistrations'] for g in groups), 'sessions': len(groups)}
+    plan['summary']['preservedIndividualRegistrations'] = sum(g['preservedIndividualRegistrations'] for g in groups)
     return plan
 
 
@@ -350,6 +353,8 @@ def commit_plan(plan, request, filename):
         append_audit('partner-' + partner['id'], 'Tạo đối tác từ file đăng ký trường: ' + partner['school'], request)
     group_map = {}
     for item in plan['groups']:
+        if not item['schoolRegistrations']:
+            continue
         group, _ = SchoolRegistration.objects.get_or_create(partner_id=partner['id'], session_id=item['sessionId'], defaults={'school': partner['school'], 'contact': partner})
         group_map[item['sessionId']] = group
     codes = set(Candidate.objects.values_list('code', flat=True))
@@ -370,11 +375,13 @@ def commit_plan(plan, request, filename):
         candidates.append(candidate)
     for entry in plan['registrations']:
         candidate = candidates[entry['profileIndex']]
-        group = group_map[entry['sessionId']]
-        session = group.session
+        session = ExamSession.objects.get(pk=entry['sessionId'])
         candidate.session_ids = list(dict.fromkeys([*(candidate.session_ids or []), session.pk]))
         candidate.contests = merge_contest_codes(candidate.contests, session.code)
         candidate.save()
+        if entry['preserveIndividual']:
+            continue
+        group = group_map[entry['sessionId']]
         participation = CandidateParticipation.objects.filter(candidate=candidate, session=session).first()
         if not participation:
             # Attach the school before the creation signal can generate individual accounting alerts.
@@ -421,16 +428,16 @@ def commit_plan(plan, request, filename):
         partner['contests'] = list(dict.fromkeys([*partner.get('contests', []), group.session.code]))
         counts = [c for c in partner.get('studentCounts', []) if c.get('session') != session_id]
         partner['studentCounts'] = [*counts, {'session': session_id, 'count': group.participations.count()}]
-        report = next(g for g in plan['groups'] if g['sessionId'] == session_id)
-        append_audit('session-' + session_id, f'Báo cáo nhập Excel {filename} · trường {partner["school"]}: {report["registrations"]} học sinh đăng ký {group.session.code}; {report["newCandidates"]} hồ sơ mới, {report["existingCandidates"]} hồ sơ đã có; {report["newRegistrations"]} lượt đăng ký bổ sung, {report["existingRegistrations"]} lượt đã thuộc kỳ. Phân phòng: {report["assigned"]} bổ sung, {report["alreadyAssigned"]} đã phân, {report["waiting"]} chờ. Đối soát gộp theo trường.', request, system=True)
+    for report in plan['groups']:
+        append_audit('session-' + report['sessionId'], f'Báo cáo nhập Excel {filename} · trường {partner["school"]}: {report["registrations"]} học sinh đăng ký {report["competitionCode"]}; {report["newCandidates"]} hồ sơ mới, {report["existingCandidates"]} hồ sơ đã có; {report["newRegistrations"]} lượt đăng ký bổ sung, {report["existingRegistrations"]} lượt đã thuộc kỳ. Giữ nguyên {report["preservedIndividualRegistrations"]} lượt cá nhân; {report["schoolRegistrations"]} lượt đối soát theo trường. Phân phòng: {report["assigned"]} bổ sung, {report["alreadyAssigned"]} đã phân, {report["waiting"]} chờ.', request, system=True)
     config, _ = SystemConfig.objects.get_or_create(key=PARTNER_CONFIG_KEY)
     config.data = dict(config.data or {}) | {'partners': [partner if p['id'] == partner['id'] else p for p in partners]}
     config.save(update_fields=['data'])
     from .partner_contact_sync import launch_partner_contact_sync
     transaction.on_commit(launch_partner_contact_sync, robust=True)
     sync_session_candidate_totals()
-    report = [{key: group[key] for key in ('sessionId', 'competitionCode', 'competitionName', 'label', 'registrations', 'newCandidates', 'existingCandidates', 'newRegistrations', 'existingRegistrations', 'amount', 'assigned', 'alreadyAssigned', 'waiting')} for group in plan['groups']]
-    return {'items': [serialize_candidate(c) for c in candidates], 'partners': config.data['partners'], 'sessions': [serialize_session(s) for s in ExamSession.objects.filter(pk__in=group_map)], 'summary': plan['summary'], 'report': report, 'issues': plan['issues']}
+    report = [{key: group[key] for key in ('sessionId', 'competitionCode', 'competitionName', 'label', 'registrations', 'newCandidates', 'existingCandidates', 'newRegistrations', 'existingRegistrations', 'schoolRegistrations', 'preservedIndividualRegistrations', 'amount', 'assigned', 'alreadyAssigned', 'waiting')} for group in plan['groups']]
+    return {'items': [serialize_candidate(c) for c in candidates], 'partners': config.data['partners'], 'sessions': [serialize_session(s) for s in ExamSession.objects.filter(pk__in=[g['sessionId'] for g in plan['groups']])], 'summary': plan['summary'], 'report': report, 'issues': plan['issues']}
 
 
 @api_view(['POST'])
