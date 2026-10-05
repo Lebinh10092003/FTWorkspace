@@ -1,5 +1,6 @@
 import io
 import json
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import openpyxl
@@ -33,7 +34,7 @@ class SchoolImportTests(TestCase):
             [3, 'Trần Minh Bình', '10/02/2014', '002214012345', 'Lớp 7', 'TESTA', 250000, 'Trần Văn A', '0907654321', 'parent2@example.test', ''],
         ]
 
-    def workbook(self, rows=None, metadata=False, copy=False):
+    def workbook(self, rows=None, metadata=False, copy=False, school_headers=False):
         workbook = openpyxl.Workbook()
         sheet = workbook.active
         sheet.title = 'Đăng ký tham dự'
@@ -42,9 +43,12 @@ class SchoolImportTests(TestCase):
             sheet.append(['Người phụ trách (*):', 'Người liên lạc'])
             sheet.append(['Số điện thoại (*):', '0912345678'])
             sheet.append(['Email nhận thông tin (*):', None, 'school@example.test'])
-        sheet.append(['STT', 'Họ và tên thí sinh (*)', 'Ngày sinh (*)\n(DD/MM/YYYY)', 'CCCD / Hộ chiếu / SĐD Học sinh', 'Lớp đang học (*)', 'Cuộc thi đăng ký (*)\n(Chọn danh sách)', 'Lệ phí dự thi\n(Tự động tính)', 'Họ tên phụ huynh / Người giám hộ (*)', 'Số điện thoại (*)\n(Nhận Zalo/SMS)', 'Email liên hệ (*)', 'Ghi chú'])
+        if school_headers:
+            sheet.append(['STT', 'Họ và tên thí sinh', 'Ngày, tháng,\nnăm sinh', 'Căn cước công dân/\nHộ chiếu', 'Lớp đang\nhọc', 'Cuộc thi đăng ký\n(FIMO/FIEO)', 'Họ và tên phụ huynh/\nngười giám hộ', 'Số điện thoại', 'Email học sinh/\nphụ huynh', 'Ghi chú'])
+        else:
+            sheet.append(['STT', 'Họ và tên thí sinh (*)', 'Ngày sinh (*)\n(DD/MM/YYYY)', 'CCCD / Hộ chiếu / SĐD Học sinh', 'Lớp đang học (*)', 'Cuộc thi đăng ký (*)\n(Chọn danh sách)', 'Lệ phí dự thi\n(Tự động tính)', 'Họ tên phụ huynh / Người giám hộ (*)', 'Số điện thoại (*)\n(Nhận Zalo/SMS)', 'Email liên hệ (*)', 'Ghi chú'])
         for row in self.rows if rows is None else rows:
-            sheet.append(row)
+            sheet.append(row[:6] + row[7:] if school_headers else row)
         if copy:
             workbook.copy_worksheet(sheet).title = 'Bản sao danh sách'
         stream = io.BytesIO()
@@ -93,6 +97,89 @@ class SchoolImportTests(TestCase):
         self.assertEqual({r['kind'] for r in records.data}, {'school'})
         self.assertEqual(sum(r['amount'] for r in records.data), 950000)
         self.assertEqual(self.client.get('/api/examination/billing/stats?scope=all').data['totalAmount'], 950000)
+
+    def test_school_headers_read_identity_parent_and_excel_dates(self):
+        row = self.rows[0][:]
+        row[2] = datetime(2015, 7, 12)
+        row[3] = 1215012345
+        content = self.workbook([row], school_headers=True)
+
+        raw, _, _, _ = read_workbook(content)
+
+        self.assertEqual(raw[0]['cccd'], '1215012345')
+        self.assertEqual(raw[0]['dob'], '2015-07-12')
+        self.assertEqual(raw[0]['parent'], 'Nguyễn Văn A')
+        self.assertEqual(raw[0]['phone'], '0901234567')
+        self.commit(content)
+        candidate = Candidate.objects.get()
+        self.assertEqual(candidate.identity, '1215012345')
+        self.assertEqual(candidate.birth_date, '2015-07-12')
+
+    def test_combined_codes_create_both_registrations_and_retry_is_idempotent(self):
+        row = self.rows[0][:]
+        for separator in (' & ', '/', ', ', '; ', ' + ', ' và ', '\n'):
+            with self.subTest(separator=separator):
+                row[5] = f'TESTA{separator}TESTB{separator}TESTA'
+                content = self.workbook([row], school_headers=True)
+                preview = self.preview(content)
+                self.assertEqual(preview.data['summary']['rows'], 1)
+                self.assertEqual(preview.data['summary']['candidates'], 1)
+                self.assertEqual(preview.data['summary']['registrations'], 2)
+                self.assertEqual({route['contest'] for route in preview.data['routes']}, {'TESTA', 'TESTB'})
+                self.assertEqual({r['sessionId'] for r in preview.data['rows']}, {s.pk for s in self.sessions.values()})
+                self.commit(content)
+        self.assertEqual(Candidate.objects.count(), 1)
+        self.assertEqual(CandidateParticipation.objects.count(), 2)
+        self.assertEqual(SchoolRegistration.objects.count(), 2)
+        self.assertEqual(ExaminationBillingRecord.objects.count(), 2)
+        self.assertTrue(all(amount is None for amount in ExaminationBillingRecord.objects.values_list('amount', flat=True)))
+
+    def test_combined_contests_with_one_fee_block_instead_of_double_billing(self):
+        row = self.rows[0][:]
+        row[5] = 'TESTA & TESTB'
+        content = self.workbook([row])
+        preview = self.preview(content)
+
+        self.assertFalse(preview.data['canCommit'])
+        self.assertTrue(any('lệ phí chung' in issue['message'] for issue in preview.data['issues']))
+        self.assertTrue(all(group['amount'] is None for group in preview.data['groups']))
+        response = self.post(content, self.options | {'action': 'commit', 'previewToken': preview.data['previewToken']})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Candidate.objects.count(), 0)
+        self.assertEqual(ExaminationBillingRecord.objects.count(), 0)
+
+    def test_missing_fee_warning_is_grouped_without_hiding_invalid_rows(self):
+        rows = [r[:] for r in (self.rows[0], self.rows[2])]
+        rows[0][2] = ''
+        rows[-1][4] = ''
+        preview = self.preview(self.workbook(rows, school_headers=True))
+
+        warnings = [i for i in preview.data['issues'] if i['level'] == 'warning' and 'lệ phí' in i['message']]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('2 dòng', warnings[0]['message'])
+        self.assertEqual({i['row'] for i in preview.data['issues'] if i['level'] == 'error'}, {2, 3})
+        self.assertFalse(preview.data['canCommit'])
+
+    def test_unknown_combined_contest_still_blocks_all_writes(self):
+        row = self.rows[0][:]
+        row[5] = 'TESTA & UNKNOWN'
+        preview = self.preview(self.workbook([row], school_headers=True))
+
+        self.assertFalse(preview.data['canCommit'])
+        self.assertEqual({route['contest'] for route in preview.data['routes']}, {'TESTA', 'UNKNOWN'})
+        self.assertEqual(CandidateParticipation.objects.count(), 0)
+
+    def test_exact_session_name_with_separator_is_preserved(self):
+        session = self.sessions['TESTA']
+        session.name = 'Toán / Khoa học'
+        session.save()
+        row = self.rows[0][:]
+        row[5] = session.name
+        preview = self.preview(self.workbook([row]))
+
+        self.assertTrue(preview.data['canCommit'], preview.data['issues'])
+        self.assertEqual(preview.data['summary']['registrations'], 1)
+        self.assertEqual(preview.data['routes'][0]['sessionId'], session.pk)
 
     def test_retry_and_exact_duplicate_do_not_double_bill(self):
         rows = self.rows + [self.rows[0][:]]

@@ -118,7 +118,7 @@ const aliases: Record<string, string[]> = {
   birthDate: ['ngay sinh dd mm yyyy hoac yyyy', 'ngay sinh', 'ngay thang nam sinh', 'birth date', 'birthday'],
   email: ['email lien lac', 'email'], parent: ['ho ten phu huynh', 'phu huynh', 'parent'],
   phone: ['so dien thoai lien lac', 'so dien thoai', 'sdt', 'dien thoai', 'phone', 'so dien thoai nguoi giam ho'],
-  identity: ['so cccd ho chieu', 'cccd dinh danh', 'cccd', 'cmnd', 'dinh danh', 'identity', 'so cccd'],
+  identity: ['so cccd ho chieu', 'can cuoc cong dan', 'can cuoc', 'ho chieu', 'cccd dinh danh', 'cccd', 'cmnd', 'dinh danh', 'identity', 'so cccd'],
   address: ['dia chi lien he', 'dia chi', 'address'], updated: ['ngay cap nhat gan nhat', 'updated'],
 };
 const normalise = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase('vi-VN')

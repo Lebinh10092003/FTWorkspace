@@ -123,6 +123,23 @@ def school_match(existing, incoming):
     return assessment
 
 
+def registered_contests(value, sessions):
+    """Expand combined codes while preserving an exact session name or ID."""
+    value = cell_text(value)
+    if not value:
+        return []
+    if any(norm(value) in {norm(s.pk), norm(s.code), norm(s.name)} for s in sessions):
+        return [value]
+    result, seen = [], set()
+    for part in re.split(r'[,;&/+\n]+|\s+và\s+', value, flags=re.IGNORECASE):
+        part = part.strip()
+        key = norm(part)
+        if key and key not in seen:
+            seen.add(key)
+            result.append(part)
+    return result
+
+
 def build_plan(content, options):
     raw_rows, metadata, sheet, sheets = read_workbook(content, str(options.get('sheet') or ''))
     issues = []
@@ -160,6 +177,7 @@ def build_plan(content, options):
         raise ValueError('Ánh xạ kỳ tổ chức hoặc hồ sơ không hợp lệ.')
     existing = list(Candidate.objects.all().order_by('id'))
     profiles, rows, registrations, routes = [], [], {}, {}
+    missing_fee_rows = []
     for raw in raw_rows:
         row = raw['row']
         profile = {
@@ -222,17 +240,9 @@ def build_plan(content, options):
                 issue('error', 'Các dòng cùng họ tên/ngày sinh/lớp có giấy tờ định danh mâu thuẫn.', row)
             profile_index = len(profiles)
             profiles.append({'profile': profile, 'candidateId': candidate.pk if candidate else '', 'candidateVersion': candidate.updated_at.isoformat() if candidate else ''})
-        contest = raw.get('contests', '')
-        if not contest:
+        contests = registered_contests(raw.get('contests', ''), sessions)
+        if not contests:
             issue('error', 'Thiếu cuộc thi đăng ký.', row)
-        possible = [s for s in sessions if norm(contest) in {norm(s.pk), norm(s.code), norm(s.name)} or norm(contest).startswith(norm(s.code) + ' ')] if contest else []
-        if year:
-            possible = [s for s in possible if (session_academic_year(s) or '-'.join(re.findall(r'20\d{2}', s.time)[:2])) == year]
-        mapped = session_mapping.get(contest)
-        target = next((s for s in possible if s.pk == mapped), None) if mapped else (possible[0] if len(possible) == 1 else None)
-        routes[contest] = {'contest': contest, 'sessionId': target.pk if target else '', 'options': [{'id': s.pk, 'label': f'{s.code} · {s.name} · {s.time}'} for s in possible]}
-        if not target:
-            issue('error', 'Không xác định được duy nhất kỳ tổ chức. Chọn kỳ cho ' + (contest or 'dòng này') + '.', row)
         amount = None
         if raw.get('amount'):
             try:
@@ -243,33 +253,47 @@ def build_plan(content, options):
             except InvalidOperation:
                 issue('error', 'Lệ phí cần là số nguyên dương.', row)
         else:
-            issue('warning', 'Thiếu lệ phí: kế toán cần nhập số tiền phải thu.', row)
-        entry = {'row': row, 'name': profile['name'], 'contest': contest, 'profileIndex': profile_index, 'sessionId': target.pk if target else '', 'amount': amount, 'note': raw.get('generalNote') or raw.get('note', ''), 'subject': raw.get('subject', ''), 'category': raw.get('category', ''), 'examLanguage': raw.get('examLanguage', ''), 'matches': [{'code': c.code, 'name': c.name, 'birthDate': c.birth_date, 'school': c.school, 'reason': a['reason']} for c, a in matches]}
-        rows.append(entry)
-        if target:
-            key = f'{profile_index}:{target.pk}'
-            previous = registrations.get(key)
-            if previous:
-                if any(previous.get(field) != entry.get(field) for field in ('amount', 'subject', 'category', 'examLanguage', 'note')):
-                    issue('error', 'Dòng lặp trong cùng kỳ có thông tin đăng ký khác nhau.', row)
+            missing_fee_rows.append(row)
+        if len(contests) > 1 and amount is not None:
+            issue('error', 'Một dòng đăng ký nhiều cuộc thi có lệ phí chung. Tách thành từng dòng với lệ phí riêng cho mỗi cuộc thi.', row)
+            amount = None
+        for contest in contests or ['']:
+            possible = [s for s in sessions if norm(contest) in {norm(s.pk), norm(s.code), norm(s.name)} or norm(contest).startswith(norm(s.code) + ' ')] if contest else []
+            if year:
+                possible = [s for s in possible if (session_academic_year(s) or '-'.join(re.findall(r'20\d{2}', s.time)[:2])) == year]
+            mapped = session_mapping.get(contest)
+            target = next((s for s in possible if s.pk == mapped), None) if mapped else (possible[0] if len(possible) == 1 else None)
+            if not target and contest not in routes:
+                issue('error', 'Không xác định được duy nhất kỳ tổ chức. Chọn kỳ cho ' + (contest or 'dòng này') + '.', row)
+            routes[contest] = {'contest': contest, 'sessionId': target.pk if target else '', 'options': [{'id': s.pk, 'label': f'{s.code} · {s.name} · {s.time}'} for s in possible]}
+            entry = {'row': row, 'name': profile['name'], 'contest': contest, 'profileIndex': profile_index, 'sessionId': target.pk if target else '', 'amount': amount, 'note': raw.get('generalNote') or raw.get('note', ''), 'subject': raw.get('subject', ''), 'category': raw.get('category', ''), 'examLanguage': raw.get('examLanguage', ''), 'matches': [{'code': c.code, 'name': c.name, 'birthDate': c.birth_date, 'school': c.school, 'reason': a['reason']} for c, a in matches]}
+            rows.append(entry)
+            if target:
+                key = f'{profile_index}:{target.pk}'
+                previous = registrations.get(key)
+                if previous:
+                    if any(previous.get(field) != entry.get(field) for field in ('amount', 'subject', 'category', 'examLanguage', 'note')):
+                        issue('error', 'Dòng lặp trong cùng kỳ có thông tin đăng ký khác nhau.', row)
+                    else:
+                        issue('warning', 'Dòng đăng ký lặp cùng kỳ được tính một lần.', row)
                 else:
-                    issue('warning', 'Dòng đăng ký lặp cùng kỳ được tính một lần.', row)
-            else:
-                participation = CandidateParticipation.objects.filter(candidate=candidate, session=target).select_related('school_registration').first() if candidate else None
-                entry['participationVersion'] = participation.updated_at.isoformat() if participation else ''
-                if participation:
-                    if not participation.school_registration_id:
-                        issue('warning', 'Lượt đăng ký đã có sẽ được chuyển sang đối soát theo trường.', row)
-                    if participation.school_registration_id and participation.school_registration.partner_id != partner.get('id'):
-                        issue('error', 'Lượt đăng ký đã thuộc nhóm đối soát của trường khác.', row)
-                    elif not participation.school_registration_id:
-                        billing = ExaminationBillingRecord.objects.filter(participation=participation).first()
-                        if billing and (billing.amount is not None or billing.transfer_status != 'pending' or billing.invoice_status != 'pending' or billing.proofs.exists() or (participation.registration_data or {}).get('paymentProof')):
-                            issue('error', 'Lượt đăng ký cá nhân đã có dữ liệu thanh toán. Cần kế toán xử lý trước khi gom theo trường.', row)
-                    prior_fee = (participation.registration_data or {}).get('schoolFee')
-                    if participation.school_registration_id and prior_fee != amount:
-                        issue('error', 'Lệ phí khác lượt đăng ký đã nhập. Sửa ở đối soát trước khi nhập lại.', row)
-                registrations[key] = entry
+                    participation = CandidateParticipation.objects.filter(candidate=candidate, session=target).select_related('school_registration').first() if candidate else None
+                    entry['participationVersion'] = participation.updated_at.isoformat() if participation else ''
+                    if participation:
+                        if not participation.school_registration_id:
+                            issue('warning', 'Lượt đăng ký đã có sẽ được chuyển sang đối soát theo trường.', row)
+                        if participation.school_registration_id and participation.school_registration.partner_id != partner.get('id'):
+                            issue('error', 'Lượt đăng ký đã thuộc nhóm đối soát của trường khác.', row)
+                        elif not participation.school_registration_id:
+                            billing = ExaminationBillingRecord.objects.filter(participation=participation).first()
+                            if billing and (billing.amount is not None or billing.transfer_status != 'pending' or billing.invoice_status != 'pending' or billing.proofs.exists() or (participation.registration_data or {}).get('paymentProof')):
+                                issue('error', 'Lượt đăng ký cá nhân đã có dữ liệu thanh toán. Cần kế toán xử lý trước khi gom theo trường.', row)
+                        prior_fee = (participation.registration_data or {}).get('schoolFee')
+                        if participation.school_registration_id and prior_fee != amount:
+                            issue('error', 'Lệ phí khác lượt đăng ký đã nhập. Sửa ở đối soát trước khi nhập lại.', row)
+                    registrations[key] = entry
+    if missing_fee_rows:
+        issue('warning', f'{len(missing_fee_rows)} dòng chưa có lệ phí trong file. Kế toán cần nhập số tiền phải thu.')
     groups = []
     room_state = []
     for session_id in sorted({entry['sessionId'] for entry in registrations.values()}):
@@ -310,7 +334,7 @@ def build_plan(content, options):
         groups.append({'sessionId': session_id, 'competitionCode': session.code, 'competitionName': session.name, 'label': f'{session.code} · {session.name} · {session.time}', 'registrations': len(entries), 'newCandidates': sum(not profiles[e['profileIndex']]['candidateId'] for e in entries), 'existingCandidates': sum(bool(profiles[e['profileIndex']]['candidateId']) for e in entries), 'newRegistrations': additions, 'existingRegistrations': len(entries) - additions, 'amount': sum(e['amount'] or 0 for e in entries) if all(e['amount'] is not None for e in entries) else None, 'assigned': assigned, 'alreadyAssigned': already_assigned, 'waiting': waiting, 'round': first_round, 'occurrenceId': occurrence, 'billingVersion': billing.updated_at.isoformat() if billing else '', 'sessionVersion': session.updated_at.isoformat()})
     plan = {'partner': partner, 'newPartner': new_partner, 'sheet': sheet, 'sheets': sheets, 'rows': rows, 'profiles': profiles, 'registrations': list(registrations.values()), 'routes': list(routes.values()), 'groups': groups, 'issues': issues, 'roomState': room_state, 'fileHash': hashlib.sha256(content).hexdigest(), 'candidateState': fingerprint([(c.pk, c.updated_at.isoformat()) for c in existing])}
     plan['canCommit'] = not any(i['level'] == 'error' for i in issues)
-    plan['summary'] = {'rows': len(rows), 'candidates': len(profiles), 'newCandidates': sum(not p['candidateId'] for p in profiles), 'existingCandidates': sum(bool(p['candidateId']) for p in profiles), 'registrations': len(registrations), 'newRegistrations': sum(g['newRegistrations'] for g in groups), 'existingRegistrations': sum(g['existingRegistrations'] for g in groups), 'sessions': len(groups)}
+    plan['summary'] = {'rows': len(raw_rows), 'candidates': len(profiles), 'newCandidates': sum(not p['candidateId'] for p in profiles), 'existingCandidates': sum(bool(p['candidateId']) for p in profiles), 'registrations': len(registrations), 'newRegistrations': sum(g['newRegistrations'] for g in groups), 'existingRegistrations': sum(g['existingRegistrations'] for g in groups), 'sessions': len(groups)}
     return plan
 
 

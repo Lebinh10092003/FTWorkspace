@@ -241,7 +241,7 @@ def resolve_column_indices(header, include_defaults=True):
             idx['grade'] = i
         elif 'school' not in idx and ('truong' in nh and 'email' not in nh):
             idx['school'] = i
-        elif 'cccd' not in idx and ('cccd' in nh or 'canchuan' in nh or 'dinhdanh' in nh or 'identity' in nh or 'cmnd' in nh):
+        elif 'cccd' not in idx and ('cccd' in nh or 'cancuoc' in nh or 'hochieu' in nh or 'canchuan' in nh or 'dinhdanh' in nh or 'identity' in nh or 'cmnd' in nh):
             idx['cccd'] = i
         elif 'nationality' not in idx and ('quoctich' in nh or 'nationality' in nh):
             idx['nationality'] = i
