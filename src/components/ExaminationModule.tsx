@@ -551,6 +551,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     [candidates, query, candidateContestFilter, candidateGradeFilter, candidateSchoolFilter],
   );
   const candidatePageCount = Math.max(1, Math.ceil(people.length / LIST_PAGE_SIZE));
+  const hasCandidateFilters = Boolean(query.trim() || candidateContestFilter.length || candidateGradeFilter.length || candidateSchoolFilter.length);
   const activeCandidatePage = Math.min(candidatePage, candidatePageCount);
   const visibleCandidates = people.slice((activeCandidatePage - 1) * LIST_PAGE_SIZE, activeCandidatePage * LIST_PAGE_SIZE);
   const competitionPageCount = Math.max(1, Math.ceil(filteredCompetitions.length / LIST_PAGE_SIZE));
@@ -1606,6 +1607,18 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
           </button>
         }
       />
+      <div className="mb-4 flex flex-wrap gap-3" aria-live="polite" aria-atomic="true">
+        <div className="min-w-[220px] rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+          <p className="text-sm font-bold text-emerald-900">Tổng thí sinh</p>
+          <p className="mt-1 text-3xl font-extrabold text-emerald-950">{candidates.length.toLocaleString("vi-VN")}</p>
+          <p className="mt-1 text-xs text-emerald-800">Mỗi mã FT được tính một lần.</p>
+        </div>
+        {hasCandidateFilters && <div className="min-w-[220px] rounded-xl border border-sky-200 bg-sky-50 px-5 py-4">
+          <p className="text-sm font-bold text-sky-900">Khớp tìm kiếm / bộ lọc</p>
+          <p className="mt-1 text-3xl font-extrabold text-sky-950">{people.length.toLocaleString("vi-VN")}</p>
+          <p className="mt-1 text-xs text-sky-800">Trên tổng {candidates.length.toLocaleString("vi-VN")} thí sinh.</p>
+        </div>}
+      </div>
       <div className="rounded-xl border bg-white p-4">
         <label className="ft-input-wrap">
           <Search className="h-5 w-5" />

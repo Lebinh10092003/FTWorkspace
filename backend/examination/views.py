@@ -1139,7 +1139,8 @@ def examination_bootstrap(request):
                 session._bootstrap_competition = competition_by_id[session.competition_id]
             session._bootstrap_output_sheet = output_sheets.get(session.id)
         participation_rows = CandidateParticipation.objects.select_related('session').prefetch_related('round_results')
-        candidate_rows = Candidate.objects.prefetch_related(Prefetch('participations', queryset=participation_rows)).order_by('sort_key')[:1000]
+        # The roster filters and totals use this full collection before paging.
+        candidate_rows = Candidate.objects.prefetch_related(Prefetch('participations', queryset=participation_rows)).order_by('sort_key')
         competitions = [serialize_competition(item) for item in competition_rows]
         sessions = [serialize_session(item, include_private=include_private) for item in session_rows]
         candidates = [serialize_candidate(item, include_private=include_private) for item in candidate_rows]
