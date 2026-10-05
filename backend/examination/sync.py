@@ -62,6 +62,25 @@ def normalized_identity(value):
     return digits if len(digits) >= 6 and len(set(digits)) > 1 else ''
 
 
+def format_identity(value):
+    """Restore leading zeros lost by Excel; retain alphanumeric passports."""
+    text = clean_txt(value)
+    compact = re.sub(r'[\s.\-]', '', text)
+    return compact.zfill(12) if compact.isdigit() and len(compact) <= 12 else text
+
+
+def format_phone(value):
+    text = clean_txt(value)
+    if not text or not re.fullmatch(r'[\d\s+().\-]+', text):
+        return text
+    digits = re.sub(r'\D', '', text)
+    if digits.startswith('0084') and len(digits) == 13:
+        digits = '0' + digits[4:]
+    elif digits.startswith('84') and len(digits) == 11:
+        digits = '0' + digits[2:]
+    return digits.zfill(10) if digits and len(digits) <= 10 else text
+
+
 def normalized_phone(value):
     digits = re.sub(r'\D', '', clean_txt(value))
     if digits.startswith('84') and len(digits) in {11, 12}:

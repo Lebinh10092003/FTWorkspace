@@ -23,7 +23,7 @@ from authentication.models import SystemConfig
 from authentication.permissions import IsAuthenticated
 from .models import Candidate, CandidateParticipation, ExamRoom, ExamSession, ExaminationBillingRecord, RoundResult, SchoolRegistration
 from .sheet_publication import session_academic_year
-from .sync import candidate_match_assessment, format_person_name, merge_contest_codes, next_code, parse_dob, resolve_column_indices, sync_session_candidate_totals, valid_candidate_name
+from .sync import candidate_match_assessment, format_identity, format_phone, format_person_name, merge_contest_codes, next_code, parse_dob, resolve_column_indices, sync_session_candidate_totals, valid_candidate_name
 
 
 def norm(value):
@@ -115,6 +115,8 @@ def fingerprint(plan):
 
 
 def school_match(existing, incoming):
+    existing = dict(existing) | {'identity': format_identity(existing.get('identity')), 'phone': format_phone(existing.get('phone'))}
+    incoming = dict(incoming) | {'identity': format_identity(incoming.get('identity')), 'phone': format_phone(incoming.get('phone'))}
     assessment = candidate_match_assessment(existing, incoming)
     if assessment and assessment['status'] == 'confirmed':
         conflicting = any(existing.get(field) and incoming.get(field) and norm(existing[field]) != norm(incoming[field]) for field in ('identity', 'birth_date'))
@@ -161,9 +163,10 @@ def build_plan(content, options):
             partner = matched[0]
     new_partner = partner is None
     partner = dict(partner or (metadata | {k: cell_text(v) for k, v in incoming_partner.items()}))
+    partner['phone'] = format_phone(partner.get('phone'))
     for field, label in [('school', 'tên trường'), ('representative', 'người liên lạc'), ('phone', 'số điện thoại'), ('email', 'email')]:
         if not partner.get(field):
-            issue('error', f'Cần nhập {label} của trường.')
+            issue('error' if field == 'school' else 'warning', f'Thiếu {label} của trường; có thể bổ sung sau.' if field != 'school' else 'Cần nhập tên trường.')
     if partner.get('email'):
         try:
             validate_email(partner['email'])
@@ -182,18 +185,20 @@ def build_plan(content, options):
         row = raw['row']
         profile = {
             'name': format_person_name(raw.get('name', '')), 'birth_date': parse_dob(raw.get('dob', '')),
-            'identity': raw.get('cccd', ''), 'class_name': raw.get('className', ''), 'school': partner.get('school', ''),
-            'parent': format_person_name(raw.get('parent', '')), 'phone': raw.get('phone', ''), 'email': raw.get('email', ''),
+            'identity': format_identity(raw.get('cccd', '')), 'class_name': raw.get('className', ''), 'school': partner.get('school', ''),
+            'parent': format_person_name(raw.get('parent', '')), 'phone': format_phone(raw.get('phone', '')), 'email': raw.get('email', ''),
             'city': raw.get('city') or partner.get('province', ''), 'ward': raw.get('ward') or partner.get('ward', ''),
             'address': raw.get('fullAddress', ''), 'nationality': raw.get('nationality', ''),
             'grade': raw.get('grade') or (re.search(r'\d+', raw.get('className', '')) or [''])[0],
         }
         if not valid_candidate_name(profile['name']):
             issue('error', 'Họ tên thí sinh không hợp lệ.', row)
-        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', profile['birth_date']):
+        if raw.get('dob') and not re.fullmatch(r'\d{4}(?:-\d{2}-\d{2})?', profile['birth_date']):
             issue('error', 'Ngày sinh cần đầy đủ DD/MM/YYYY.', row)
+        elif not re.fullmatch(r'\d{4}-\d{2}-\d{2}', profile['birth_date']):
+            issue('warning', 'Thiếu ngày sinh đầy đủ; giữ nguyên thông tin hiện có và bổ sung sau.', row)
         if not profile['class_name']:
-            issue('error', 'Thiếu lớp đang học.', row)
+            issue('warning', 'Thiếu lớp đang học; để trống và bổ sung sau.', row)
         if profile['email']:
             try:
                 validate_email(profile['email'])
@@ -201,7 +206,7 @@ def build_plan(content, options):
                 issue('error', 'Email thí sinh không hợp lệ.', row)
         if len(norm(profile['identity'])) >= 6 and any(
             norm(p['profile']['identity']) == norm(profile['identity']) and
-            (norm(p['profile']['name']) != norm(profile['name']) or p['profile']['birth_date'] != profile['birth_date'])
+            (norm(p['profile']['name']) != norm(profile['name']) or (p['profile']['birth_date'] and profile['birth_date'] and p['profile']['birth_date'] != profile['birth_date']))
             for p in profiles
         ):
             issue('error', 'Cùng giấy tờ định danh nhưng họ tên/ngày sinh khác nhau giữa các dòng. Cần sửa file trước khi nhập.', row)
@@ -363,6 +368,8 @@ def commit_plan(plan, request, filename):
         profile = item['profile']
         if item['candidateId']:
             candidate = Candidate.objects.get(pk=item['candidateId'])
+            candidate.identity = format_identity(candidate.identity)
+            candidate.phone = format_phone(candidate.phone)
             for field, value in profile.items():
                 if value and not getattr(candidate, field):
                     setattr(candidate, field, value)

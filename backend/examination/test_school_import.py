@@ -112,7 +112,7 @@ class SchoolImportTests(TestCase):
         self.assertEqual(raw[0]['phone'], '0901234567')
         self.commit(content)
         candidate = Candidate.objects.get()
-        self.assertEqual(candidate.identity, '1215012345')
+        self.assertEqual(candidate.identity, '001215012345')
         self.assertEqual(candidate.birth_date, '2015-07-12')
 
     def test_combined_codes_create_both_registrations_and_retry_is_idempotent(self):
@@ -148,7 +148,7 @@ class SchoolImportTests(TestCase):
         self.assertEqual(Candidate.objects.count(), 0)
         self.assertEqual(ExaminationBillingRecord.objects.count(), 0)
 
-    def test_missing_fee_warning_is_grouped_without_hiding_invalid_rows(self):
+    def test_missing_fields_warn_without_dropping_students(self):
         rows = [r[:] for r in (self.rows[0], self.rows[2])]
         rows[0][2] = ''
         rows[-1][4] = ''
@@ -157,8 +157,49 @@ class SchoolImportTests(TestCase):
         warnings = [i for i in preview.data['issues'] if i['level'] == 'warning' and 'lệ phí' in i['message']]
         self.assertEqual(len(warnings), 1)
         self.assertIn('2 dòng', warnings[0]['message'])
-        self.assertEqual({i['row'] for i in preview.data['issues'] if i['level'] == 'error'}, {2, 3})
-        self.assertFalse(preview.data['canCommit'])
+        self.assertEqual({i['row'] for i in preview.data['issues'] if i['level'] == 'warning' and i['row']}, {2, 3})
+        self.assertTrue(preview.data['canCommit'], preview.data['issues'])
+        result = self.commit(self.workbook(rows, school_headers=True), {'partner': {'school': 'Trường A'}, 'academicYear': '2026-2027'})
+        self.assertEqual(result.data['summary']['candidates'], 2)
+        self.assertEqual(result.data['summary']['registrations'], 2)
+        self.assertEqual(Candidate.objects.get(name='Nguyễn Minh An').birth_date, '')
+        self.assertEqual(Candidate.objects.get(name='Trần Minh Bình').class_name, '')
+        partner = result.data['partners'][0]
+        self.assertFalse(partner.get('phone'))
+        self.assertFalse(partner.get('email'))
+
+    def test_leading_zeros_restore_identity_and_phone_and_reuse_existing_candidate(self):
+        candidate = Candidate.objects.create(id='EXISTING', code='EXISTING', name='Nguyễn Minh An', birth_date='2015-07-12', identity='1215012345', phone='901234567', school='Trường A', sort_key='a')
+        row = self.rows[0][:]
+        row[2] = ''
+        row[3] = 1215012345
+        row[8] = 901234567
+        preview = self.preview(self.workbook([row]))
+        self.assertTrue(preview.data['canCommit'], preview.data['issues'])
+        self.assertEqual(preview.data['summary']['newCandidates'], 0)
+        self.assertEqual(preview.data['profiles'][0]['profile']['identity'], '001215012345')
+        self.assertEqual(preview.data['profiles'][0]['profile']['phone'], '0901234567')
+        self.commit(self.workbook([row]))
+        self.assertEqual(Candidate.objects.count(), 1)
+        candidate.refresh_from_db()
+        self.assertEqual(candidate.identity, '001215012345')
+        self.assertEqual(candidate.phone, '0901234567')
+        self.assertEqual(candidate.birth_date, '2015-07-12')
+
+    def test_identifier_formatting_preserves_blanks_passports_and_long_values(self):
+        from .sync import format_identity, format_phone
+        for raw, expected in [('', ''), ('B1234567', 'B1234567'), ('123456789012', '123456789012'), ('1234567890123', '1234567890123')]:
+            self.assertEqual(format_identity(raw), expected)
+        for raw, expected in [('', ''), ('901234567', '0901234567'), ('+84 901 234 567', '0901234567'), ('0084901234567', '0901234567'), ('0901234567', '0901234567'), ('12345678901', '12345678901'), ('0901234567 / 0907654321', '0901234567 / 0907654321')]:
+            self.assertEqual(format_phone(raw), expected)
+
+    def test_repeated_student_with_one_blank_birth_date_reuses_complete_row(self):
+        rows = [r[:] for r in self.rows[:2]]
+        rows[0][2] = ''
+        result = self.commit(self.workbook(rows))
+        self.assertEqual(result.data['summary']['candidates'], 1)
+        self.assertEqual(result.data['summary']['registrations'], 2)
+        self.assertEqual(Candidate.objects.get().birth_date, '2015-07-12')
 
     def test_unknown_combined_contest_still_blocks_all_writes(self):
         row = self.rows[0][:]
