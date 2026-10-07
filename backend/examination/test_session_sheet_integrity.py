@@ -206,6 +206,17 @@ class SessionSheetIntegrityTests(TestCase):
         self.assertNotIn({'round': 1, 'field': 'eligibility'}, conflicts)
         self.assertEqual(RoundResult.objects.get().result, 'Bạc')
 
+    def test_history_profile_recovery_only_fills_valid_missing_stable_fields(self):
+        from .management.commands.restore_session_sheet_history import missing_profile
+        self.candidate.nationality, self.candidate.email = '', '.'
+        row = session_export_rows(self.session.pk)[2]
+        row[5], row[8], row[12], row[13] = 'Việt Nam', 'parent@example.com', 'Old school', 'Old class'
+        self.assertEqual(missing_profile(self.candidate, row), {'nationality': 'Việt Nam', 'email': 'parent@example.com'})
+        self.candidate.email = 'new@example.com'
+        self.assertNotIn('email', missing_profile(self.candidate, row))
+        self.candidate.email, row[8] = '', 'not an email'
+        self.assertNotIn('email', missing_profile(self.candidate, row))
+
     def test_historical_export_keeps_disputed_birth_date_and_identifiers(self):
         from .sync import _project_session_sheet_row, SUMMARY_EXPORT_HEADERS
         row = session_export_rows(self.session.pk)[2]

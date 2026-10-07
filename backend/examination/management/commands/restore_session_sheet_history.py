@@ -2,19 +2,37 @@
 import json
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.utils import timezone
 from authentication.models import SystemConfig
 from integrations.google_sheets import build_sheets_service
 from examination.models import CandidateParticipation, ExamSession, ExaminationSheet, RoundResult
 from examination.eligibility import normalize_eligibility
 from examination.sync import (_aligned_export_rows, _sheet_range_title, clean_txt, normalise_str,
-    parse_exam_date, PROFILE_EXPORT_HEADERS, EXPORT_HEADERS, REGISTRATION_EXPORT_HEADERS)
+    parse_exam_date, clean_profile_text, EXPORT_HEADERS)
 
 WORKBOOK = '1Sww0zGx2SpBgZUZ9wiVKGe9D_rg3vPZ3nsK8ts0qD8c'
 TABS = {'SIAIO': 'SCO - IAIO', 'SICO': 'SCO - ICO'}
 REGISTRATION_FIELDS = ('subject', 'category', 'registration_method', 'team_name', 'exam_language', 'general_note')
 ROUND_FIELDS = ('eligibility', 'sbd', 'exam_date', 'time_slot', 'mode', 'location', 'link', 'account',
     'password', 'attendance', 'score', 'score_rate', 'rank', 'result', 'note')
+
+
+def missing_profile(candidate, row):
+    """Recover stable source facts without changing current school or disputed IDs."""
+    updates = {}
+    for field, index in (('nationality', 5), ('email', 8)):
+        value = clean_profile_text(row[index]) if index < len(row) else ''
+        if not value or clean_profile_text(getattr(candidate, field)):
+            continue
+        if field == 'email':
+            try:
+                validate_email(value)
+            except ValidationError:
+                continue
+        updates[field] = value
+    return updates
 
 
 def missing_history(participation, row):
@@ -74,6 +92,7 @@ class Command(BaseCommand):
         metadata = service.spreadsheets().get(spreadsheetId=WORKBOOK, fields='sheets(properties(title,gridProperties))').execute(num_retries=6)
         tabs = {item['properties']['title']: item['properties'] for item in metadata['sheets']}
         plans = []
+        profile_plans = {}
         for session in sessions:
             tab = TABS[session.code.upper()]
             if tab not in tabs or tabs[tab]['gridProperties']['columnCount'] != 70:
@@ -92,12 +111,20 @@ class Command(BaseCommand):
             for index, row in enumerate(rows[1:]):
                 code = alignment['values'][index][1]
                 participation = memberships[code]
+                profile_updates = missing_profile(participation.candidate, row)
+                candidate_plan = profile_plans.setdefault(participation.candidate_id, (participation.candidate, {}))[1]
+                for field, value in profile_updates.items():
+                    if field in candidate_plan and normalise_str(candidate_plan[field]) != normalise_str(value):
+                        conflicts.append({'row': index + 3, 'field': field, 'reason': 'conflictingProfileSources'})
+                    else:
+                        candidate_plan[field] = value
                 registration, rounds, issues = missing_history(participation, row)
                 conflicts.extend({'row': index + 3, **issue} for issue in issues)
                 changes.append((participation, registration, rounds))
             self.stdout.write('HISTORY_PLAN ' + json.dumps({'sessionId': session.pk, 'tab': tab,
                 'matchedRows': alignment['matchedRows'], 'appendRows': alignment['appendedRows'],
                 'registrationFields': sum(len(item[1]) for item in changes),
+                'profileFields': sum(len(missing_profile(item[0].candidate, rows[index + 1])) for index, item in enumerate(changes)),
                 'roundsToRestore': sum(len(item[2]) for item in changes), 'conflicts': conflicts,
                 'apply': options['apply']}, ensure_ascii=False))
             if conflicts:
@@ -108,6 +135,11 @@ class Command(BaseCommand):
         # Seed facts first. Creating the output link queues exports only after
         # this complete transaction commits, so no empty history can erase Sheet.
         with transaction.atomic():
+            for candidate, updates in profile_plans.values():
+                if updates:
+                    for field, value in updates.items():
+                        setattr(candidate, field, value)
+                    candidate.save(update_fields=[*updates, 'updated_at'])
             for session, tab, changes in plans:
                 for participation, registration, rounds in changes:
                     if registration:
@@ -129,4 +161,4 @@ class Command(BaseCommand):
                         'automation_enabled': True, 'created_at': timezone.now(), 'updated_at': timezone.now()})
                 if sheet.stage != 'session-output':
                     raise CommandError('Liên kết hiện có không phải Sheet tổng hợp; giữ nguyên cấu hình.')
-        self.stdout.write('HISTORY_RESTORED · giữ nguyên hồ sơ, thời gian ghi danh và dữ liệu kế toán')
+        self.stdout.write('HISTORY_RESTORED · bổ sung hồ sơ còn trống, giữ thời gian ghi danh và dữ liệu kế toán')
