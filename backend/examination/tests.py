@@ -760,6 +760,81 @@ class CandidateImportReuseTests(TestCase):
         )
         CandidateParticipation.objects.create(candidate=self.candidate, session=self.previous)
 
+    def test_manual_create_registers_one_profile_in_multiple_competitions(self):
+        for session, code in ((self.previous, 'FIMO'), (self.target, 'FIEO')):
+            competition = Competition.objects.create(id=f'multi-{code.lower()}', code=code,
+                name=code, sort_key=f'multi-{code.lower()}')
+            session.competition_id = competition.pk
+        self.previous.code, self.target.code = 'FIMO', 'FIEO'
+        self.previous.save()
+        self.target.save()
+        payload = {'sessionIds': [self.previous.pk, self.target.pk, self.previous.pk],
+            'source': 'Nhập thủ công', 'records': [{'name': 'Trần An Bình', 'birthDate': '15/08/2015'}]}
+        response = self.client.post('/api/examination/import/candidates', payload, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['created'], 1)
+        self.assertEqual(len(response.data['items']), 1)
+        saved = Candidate.objects.get(code=response.data['items'][0]['code'])
+        self.assertEqual(set(saved.session_ids), {self.previous.pk, self.target.pk})
+        self.assertEqual(set(saved.contests.split(', ')), {'FIMO', 'FIEO'})
+        self.assertEqual(saved.participations.count(), 2)
+        self.assertEqual(ExaminationBillingRecord.objects.filter(participation__candidate=saved).count(), 2)
+        self.assertEqual(RoundResult.objects.filter(participation__candidate=saved).exclude(result='').count(), 0)
+        self.assertEqual({s['id']: s['candidates'] for s in response.data['sessions']}, {self.previous.pk: 2, self.target.pk: 1})
+        payload['records'][0]['code'] = saved.code
+        retry = self.client.post('/api/examination/import/candidates', payload, format='json')
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertEqual(retry.data['created'], 0)
+        self.assertEqual(saved.participations.count(), 2)
+        self.assertEqual(ExaminationBillingRecord.objects.filter(participation__candidate=saved).count(), 2)
+
+    def test_multi_session_reuses_profile_without_copying_previous_results(self):
+        second = ExamSession.objects.create(id='multi-fieo', competition_id='FIEO', code='FIEO',
+            name='FIEO 2027', sort_key='multi-fieo')
+        prior = self.candidate.participations.get(session=self.previous)
+        RoundResult.objects.create(participation=prior, round_name='Vòng cũ', result='Vàng')
+        response = self.client.post('/api/examination/import/candidates', {
+            'sessionIds': [self.target.pk, second.pk], 'source': 'Nhập thủ công',
+            'records': [{'name': self.candidate.name, 'identity': self.candidate.identity}]}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['items'][0]['code'], self.candidate.code)
+        self.candidate.refresh_from_db()
+        self.assertEqual(set(self.candidate.session_ids), {self.previous.pk, self.target.pk, second.pk})
+        self.assertEqual(self.candidate.participations.count(), 3)
+        self.assertEqual(prior.round_results.get().result, 'Vàng')
+        self.assertFalse(RoundResult.objects.filter(participation__candidate=self.candidate,
+            participation__session_id__in=[self.target.pk, second.pk]).exclude(result='').exists())
+
+    def test_multi_session_rejects_invalid_target_before_creating_any_profile(self):
+        response = self.client.post('/api/examination/import/candidates', {
+            'sessionIds': [self.target.pk, 'missing-session'], 'records': [{'name': 'Trần An Bình'}]}, format='json')
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(Candidate.objects.count(), 1)
+        self.assertFalse(CandidateParticipation.objects.filter(session=self.target).exists())
+
+    def test_multi_session_rejects_round_history_for_multiple_periods(self):
+        response = self.client.post('/api/examination/import/candidates', {
+            'sessionIds': [self.previous.pk, self.target.pk],
+            'records': [{'name': 'Trần An Bình', 'examHistory': [{'round': 'Vòng 1', 'result': 'Vàng'}]}]}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Candidate.objects.count(), 1)
+
+    def test_multi_session_failure_rolls_back_profile_and_all_registrations(self):
+        from .views import upsert_participation_history
+        def write_then_fail(candidate, session_id, *args, **kwargs):
+            if session_id == self.target.pk:
+                raise RuntimeError('Second registration failed')
+            return upsert_participation_history(candidate, session_id, *args, **kwargs)
+        before_bills = ExaminationBillingRecord.objects.count()
+        with patch('examination.views.upsert_participation_history', side_effect=write_then_fail):
+            response = self.client.post('/api/examination/import/candidates', {
+                'sessionIds': [self.previous.pk, self.target.pk],
+                'records': [{'name': 'Trần An Bình'}]}, format='json')
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(Candidate.objects.count(), 1)
+        self.assertEqual(CandidateParticipation.objects.count(), 1)
+        self.assertEqual(ExaminationBillingRecord.objects.count(), before_bills)
+
     def test_import_reuses_existing_profile_and_adds_new_session_history(self):
         response = self.client.post('/api/examination/import/candidates', {
             'sessionId': self.target.id,

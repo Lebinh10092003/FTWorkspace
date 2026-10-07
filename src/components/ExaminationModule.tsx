@@ -219,14 +219,14 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     [teacherAssignmentFilter, setTeacherAssignmentFilter] = useState<string[]>([]),
     [teacherQuery, setTeacherQuery] = useState(""),
     [showCandidateAdd, setShowCandidateAdd] = useState(false),
+    [candidateAddSaving, setCandidateAddSaving] = useState(false),
     [candidateAdd, setCandidateAdd] = useState({
       code: "",
       name: "",
       school: "",
       className: "",
       birthDate: "",
-      contests: "",
-      sessionId: "",
+      sessionIds: [] as string[],
     }),
     [selectedTeacher, setSelectedTeacher] = useState({
       name: "Đinh Thị Thanh Huyền",
@@ -616,8 +616,11 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     if (details.length) appendLogNote(entityKey, details.join("\n"), userName || "Nhân viên FT Workspace");
   };
   const createCandidate = async () => {
+    if (candidateAddSaving || !candidateAdd.name.trim() || !candidateAdd.sessionIds.length) return;
+    setCandidateAddSaving(true);
     const item = {
       ...candidateAdd,
+      contests: [...new Set(sessions.filter(session => candidateAdd.sessionIds.includes(session.id)).map(session => session.code))].join(', '),
       code: candidateAdd.code,
       city: "",
       achievement: "",
@@ -634,24 +637,29 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         method: "POST",
         body: JSON.stringify({
           records: [item],
-          sessionId: candidateAdd.sessionId,
+          sessionIds: candidateAdd.sessionIds,
           source: "Nhập thủ công",
         }),
       });
       (result.items || [item]).forEach((candidate: Candidate) => appendLogNote(`candidate-${candidate.code}`, "Tạo thí sinh mới.", userName || "Nhân viên FT Workspace"));
-      setCandidates((list) => [...list, ...(result.items || [item])]);
+      setCandidates((list) => {
+        const saved = new Map((result.items || [item]).map((candidate: Candidate) => [candidate.code, candidate]));
+        return [...list.filter(candidate => !saved.has(candidate.code)), ...saved.values()];
+      });
+      setSessions(list => list.map(session => result.sessions?.find((saved: Session) => saved.id === session.id) || session));
       setCandidateAdd({
         code: "",
         name: "",
         school: "",
         className: "",
         birthDate: "",
-        contests: "",
-        sessionId: "",
+        sessionIds: [],
       });
       setShowCandidateAdd(false);
     } catch (requestError: any) {
       setNotice(requestError.message || "Không thể thêm thí sinh.");
+    } finally {
+      setCandidateAddSaving(false);
     }
   };
   const updateCompetitionDetails = () => {
@@ -1786,28 +1794,14 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
                 <span className="mb-1 block text-sm font-bold">Ngày sinh</span>
                 <BirthDateControl value={candidateAdd.birthDate} onChange={(birthDate) => setCandidateAdd({ ...candidateAdd, birthDate })} />
               </label>
-              <label className="sm:col-span-2">
-                <span className="mb-1 block text-sm font-bold">Kỳ tổ chức *</span>
-                <select
-                  value={candidateAdd.sessionId}
-                  onChange={(e) => {
-                    const session = sessions.find((item) => item.id === e.target.value);
-                    setCandidateAdd({
-                      ...candidateAdd,
-                      sessionId: e.target.value,
-                      contests: session?.code || "",
-                    });
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                >
-                  <option value="">Chọn kỳ tổ chức</option>
-                  {sessions.map((session) => (
-                    <option key={session.id} value={session.id}>
-                      {session.code} · {sessionDisplayName(session)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="sm:col-span-2">
+                <span className="mb-1 block text-sm font-bold">Các kỳ tổ chức *</span>
+                <SearchableSelect multiple value={candidateAdd.sessionIds}
+                  onChange={sessionIds => setCandidateAdd(current => ({ ...current, sessionIds }))}
+                  options={sessions.map(session => ({ value: session.id, label: `${session.code} · ${sessionDisplayName(session)}` }))}
+                  placeholder="Chọn một hoặc nhiều kỳ tổ chức" searchPlaceholder="Tìm cuộc thi hoặc kỳ tổ chức..." />
+                <p className="mt-2 text-xs text-slate-500">Có thể chọn nhiều cuộc thi. Một mã FT dùng chung, thông tin đăng ký được lưu riêng cho từng kỳ.</p>
+              </div>
             </div>
             <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button
@@ -1820,9 +1814,9 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
                 <UploadCloud className="mr-1 inline h-4 w-4" />
                 Nhập file / Google Sheets
               </button>
-              <button disabled={!candidateAdd.name.trim() || !candidateAdd.sessionId} onClick={createCandidate} className="ft-primary disabled:opacity-50">
+              <button disabled={candidateAddSaving || !candidateAdd.name.trim() || !candidateAdd.sessionIds.length} onClick={createCandidate} className="ft-primary disabled:opacity-50">
                 <Plus className="h-4 w-4" />
-                Thêm hồ sơ
+                {candidateAddSaving ? 'Đang lưu...' : 'Thêm hồ sơ'}
               </button>
             </div>
           </div>

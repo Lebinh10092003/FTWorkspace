@@ -2641,6 +2641,7 @@ def import_candidate_duplicates(request):
 
 @api_view(['POST'])
 @permission_classes([IsManagerOrAdmin])
+@transaction.atomic
 def import_candidates(request):
     try:
         data = request.data or {}
@@ -2650,6 +2651,13 @@ def import_candidates(request):
             confirmed_matches = {}
         source = data.get('source', '')
         session_id = str(data.get('sessionId') or '').strip()
+        selected_session_ids = data.get('sessionIds', [session_id] if session_id else [])
+        if not isinstance(selected_session_ids, list) or any(not isinstance(value, str) or not value.strip() for value in selected_session_ids):
+            return Response({'error': 'Danh sách kỳ tổ chức không hợp lệ.'}, status=400)
+        selected_session_ids = list(dict.fromkeys(value.strip() for value in selected_session_ids))
+        if session_id and session_id not in selected_session_ids:
+            return Response({'error': 'Kỳ tổ chức không khớp danh sách đã chọn.'}, status=400)
+        session_id = selected_session_ids[0] if selected_session_ids else ''
         source_sheet_id = str(data.get('sheetId') or '').strip()
         source_fingerprint = str(data.get('sourceFingerprint') or '').strip()
         remove_session_candidate_codes = data.get('removeSessionCandidateCodes') or []
@@ -2676,6 +2684,12 @@ def import_candidates(request):
             target_session = ExamSession.objects.get(id=session_id)
         except ExamSession.DoesNotExist:
             return Response({'error': 'Không tìm thấy kỳ tổ chức đã chọn.'}, status=status.HTTP_404_NOT_FOUND)
+        target_sessions_by_id = {session.pk: session for session in ExamSession.objects.filter(pk__in=selected_session_ids)}
+        if len(target_sessions_by_id) != len(selected_session_ids):
+            return Response({'error': 'Không tìm thấy một hoặc nhiều kỳ tổ chức đã chọn.'}, status=404)
+        target_sessions = [target_sessions_by_id[value] for value in selected_session_ids]
+        if len(target_sessions) > 1 and (source_sheet_id or remove_session_candidate_codes or any(rec.get('examHistory') for rec in input_records)):
+            return Response({'error': 'Nhập kết quả hoặc đối chiếu nguồn Sheet cần chọn riêng từng kỳ tổ chức.'}, status=400)
 
         source_sheet = None
         if source_sheet_id:
@@ -2746,7 +2760,7 @@ def import_candidates(request):
                 'ward': str(rec.get('ward', '')).strip(),
                 'nationality': str(rec.get('nationality', '')).strip(),
                 'grade': str(rec.get('grade', '')).strip(),
-                'contests': merge_contest_codes(str(rec.get('contests', '')).strip(), target_session.code),
+                'contests': merge_contest_codes(str(rec.get('contests', '')).strip(), ', '.join(session.code for session in target_sessions)),
                 'achievement': str(rec.get('achievement', '')).strip(),
                 'highest_round': str(rec.get('highestRound', '')).strip(),
                 'email': str(rec.get('email', '')).strip(),
@@ -2815,7 +2829,8 @@ def import_candidates(request):
                     for field in ('name', 'birth_date', 'identity', 'email', 'phone', 'school', 'class_name', 'city', 'ward', 'nationality', 'grade', 'address', 'achievement', 'highest_round', 'parent')
                 }
                 previous_session_ids = list(base.session_ids or [])
-                already_in_target_session = session_id in previous_session_ids or CandidateParticipation.objects.filter(candidate=base, session_id=session_id).exists()
+                previous_membership_ids = set(previous_session_ids) | set(CandidateParticipation.objects.filter(candidate=base).values_list('session_id', flat=True))
+                new_sessions = [session for session in target_sessions if session.pk not in previous_membership_ids]
                 should_write = lambda current, incoming: bool(incoming) and (
                     not str(current or '').strip() if update_mode == 'fill-empty'
                     else (import_empty_values or bool(str(current or '').strip()))
@@ -2829,15 +2844,12 @@ def import_candidates(request):
                     base.birth_date = rec_cand['birth_date']
 
                 base.contests = merge_contest_codes(base.contests, rec_cand['contests'])
-                if session_id:
-                    s_ids = list(base.session_ids) if base.session_ids else []
-                    if session_id not in s_ids:
-                        s_ids.append(session_id)
-                    base.session_ids = s_ids
+                base.session_ids = list(dict.fromkeys([*(base.session_ids or []), *selected_session_ids]))
                 base.exam_history = merge_exam_history(base.exam_history, rec_cand['exam_history'], session_id, source, update_mode, import_empty_values)
                 base.updated = ts_vn
                 base.save()
-                upsert_participation_history(base, session_id, rec_cand['exam_history'], source, rec_cand['registration'], update_mode, import_empty_values, historical_import=historical_import)
+                for session in target_sessions:
+                    upsert_participation_history(base, session.pk, rec_cand['exam_history'], source, rec_cand['registration'], update_mode, import_empty_values, historical_import=historical_import)
 
                 after_values = {
                     field: getattr(base, field)
@@ -2857,17 +2869,18 @@ def import_candidates(request):
                     note_lines.append(f'Hệ thống tự nhận diện hồ sơ trùng theo {matched_assessment["reason"]}.')
                 if changes:
                     note_lines.append(changes)
-                if not already_in_target_session:
+                if new_sessions:
                     linked_existing += 1
                     previous_sessions = list(ExamSession.objects.filter(id__in=previous_session_ids).exclude(id=session_id).values_list('code', 'name'))
                     previous_label = ', '.join(f'{code} · {name}' for code, name in previous_sessions) or 'chưa có kỳ tổ chức khác được ghi nhận'
-                    note_lines.append(f'Đã bổ sung dữ liệu vào kỳ tổ chức {target_session.code} · {target_session.name}. Thí sinh đã từng thi: {previous_label}.')
+                    new_label = ', '.join(f'{session.code} · {session.name}' for session in new_sessions)
+                    note_lines.append(f'Đã bổ sung dữ liệu vào kỳ tổ chức {new_label}. Thí sinh đã từng thi: {previous_label}.')
                 if note_lines:
                     append_audit(f'candidate-{base.code}', '\n'.join(note_lines), request, system=not bool(forced_candidate))
                 updated += 1
                 items_returned.append(serialize_candidate(base))
             else:
-                s_ids = [session_id] if session_id else []
+                s_ids = selected_session_ids
                 new_c = Candidate.objects.create(
                     id=code,
                     code=code,
@@ -2892,7 +2905,8 @@ def import_candidates(request):
                     updated=ts_vn,
                     sort_key=f"{rec_cand['name'].lower()}_{rec_cand['identity'] or code}"
                 )
-                upsert_participation_history(new_c, session_id, rec_cand['exam_history'], source, rec_cand['registration'], update_mode, True, historical_import=historical_import)
+                for session in target_sessions:
+                    upsert_participation_history(new_c, session.pk, rec_cand['exam_history'], source, rec_cand['registration'], update_mode, True, historical_import=historical_import)
                 existing.append(new_c)
                 existing_codes_set.add(code)
                 created += 1
@@ -2916,8 +2930,9 @@ def import_candidates(request):
         import_summary = f'Hệ thống nhập dữ liệu từ {source_label}: thêm {created} thí sinh, cập nhật {updated} thí sinh, gỡ {removed_from_session} thí sinh khỏi kỳ thi{existing_summary}; chính sách: {policy_label}. Không xóa dữ liệu do ô nguồn trống.'
         if historical_import:
             import_summary += ' Nhập dữ liệu lịch sử: không tạo khoản đối soát hoặc thông báo đăng ký mới.'
-        append_audit(f'session-{session_id}', import_summary, request, system=True)
-        append_competition_scope_audit(target_session, import_summary, request, system=True)
+        for session in target_sessions:
+            append_audit(f'session-{session.pk}', import_summary, request, system=True)
+            append_competition_scope_audit(session, import_summary, request, system=True)
         if source_sheet:
             source_sheet.last_import_at = timezone.now()
             source_sheet.last_content_fingerprint = source_fingerprint or source_sheet.last_content_fingerprint
@@ -2928,8 +2943,10 @@ def import_candidates(request):
             source_sheet.last_error = ''
             source_sheet.updated_at = timezone.now()
             source_sheet.save(update_fields=['last_import_at', 'last_content_fingerprint', 'last_observed_fingerprint', 'change_detected_at', 'pending_manual_import', 'status', 'last_error', 'updated_at'])
-        return Response({'created': created, 'updated': updated, 'linkedExisting': linked_existing, 'removedFromSession': removed_from_session, 'historicalImport': historical_import, 'items': items_returned})
+        return Response({'created': created, 'updated': updated, 'linkedExisting': linked_existing, 'removedFromSession': removed_from_session, 'historicalImport': historical_import, 'items': items_returned,
+            'sessions': [serialize_session(session) for session in ExamSession.objects.filter(pk__in=selected_session_ids)]})
     except Exception as e:
+        transaction.set_rollback(True)
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET', 'POST'])
