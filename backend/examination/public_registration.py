@@ -201,6 +201,9 @@ def public_registration(request):
         else:
             candidate.contests = merge_contest_codes(candidate.contests, ', '.join(codes))
             candidate.session_ids = list(dict.fromkeys([*(candidate.session_ids or []), *[available[code].id for code in codes]]))
+            from .sync import form_grade_and_class
+            if grade and form_grade_and_class(candidate.grade)[0] != grade:
+                candidate.class_name = ''
             for key, value in {'identity': identity, 'email': email, 'phone': phone, 'school': school, 'grade': grade, 'city': city, 'ward': ward, 'address': address}.items():
                 if value:
                     setattr(candidate, key, value)

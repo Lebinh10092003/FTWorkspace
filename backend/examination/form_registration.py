@@ -133,6 +133,7 @@ def import_form_rows(tab, rows):
                         summary['created'] += 1
                     else:
                         new_membership = not CandidateParticipation.objects.filter(candidate=candidate, session=session).exists()
+                        grade_changed = bool(grade and form_grade_and_class(candidate.grade)[0] != grade)
                         candidate.contests = merge_contest_codes(candidate.contests, code)
                         candidate.session_ids = list(dict.fromkeys([*(candidate.session_ids or []), session.id]))
                         # A form may fill missing contact details; web edits remain authoritative.
@@ -143,6 +144,8 @@ def import_form_rows(tab, rows):
                         }.items():
                             if value and (new_membership or not getattr(candidate, field)):
                                 setattr(candidate, field, value)
+                        if new_membership and grade_changed and not class_name:
+                            candidate.class_name = ''
                         candidate.save()
                     participation, participation_created = CandidateParticipation.objects.get_or_create(
                         candidate=candidate, session=session,

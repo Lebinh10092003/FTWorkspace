@@ -121,3 +121,10 @@ class SessionSheetIntegrityTests(TestCase):
         import_form_rows('FIMO, FIEO', [{'rowNumber': 2, 'values': row}])
         self.candidate.refresh_from_db()
         self.assertEqual(self.candidate.school, 'Corrected on web')
+
+        # A later period with a new grade cannot inherit last year's class.
+        CandidateParticipation.objects.filter(candidate=self.candidate, session_id='fimo-2026-2027').delete()
+        row[11] = 'Khối 7'
+        import_form_rows('FIMO, FIEO', [{'rowNumber': 2, 'values': row}])
+        self.candidate.refresh_from_db()
+        self.assertEqual((self.candidate.grade, self.candidate.class_name), ('7', ''))
