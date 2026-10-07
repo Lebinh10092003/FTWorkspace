@@ -1056,7 +1056,7 @@ def _match_conflict(row, sheet_record, reason, proposed_rows):
     }
 
 
-def _export_row_match(sheet_row, candidate_row):
+def _export_row_match(sheet_row, candidate_row, allow_birth_conflicts=False):
     """Return a safe, deterministic row match without relying on sort order."""
     sheet_record = _export_row_record(sheet_row)
     candidate_record = _export_row_record(candidate_row)
@@ -1071,11 +1071,12 @@ def _export_row_match(sheet_row, candidate_row):
         return None
     sheet_birth = parse_dob(sheet_record['birth_date']) or clean_txt(sheet_record['birth_date'])
     candidate_birth = parse_dob(candidate_record['birth_date']) or clean_txt(candidate_record['birth_date'])
-    if sheet_birth and candidate_birth and sheet_birth != candidate_birth:
-        return None
     identity_matches = normalized_identity(sheet_record['identity']) and normalized_identity(sheet_record['identity']) == normalized_identity(candidate_record['identity'])
     email_matches = normalized_email(sheet_record['email']) and normalized_email(sheet_record['email']) == normalized_email(candidate_record['email'])
     phone_matches = normalized_phone(sheet_record['phone']) and normalized_phone(sheet_record['phone']) == normalized_phone(candidate_record['phone'])
+    if sheet_birth and candidate_birth and sheet_birth != candidate_birth:
+        if not allow_birth_conflicts or not (identity_matches or phone_matches):
+            return None
     if identity_matches:
         return 95, 'h\u1ecd t\u00ean v\u00e0 CCCD/H\u1ed9 chi\u1ebfu'
     if email_matches:
@@ -1087,7 +1088,7 @@ def _export_row_match(sheet_row, candidate_row):
     return 50, 'h\u1ecd t\u00ean duy nh\u1ea5t'
 
 
-def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=False):
+def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=False, allow_birth_conflicts=False):
     """Align output to existing Sheet people; never use the Sheet row order as identity.
 
     Row 1 is the group label and row 2 is the immutable column header. This
@@ -1110,7 +1111,7 @@ def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=Fals
         sheet_record = _export_row_record(sheet_row)
         candidates = []
         for candidate_index in (range(len(proposed_rows)) if allow_duplicate_profiles else remaining):
-            match = _export_row_match(sheet_row, proposed_rows[candidate_index])
+            match = _export_row_match(sheet_row, proposed_rows[candidate_index], allow_birth_conflicts=allow_birth_conflicts)
             if match:
                 score, reason = match
                 candidates.append((score, candidate_index, reason))
@@ -1281,7 +1282,7 @@ def output_sheet_export_preview(sheet, google_access_token=None, max_changes=250
     current = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id, range=f'{range_title}!A3:ZZ',
     ).execute(num_retries=6).get('values', [])
-    alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers))
+    alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers), allow_birth_conflicts=bool(legacy_headers))
     proposed = [_project_session_sheet_row(row, current[i] if i < len(current) else None, legacy_headers, session)
                 for i, row in enumerate(alignment['values'])]
     format_changes = False
@@ -1441,7 +1442,7 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         spreadsheetId=spreadsheet_id,
         range=f'{range_title}!A3:ZZ',
     ).execute(num_retries=6).get('values', [])
-    alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers))
+    alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers), allow_birth_conflicts=bool(legacy_headers))
     def project(row, previous=None):
         return _project_session_sheet_row(row, previous, legacy_headers, session)
     if legacy_headers and export_mode == 'merge':

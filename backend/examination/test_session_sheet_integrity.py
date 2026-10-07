@@ -103,10 +103,13 @@ class SessionSheetIntegrityTests(TestCase):
             url='https://docs.google.com/spreadsheets/d/integrity', sheet_tab='AYSBC',
             session_id=self.session.pk, stage='session-output', created_at=timezone.now(), updated_at=timezone.now())
         headers = EXPORT_HEADERS[:51] + SUMMARY_EXPORT_HEADERS + [SUMMARY_EXPORT_HEADERS[3]]
+        self.candidate.birth_date = '2014-02-10'
+        self.candidate.save()
         rows = []
         for subject, award in [('Botany', 'Gold'), ('Mathematics', '')]:
             row = session_export_rows(self.session.pk)[2][:51] + ['', '', '', 'old', 'old']
             row[1], row[15], row[23], row[30], row[34] = '', subject, '2020-01-01', 'Đã có kết quả', award
+            row[3] = '02/10/2014'
             rows.append(row)
         service = build.return_value
         service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {
@@ -130,6 +133,7 @@ class SessionSheetIntegrityTests(TestCase):
         after = [item['values'][0] for item in writes]
         self.assertEqual([row[15] for row in after], ['Botany', 'Mathematics'])
         self.assertEqual([row[34] for row in after], ['Gold', ''])
+        self.assertEqual([row[3] for row in after], ['02/10/2014', '02/10/2014'])
         self.assertEqual([row[51:53] for row in after], [['Vòng 1 – Vòng loại Quốc gia', 'Gold'], ['', '']])
         self.assertTrue(all(row[1] == self.candidate.code and len(row) == 56 and row[54] == row[55] for row in after))
         service.spreadsheets().values().clear.assert_not_called()
@@ -196,8 +200,10 @@ class SessionSheetIntegrityTests(TestCase):
             round_name='Vòng loại Quốc gia', result='Bạc')
         row = session_export_rows(self.session.pk)[2]
         row[34] = 'Vàng'
+        row[21] = 'Đủ điều kiện tham gia Vòng Quốc tế'
         _, rounds, conflicts = missing_history(self.participation, row)
         self.assertIn({'round': 1, 'field': 'result'}, conflicts)
+        self.assertNotIn({'round': 1, 'field': 'eligibility'}, conflicts)
         self.assertEqual(RoundResult.objects.get().result, 'Bạc')
 
     def test_historical_export_keeps_disputed_birth_date_and_identifiers(self):

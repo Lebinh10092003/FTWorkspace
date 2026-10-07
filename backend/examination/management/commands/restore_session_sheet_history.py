@@ -6,6 +6,7 @@ from django.utils import timezone
 from authentication.models import SystemConfig
 from integrations.google_sheets import build_sheets_service
 from examination.models import CandidateParticipation, ExamSession, ExaminationSheet, RoundResult
+from examination.eligibility import normalize_eligibility
 from examination.sync import (_aligned_export_rows, _sheet_range_title, clean_txt, normalise_str,
     parse_exam_date, PROFILE_EXPORT_HEADERS, EXPORT_HEADERS, REGISTRATION_EXPORT_HEADERS)
 
@@ -35,6 +36,8 @@ def missing_history(participation, row):
             continue
         if values['exam_date']:
             values['exam_date'] = parse_exam_date(values['exam_date'])
+        if values['eligibility']:
+            values['eligibility'] = normalize_eligibility(values['eligibility'])
         existing = list(participation.round_results.filter(round_id=clean_txt(config.get('id'))))
         if not existing:
             existing = list(participation.round_results.filter(round_name=clean_txt(config.get('name'))))
