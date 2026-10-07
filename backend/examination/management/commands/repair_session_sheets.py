@@ -6,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from examination.models import CandidateParticipation, ExamSession, ExaminationSheet
-from examination.sync import export_session_to_google_sheet, format_identity, format_phone, tab_content_fingerprint, output_sheet_export_preview
+from examination.sync import clean_profile_text, export_session_to_google_sheet, format_identity, format_phone, tab_content_fingerprint, output_sheet_export_preview
 from integrations.google_sheets import extract_spreadsheet_id
 
 
@@ -48,7 +48,9 @@ class Command(BaseCommand):
         candidates = {p.candidate_id: p.candidate for p in participations}
         changes = []
         for candidate in candidates.values():
-            for field, formatter in (('identity', format_identity), ('phone', format_phone)):
+            formatters = [('identity', format_identity), ('phone', format_phone)] + [(field, clean_profile_text)
+                for field in ('parent', 'email', 'city', 'ward', 'address', 'nationality', 'class_name', 'school')]
+            for field, formatter in formatters:
                 current = getattr(candidate, field) or ''
                 next_value = formatter(current)
                 if current != next_value:

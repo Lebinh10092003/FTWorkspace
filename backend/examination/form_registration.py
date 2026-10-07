@@ -11,6 +11,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from .models import Candidate, CandidateParticipation, ExamSession, FormRegistrationLink
+from .sync import clean_profile_text
 from .sync import form_grade_and_class, format_identity, format_phone, format_person_name, merge_contest_codes, next_code, parse_dob, sync_session_candidate_totals, valid_candidate_name
 
 
@@ -40,7 +41,7 @@ def selected_codes(tab, row):
 
 
 def clean(value):
-    return str(value or '').strip()
+    return clean_profile_text(value)
 
 
 def source_uid(row, row_number):

@@ -12,9 +12,11 @@ from .session_sheet_queue import enqueue_session_candidate
 
 @receiver(pre_save, sender=Candidate)
 def normalize_candidate_identifiers(sender, instance, **kwargs):
-    from .sync import format_identity, format_phone
+    from .sync import clean_profile_text, format_identity, format_phone
     instance.identity = format_identity(instance.identity)
     instance.phone = format_phone(instance.phone)
+    for field in ('parent', 'email', 'city', 'ward', 'address', 'nationality', 'class_name', 'school'):
+        setattr(instance, field, clean_profile_text(getattr(instance, field)))
 
 
 @receiver(post_save, sender=Candidate)

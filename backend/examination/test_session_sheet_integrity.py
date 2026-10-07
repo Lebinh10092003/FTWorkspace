@@ -168,3 +168,52 @@ class SessionSheetIntegrityTests(TestCase):
         import_form_rows('FIMO, FIEO', [{'rowNumber': 2, 'values': row}])
         self.candidate.refresh_from_db()
         self.assertEqual((self.candidate.grade, self.candidate.class_name), ('7', ''))
+
+    @patch('examination.management.commands.restore_session_sheet_history.build_sheets_service')
+    def test_historical_link_is_created_only_after_missing_results_are_recovered(self, build):
+        from django.core.management import call_command
+        from io import StringIO
+        self.session.code, self.session.phase = 'SIAIO', 'Hoàn thành'
+        self.session.save()
+        row = session_export_rows(self.session.pk)[2]
+        row[1], row[23], row[30], row[31], row[34] = '', '01/01/2020', 'Đã có kết quả', '135/150', 'Vàng'
+        service = build.return_value
+        service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {
+            'title': 'SCO - IAIO', 'gridProperties': {'columnCount': 70}}}]}
+        service.spreadsheets().values().get().execute.return_value = {'values': [EXPORT_HEADERS, row]}
+        call_command('restore_session_sheet_history', sessions=self.session.pk, stdout=StringIO())
+        self.assertEqual(RoundResult.objects.count(), 0)
+        self.assertFalse(ExaminationSheet.objects.filter(session_id=self.session.pk).exists())
+        call_command('restore_session_sheet_history', sessions=self.session.pk, apply=True, stdout=StringIO())
+        result = RoundResult.objects.get()
+        self.assertEqual((result.score, result.result, result.exam_date), ('135/150', 'Vàng', '2020-01-01'))
+        self.assertEqual(ExaminationSheet.objects.get(session_id=self.session.pk).stage, 'session-output')
+        self.assertEqual(session_export_rows(self.session.pk)[2][66:68], ['Vòng 1 – Vòng loại Quốc gia', 'Vàng'])
+
+    def test_history_recovery_flags_a_conflicting_award_and_preserves_existing_result(self):
+        from .management.commands.restore_session_sheet_history import missing_history
+        RoundResult.objects.create(participation=self.participation, round_id='qualifying',
+            round_name='Vòng loại Quốc gia', result='Bạc')
+        row = session_export_rows(self.session.pk)[2]
+        row[34] = 'Vàng'
+        _, rounds, conflicts = missing_history(self.participation, row)
+        self.assertIn({'round': 1, 'field': 'result'}, conflicts)
+        self.assertEqual(RoundResult.objects.get().result, 'Bạc')
+
+    def test_historical_export_keeps_disputed_birth_date_and_identifiers(self):
+        from .sync import _project_session_sheet_row, SUMMARY_EXPORT_HEADERS
+        row = session_export_rows(self.session.pk)[2]
+        row[3], row[4] = '10/02/2014', '001314066746'
+        before = list(row)
+        before[3], before[4] = '02/10/2014', '001314000001'
+        projected = _project_session_sheet_row(row, before, EXPORT_HEADERS[:51] + SUMMARY_EXPORT_HEADERS, self.session)
+        self.assertEqual(projected[3:5], ['02/10/2014', '001314000001'])
+
+    def test_placeholder_profile_values_cannot_be_reintroduced_by_reimport(self):
+        self.candidate.ward, self.candidate.address, self.candidate.parent = '.', '—', 'N/A'
+        self.candidate.save()
+        self.candidate.refresh_from_db()
+        self.assertEqual((self.candidate.ward, self.candidate.address, self.candidate.parent), ('', '', ''))
+        from .form_registration import clean
+        self.assertEqual(clean('.'), '')
+        self.assertEqual(clean('P. Thanh Xuân'), 'P. Thanh Xuân')

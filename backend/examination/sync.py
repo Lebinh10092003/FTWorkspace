@@ -21,6 +21,11 @@ def clean_txt(value):
         return ''
     return str(value).strip()
 
+
+def clean_profile_text(value):
+    text = clean_txt(value)
+    return '' if text.casefold() in {'.', '-', '--', '—', '–', 'n/a', 'na', 'null', 'none'} else text
+
 def valid_candidate_name(value):
     """Ignore template cells containing only punctuation, numbers or placeholders."""
     text = clean_txt(value)
@@ -978,7 +983,7 @@ def _output_sheet_target(sheet, service):
     metadata = service.spreadsheets().get(
         spreadsheetId=spreadsheet_id,
         fields='sheets(properties(sheetId,title,gridProperties))',
-    ).execute()
+    ).execute(num_retries=6)
     tabs = [item.get('properties', {}) for item in metadata.get('sheets', [])]
     parsed_url = urllib.parse.urlparse(clean_txt(sheet.url))
     query = urllib.parse.parse_qs(parsed_url.query)
@@ -1207,7 +1212,7 @@ def _session_sheet_layout(service, spreadsheet_id, target, range_title):
     legacy_headers = None
     if column_count < 70:
         legacy_headers = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
-            range=f'{range_title}!A2:{end_column}2').execute().get('values', [[]])[0]
+            range=f'{range_title}!A2:{end_column}2').execute(num_retries=6).get('values', [[]])[0]
         if len(legacy_headers) < 55 or normalise_str(legacy_headers[51]) != normalise_str(SUMMARY_EXPORT_HEADERS[0]):
             raise ValueError('Mẫu ít hơn 70 cột chưa có ánh xạ tổng hợp an toàn; giữ nguyên dữ liệu.')
     return column_count, end_column, legacy_headers
@@ -1215,6 +1220,12 @@ def _session_sheet_layout(service, spreadsheet_id, target, range_title):
 
 def _project_session_sheet_row(row, previous, legacy_headers, session):
     row = list(row)
+    if previous and (legacy_headers or normalise_str(session.phase) == 'hoanthanh'):
+        # An unresolved historical date/identifier disagreement must not be
+        # silently decided by exporting a shared profile from another period.
+        for index, formatter in ((3, parse_dob), (4, format_identity)):
+            if index < len(previous) and formatter(previous[index]) and formatter(previous[index]) != formatter(row[index]):
+                row[index] = previous[index]
     if previous and normalise_str(session.phase) == 'hoanthanh':
         # A shared profile may already be in the next school year. Preserve
         # the school/class/grade actually recorded for a completed session.
@@ -1264,7 +1275,7 @@ def output_sheet_export_preview(sheet, google_access_token=None, max_changes=250
     column_count, end_column, legacy_headers = _session_sheet_layout(service, spreadsheet_id, target, range_title)
     current = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id, range=f'{range_title}!A3:ZZ',
-    ).execute().get('values', [])
+    ).execute(num_retries=6).get('values', [])
     alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers))
     proposed = [_project_session_sheet_row(row, current[i] if i < len(current) else None, legacy_headers, session)
                 for i, row in enumerate(alignment['values'])]
@@ -1272,7 +1283,7 @@ def output_sheet_export_preview(sheet, google_access_token=None, max_changes=250
     if current:
         formatting = service.spreadsheets().get(spreadsheetId=spreadsheet_id,
             ranges=[f'{range_title}!A3:{end_column}{len(current) + 2}'],
-            fields='sheets(data(rowData(values(userEnteredFormat(backgroundColorStyle,horizontalAlignment,wrapStrategy)))))').execute()
+            fields='sheets(data(rowData(values(userEnteredFormat(backgroundColorStyle,horizontalAlignment,wrapStrategy)))))').execute(num_retries=6)
         for item in formatting.get('sheets', []):
             for block in item.get('data', []):
                 for row in block.get('rowData', []):
@@ -1347,7 +1358,7 @@ def remote_sheet_fingerprint(sheet, google_access_token=None):
         values = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
             range=f'{_sheet_range_title(tab_name)}!A3:ZZ',
-        ).execute().get('values', [])
+        ).execute(num_retries=6).get('values', [])
         return sheet_values_fingerprint(values)
     except Exception as api_error:
         # A publicly shared Sheet can be safely reviewed/imported even when
@@ -1378,14 +1389,14 @@ def tab_content_fingerprint(sheet, google_access_token=None):
         service = build_sheets_service(google_access_token or saved_token, config_data or {})
         metadata = service.spreadsheets().get(
             spreadsheetId=spreadsheet_id, fields='sheets(properties(title))',
-        ).execute()
+        ).execute(num_retries=6)
         names = [item.get('properties', {}).get('title') for item in metadata.get('sheets', [])]
         tab_name = sheet.sheet_tab or next((name for name in names if name), '')
         if tab_name not in names:
             raise ValueError(f'Không tìm thấy tab {tab_name}.')
         values = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=f'{_sheet_range_title(tab_name)}!A1:ZZ',
-        ).execute().get('values', [])
+        ).execute(num_retries=6).get('values', [])
         return 'api:' + sheet_values_fingerprint(values)
     except Exception as api_error:
         raise ValueError(
@@ -1413,7 +1424,7 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
     if validate_template:
         headers = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=f'{range_title}!A2:O2',
-        ).execute().get('values', [])
+        ).execute(num_retries=6).get('values', [])
         # Older official templates include usage hints such as
         # "Ngày sinh (DD/MM/YYYY hoặc YYYY)" and "Lớp đang học (ví dụ: 6A1)".
         # Compare the field labels while retaining the exact column order.
@@ -1424,7 +1435,7 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
     current = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
         range=f'{range_title}!A3:ZZ',
-    ).execute().get('values', [])
+    ).execute(num_retries=6).get('values', [])
     alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers))
     def project(row, previous=None):
         return _project_session_sheet_row(row, previous, legacy_headers, session)
@@ -1474,14 +1485,14 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
             resulting_values.extend(new_rows)
         if updates:
             service.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_id,
-                body={'valueInputOption': 'RAW', 'data': updates}).execute()
+                body={'valueInputOption': 'RAW', 'data': updates}).execute(num_retries=6)
         refreshed_rows = len(updates) - bool(new_rows)
         requests = candidate_body_format_requests(target['sheetId'], 2, len(resulting_values) + 2, column_count)
         if requests:
-            service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
+            service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute(num_retries=6)
         if updates:
             verified = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
-                range=f'{range_title}!A3:{end_column}{len(resulting_values) + 2}').execute().get('values', [])
+                range=f'{range_title}!A3:{end_column}{len(resulting_values) + 2}').execute(num_retries=6).get('values', [])
             def comparable(rows):
                 result = []
                 for row in rows:
@@ -1503,7 +1514,7 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
             spreadsheetId=spreadsheet_id,
             range=f'{range_title}!A3:ZZ',
             body={},
-        ).execute()
+        ).execute(num_retries=6)
     if values_to_write and export_mode == 'append-only' and validate_template:
         service.spreadsheets().values().append(
             spreadsheetId=spreadsheet_id, range=f'{range_title}!A3:{end_column}',
@@ -1516,12 +1527,12 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
             range=f'{range_title}!A{start_row}',
             valueInputOption='RAW',
             body={'values': values_to_write},
-        ).execute()
+        ).execute(num_retries=6)
     exported_count = len(values_to_write) if export_mode == 'append-only' else len(values)
     resulting_values = [*current, *values_to_write] if export_mode == 'append-only' else values
     requests = candidate_body_format_requests(target['sheetId'], 2, len(resulting_values) + 2, column_count)
     if requests:
-        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
+        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute(num_retries=6)
     return {
         'success': True,
         'sessionId': session.id,

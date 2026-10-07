@@ -14,6 +14,7 @@ on:
           - set-round-date
           - audit-registrations
           - repair-session-sheets
+          - restore-session-sheet-history
           - audit-candidate-queue
           - audit-training-calendars
           - restore-detached-work-items
@@ -108,6 +109,9 @@ jobs:
               [[ "$ONLY" =~ ^[a-zA-Z0-9_-]+(,[a-zA-Z0-9_-]+)*$ ]]
               CMD="repair_session_sheets --sessions '$ONLY' $FLAG"
               if [ "$APPLY" = "true" ]; then CMD="$CMD --restore-automation"; fi ;;
+            restore-session-sheet-history)
+              [[ "$ONLY" =~ ^[a-zA-Z0-9_-]+(,[a-zA-Z0-9_-]+)*$ ]]
+              CMD="restore_session_sheet_history --sessions '$ONLY' $FLAG" ;;
             sync-work-schedule)
               CMD="sync_examination_work_schedule $FLAG" ;;
             rename-sco-competitions)
