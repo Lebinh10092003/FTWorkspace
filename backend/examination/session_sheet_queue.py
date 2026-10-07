@@ -1,4 +1,4 @@
-"""Append new web registrations to the existing session roster tabs."""
+"""Reconcile changed web registrations with their existing session roster rows."""
 import logging
 import uuid
 from collections import defaultdict
@@ -36,7 +36,7 @@ def enqueue_session_candidate(candidate_id, session_id):
 
 
 def drain_session_sheet_queue(limit=100):
-    summary = {'synced': 0, 'failed': 0, 'appended': 0}
+    summary = {'synced': 0, 'failed': 0, 'appended': 0, 'updated': 0}
     with _single_worker():
         grouped = defaultdict(list)
         for job in SessionSheetOutbox.objects.order_by('attempts', 'enqueued_at')[:limit]:
@@ -47,14 +47,15 @@ def drain_session_sheet_queue(limit=100):
                 failures = []
                 for sheet in destinations(session_id):
                     try:
-                        result = export_session_to_google_sheet(sheet, export_mode='append-only', append_candidate_codes=codes, validate_template=True)
+                        result = export_session_to_google_sheet(sheet, export_mode='refresh-selected', append_candidate_codes=codes, validate_template=True)
                     except Exception as exc:
                         failures.append(f'{sheet.name}: {exc}')
                         ExaminationSheet.objects.filter(pk=sheet.pk).update(last_error=str(exc)[:1000])
                         continue
                     ExaminationSheet.objects.filter(pk=sheet.pk).update(last_error='')
-                    if result.get('exported'):
+                    if result.get('exported') or result.get('updated'):
                         summary['appended'] += result['exported']
+                        summary['updated'] += result.get('updated', 0)
                         sheet.last_export_at = timezone.now()
                         fields = ['last_export_at', 'updated_at']
                         sheet.updated_at = timezone.now()
@@ -63,7 +64,7 @@ def drain_session_sheet_queue(limit=100):
                             fields.append('last_content_fingerprint')
                         sheet.save(update_fields=fields)
                         from .sheet_scheduler import record_sheet_log
-                        record_sheet_log(sheet, f'Hàng đợi đã ghi thêm {result["exported"]} thí sinh từ web vào tab {sheet.sheet_tab}.')
+                        record_sheet_log(sheet, f'Hàng đợi đã ghi thêm {result["exported"]} và cập nhật {result.get("updated", 0)} thí sinh từ web vào tab {sheet.sheet_tab}.')
                 if failures:
                     raise ValueError('; '.join(failures))
                 for job in jobs:

@@ -13,6 +13,7 @@ on:
           - rename-sco-competitions
           - set-round-date
           - audit-registrations
+          - repair-session-sheets
           - audit-candidate-queue
           - audit-training-calendars
           - restore-detached-work-items
@@ -103,6 +104,10 @@ jobs:
             audit-registrations)
               CMD="audit_examination_registrations"
               if [ -n "$ONLY" ]; then CMD="$CMD --only '$ONLY'"; fi ;;
+            repair-session-sheets)
+              [[ "$ONLY" =~ ^[a-zA-Z0-9_-]+(,[a-zA-Z0-9_-]+)*$ ]]
+              CMD="repair_session_sheets --sessions '$ONLY' $FLAG"
+              if [ "$APPLY" = "true" ]; then CMD="$CMD --restore-automation"; fi ;;
             sync-work-schedule)
               CMD="sync_examination_work_schedule $FLAG" ;;
             rename-sco-competitions)

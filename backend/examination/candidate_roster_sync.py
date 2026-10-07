@@ -13,7 +13,7 @@ from integrations.google_sheets import build_sheets_service
 
 from .models import Candidate
 from .partner_contact_sync import SPREADSHEET_ID, _single_worker
-from .sync import format_sheet_date
+from .sync import format_identity, format_phone, format_sheet_date
 
 
 logger = logging.getLogger(__name__)
@@ -58,8 +58,8 @@ def candidate_rows(candidate_ids=None):
         records.append([
             code, candidate.name, candidate.school or '', candidate.grade or '',
             candidate.contests or '', candidate.updated or _display_time(candidate.updated_at),
-            format_sheet_date(candidate.birth_date), candidate.parent or '', candidate.phone or '',
-            candidate.identity or '', candidate.email or '', candidate.nationality or '',
+            format_sheet_date(candidate.birth_date), candidate.parent or '', format_phone(candidate.phone),
+            format_identity(candidate.identity), candidate.email or '', candidate.nationality or '',
             candidate.class_name or '', candidate.city or '', candidate.ward or '', candidate.address or '',
         ])
     records.sort(key=lambda row: candidate_code_sort_key(row[0]))

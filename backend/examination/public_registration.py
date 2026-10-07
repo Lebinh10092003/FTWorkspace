@@ -152,9 +152,10 @@ def public_registration(request):
     data = {**data.dict(), **values}
     name = format_person_name(clean(data, 'name', 255))
     dob = clean(data, 'birthDate', 10)
-    identity = re.sub(r'\s+', '', clean(data, 'identity', 100))
+    from .sync import format_identity, format_phone
+    identity = format_identity(clean(data, 'identity', 100))
     email = clean(data, 'email', 255).casefold()
-    phone = re.sub(r'[\s().-]', '', clean(data, 'phone', 32))
+    phone = format_phone(clean(data, 'phone', 32))
     school = clean(data, 'school', 255)
     grade = clean(data, 'grade', 2)
     city = clean(data, 'city', 100)
@@ -200,8 +201,8 @@ def public_registration(request):
         else:
             candidate.contests = merge_contest_codes(candidate.contests, ', '.join(codes))
             candidate.session_ids = list(dict.fromkeys([*(candidate.session_ids or []), *[available[code].id for code in codes]]))
-            for key, value in {'identity': identity, 'school': school, 'grade': grade, 'city': city, 'ward': ward, 'address': address}.items():
-                if value and not getattr(candidate, key):
+            for key, value in {'identity': identity, 'email': email, 'phone': phone, 'school': school, 'grade': grade, 'city': city, 'ward': ward, 'address': address}.items():
+                if value:
                     setattr(candidate, key, value)
             candidate.save()
         registration = PublicExamRegistration.objects.create(

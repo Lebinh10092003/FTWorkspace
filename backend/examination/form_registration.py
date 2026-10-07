@@ -11,7 +11,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from .models import Candidate, CandidateParticipation, ExamSession, FormRegistrationLink
-from .sync import format_person_name, merge_contest_codes, next_code, parse_dob, sync_session_candidate_totals, valid_candidate_name
+from .sync import form_grade_and_class, format_identity, format_phone, format_person_name, merge_contest_codes, next_code, parse_dob, sync_session_candidate_totals, valid_candidate_name
 
 
 SPREADSHEET_ID = '1gqO1Tp4YSBp0UVBgXjJgvL8CuqftVKGNd74PPRX9i8E'
@@ -94,9 +94,16 @@ def import_form_rows(tab, rows):
             summary['skipped'] += 1
             continue
         birth_date = parse_dob(row[3])
-        identity = re.sub(r'\s+', '', clean(row[4]))
+        identity = format_identity(row[4])
         email = clean(row[5]) or clean(row[1])
-        phone = re.sub(r'[^\d+]', '', clean(row[9]))
+        phone = format_phone(row[9])
+        source_issues = {}
+        if phone and not all(re.fullmatch(r'0\d{9}|\+\d{9,15}', part.strip()) for part in phone.split('/')):
+            source_issues['phone'] = clean(row[9])
+            phone = ''
+        if clean(row[4]) and not identity:
+            source_issues['identity'] = clean(row[4])
+        grade, class_name = form_grade_and_class(row[11])
         codes = selected_codes(tab, row)
         if not codes:
             summary['skipped'] += 1
@@ -118,22 +125,23 @@ def import_form_rows(tab, rows):
                         candidate = Candidate.objects.create(
                             id=candidate_code, code=candidate_code, name=name, birth_date=birth_date,
                             identity=identity, email=email, phone=phone, school=clean(row[10]),
-                            grade=clean(row[11]), city=clean(row[6]), ward=clean(row[7]),
+                            grade=grade, class_name=class_name, city=clean(row[6]), ward=clean(row[7]),
                             address=clean(row[8]), contests=code, session_ids=[session.id],
                             sort_key=f'{name.lower()}_{identity or candidate_code}',
                             updated=timezone.localtime().strftime('%d/%m/%Y %H:%M'),
                         )
                         summary['created'] += 1
                     else:
+                        new_membership = not CandidateParticipation.objects.filter(candidate=candidate, session=session).exists()
                         candidate.contests = merge_contest_codes(candidate.contests, code)
                         candidate.session_ids = list(dict.fromkeys([*(candidate.session_ids or []), session.id]))
                         # A form may fill missing contact details; web edits remain authoritative.
                         for field, value in {
                             'birth_date': birth_date, 'identity': identity, 'email': email, 'phone': phone,
-                            'school': clean(row[10]), 'grade': clean(row[11]), 'city': clean(row[6]),
+                            'school': clean(row[10]), 'grade': grade, 'class_name': class_name, 'city': clean(row[6]),
                             'ward': clean(row[7]), 'address': clean(row[8]),
                         }.items():
-                            if value and not getattr(candidate, field):
+                            if value and (new_membership or not getattr(candidate, field)):
                                 setattr(candidate, field, value)
                         candidate.save()
                     participation, participation_created = CandidateParticipation.objects.get_or_create(
@@ -147,6 +155,14 @@ def import_form_rows(tab, rows):
                         payment_proof = clean(row[12])
                     registration = dict(participation.registration_data or {})
                     registration.update({'formTab': tab, 'formRow': row_number, 'paymentProof': payment_proof})
+                    registration.setdefault('registeredAt', participation.created_at.isoformat())
+                    registration.setdefault('registrationProfile', {
+                        'name': name, 'birth_date': birth_date, 'identity': identity, 'email': email, 'phone': phone,
+                        'school': clean(row[10]), 'grade': grade, 'class_name': class_name,
+                        'city': clean(row[6]), 'ward': clean(row[7]), 'address': clean(row[8]),
+                    })
+                    if source_issues:
+                        registration['sourceIssues'] = source_issues
                     participation.registration_data = registration
                     participation.source = f'{SHEET_URL}#{tab}'
                     participation.save(update_fields=['registration_data', 'source', 'updated_at'])

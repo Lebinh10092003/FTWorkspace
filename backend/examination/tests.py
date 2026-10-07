@@ -1310,7 +1310,7 @@ class SessionOutputSheetTests(TestCase):
         exported = session_export_rows(self.session.id)[2]
         self.assertEqual(exported[21], '')
         self.assertEqual(exported[36], '\u0110\u1ee7 \u0111i\u1ec1u ki\u1ec7n')
-        self.assertEqual(exported[66], 'V\u00f2ng 2 \u2013 National Final')
+        self.assertEqual(exported[66], '')
 
 
 class ExaminationSheetAutomationTests(TestCase):

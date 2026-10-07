@@ -199,6 +199,9 @@ def build_plan(content, options):
             issue('warning', 'Thiếu ngày sinh đầy đủ; giữ nguyên thông tin hiện có và bổ sung sau.', row)
         if not profile['class_name']:
             issue('warning', 'Thiếu lớp đang học; để trống và bổ sung sau.', row)
+        for field, label in (('identity', 'CCCD/Hộ chiếu'), ('phone', 'số điện thoại'), ('email', 'email'), ('parent', 'họ tên phụ huynh')):
+            if not profile[field]:
+                issue('warning', f'Thiếu {label} trong file gốc; không tự tạo thông tin.', row)
         if profile['email']:
             try:
                 validate_email(profile['email'])

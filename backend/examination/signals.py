@@ -10,6 +10,13 @@ from .candidate_sheet_queue import enqueue_candidate
 from .session_sheet_queue import enqueue_session_candidate
 
 
+@receiver(pre_save, sender=Candidate)
+def normalize_candidate_identifiers(sender, instance, **kwargs):
+    from .sync import format_identity, format_phone
+    instance.identity = format_identity(instance.identity)
+    instance.phone = format_phone(instance.phone)
+
+
 @receiver(post_save, sender=Candidate)
 def candidate_changed(sender, instance, **kwargs):
     enqueue_candidate(instance.pk)
@@ -33,6 +40,9 @@ def preserve_school_accounting_metadata(sender, instance, **kwargs):
     data = dict(instance.registration_data or {})
     if previous.get('historicalImport') is True:
         data['historicalImport'] = True
+    for key in ('registeredAt', 'registrationProfile'):
+        if key in previous and key not in data:
+            data[key] = previous[key]
     if instance.school_registration_id:
         for key in ('schoolFee', 'schoolPartnerId'):
             if key in previous:

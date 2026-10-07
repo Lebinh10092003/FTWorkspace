@@ -58,19 +58,29 @@ def format_person_name(value):
     return ' '.join('-'.join(part[:1].upper() + part[1:].lower() for part in word.split('-') if part) for word in words if word)
 
 def normalized_identity(value):
-    digits = re.sub(r'\D', '', clean_txt(value))
-    return digits if len(digits) >= 6 and len(set(digits)) > 1 else ''
+    compact = re.sub(r'[^A-Z0-9]', '', format_identity(value).upper())
+    return compact if len(compact) >= 6 and (not compact.isdigit() or len(set(compact)) > 1) else ''
 
 
 def format_identity(value):
     """Restore leading zeros lost by Excel; retain alphanumeric passports."""
     text = clean_txt(value)
-    compact = re.sub(r'[\s.\-]', '', text)
-    return compact.zfill(12) if compact.isdigit() and len(compact) <= 12 else text
+    if re.fullmatch(r'\d+\.0+', text):
+        text = text.split('.')[0]
+    compact = re.sub(r"[\s.,\-'*]", '', text)
+    if not compact or compact.casefold() in {'na', 'n/a', 'none', 'null'} or (compact.isdigit() and len(set(compact)) == 1 and compact[0] == '0'):
+        return ''
+    return compact.zfill(12) if compact.isdigit() and 6 <= len(compact) <= 12 else compact
 
 
 def format_phone(value):
     text = clean_txt(value)
+    # A cell may contain two real contacts. Never concatenate their digits.
+    parts = re.split(r'\s*[/;|\n]\s*', text)
+    if len(parts) > 1:
+        return ' / '.join(filter(None, (format_phone(part) for part in parts)))
+    if re.fullmatch(r'\d+\.0+', text):
+        text = text.split('.')[0]
     if not text or not re.fullmatch(r'[\d\s+(),.\-]+', text):
         return text
     digits = re.sub(r'\D', '', text)
@@ -78,7 +88,11 @@ def format_phone(value):
         digits = '0' + digits[4:]
     elif digits.startswith('84') and len(digits) == 11:
         digits = '0' + digits[2:]
-    return digits.zfill(10) if digits and len(digits) <= 10 else text
+    if len(digits) == 20 and all(re.fullmatch(r'0[35789]\d{8}', digits[i:i + 10]) for i in (0, 10)):
+        return ' / '.join((digits[:10], digits[10:]))
+    if not digits or set(digits) == {'0'}:
+        return ''
+    return digits.zfill(10) if 9 <= len(digits) <= 10 else text
 
 
 def normalized_phone(value):
@@ -211,6 +225,25 @@ def parse_dob(raw):
         return date_value.isoformat()
     except (TypeError, ValueError):
         return ''
+
+
+def parse_exam_date(raw):
+    """Exam schedules can be in a future year; birth-date bounds do not apply."""
+    text = clean_txt(raw)
+    for pattern in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+        try:
+            return datetime.datetime.strptime(text, pattern).date().isoformat()
+        except ValueError:
+            pass
+    return ''
+
+
+def form_grade_and_class(raw):
+    text = clean_txt(raw)
+    class_match = re.search(r'(?<!\d)(1[0-2]|[1-9])\s*([A-Za-z]+\d*)(?!\w)', text)
+    class_name = re.sub(r'\s+', '', class_match.group()) if class_match else ''
+    grade_match = re.search(r'(?<!\d)(1[0-2]|[1-9])(?!\d)', text)
+    return (grade_match.group() if grade_match else text, class_name)
 def resolve_column_indices(header, include_defaults=True):
     """Resolve both legacy sheets and the official two-row candidate template."""
     idx = {}
@@ -790,9 +823,11 @@ def _round_slots(round_results, configured_rounds):
         if not slot:
             match = re.search(r'(?<!\d)([1-3])(?!\d)', clean_txt(item.round_name))
             slot = int(match.group(1)) if match else None
-        if slot and slot not in slots and slot <= 3:
-            slots[slot] = item
-        else:
+        if slot and slot <= 3:
+            previous = slots.get(slot)
+            if previous is None or (_award_rank(item), parse_exam_date(item.exam_date), str(item.pk)) > (_award_rank(previous), parse_exam_date(previous.exam_date), str(previous.pk)):
+                slots[slot] = item
+        elif not configured_rounds:
             leftovers.append(item)
     for number in (1, 2, 3):
         if number not in slots and leftovers:
@@ -801,12 +836,60 @@ def _round_slots(round_results, configured_rounds):
 
 
 def _session_highest_round(slots, configured_rounds):
-    if not slots:
+    awarded_slots = [slot for slot, result in slots.items() if _award_rank(result)]
+    if not awarded_slots:
         return ''
-    slot = max(slots)
+    slot = max(awarded_slots)
     config = configured_rounds[slot - 1] if slot <= len(configured_rounds) else {}
     name = clean_txt(config.get('name')) or clean_txt(slots[slot].round_name)
     return f'V\u00f2ng {slot} \u2013 {name}' if name else f'V\u00f2ng {slot}'
+
+
+def _award_rank(result):
+    """A registration, eligibility or non-award outcome is never an achievement."""
+    award = normalise_str(result.result)
+    if not award or any(word in award for word in ('khongcogiai', 'khongdat', 'nogiai', 'noaward', 'noresult', 'chuathi', 'pending', 'eligible', 'dudieukien', 'thamgia', 'participation')) or award in {'0', 'na', 'none', 'null', 'vangmat', 'absent'}:
+        return 0
+    if normalise_str(result.attendance) in {'vang', 'vangmat', 'absent', 'khongduthi', 'chuathi', 'chuaduthi'}:
+        return 0
+    exam_date = parse_exam_date(result.exam_date)
+    if re.fullmatch(r'\d{4}-\d{2}-\d{2}', exam_date) and datetime.date.fromisoformat(exam_date) > timezone.localdate():
+        return 0
+    for rank, words in ((5, ('vang', 'gold', 'champion', 'giainhat', 'firstprize')), (4, ('bac', 'silver', 'giainhi', 'secondprize')), (3, ('dong', 'bronze', 'giaiba', 'thirdprize')), (2, ('khuyenkhich', 'merit', 'honour', 'honor', 'distinction'))):
+        if any(word in award for word in words):
+            return rank
+    return 1 if award.startswith(('giai', 'prize', 'award')) else 0
+
+
+def session_registration_time(participation):
+    """The first membership in this session; never a shared profile's update."""
+    from django.utils.dateparse import parse_datetime
+    raw = (participation.registration_data or {}).get('registeredAt')
+    value = parse_datetime(str(raw)) if raw else None
+    value = value or participation.created_at
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value)
+    return timezone.localtime(value).strftime('%d/%m/%Y %H:%M')
+
+
+def candidate_body_format_requests(sheet_id, start_row, end_row):
+    """Data formatting is independent of the colored two-row template header."""
+    if end_row <= start_row:
+        return []
+    body = {'sheetId': sheet_id, 'startRowIndex': start_row, 'endRowIndex': end_row,
+            'startColumnIndex': 0, 'endColumnIndex': len(EXPORT_HEADERS)}
+    requests = [{'repeatCell': {'range': body, 'cell': {'userEnteredFormat': {
+        'backgroundColor': {'red': 1, 'green': 1, 'blue': 1},
+        'backgroundColorStyle': {'rgbColor': {'red': 1, 'green': 1, 'blue': 1}},
+        'horizontalAlignment': 'LEFT', 'wrapStrategy': 'CLIP',
+        'textFormat': {'bold': False, 'foregroundColor': {'red': 0, 'green': 0, 'blue': 0},
+                       'foregroundColorStyle': {'rgbColor': {'red': 0, 'green': 0, 'blue': 0}}},
+    }}, 'fields': 'userEnteredFormat(backgroundColor,backgroundColorStyle,horizontalAlignment,wrapStrategy,textFormat.bold,textFormat.foregroundColor,textFormat.foregroundColorStyle)'}}]
+    for column in (1, 4, 7):
+        requests.append({'repeatCell': {'range': dict(body, startColumnIndex=column, endColumnIndex=column + 1),
+            'cell': {'userEnteredFormat': {'numberFormat': {'type': 'TEXT'}}},
+            'fields': 'userEnteredFormat.numberFormat'}})
+    return requests
 
 def session_candidate_sort_key(candidate):
     """Sort a session roster by grade, then the culturally appropriate given name."""
@@ -852,8 +935,8 @@ def session_export_rows(session_id):
     for sequence, participation in enumerate(participations, start=1):
         candidate = participation.candidate
         row = [
-            sequence, candidate.code, candidate.name, format_sheet_date(candidate.birth_date), candidate.identity or '', candidate.nationality or '',
-            candidate.parent or '', candidate.phone or '', candidate.email or '', candidate.city or '', candidate.ward or '', candidate.address or '',
+            sequence, candidate.code, candidate.name, format_sheet_date(candidate.birth_date), format_identity(candidate.identity), candidate.nationality or '',
+            candidate.parent or '', format_phone(candidate.phone), candidate.email or '', candidate.city or '', candidate.ward or '', candidate.address or '',
             candidate.school or '', candidate.class_name or '', candidate.grade or '',
             participation.subject or '', participation.category or '', participation.registration_method or '', participation.team_name or '',
             participation.exam_language or '', participation.general_note or '',
@@ -869,7 +952,9 @@ def session_export_rows(session_id):
                 result.link, result.account, result.password, result.attendance, result.score, format_sheet_percentage(result.score_rate),
                 result.rank, result.result, result.note,
             ])
-        row.extend([_session_highest_round(slots, configured_rounds), candidate.achievement or '', participation.certificate_link or '', candidate.updated or ''])
+        awarded = [result for result in slots.values() if _award_rank(result)]
+        best = max(awarded, key=lambda result: (_award_rank(result), parse_exam_date(result.exam_date)), default=None)
+        row.extend([_session_highest_round(slots, configured_rounds), clean_txt(best.result) if best else '', participation.certificate_link or '', session_registration_time(participation)])
         rows.append(row)
     return rows
 
@@ -1141,6 +1226,19 @@ def output_sheet_export_preview(sheet, google_access_token=None, max_changes=250
     ).execute().get('values', [])
     alignment = _aligned_export_rows(current, session.id)
     proposed = alignment['values']
+    format_changes = False
+    if current:
+        formatting = service.spreadsheets().get(spreadsheetId=spreadsheet_id,
+            ranges=[f'{range_title}!A3:BR{len(current) + 2}'],
+            fields='sheets(data(rowData(values(userEnteredFormat(backgroundColorStyle,horizontalAlignment,wrapStrategy)))))').execute()
+        for item in formatting.get('sheets', []):
+            for block in item.get('data', []):
+                for row in block.get('rowData', []):
+                    for cell in row.get('values', []):
+                        fmt = cell.get('userEnteredFormat', {})
+                        bg = fmt.get('backgroundColorStyle', {}).get('rgbColor', {})
+                        if fmt.get('horizontalAlignment') != 'LEFT' or fmt.get('wrapStrategy') != 'CLIP' or any(bg.get(channel, 0) != 1 for channel in ('red', 'green', 'blue')):
+                            format_changes = True
     changes, changed_rows = [], set()
     write_changed_cells = 0
     review_changed_cells = 0
@@ -1183,7 +1281,8 @@ def output_sheet_export_preview(sheet, google_access_token=None, max_changes=250
         'changedCells': review_changed_cells, 'changedRows': len(changed_rows),
         'writeChangedCells': write_changed_cells,
         'changes': changes, 'changesTruncated': review_changed_cells > len(changes),
-        'hasExistingData': bool(current), 'hasChanges': bool(write_changed_cells or alignment['unmatchedSheetRows']),
+        'hasExistingData': bool(current), 'hasChanges': bool(write_changed_cells or alignment['unmatchedSheetRows'] or format_changes),
+        'hasFormatChanges': format_changes,
         'hasReviewChanges': bool(review_changed_cells),
         **{key: alignment[key] for key in ('matchedRows', 'appendedRows', 'unmatchedSheetRows', 'matchConflicts', 'systemRows')},
         'appendedCandidates': [_export_row_record(row) for row in alignment['appendedValues']],
@@ -1263,7 +1362,8 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
     config_data = config.data if config else {}
     saved_token = config.last_google_access_token if config else None
     service = build_sheets_service(google_access_token or saved_token, config_data or {})
-    tab_name = _output_sheet_target(sheet, service).get('title')
+    target = _output_sheet_target(sheet, service)
+    tab_name = target.get('title')
 
     range_title = _sheet_range_title(tab_name)
     if validate_template:
@@ -1282,7 +1382,7 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         range=f'{range_title}!A3:ZZ',
     ).execute().get('values', [])
     alignment = _aligned_export_rows(current, session.id)
-    if export_mode not in {'merge', 'append-only'}:
+    if export_mode not in {'merge', 'append-only', 'refresh-selected'}:
         raise ValueError('Invalid export mode.')
     selected_codes = {clean_txt(code).upper() for code in (append_candidate_codes or []) if clean_txt(code)}
     appended_codes = {clean_txt(_export_row_record(row)['code']).upper() for row in alignment['appendedValues']}
@@ -1298,6 +1398,54 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         if clean_txt(_export_row_record(row)['code']).upper() not in skipped_appended_codes
     ] if export_mode == 'append-only' else values
     start_row = len(current) + 3 if export_mode == 'append-only' else 3
+    refreshed_rows = 0
+    if export_mode == 'refresh-selected':
+        if append_candidate_codes is None:
+            raise ValueError('Chế độ cập nhật theo hồ sơ cần danh sách mã hồ sơ cụ thể.')
+        selected_names = {normalise_str(_export_row_record(row)['name']) for row in values
+                          if clean_txt(_export_row_record(row)['code']).upper() in selected_codes}
+        relevant_conflicts = [conflict for conflict in alignment['matchConflicts']
+                              if clean_txt(_export_row_record(current[conflict['row'] - 3])['code']).upper() in selected_codes
+                              or normalise_str(_export_row_record(current[conflict['row'] - 3])['name']) in selected_names]
+        if relevant_conflicts:
+            raise ValueError('Có dòng Sheet không khớp an toàn với hồ sơ cần cập nhật; giữ hàng đợi để kiểm tra.')
+        resulting_values = [list(row) for row in current]
+        updates = []
+        for index, row in enumerate(alignment['values'][:len(current)]):
+            code = clean_txt(_export_row_record(row)['code']).upper()
+            differs = [clean_txt(v) for v in current[index]] != [clean_txt(v) for v in row[:len(current[index])]] or any(clean_txt(v) for v in row[len(current[index]):])
+            if code in selected_codes and differs:
+                updates.append({'range': f'{range_title}!A{index + 3}:BR{index + 3}', 'values': [row]})
+                resulting_values[index] = list(row)
+        new_rows = [row for row in alignment['appendedValues']
+                    if clean_txt(_export_row_record(row)['code']).upper() in selected_codes]
+        if new_rows:
+            updates.append({'range': f'{range_title}!A{len(current) + 3}:BR{len(current) + len(new_rows) + 2}', 'values': new_rows})
+            resulting_values.extend(new_rows)
+        if updates:
+            service.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_id,
+                body={'valueInputOption': 'RAW', 'data': updates}).execute()
+        refreshed_rows = len(updates) - bool(new_rows)
+        requests = candidate_body_format_requests(target['sheetId'], 2, len(resulting_values) + 2)
+        if requests:
+            service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
+        if updates:
+            verified = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
+                range=f'{range_title}!A3:BR{len(resulting_values) + 2}').execute().get('values', [])
+            def comparable(rows):
+                result = []
+                for row in rows:
+                    values = [clean_txt(value) for value in row]
+                    while values and not values[-1]:
+                        values.pop()
+                    result.append(values)
+                return result
+            if comparable(verified) != comparable(resulting_values):
+                raise ValueError('Sheet chưa khớp sau khi cập nhật; giữ hàng đợi để thử lại.')
+        return {'success': True, 'sessionId': session.id, 'sheetTab': tab_name,
+                'exported': len(new_rows), 'updated': refreshed_rows,
+                'currentFingerprint': sheet_values_fingerprint(current),
+                'fingerprint': sheet_values_fingerprint(resulting_values)}
     if export_mode == 'merge':
         # A normal export is authoritative for the output tab: rows only in
         # Sheet disappear when the web roster is smaller.
@@ -1321,6 +1469,9 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         ).execute()
     exported_count = len(values_to_write) if export_mode == 'append-only' else len(values)
     resulting_values = [*current, *values_to_write] if export_mode == 'append-only' else values
+    requests = candidate_body_format_requests(target['sheetId'], 2, len(resulting_values) + 2)
+    if requests:
+        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
     return {
         'success': True,
         'sessionId': session.id,
@@ -1531,8 +1682,8 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
                 'generalNote': value('generalNote'), 'certificateLink': value('certificateLink'),
             }
             cand = {
-                'code': value('code'), 'name': name, 'birth_date': parse_dob(value('dob')), 'identity': re.sub(r'\D', '', value('cccd')),
-                'email': value('email'), 'phone': re.sub(r'[^\d+]', '', value('phone')), 'school': value('school'),
+                'code': value('code'), 'name': name, 'birth_date': parse_dob(value('dob')), 'identity': format_identity(value('cccd')),
+                'email': value('email'), 'phone': format_phone(value('phone')), 'school': value('school'),
                 'class_name': value('className'), 'city': value('city'), 'ward': value('ward'), 'nationality': value('nationality'),
                 'grade': value('grade'), 'address': value('fullAddress') or ', '.join(filter(None, [value('streetAddress'), value('ward'), value('city')])),
                 'contests': contests, 'achievement': value('achievement') or ' | '.join(legacy_achievement), 'highest_round': value('highestRound'),

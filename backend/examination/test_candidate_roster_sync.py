@@ -208,7 +208,7 @@ class CandidateRosterSyncTests(TestCase):
         self.assertEqual(result['synced'], 1)
         self.assertEqual(SessionSheetOutbox.objects.count(), 1)
         for call in export.call_args_list:
-            self.assertEqual(call.kwargs, {'export_mode': 'append-only', 'append_candidate_codes': ['FT-001'], 'validate_template': True})
+            self.assertEqual(call.kwargs, {'export_mode': 'refresh-selected', 'append_candidate_codes': ['FT-001'], 'validate_template': True})
 
     @patch('examination.session_sheet_queue.export_session_to_google_sheet')
     def test_broken_destination_does_not_block_other_tab_in_same_session(self, export):

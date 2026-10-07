@@ -48,6 +48,8 @@ from .sync import (
     next_code,
     parse_dob,
     format_person_name,
+    format_identity,
+    format_phone,
     valid_candidate_name,
     export_session_to_google_sheet,
     remote_sheet_fingerprint,
@@ -1989,7 +1991,7 @@ def candidate_detail(request, pk):
                 elif field == 'email': cand.email = val
                 elif field == 'parent': cand.parent = format_person_name(val)
                 elif field == 'phone': cand.phone = val
-                elif field == 'identity': cand.identity = val
+                elif field == 'identity': cand.identity = format_identity(val)
                 elif field == 'address': cand.address = val
                 elif field == 'birthDate': cand.birth_date = val
                 
@@ -2749,8 +2751,8 @@ def import_candidates(request):
                 'highest_round': str(rec.get('highestRound', '')).strip(),
                 'email': str(rec.get('email', '')).strip(),
                 'parent': format_person_name(rec.get('parent', '')),
-                'phone': str(rec.get('phone', '')).strip(),
-                'identity': str(rec.get('identity', '')).strip(),
+                'phone': format_phone(rec.get('phone', '')),
+                'identity': format_identity(rec.get('identity', '')),
                 'address': str(rec.get('address', '')).strip(),
                 'birth_date': parse_dob(rec.get('birthDate', '')),
                 'registration': {
