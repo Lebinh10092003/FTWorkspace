@@ -8,6 +8,7 @@ from examination.candidate_roster_sync import LAYOUT_VERSION, SYNC_CONFIG_KEY, a
 from authentication.models import SystemConfig
 from examination.session_sheet_queue import drain_session_sheet_queue
 from examination.models import CandidateSheetOutbox, SessionSheetOutbox
+from examination.public_registration_sheet import sync_pending
 
 
 class Command(BaseCommand):
@@ -29,6 +30,7 @@ class Command(BaseCommand):
             except Exception as exc:
                 errors.append(str(exc))
             results['sessions'] = drain_session_sheet_queue()
+            results['registrationRefresh'] = sync_pending(refresh_only=True)
         if options['verify_roster']:
             results['rosterAudit'] = audit_candidate_roster()
         results['remaining'] = {
@@ -37,5 +39,5 @@ class Command(BaseCommand):
             'bySession': list(SessionSheetOutbox.objects.values('session_id').annotate(jobs=Count('pk')).order_by('session_id')),
         }
         self.stdout.write(json.dumps(results, ensure_ascii=False))
-        if errors or results.get('sessions', {}).get('failed'):
+        if errors or results.get('sessions', {}).get('failed') or results.get('registrationRefresh', {}).get('failed'):
             raise CommandError('; '.join(errors) or 'Session Sheet queue has failed jobs; retained for retry.')

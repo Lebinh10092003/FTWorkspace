@@ -855,7 +855,7 @@ def _award_rank(result):
     exam_date = parse_exam_date(result.exam_date)
     if re.fullmatch(r'\d{4}-\d{2}-\d{2}', exam_date) and datetime.date.fromisoformat(exam_date) > timezone.localdate():
         return 0
-    for rank, words in ((5, ('vang', 'gold', 'champion', 'giainhat', 'firstprize')), (4, ('bac', 'silver', 'giainhi', 'secondprize')), (3, ('dong', 'bronze', 'giaiba', 'thirdprize')), (2, ('khuyenkhich', 'merit', 'honour', 'honor', 'distinction'))):
+    for rank, words in ((5, ('vang', 'gold', 'champion', 'giainhat', 'firstprize')), (4, ('bac', 'silver', 'sliver', 'giainhi', 'secondprize')), (3, ('dong', 'bronze', 'giaiba', 'thirdprize')), (2, ('khuyenkhich', 'merit', 'honour', 'honor', 'distinction'))):
         if any(word in award for word in words):
             return rank
     return 1 if award.startswith(('giai', 'prize', 'award')) else 0
@@ -872,12 +872,12 @@ def session_registration_time(participation):
     return timezone.localtime(value).strftime('%d/%m/%Y %H:%M')
 
 
-def candidate_body_format_requests(sheet_id, start_row, end_row):
+def candidate_body_format_requests(sheet_id, start_row, end_row, column_count=None):
     """Data formatting is independent of the colored two-row template header."""
     if end_row <= start_row:
         return []
     body = {'sheetId': sheet_id, 'startRowIndex': start_row, 'endRowIndex': end_row,
-            'startColumnIndex': 0, 'endColumnIndex': len(EXPORT_HEADERS)}
+            'startColumnIndex': 0, 'endColumnIndex': column_count or len(EXPORT_HEADERS)}
     requests = [{'repeatCell': {'range': body, 'cell': {'userEnteredFormat': {
         'backgroundColor': {'red': 1, 'green': 1, 'blue': 1},
         'backgroundColorStyle': {'rgbColor': {'red': 1, 'green': 1, 'blue': 1}},
@@ -977,7 +977,7 @@ def _output_sheet_target(sheet, service):
     spreadsheet_id = extract_spreadsheet_id(sheet.url)
     metadata = service.spreadsheets().get(
         spreadsheetId=spreadsheet_id,
-        fields='sheets(properties(sheetId,title))',
+        fields='sheets(properties(sheetId,title,gridProperties))',
     ).execute()
     tabs = [item.get('properties', {}) for item in metadata.get('sheets', [])]
     parsed_url = urllib.parse.urlparse(clean_txt(sheet.url))
@@ -1082,7 +1082,7 @@ def _export_row_match(sheet_row, candidate_row):
     return 50, 'h\u1ecd t\u00ean duy nh\u1ea5t'
 
 
-def _aligned_export_rows(current_rows, session_id):
+def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=False):
     """Align output to existing Sheet people; never use the Sheet row order as identity.
 
     Row 1 is the group label and row 2 is the immutable column header. This
@@ -1104,7 +1104,7 @@ def _aligned_export_rows(current_rows, session_id):
             continue
         sheet_record = _export_row_record(sheet_row)
         candidates = []
-        for candidate_index in remaining:
+        for candidate_index in (range(len(proposed_rows)) if allow_duplicate_profiles else remaining):
             match = _export_row_match(sheet_row, proposed_rows[candidate_index])
             if match:
                 score, reason = match
@@ -1142,7 +1142,7 @@ def _aligned_export_rows(current_rows, session_id):
         if sheet_row and clean_txt(sheet_row[0]):
             replacement[0] = sheet_row[0]
         aligned_rows[row_index] = replacement
-        remaining.remove(candidate_index)
+        remaining.discard(candidate_index)
         matched_rows += 1
 
     existing_stt = [int(clean_txt(row[0])) for row in current_rows if row and clean_txt(row[0]).isdigit()]
@@ -1201,6 +1201,46 @@ def _sheet_values_equivalent(before, after, field):
     return False
 
 
+def _session_sheet_layout(service, spreadsheet_id, target, range_title):
+    column_count = min(target.get('gridProperties', {}).get('columnCount', 70), 70)
+    end_column = _column_name(column_count - 1)
+    legacy_headers = None
+    if column_count < 70:
+        legacy_headers = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
+            range=f'{range_title}!A2:{end_column}2').execute().get('values', [[]])[0]
+        if len(legacy_headers) < 55 or normalise_str(legacy_headers[51]) != normalise_str(SUMMARY_EXPORT_HEADERS[0]):
+            raise ValueError('Mẫu ít hơn 70 cột chưa có ánh xạ tổng hợp an toàn; giữ nguyên dữ liệu.')
+    return column_count, end_column, legacy_headers
+
+
+def _project_session_sheet_row(row, previous, legacy_headers, session):
+    row = list(row)
+    if previous and normalise_str(session.phase) == 'hoanthanh':
+        # A shared profile may already be in the next school year. Preserve
+        # the school/class/grade actually recorded for a completed session.
+        for index in (12, 13, 14):
+            if index < len(previous) and clean_txt(previous[index]):
+                row[index] = previous[index]
+    if not legacy_headers or len(row) < 70:
+        return row
+    # Historical two-round sheets keep distinct subjects for the same profile.
+    if previous is not None:
+        from types import SimpleNamespace
+        projected = list(row[:15]) + (list(previous) + [''] * 51)[15:51]
+        slots = {number: SimpleNamespace(result=projected[21 + (number - 1) * 15 + 13],
+            attendance=projected[21 + (number - 1) * 15 + 9],
+            exam_date=projected[21 + (number - 1) * 15 + 2], round_name='') for number in (1, 2)}
+        best = max((r for r in slots.values() if _award_rank(r)), key=_award_rank, default=None)
+        rounds = [item for item in (session.rounds or []) if isinstance(item, dict)]
+        projected += [_session_highest_round(slots, rounds), best.result if best else '', row[68], row[69]]
+    else:
+        projected = list(row[:51]) + list(row[66:70])
+    for index in range(55, len(legacy_headers)):
+        projected.append(row[69] if normalise_str(legacy_headers[index]) == normalise_str(SUMMARY_EXPORT_HEADERS[3])
+            else (previous[index] if previous and index < len(previous) else ''))
+    return projected
+
+
 def output_sheet_export_preview(sheet, google_access_token=None, max_changes=250):
     """Compare data rows only; Sheet rows 1 and 2 are never overwritten.
 
@@ -1221,15 +1261,17 @@ def output_sheet_export_preview(sheet, google_access_token=None, max_changes=250
     target = _output_sheet_target(sheet, service)
     tab_name = target.get('title')
     range_title = _sheet_range_title(tab_name)
+    column_count, end_column, legacy_headers = _session_sheet_layout(service, spreadsheet_id, target, range_title)
     current = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id, range=f'{range_title}!A3:ZZ',
     ).execute().get('values', [])
-    alignment = _aligned_export_rows(current, session.id)
-    proposed = alignment['values']
+    alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers))
+    proposed = [_project_session_sheet_row(row, current[i] if i < len(current) else None, legacy_headers, session)
+                for i, row in enumerate(alignment['values'])]
     format_changes = False
     if current:
         formatting = service.spreadsheets().get(spreadsheetId=spreadsheet_id,
-            ranges=[f'{range_title}!A3:BR{len(current) + 2}'],
+            ranges=[f'{range_title}!A3:{end_column}{len(current) + 2}'],
             fields='sheets(data(rowData(values(userEnteredFormat(backgroundColorStyle,horizontalAlignment,wrapStrategy)))))').execute()
         for item in formatting.get('sheets', []):
             for block in item.get('data', []):
@@ -1256,7 +1298,8 @@ def output_sheet_export_preview(sheet, google_access_token=None, max_changes=250
             if before == after:
                 continue
             write_changed_cells += 1
-            field = str(EXPORT_HEADERS[column_index]) if len(EXPORT_HEADERS) > column_index else _column_name(column_index)
+            field_headers = legacy_headers or EXPORT_HEADERS
+            field = str(field_headers[column_index]) if len(field_headers) > column_index else _column_name(column_index)
             # New values, formatting-equivalent values, and the timestamp do
             # not need operator review; they are still included in the write.
             needs_review = bool(clean_txt(before)) and field not in AUTO_OVERWRITE_EXPORT_HEADERS and not _sheet_values_equivalent(before, after, field)
@@ -1366,6 +1409,7 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
     tab_name = target.get('title')
 
     range_title = _sheet_range_title(tab_name)
+    column_count, end_column, legacy_headers = _session_sheet_layout(service, spreadsheet_id, target, range_title)
     if validate_template:
         headers = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=f'{range_title}!A2:O2',
@@ -1381,7 +1425,12 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         spreadsheetId=spreadsheet_id,
         range=f'{range_title}!A3:ZZ',
     ).execute().get('values', [])
-    alignment = _aligned_export_rows(current, session.id)
+    alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers))
+    def project(row, previous=None):
+        return _project_session_sheet_row(row, previous, legacy_headers, session)
+    if legacy_headers and export_mode == 'merge':
+        export_mode = 'refresh-selected'
+        append_candidate_codes = [row[1] for row in session_export_rows(session.id)[2:]]
     if export_mode not in {'merge', 'append-only', 'refresh-selected'}:
         raise ValueError('Invalid export mode.')
     selected_codes = {clean_txt(code).upper() for code in (append_candidate_codes or []) if clean_txt(code)}
@@ -1390,11 +1439,11 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
     # authoritative: unticked web-only candidates are not added to Sheet.
     skipped_appended_codes = appended_codes - selected_codes if append_candidate_codes is not None else set()
     values = [
-        row for row in session_export_rows(session.id)[2:]
+        project(row) for row in session_export_rows(session.id)[2:]
         if clean_txt(_export_row_record(row)['code']).upper() not in skipped_appended_codes
     ]
     values_to_write = [
-        row for row in alignment['appendedValues']
+        project(row) for row in alignment['appendedValues']
         if clean_txt(_export_row_record(row)['code']).upper() not in skipped_appended_codes
     ] if export_mode == 'append-only' else values
     start_row = len(current) + 3 if export_mode == 'append-only' else 3
@@ -1412,26 +1461,27 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         resulting_values = [list(row) for row in current]
         updates = []
         for index, row in enumerate(alignment['values'][:len(current)]):
+            row = project(row, current[index])
             code = clean_txt(_export_row_record(row)['code']).upper()
             differs = [clean_txt(v) for v in current[index]] != [clean_txt(v) for v in row[:len(current[index])]] or any(clean_txt(v) for v in row[len(current[index]):])
             if code in selected_codes and differs:
-                updates.append({'range': f'{range_title}!A{index + 3}:BR{index + 3}', 'values': [row]})
+                updates.append({'range': f'{range_title}!A{index + 3}:{end_column}{index + 3}', 'values': [row]})
                 resulting_values[index] = list(row)
-        new_rows = [row for row in alignment['appendedValues']
+        new_rows = [project(row) for row in alignment['appendedValues']
                     if clean_txt(_export_row_record(row)['code']).upper() in selected_codes]
         if new_rows:
-            updates.append({'range': f'{range_title}!A{len(current) + 3}:BR{len(current) + len(new_rows) + 2}', 'values': new_rows})
+            updates.append({'range': f'{range_title}!A{len(current) + 3}:{end_column}{len(current) + len(new_rows) + 2}', 'values': new_rows})
             resulting_values.extend(new_rows)
         if updates:
             service.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_id,
                 body={'valueInputOption': 'RAW', 'data': updates}).execute()
         refreshed_rows = len(updates) - bool(new_rows)
-        requests = candidate_body_format_requests(target['sheetId'], 2, len(resulting_values) + 2)
+        requests = candidate_body_format_requests(target['sheetId'], 2, len(resulting_values) + 2, column_count)
         if requests:
             service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
         if updates:
             verified = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
-                range=f'{range_title}!A3:BR{len(resulting_values) + 2}').execute().get('values', [])
+                range=f'{range_title}!A3:{end_column}{len(resulting_values) + 2}').execute().get('values', [])
             def comparable(rows):
                 result = []
                 for row in rows:
@@ -1456,7 +1506,7 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         ).execute()
     if values_to_write and export_mode == 'append-only' and validate_template:
         service.spreadsheets().values().append(
-            spreadsheetId=spreadsheet_id, range=f'{range_title}!A3:BR',
+            spreadsheetId=spreadsheet_id, range=f'{range_title}!A3:{end_column}',
             valueInputOption='RAW', insertDataOption='INSERT_ROWS',
             body={'values': values_to_write},
         ).execute()
@@ -1469,7 +1519,7 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         ).execute()
     exported_count = len(values_to_write) if export_mode == 'append-only' else len(values)
     resulting_values = [*current, *values_to_write] if export_mode == 'append-only' else values
-    requests = candidate_body_format_requests(target['sheetId'], 2, len(resulting_values) + 2)
+    requests = candidate_body_format_requests(target['sheetId'], 2, len(resulting_values) + 2, column_count)
     if requests:
         service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
     return {

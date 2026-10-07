@@ -104,6 +104,7 @@ def import_form_rows(tab, rows):
         if clean(row[4]) and not identity:
             source_issues['identity'] = clean(row[4])
         grade, class_name = form_grade_and_class(row[11])
+        parent = clean(row[16]) if len(row) > 16 else ''
         codes = selected_codes(tab, row)
         if not codes:
             summary['skipped'] += 1
@@ -124,7 +125,7 @@ def import_form_rows(tab, rows):
                         candidate_code = next_code(set(Candidate.objects.values_list('code', flat=True)))
                         candidate = Candidate.objects.create(
                             id=candidate_code, code=candidate_code, name=name, birth_date=birth_date,
-                            identity=identity, email=email, phone=phone, school=clean(row[10]),
+                            identity=identity, email=email, phone=phone, parent=parent, school=clean(row[10]),
                             grade=grade, class_name=class_name, city=clean(row[6]), ward=clean(row[7]),
                             address=clean(row[8]), contests=code, session_ids=[session.id],
                             sort_key=f'{name.lower()}_{identity or candidate_code}',
@@ -138,7 +139,7 @@ def import_form_rows(tab, rows):
                         candidate.session_ids = list(dict.fromkeys([*(candidate.session_ids or []), session.id]))
                         # A form may fill missing contact details; web edits remain authoritative.
                         for field, value in {
-                            'birth_date': birth_date, 'identity': identity, 'email': email, 'phone': phone,
+                            'birth_date': birth_date, 'identity': identity, 'email': email, 'phone': phone, 'parent': parent,
                             'school': clean(row[10]), 'grade': grade, 'class_name': class_name, 'city': clean(row[6]),
                             'ward': clean(row[7]), 'address': clean(row[8]),
                         }.items():
@@ -160,7 +161,7 @@ def import_form_rows(tab, rows):
                     registration.update({'formTab': tab, 'formRow': row_number, 'paymentProof': payment_proof})
                     registration.setdefault('registeredAt', participation.created_at.isoformat())
                     registration.setdefault('registrationProfile', {
-                        'name': name, 'birth_date': birth_date, 'identity': identity, 'email': email, 'phone': phone,
+                        'name': name, 'birth_date': birth_date, 'identity': identity, 'email': email, 'phone': phone, 'parent': parent,
                         'school': clean(row[10]), 'grade': grade, 'class_name': class_name,
                         'city': clean(row[6]), 'ward': clean(row[7]), 'address': clean(row[8]),
                     })

@@ -19,6 +19,8 @@ def normalize_candidate_identifiers(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Candidate)
 def candidate_changed(sender, instance, **kwargs):
+    from .models import PublicExamRegistration
+    PublicExamRegistration.objects.filter(candidate=instance, sheet_status='synced').update(sheet_status='refresh')
     enqueue_candidate(instance.pk)
     session_ids = set(instance.session_ids or []) | set(instance.participations.values_list('session_id', flat=True))
     for session_id in session_ids:

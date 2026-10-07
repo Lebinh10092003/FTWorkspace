@@ -1,11 +1,13 @@
 """Retryable export of Workspace registrations to the original Form workbook."""
 
 import re
+from django.utils import timezone
 
 from authentication.models import SystemConfig
 from integrations.google_sheets import build_sheets_service
 from .form_registration import SPREADSHEET_ID, TAB_CODES
 from .models import PublicExamRegistration
+from .sync import format_identity, format_phone
 
 
 MARKER_HEADER = 'Mã đăng ký Workspace'
@@ -20,11 +22,11 @@ def row_for(item, tab):
     chosen = [code for code in item.contest_codes if code in TAB_CODES[tab]]
     values = [''] * 18
     values[:12] = [
-        item.created_at.strftime('%d/%m/%Y %H:%M:%S'), candidate.email or '',
-        candidate.name, candidate.birth_date or '', candidate.identity or '',
+        timezone.localtime(item.created_at).strftime('%d/%m/%Y %H:%M:%S'), candidate.email or '',
+        candidate.name, candidate.birth_date or '', format_identity(candidate.identity),
         candidate.email or '', candidate.city or '', candidate.ward or '',
-        candidate.address or '', candidate.phone or '', candidate.school or '',
-        candidate.grade or '',
+        candidate.address or '', format_phone(candidate.phone), candidate.school or '',
+        candidate.class_name or candidate.grade or '',
     ]
     if tab == 'SIAIO':
         values[12] = f'Chứng từ trên Workspace #{item.id}' if item.proof_type else ''
@@ -32,6 +34,7 @@ def row_for(item, tab):
         values[12] = ', '.join(chosen)
         values[13] = ('Có' if item.payment_declared else 'Chưa xác nhận') if tab == 'FIMO, FIEO' else (f'Chứng từ trên Workspace #{item.id}' if item.proof_type else '')
     values[17] = f'WORKSPACE:{item.id}'
+    values[16] = candidate.parent or ''
     return values
 
 
@@ -80,6 +83,15 @@ def sync_registration(item, service=None):
             updated_range = result.get('updates', {}).get('updatedRange', '')
             match = re.search(r'![A-Z]+(\d+):', updated_range)
             found = int(match.group(1)) if match else 0
+        else:
+            # Refresh the profile only: original submission time, response email,
+            # contest choices, payment evidence and accounting remain untouched.
+            values = row_for(item, tab)
+            data = [{'range': f'{quoted(tab)}!C{found}:L{found}', 'values': [values[2:12]]}]
+            if item.candidate.parent:
+                data.append({'range': f'{quoted(tab)}!Q{found}', 'values': [[item.candidate.parent]]})
+            sheets.values().batchUpdate(spreadsheetId=SPREADSHEET_ID,
+                body={'valueInputOption': 'RAW', 'data': data}).execute()
         recorded[tab] = found
         item.sheet_rows = recorded
         item.save(update_fields=['sheet_rows', 'updated_at'])
@@ -89,14 +101,18 @@ def sync_registration(item, service=None):
     return recorded
 
 
-def sync_pending(limit=30):
+def sync_pending(limit=30, refresh_only=False):
     result = {'synced': 0, 'failed': 0}
-    for item in PublicExamRegistration.objects.select_related('candidate').defer('proof').exclude(sheet_status='synced').order_by('created_at')[:limit]:
+    items = PublicExamRegistration.objects.select_related('candidate').defer('proof').exclude(sheet_status='synced')
+    if refresh_only:
+        items = items.filter(sheet_status='refresh')
+    for item in items.order_by('created_at')[:limit]:
+        refreshing = item.sheet_status == 'refresh'
         try:
             sync_registration(item)
             result['synced'] += 1
         except Exception as exc:
-            item.sheet_status = 'error'
+            item.sheet_status = 'refresh' if refreshing else 'error'
             item.sheet_error = str(exc)[:1000]
             item.save(update_fields=['sheet_status', 'sheet_error', 'updated_at'])
             result['failed'] += 1

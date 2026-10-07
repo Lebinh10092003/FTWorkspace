@@ -101,6 +101,39 @@ class RegistrationAndBillingTests(TestCase):
         self.assertEqual(imported.data['skipped'], 1)
         self.assertEqual(CandidateParticipation.objects.count(), 2)
 
+    def test_existing_public_form_row_refreshes_profile_without_replacing_submission(self):
+        from .public_registration_sheet import MARKER_HEADER
+        created = self.client.post('/api/public/examination/registration', self.public_payload(), format='multipart')
+        self.assertEqual(created.status_code, 201)
+        item = PublicExamRegistration.objects.select_related('candidate').get()
+        item.sheet_status = 'synced'
+        item.sheet_rows = {'FIMO, FIEO': 6, 'SIPhO, SIChO, SIBO, SILSO': 6}
+        item.save()
+        item.candidate.class_name = '6T5'
+        item.candidate.parent = 'Lê Thị Lý'
+        item.candidate.save()
+        item.refresh_from_db()
+        self.assertEqual(item.sheet_status, 'refresh')
+        sheet = MagicMock()
+        sheet.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {
+            'title': tab, 'sheetId': index, 'gridProperties': {'columnCount': 22}}}
+            for index, tab in enumerate(('FIMO, FIEO', 'SIPhO, SIChO, SIBO, SILSO'))]}
+        def get_values(**kwargs):
+            response = MagicMock()
+            response.execute.return_value = {'values': [[MARKER_HEADER]]} if kwargs['range'].endswith('R1') else {
+                'values': [[], [], [], [], [f'WORKSPACE:{item.id}']]}
+            return response
+        sheet.spreadsheets().values().get.side_effect = get_values
+        sync_registration(item, service=sheet)
+        sheet.spreadsheets().values().append.assert_not_called()
+        for call in sheet.spreadsheets().values().batchUpdate.call_args_list:
+            data = call.kwargs['body']['data']
+            self.assertEqual([entry['range'].split('!')[1] for entry in data], ['C6:L6', 'Q6'])
+            self.assertEqual(data[0]['values'][0][-1], '6T5')
+            self.assertEqual(data[1]['values'], [['Lê Thị Lý']])
+        item.refresh_from_db()
+        self.assertEqual(item.sheet_status, 'synced')
+
     def test_signed_apps_script_pull_and_ack_are_idempotent(self):
         created = self.client.post('/api/public/examination/registration', self.public_payload(), format='multipart')
         self.assertEqual(created.status_code, 201, created.data)

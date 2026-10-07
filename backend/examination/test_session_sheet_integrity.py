@@ -96,6 +96,46 @@ class SessionSheetIntegrityTests(TestCase):
         self.assertEqual(body['cell']['userEnteredFormat']['horizontalAlignment'], 'LEFT')
         self.assertEqual(body['cell']['userEnteredFormat']['backgroundColor']['red'], 1)
 
+    @patch('examination.sync.build_sheets_service')
+    def test_two_round_template_preserves_both_subjects_for_one_profile(self, build):
+        from .sync import SUMMARY_EXPORT_HEADERS
+        sheet = ExaminationSheet.objects.create(id='legacy-output', name='AYSBC',
+            url='https://docs.google.com/spreadsheets/d/integrity', sheet_tab='AYSBC',
+            session_id=self.session.pk, stage='session-output', created_at=timezone.now(), updated_at=timezone.now())
+        headers = EXPORT_HEADERS[:51] + SUMMARY_EXPORT_HEADERS + [SUMMARY_EXPORT_HEADERS[3]]
+        rows = []
+        for subject, award in [('Botany', 'Gold'), ('Mathematics', '')]:
+            row = session_export_rows(self.session.pk)[2][:51] + ['', '', '', 'old', 'old']
+            row[1], row[15], row[23], row[30], row[34] = '', subject, '2020-01-01', 'Đã có kết quả', award
+            rows.append(row)
+        service = build.return_value
+        service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {
+            'sheetId': 8, 'title': 'AYSBC', 'gridProperties': {'columnCount': 56}}}]}
+        reads = [{'values': [headers]}, {'values': [PROFILE_EXPORT_HEADERS]}, {'values': rows}]
+        def read_values(**kwargs):
+            from unittest.mock import MagicMock
+            response = MagicMock()
+            if reads:
+                response.execute.return_value = reads.pop(0)
+            else:
+                writes = service.spreadsheets().values().batchUpdate.call_args.kwargs['body']['data']
+                response.execute.return_value = {'values': [update['values'][0] for update in writes]}
+            return response
+        service.spreadsheets().values().get.side_effect = read_values
+        result = export_session_to_google_sheet(sheet, validate_template=True)
+        self.assertEqual(result['updated'], 2)
+        self.assertEqual(result['exported'], 0)
+        writes = service.spreadsheets().values().batchUpdate.call_args.kwargs['body']['data']
+        self.assertEqual([item['range'] for item in writes], ["'AYSBC'!A3:BD3", "'AYSBC'!A4:BD4"])
+        after = [item['values'][0] for item in writes]
+        self.assertEqual([row[15] for row in after], ['Botany', 'Mathematics'])
+        self.assertEqual([row[34] for row in after], ['Gold', ''])
+        self.assertEqual([row[51:53] for row in after], [['Vòng 1 – Vòng loại Quốc gia', 'Gold'], ['', '']])
+        self.assertTrue(all(row[1] == self.candidate.code and len(row) == 56 and row[54] == row[55] for row in after))
+        service.spreadsheets().values().clear.assert_not_called()
+        requests = service.spreadsheets().batchUpdate.call_args.kwargs['body']['requests']
+        self.assertTrue(all(item['repeatCell']['range']['endColumnIndex'] <= 56 for item in requests))
+
     def test_form_recovers_new_session_profile_and_preserves_it_on_reimport(self):
         from .form_registration import import_form_rows
         for code in ('FIMO', 'FIEO'):
