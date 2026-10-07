@@ -217,3 +217,13 @@ class SessionSheetIntegrityTests(TestCase):
         from .form_registration import clean
         self.assertEqual(clean('.'), '')
         self.assertEqual(clean('P. Thanh Xuân'), 'P. Thanh Xuân')
+
+    def test_export_does_not_fill_missing_child_identifier_from_shared_household_id(self):
+        from .sync import _project_session_sheet_row, SUMMARY_EXPORT_HEADERS
+        Candidate.objects.create(id='sibling', code='FT-90001', name='Nguyễn Bình',
+            identity=self.candidate.identity, sort_key='2')
+        row = session_export_rows(self.session.pk)[2]
+        before = list(row)
+        before[4] = ''
+        projected = _project_session_sheet_row(row, before, EXPORT_HEADERS[:51] + SUMMARY_EXPORT_HEADERS, self.session)
+        self.assertEqual(projected[4], '')

@@ -1226,6 +1226,11 @@ def _project_session_sheet_row(row, previous, legacy_headers, session):
         for index, formatter in ((3, parse_dob), (4, format_identity)):
             if index < len(previous) and formatter(previous[index]) and formatter(previous[index]) != formatter(row[index]):
                 row[index] = previous[index]
+        if len(previous) > 4 and not format_identity(previous[4]) and row[4] and Candidate.objects.filter(
+                identity=row[4]).exclude(code=row[1]).exclude(name__iexact=row[2]).exists():
+            # A shared household identifier is not evidence of this child's
+            # missing CCCD. Keep the historical blank until it is verified.
+            row[4] = ''
     if previous and normalise_str(session.phase) == 'hoanthanh':
         # A shared profile may already be in the next school year. Preserve
         # the school/class/grade actually recorded for a completed session.
