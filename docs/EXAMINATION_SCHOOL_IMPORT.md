@@ -66,4 +66,4 @@ python manage.py reconcile_school_registrations --file <file.xlsx> --sheet "Cả
 
 ## Đồng bộ Sheet khảo thí
 
-Sửa tay trên tab Sheet của kỳ thi được tự cập nhật về web theo từng dòng (Apps Script báo ngay, quét định kỳ mỗi giờ). Dòng có mã FT khớp họ tên/CCCD luôn ghép đúng hồ sơ đó. Dòng không ghép chắc chắn được thì giữ nguyên và ghi vào nhật ký kỳ; không gắn cờ "cần kiểm tra" và không chặn các dòng khác. Hàng đợi ghi ra Sheet coi dòng cùng họ tên nhưng mang mã FT khác là người khác, nên không còn kẹt khi có học sinh trùng tên.
+Sửa tay trên tab Sheet của kỳ thi được tự cập nhật về web theo từng dòng (Apps Script báo ngay khi có sửa; quét dự phòng lúc 06:00, 12:00, 18:00 để bắt sự kiện bị lỡ và các file chưa gắn script). Dòng có mã FT khớp họ tên/CCCD luôn ghép đúng hồ sơ đó. Dòng không ghép chắc chắn được thì giữ nguyên và ghi vào nhật ký kỳ; không gắn cờ "cần kiểm tra" và không chặn các dòng khác. Hàng đợi ghi ra Sheet coi dòng cùng họ tên nhưng mang mã FT khác là người khác, nên không còn kẹt khi có học sinh trùng tên.

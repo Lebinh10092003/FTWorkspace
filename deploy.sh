@@ -99,7 +99,7 @@ sudo systemctl enable --now "$SYNC_TIMER_NAME"
 sudo systemctl enable --now "$TRAINING_COMPLETION_TIMER_NAME"
 sudo systemctl enable --now "$ASSESSMENT_LIFECYCLE_TIMER_NAME"
 sudo systemctl enable "$ASSESSMENT_CLOSING_SERVICE_NAME"
-# Candidate Sheet edits require review; keep the old automatic import timer off.
+# Sheet edits are imported by the Apps Script webhook plus a 3x/day fallback scan; avoid a second schedule.
 sudo systemctl disable --now "$EXAM_SHEET_IMPORT_TIMER_NAME"
 sudo systemctl enable --now "$EXAM_SHEET_EXPORT_TIMER_NAME"
 sudo systemctl enable "$EXAM_SHEET_SCAN_TIMER_NAME"

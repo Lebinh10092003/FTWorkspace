@@ -1,13 +1,14 @@
 import uuid
 
 from django.utils import timezone
-from authentication.notifications import notify_workspace
+from django.db import transaction
 
 from .models import ExaminationSheet, LogNote
 from .sync import (
     export_session_to_google_sheet,
     remote_sheet_fingerprint,
     sheet_values_fingerprint,
+    sync_single_sheet,
     tab_content_fingerprint,
 )
 
@@ -42,8 +43,8 @@ def output_sheet_has_unreviewed_changes(sheet, google_access_token=None):
 FORM_WORKBOOK_ID = '1gqO1Tp4YSBp0UVBgXjJgvL8CuqftVKGNd74PPRX9i8E'
 
 
-def watched_candidate_sheet(sheet):
-    """Manual candidate tabs; the Form workbook has its own registration queue."""
+def auto_import_supported(sheet):
+    """Candidate tabs linked to a session; the Form workbook has its own Apps Script queue."""
     return (
         sheet.stage in {'registration-source', 'session-output'}
         and bool(sheet.session_id)
@@ -51,64 +52,118 @@ def watched_candidate_sheet(sheet):
     )
 
 
-def flag_sheet_change(sheet, now, fingerprint):
-    if sheet.pending_manual_import:
-        return False
-    sheet.pending_manual_import = True
-    sheet.change_detected_at = now
-    sheet.status = 'attention'
-    sheet.last_error = 'Tab Google Sheet đã thay đổi; cần xem trước và nhập dữ liệu vào web.'
+def skipped_rows_summary(skipped, limit=20):
+    lines = [f'Dòng {item["row"]} ({item["name"]}): {item["reason"]}' for item in skipped[:limit]]
+    if len(skipped) > limit:
+        lines.append(f'… và {len(skipped) - limit} dòng khác.')
+    return '\n'.join(lines)
+
+
+def import_registration_sheet(sheet, now, observed_fingerprint=''):
+    """Apply Sheet edits to the web row by row; never remove web-only registrations.
+
+    The Sheet is a mirror of the web that staff may edit by hand. Edits are
+    applied automatically. A row that cannot be matched safely is skipped and
+    written to the session log; it never blocks the remaining rows and never
+    raises a "needs manual import" banner.
+    """
+    timestamp = timezone.localtime(now).strftime('%d/%m/%Y %H:%M:%S')
+    with transaction.atomic():
+        result = sync_single_sheet(sheet.url, timestamp, sheet.id, sheet.session_id,
+                                   sheet_tab=sheet.sheet_tab, automatic=True)
+        if not result.get('success'):
+            transaction.set_rollback(True)
+    previous_error = sheet.last_error
+    skipped = result.get('skipped') or []
+    sheet.pending_manual_import = False
+    sheet.change_detected_at = None
     sheet.updated_at = now
-    sheet.save(update_fields=['pending_manual_import', 'change_detected_at', 'status', 'last_error', 'updated_at'])
-    record_sheet_log(sheet, f'Tab {sheet.sheet_tab or sheet.name} đã thay đổi; chờ xem trước và nhập dữ liệu vào web.')
-    notify_workspace(event_key=f'examination:sheet-change:{sheet.id}:{fingerprint}',
-        title=f'Sheet khảo thí thay đổi: {sheet.sheet_tab or sheet.name}', message=sheet.last_error,
-        severity='warning', category='examination', action_url=f'/examination/sessions/{sheet.session_id}',
-        target_modules=['examination'])
-    return True
+    if result.get('success'):
+        sheet.status = 'success'
+        sheet.last_error = ''
+        sheet.last_import_at = now
+        sheet.last_observed_fingerprint = result.get('fingerprint') or observed_fingerprint
+        if result.get('created') or result.get('updated') or skipped:
+            content = (f'Tự động cập nhật từ tab {sheet.sheet_tab or sheet.name}: '
+                       f'{result.get("created", 0)} hồ sơ mới, {result.get("updated", 0)} hồ sơ cập nhật.')
+            if skipped:
+                content += f'\nGiữ nguyên {len(skipped)} dòng chưa ghép chắc chắn với hồ sơ trên web:\n' + skipped_rows_summary(skipped)
+            record_sheet_log(sheet, content)
+    else:
+        # Network/Google failures are retried by the next scan; keep the old
+        # fingerprint so the edit is not lost.
+        sheet.status = 'failed'
+        sheet.last_error = str(result.get('message') or 'Không thể tự động nhập dữ liệu.')
+        if previous_error != sheet.last_error:
+            record_sheet_log(sheet, f'Tự động cập nhật từ tab {sheet.sheet_tab or sheet.name} chưa thành công: {sheet.last_error}')
+    sheet.save(update_fields=['last_import_at', 'last_observed_fingerprint', 'pending_manual_import',
+                             'change_detected_at', 'status', 'last_error', 'updated_at'])
+    return result
 
 
 def scan_sheet_changes(now=None, sheets=None):
-    """Detect edits for review; never import data on an edit hint or timer."""
+    """Apply every changed candidate tab to the web; no manual-review flags."""
     now = now or timezone.now()
     summary = {'operation': 'change-scan', 'checked': 0, 'changed': 0, 'failed': 0, 'baselined': 0, 'autoImported': 0, 'needsReview': 0}
     watched = sheets if sheets is not None else ExaminationSheet.objects.exclude(url='').exclude(stage='form-webhook').order_by('session_id', 'id')
     for sheet in watched:
-        if not watched_candidate_sheet(sheet):
+        if not auto_import_supported(sheet):
             continue
         summary['checked'] += 1
         try:
             current = tab_content_fingerprint(sheet)
-            if current == sheet.last_observed_fingerprint:
-                continue
-            if sheet.pending_manual_import:
-                summary['needsReview'] += 1
-                continue
-            # Web outbox writes are already accepted; do not flag their echo.
-            # A pending manual edit is never acknowledged through this path.
-            web_echo = (sheet.stage == 'session-output' and sheet.last_content_fingerprint
-                        and remote_sheet_fingerprint(sheet) == sheet.last_content_fingerprint)
-            if web_echo or (not sheet.last_observed_fingerprint and not sheet.last_content_fingerprint):
-                sheet.last_observed_fingerprint = current
-                sheet.updated_at = now
-                sheet.save(update_fields=['last_observed_fingerprint', 'updated_at'])
-                summary['baselined'] += 1
-            elif flag_sheet_change(sheet, now, current):
-                summary['changed'] += 1
-                summary['needsReview'] += 1
         except Exception as exc:
             summary['failed'] += 1
-            sheet.status = 'attention' if sheet.pending_manual_import else 'failed'
+            sheet.status = 'failed'
             sheet.last_error = str(exc)
+            sheet.pending_manual_import = False
             sheet.updated_at = now
-            sheet.save(update_fields=['status', 'last_error', 'updated_at'])
+            sheet.save(update_fields=['status', 'last_error', 'pending_manual_import', 'updated_at'])
             continue
+        if current == sheet.last_observed_fingerprint and not sheet.pending_manual_import:
+            continue
+        # The tab only changed because the web itself wrote it: accept it as
+        # the new baseline instead of re-reading every row.
+        try:
+            web_echo = (sheet.stage == 'session-output' and sheet.last_content_fingerprint
+                        and remote_sheet_fingerprint(sheet) == sheet.last_content_fingerprint)
+        except Exception:
+            web_echo = False
+        if web_echo:
+            sheet.last_observed_fingerprint = current
+            sheet.pending_manual_import = False
+            sheet.updated_at = now
+            sheet.save(update_fields=['last_observed_fingerprint', 'pending_manual_import', 'updated_at'])
+            summary['baselined'] += 1
+            continue
+        summary['changed'] += 1
+        result = import_registration_sheet(sheet, now, current)
+        if result.get('success'):
+            summary['autoImported'] += 1
+            summary['needsReview'] += len(result.get('skipped') or [])
+        else:
+            summary['failed'] += 1
     return summary
 
 
 def run_registration_imports(now=None):
-    # Retain the legacy command without bypassing the review workflow.
-    return scan_sheet_changes(now=now, sheets=ExaminationSheet.objects.filter(stage='registration-source'))
+    now = now or timezone.now()
+    local_now = timezone.localtime(now)
+    rows = ExaminationSheet.objects.filter(stage='registration-source').order_by('session_id', 'id')
+    summary = {'operation': 'registration-import', 'processed': 0, 'success': 0, 'failed': 0, 'skipped': 0, 'blocked': 0}
+    for sheet in rows:
+        if not sheet_is_in_automation_window(sheet, local_now.date()):
+            summary['skipped'] += 1
+            continue
+        summary['processed'] += 1
+        result = import_registration_sheet(sheet, now)
+        if result.get('success'):
+            summary['success'] += 1
+        elif result.get('needsReview'):
+            summary['blocked'] += 1
+        else:
+            summary['failed'] += 1
+    return summary
 
 
 def run_output_exports(now=None):
@@ -122,11 +177,18 @@ def run_output_exports(now=None):
             continue
         summary['processed'] += 1
         try:
-            changed, current = output_sheet_has_unreviewed_changes(sheet)
-            if sheet.pending_manual_import or changed:
-                flag_sheet_change(sheet, now, current)
-                summary['blocked'] += 1
-                continue
+            changed, _ = output_sheet_has_unreviewed_changes(sheet)
+            if changed:
+                # Bring manual Sheet edits into the web first; the export below
+                # rewrites the tab from the web roster.
+                imported = import_registration_sheet(sheet, now)
+                if not imported.get('success') or imported.get('skipped'):
+                    sheet.status = 'success' if imported.get('success') else 'failed'
+                    sheet.updated_at = now
+                    sheet.save(update_fields=['status', 'updated_at'])
+                    summary['blocked'] += 1
+                    record_sheet_log(sheet, 'Giữ nguyên tab Sheet tổng hợp (không ghi lại toàn bộ) vì còn dòng chưa ghép chắc chắn với hồ sơ trên web.')
+                    continue
             result = export_session_to_google_sheet(sheet)
             sheet.last_export_at = now
             sheet.last_content_fingerprint = result.get('fingerprint', '')

@@ -1,9 +1,8 @@
 [Unit]
-Description=Detect examination Sheet changes every minute for manual review
+Description=Fallback check of examination Sheets three times a day (edits normally arrive via the Apps Script webhook)
 
 [Timer]
-OnCalendar=*-*-* *:*:00 Asia/Ho_Chi_Minh
-AccuracySec=1s
+OnCalendar=*-*-* 06,12,18:00:00 Asia/Ho_Chi_Minh
 Persistent=true
 Unit=workspace-examination-sheet-scan.service
 
