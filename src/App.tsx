@@ -7,6 +7,7 @@ import LoginModal from './components/LoginModal';
 import AccountProfileModal from './components/AccountProfileModal';
 import AccountMenu from './components/AccountMenu';
 import WorkspaceNotifications from './components/WorkspaceNotifications';
+import InvigilationReminders from './components/examination/InvigilationReminders';
 import ModuleMobileNav from './components/ModuleMobileNav';
 import { readWorkspaceAppearance, WorkspaceAppearance } from './components/AppearanceSettings';
 import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
@@ -40,6 +41,7 @@ const EmailTemplateBuilder = lazyWithRecovery(() => import('./components/email-b
 const SignatureBuilder = lazyWithRecovery(() => import('./components/email-builder/SignatureBuilder'));
 const FinanceWorkspace = lazyWithRecovery(() => import('./components/digital-training/FinanceWorkspace'));
 const ExaminationModule = lazyWithRecovery(() => import('./components/ExaminationModule'));
+const InvigilationWorkspace = lazyWithRecovery(() => import('./components/examination/InvigilationWorkspace'));
 const DigitalTraining = lazyWithRecovery(() => import('./components/digital-training/DigitalTraining'));
 const TrainingAssessmentPublic = lazyWithRecovery(() => import('./components/digital-training/TrainingAssessmentPublic'));
 const TrainingAssessmentWorkspace = lazyWithRecovery(() => import('./components/digital-training/TrainingAssessmentWorkspace'));
@@ -53,7 +55,7 @@ const CompetitionLandingManager = lazyWithRecovery(() => import('./components/ex
 const CompetitionLandingPublic = lazyWithRecovery(() => import('./components/examination/CompetitionLandingPublic'));
 const PublicExamRegistration = lazyWithRecovery(() => import('./components/examination/PublicExamRegistration'));
 
-type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'public-exam-registration' | 'attendance' | 'account-management';
+type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'public-exam-registration' | 'attendance' | 'account-management';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -154,6 +156,7 @@ function userFromApi(value: any): AppUser {
 
 function getInitialViewMode(): ViewMode {
   const path = window.location.pathname;
+  if (path.startsWith('/examination/invigilation')) return 'examination-invigilation';
   if (path === '/dang-ky-du-thi' || path === '/dang-ky-du-thi/') return 'public-exam-registration';
   if (path === '/registration-forms' || path === '/registration-forms/') return 'examination';
   if (path.startsWith('/cuoc-thi/')) return 'competition-landing-public';
@@ -256,7 +259,7 @@ export default function App() {
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
   const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
-  const canAccessView = (mode: ViewMode) => { if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
+  const canAccessView = (mode: ViewMode) => { if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
 
   const persistSession = (token: string, nextUser: AppUser, role: UserRole) => {
@@ -318,6 +321,7 @@ export default function App() {
     setViewModeState(mode);
     const paths: Partial<Record<ViewMode, string>> = {
       workspace: '/',
+      'examination-invigilation': '/examination/invigilation',
       'communication-tools': '/communication-tools',
       'email-builder': '/communication-tools/email',
       'signature-builder': '/communication-tools/signature',
@@ -462,7 +466,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (authChecking || viewMode === 'workspace' || viewMode === 'training-assessment-public' || viewMode === 'competition-landing-public' || viewMode === 'public-exam-registration' || viewMode === 'qr-generator') return;
+    if (authChecking || viewMode === 'workspace' || viewMode === 'training-assessment-public' || viewMode === 'competition-landing-public' || viewMode === 'public-exam-registration' || viewMode === 'qr-generator' || viewMode === 'examination-invigilation') return;
     if (!canAccessView(viewMode)) {
       setViewModeState('workspace');
       window.history.replaceState(null, '', '/');
@@ -621,8 +625,17 @@ export default function App() {
     );
   }
 
+  if (viewMode === 'examination-invigilation') {
+    return <>
+      {isGuest ? <div className="grid min-h-screen place-items-center bg-slate-50"><div className="text-center"><h1 className="text-xl font-bold">Ca coi thi của tôi</h1><p className="my-4 text-slate-600">Đăng nhập bằng tài khoản nhân viên để mở phòng được phân công.</p><button type="button" onClick={() => setShowLoginModal(true)} className="rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white">Đăng nhập Workspace</button></div></div>
+        : <Suspense fallback={<div className="p-12 text-center">Đang mở ca thi…</div>}><InvigilationWorkspace token={idToken || ''} userName={user.displayName} onBack={() => setViewMode('workspace')} /></Suspense>}
+      {loginModal}{profileModal}
+    </>;
+  }
+
   if (viewMode === 'workspace') {
     const apps: Array<{ mode: ViewMode; title: string; description: string; gradient: string; icon: React.ElementType }> = [
+      { mode: 'examination-invigilation', title: 'Ca coi thi của tôi', description: 'Mở phòng được phân công, điểm danh và ghi điểm thí sinh.', gradient: 'from-emerald-600 to-teal-500', icon: CalendarCheck },
       {
         mode: 'work-schedule',
         title: 'Lịch làm việc',
@@ -1209,8 +1222,7 @@ export default function App() {
   // screen gets the shared vertical rail so modules are one click apart.
   const content = renderContent();
   const chromeLessViews: ViewMode[] = ['workspace', 'competition-landing-public', 'public-exam-registration', 'training-assessment-public'];
-  if (authChecking || chromeLessViews.includes(viewMode)) return content;
-  return (
+  const framedContent = authChecking || chromeLessViews.includes(viewMode) ? content : (
     <WorkspaceAreaFrame
       activeAreaId={areaForView(viewMode)}
       canAccess={canAccessArea}
@@ -1219,4 +1231,6 @@ export default function App() {
       {content}
     </WorkspaceAreaFrame>
   );
+  const publicViews: ViewMode[] = ['competition-landing-public', 'public-exam-registration', 'training-assessment-public'];
+  return <>{framedContent}{!authChecking && !isGuest && idToken && !publicViews.includes(viewMode) && <InvigilationReminders key={user.email} token={idToken} email={user.email} canPreview={userRole === 'ADMIN' || userRole === 'MANAGER'} />}</>;
 }

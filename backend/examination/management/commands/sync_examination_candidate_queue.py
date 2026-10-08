@@ -7,6 +7,7 @@ from examination.candidate_sheet_queue import drain_candidate_sheet_queue
 from examination.candidate_roster_sync import LAYOUT_VERSION, SYNC_CONFIG_KEY, audit_candidate_roster, sync_candidate_roster
 from authentication.models import SystemConfig
 from examination.session_sheet_queue import drain_session_sheet_queue
+from examination.invigilation import drain_invigilation_sheet_queue
 from examination.models import CandidateSheetOutbox, SessionSheetOutbox
 from examination.public_registration_sheet import sync_pending
 
@@ -22,6 +23,10 @@ class Command(BaseCommand):
         results = {}
         errors = []
         if not options['audit_only']:
+            try:
+                results['invigilation'] = drain_invigilation_sheet_queue()
+            except Exception as exc:
+                results['invigilation'] = {'failed': 1, 'error': str(exc)}
             try:
                 config = SystemConfig.objects.filter(key=SYNC_CONFIG_KEY).first()
                 if not config or (config.data or {}).get('layoutVersion') != LAYOUT_VERSION:

@@ -1,9 +1,14 @@
 from django.urls import path
 from . import views, paper_views, blueprint_views, landing_views, landing_site_views, sheet_webhook, billing_views, form_registration, public_registration
 from .registration_page import registration_page
+from . import invigilation
 from .school_import import school_import
 
 urlpatterns = [
+    path('examination/invigilation/my-shifts', invigilation.my_shifts),
+    path('examination/invigilation/shifts', invigilation.shifts),
+    path('examination/invigilation/shifts/<uuid:pk>', invigilation.shift_detail),
+    path('examination/invigilation/shifts/<uuid:pk>/roster/<str:code>', invigilation.roster_update),
     path('examination/registration-page', registration_page),
     path('public/examination/registration', public_registration.public_registration),
     path('examination/form-registration/workspace-pending', public_registration.workspace_pending),

@@ -280,6 +280,46 @@ class ExamRoom(models.Model):
         return f"{self.session.code} / {self.round_name} / {self.label}"
 
 
+class ExamInvigilationShift(models.Model):
+    """Employee duties, independent of the legacy automatic room allocator."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(ExamSession, on_delete=models.CASCADE, related_name='invigilation_shifts')
+    occurrence_id = models.CharField(max_length=255)
+    round_name = models.CharField(max_length=255)
+    label = models.CharField(max_length=255)
+    room_number = models.CharField(max_length=100)
+    room_link = models.CharField(max_length=2000, blank=True, default='')
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    invigilators = models.ManyToManyField('authentication.UserProfile', related_name='exam_duties', blank=True)
+    invigilator_label = models.CharField(max_length=255, blank=True, default='')
+    sheet_url = models.CharField(max_length=2000, blank=True, default='')
+    sheet_tab = models.CharField(max_length=255, blank=True, default='')
+    roster = models.JSONField(default=list, blank=True)
+    pending_sheet_rows = models.JSONField(default=dict, blank=True)
+    sheet_error = models.TextField(blank=True, default='')
+    revision = models.UUIDField(default=uuid.uuid4)
+    demo = models.BooleanField(default=False)
+    enabled = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['starts_at', 'room_number']
+        constraints = [
+            models.UniqueConstraint(fields=['session', 'occurrence_id', 'room_number'], name='unique_invigilation_shift_room'),
+            models.CheckConstraint(check=models.Q(ends_at__gt=models.F('starts_at')), name='invigilation_ends_after_start'),
+        ]
+
+
+class ExamInvigilationAudit(models.Model):
+    shift = models.ForeignKey(ExamInvigilationShift, on_delete=models.CASCADE, related_name='audit')
+    candidate_code = models.CharField(max_length=255)
+    actor = models.ForeignKey('authentication.UserProfile', null=True, on_delete=models.SET_NULL)
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class RoundResult(models.Model):
     """One round inside a participation. One imported tab can populate many rows."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

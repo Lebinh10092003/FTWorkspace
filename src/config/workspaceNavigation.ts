@@ -98,6 +98,7 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     description: 'Quản lý cuộc thi, kỳ tổ chức, thí sinh và nguồn dữ liệu.',
     icon: ClipboardList,
     path: '/examination',
+    relatedViews: ['examination-invigilation'],
   },
   {
     id: 'digital-training',
