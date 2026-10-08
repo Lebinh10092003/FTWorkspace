@@ -43,8 +43,9 @@ def drain_session_sheet_queue(limit=100):
             grouped[job.session_id].append(job)
         for session_id, jobs in grouped.items():
             try:
-                codes = list(Candidate.objects.filter(pk__in=[job.candidate_id for job in jobs]).values_list('code', flat=True))
-                failures = []
+                code_by_id = dict(Candidate.objects.filter(pk__in=[job.candidate_id for job in jobs]).values_list('pk', 'code'))
+                codes = list(code_by_id.values())
+                failures, held = [], set()
                 for sheet in destinations(session_id):
                     try:
                         result = export_session_to_google_sheet(sheet, export_mode='refresh-selected', append_candidate_codes=codes, validate_template=True)
@@ -53,6 +54,7 @@ def drain_session_sheet_queue(limit=100):
                         ExaminationSheet.objects.filter(pk=sheet.pk).update(last_error=str(exc)[:1000])
                         continue
                     ExaminationSheet.objects.filter(pk=sheet.pk).update(last_error='')
+                    held |= set(result.get('skippedCodes') or [])
                     if result.get('exported') or result.get('updated'):
                         summary['appended'] += result['exported']
                         summary['updated'] += result.get('updated', 0)
@@ -68,8 +70,14 @@ def drain_session_sheet_queue(limit=100):
                 if failures:
                     raise ValueError('; '.join(failures))
                 for job in jobs:
+                    if str(code_by_id.get(job.candidate_id, '')).upper() in held:
+                        # Only this candidate waits for a clearer Sheet row.
+                        SessionSheetOutbox.objects.filter(pk=job.pk, revision=job.revision).update(
+                            attempts=F('attempts') + 1, last_error='Dòng Sheet chưa ghép chắc chắn với hồ sơ này.')
+                        summary['failed'] += 1
+                        continue
                     SessionSheetOutbox.objects.filter(pk=job.pk, revision=job.revision).delete()
-                summary['synced'] += len(jobs)
+                    summary['synced'] += 1
             except Exception as exc:
                 SessionSheetOutbox.objects.filter(pk__in=[job.pk for job in jobs]).update(
                     attempts=F('attempts') + 1, last_error=str(exc)[:1000],

@@ -3,9 +3,10 @@ import uuid
 from django.utils import timezone
 from django.db import transaction
 
-from .models import ExaminationSheet, LogNote
+from .models import ExaminationSheet, LogNote, SessionSheetOutbox
 from .sync import (
     export_session_to_google_sheet,
+    session_export_rows,
     remote_sheet_fingerprint,
     sheet_values_fingerprint,
     sync_single_sheet,
@@ -73,6 +74,11 @@ def import_registration_sheet(sheet, now, observed_fingerprint=''):
                                    sheet_tab=sheet.sheet_tab, automatic=True)
         if not result.get('success'):
             transaction.set_rollback(True)
+        elif result.get('updatedIds'):
+            # The Sheet already holds these rows; writing them straight back
+            # would erase any cell the importer could not represent.
+            SessionSheetOutbox.objects.filter(session_id=str(sheet.session_id),
+                                              candidate_id__in=result['updatedIds']).delete()
     previous_error = sheet.last_error
     skipped = result.get('skipped') or []
     sheet.pending_manual_import = False
@@ -189,7 +195,11 @@ def run_output_exports(now=None):
                     summary['blocked'] += 1
                     record_sheet_log(sheet, 'Giữ nguyên tab Sheet tổng hợp (không ghi lại toàn bộ) vì còn dòng chưa ghép chắc chắn với hồ sơ trên web.')
                     continue
-            result = export_session_to_google_sheet(sheet)
+            # Update matching rows in place and append new ones; never clear
+            # and rewrite the tab (that reorders rows and drops Sheet-only cells).
+            codes = [row[1] for row in session_export_rows(sheet.session_id)[2:] if row[1]]
+            result = export_session_to_google_sheet(sheet, export_mode='refresh-selected',
+                                                    append_candidate_codes=codes, validate_template=True)
             sheet.last_export_at = now
             sheet.last_content_fingerprint = result.get('fingerprint', '')
             sheet.pending_manual_import = False

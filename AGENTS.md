@@ -19,6 +19,9 @@
 - **Dự phòng:** `workspace-examination-sheet-scan.timer` chỉ chạy **06:00, 12:00, 18:00**. Lần quét chỉ so dấu vân tay (fingerprint) của tab, không đổi thì bỏ qua.
 - **CẤM** đổi lịch quét thành mỗi phút hoặc mỗi giờ. CẤM thêm polling để "phát hiện nhanh hơn". Cần nhanh hơn thì sửa Apps Script/webhook.
 - Lượt web tự ghi ra Sheet (fingerprint khớp `last_content_fingerprint`) không được coi là có người sửa.
+- **Không bao giờ xóa trắng rồi ghi lại cả tab.** Mọi lần xuất (kể cả lịch 11:00/16:00) chỉ cập nhật đúng dòng tại chỗ và thêm dòng mới ở cuối, để giữ thứ tự dòng và các ô chỉ có trên Sheet.
+- Dòng vừa nhập từ Sheet vào web **không được ghi ngược lại** chính tab đó (xóa job `SessionSheetOutbox` của các hồ sơ vừa cập nhật).
+- Nhập kết quả vòng thi phải ghép vào kết quả sẵn có của cùng vòng (kể cả bản có mã ca rỗng), giữ tên vòng theo cấu hình kỳ. Không tạo bản kết quả thứ hai cho cùng một vòng.
 
 ### Những điều CẤM
 - **Không** gắn cờ `pending_manual_import`, không đặt `status='attention'`, không gửi `notify_workspace` kiểu "Sheet thay đổi, cần xem trước và nhập".
@@ -35,6 +38,7 @@ Commit `6985864` từng chuyển sang "duyệt tay + banner + quét mỗi phút"
 - Lệ phí chung của dòng nhiều cuộc thi được chia theo giá từng cuộc thi, học từ các dòng chỉ đăng ký một cuộc thi trong cùng file. Không có thông tin giá thì chia đều nếu chia hết; không chia được thì bỏ qua riêng dòng đó.
 - Đọc ngày trong Excel bằng serial/ISO, **không** đọc chuỗi hiển thị (M/D/YY gây đảo ngày/tháng). Giữ số 0 đầu của CCCD/SĐT. Cột "Nộp lệ phí" là ô tích, không phải số tiền.
 - Không ghi đè thông tin đã có của hồ sơ, trừ khi chủ dự án yêu cầu rõ (lệnh `reconcile_school_registrations --update-profiles`).
+- **Đăng ký không bao giờ tự xếp phòng, ngày thi, giờ/ca thi, hình thức thi hay link.** Nhóm nhập sau để trống, chờ Khảo thí xếp. Không sao chép theo nhóm trước hoặc theo vòng đã diễn ra.
 
 ## Lịch công tác và bảng chấm công
 - Bảng chấm công tháng (`attendance/sheet_sync.py`) là bản phụ. Lỗi ở đó (thiếu tab, sai tháng, thiếu dòng ngày) **chỉ bỏ qua đúng nhân viên–ngày đó** và ghi log. Không được làm hỏng hàng đợi Lịch công tác (`push_attendance_safely` trong `work_schedule/sheet_sync.py`).

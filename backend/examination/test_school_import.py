@@ -546,16 +546,17 @@ class SchoolImportTests(TestCase):
         rows = self.rows + [[4, 'Lê Minh Chi', '10/02/2014', '003214012345', 'Lớp 7', 'TESTA', 250000, 'Lê Văn A', '0907654322', 'parent3@example.test', '']]
         self.assertFalse(self.preview(self.workbook(rows)).data['canCommit'])
 
-    def test_allocation_respects_existing_assignments_and_capacity(self):
-        room = ExamRoom.objects.create(session=self.sessions['TESTA'], round_id='round-1', round_name='Vòng 1', common_name='Phòng', room_number='1', label='Phòng 1', mode='IN_PERSON', location='Trường A', capacity=1, allocation_strategy='CAPACITY')
+    def test_registration_never_assigns_rooms_or_fills_exam_schedule(self):
+        # An earlier group's room (here a past round with a fixed slot) must not
+        # be copied onto pupils registered later; Khảo thí places them.
+        room = ExamRoom.objects.create(session=self.sessions['TESTA'], round_id='round-1', round_name='Vòng 1', common_name='Phòng', room_number='1', label='Phòng 1', mode='ONLINE', link='https://meet.example.com/x', capacity=10)
         preview = self.preview()
         group = next(g for g in preview.data['groups'] if g['sessionId'] == self.sessions['TESTA'].pk)
-        self.assertEqual(group['assigned'], 1)
-        self.assertEqual(group['waiting'], 1)
+        self.assertEqual((group['assigned'], group['waiting']), (0, 2))
         self.commit()
-        self.assertEqual(RoundResult.objects.filter(exam_room=room).count(), 1)
-        self.commit()
-        self.assertEqual(RoundResult.objects.filter(exam_room=room).count(), 1)
+        self.assertFalse(RoundResult.objects.filter(exam_room=room).exists())
+        for result in RoundResult.objects.all():
+            self.assertEqual((result.exam_date, result.time_slot, result.mode, result.location, result.link, result.room_name), ('', '', '', '', '', ''))
 
     def test_transaction_rolls_back_candidate_partner_and_billing(self):
         content = self.workbook()

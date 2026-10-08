@@ -261,3 +261,29 @@ class SessionSheetIntegrityTests(TestCase):
         before[4] = ''
         projected = _project_session_sheet_row(row, before, EXPORT_HEADERS[:51] + SUMMARY_EXPORT_HEADERS, self.session)
         self.assertEqual(projected[4], '')
+
+
+class SheetRoundMatchingTests(TestCase):
+    """Regression: SCO - SIAIO lost Lương Hữu Hòa's score (09/10/2026)."""
+
+    def setUp(self):
+        self.session = ExamSession.objects.create(id='siaio-test', competition_id='SIAIO', code='SIAIO',
+            name='SIAIO', parent='SCO', organizer='SCO', time='2026-2027', sort_key='1',
+            rounds=[{'id': 'round-national', 'name': 'Vòng loại Quốc gia', 'date': '2026-10-04',
+                     'slots': [{'id': 'day-round-national', 'date': '2026-10-04'}]}])
+        self.candidate = Candidate.objects.create(id='FT-00332', code='FT-00332', name='Lương Hữu Hòa', sort_key='1')
+        participation = CandidateParticipation.objects.create(candidate=self.candidate, session=self.session)
+        # Registered before the slot was known: blank occurrence.
+        self.original = RoundResult.objects.create(participation=participation, round_id='round-national',
+            round_name='Vòng loại Quốc gia', occurrence_id='', exam_date='2026-10-04')
+
+    def test_sheet_upper_case_round_fills_the_existing_result(self):
+        from .sync import upsert_participation_history
+        upsert_participation_history(self.candidate, self.session.pk, [{
+            'round': 'VÒNG LOẠI QUỐC GIA', 'date': '04/10/2026', 'time': '9:00-12:00',
+            'attendance': 'Đã dự thi', 'score': '49'}], 'sheet')
+        results = RoundResult.objects.filter(participation__candidate=self.candidate)
+        self.assertEqual(results.count(), 1)
+        self.original.refresh_from_db()
+        self.assertEqual((self.original.round_name, self.original.score, self.original.time_slot),
+                         ('Vòng loại Quốc gia', '49', '9:00-12:00'))

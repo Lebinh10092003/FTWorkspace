@@ -1434,7 +1434,10 @@ class ExaminationSheetAutomationTests(TestCase):
         result = run_output_exports()
 
         self.assertEqual(result['success'], 1)
-        export_sheet.assert_called_once_with(output)
+        export_sheet.assert_called_once()
+        self.assertEqual(export_sheet.call_args.args[0], output)
+        # Scheduled exports update rows in place; they never clear the tab.
+        self.assertEqual(export_sheet.call_args.kwargs['export_mode'], 'refresh-selected')
         output.refresh_from_db()
         self.assertEqual(output.last_content_fingerprint, 'new-fingerprint')
         self.assertFalse(output.pending_manual_import)
@@ -1457,7 +1460,10 @@ class ExaminationSheetAutomationTests(TestCase):
 
         self.assertEqual(result['success'], 1)
         import_sheet.assert_called_once()
-        export_sheet.assert_called_once_with(output)
+        export_sheet.assert_called_once()
+        self.assertEqual(export_sheet.call_args.args[0], output)
+        # Scheduled exports update rows in place; they never clear the tab.
+        self.assertEqual(export_sheet.call_args.kwargs['export_mode'], 'refresh-selected')
         output.refresh_from_db()
         self.assertFalse(output.pending_manual_import)
 
@@ -1827,6 +1833,17 @@ class SheetChangeScanTests(TestCase):
         billing.refresh_from_db()
         self.assertEqual(billing.transfer_status, 'confirmed')
         self.assertEqual(billing.amount, 650000)
+
+    def test_imported_rows_are_not_written_back_to_the_same_sheet(self):
+        self.automatic_source()
+        candidate = Candidate.objects.create(id='FT-ECHO', code='FT-ECHO', name='Nguyễn Minh An', email='an@example.test', sort_key='echo')
+        CandidateParticipation.objects.create(candidate=candidate, session=self.session)
+        SessionSheetOutbox.objects.all().delete()
+        raw = 'Mã hồ sơ,Họ và tên,Email,Trường\nFT-ECHO,Nguyễn Minh An,an@example.test,Trường mới\n'
+        self.assertEqual(self.scan_csv(raw)['autoImported'], 1)
+        candidate.refresh_from_db()
+        self.assertEqual(candidate.school, 'Trường mới')
+        self.assertFalse(SessionSheetOutbox.objects.filter(session_id=self.session.pk, candidate_id='FT-ECHO').exists())
 
     def test_web_written_code_wins_over_duplicate_look_alike_profiles(self):
         self.automatic_source()

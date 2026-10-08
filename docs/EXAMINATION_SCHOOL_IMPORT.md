@@ -67,3 +67,7 @@ python manage.py reconcile_school_registrations --file <file.xlsx> --sheet "Cả
 ## Đồng bộ Sheet khảo thí
 
 Sửa tay trên tab Sheet của kỳ thi được tự cập nhật về web theo từng dòng (Apps Script báo ngay khi có sửa; quét dự phòng lúc 06:00, 12:00, 18:00 để bắt sự kiện bị lỡ và các file chưa gắn script). Dòng có mã FT khớp họ tên/CCCD luôn ghép đúng hồ sơ đó. Dòng không ghép chắc chắn được thì giữ nguyên và ghi vào nhật ký kỳ; không gắn cờ "cần kiểm tra" và không chặn các dòng khác. Hàng đợi ghi ra Sheet coi dòng cùng họ tên nhưng mang mã FT khác là người khác, nên không còn kẹt khi có học sinh trùng tên.
+
+## Phân phòng (cập nhật 09/10/2026)
+
+Nhập Excel theo trường **không tự xếp phòng** và không điền ngày thi, giờ/ca, hình thức, link. Lượt đăng ký mới để trống và hiển thị là "chờ phân phòng"; Khảo thí xếp phòng sau. Trước đây hệ thống tự xếp vào phòng của vòng đầu, kể cả khi vòng đó đã diễn ra (vd 25 học sinh Trưng Vương SIAIO bị gán phòng ngày 04/10).

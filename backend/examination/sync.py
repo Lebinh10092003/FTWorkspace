@@ -767,6 +767,12 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
         values['occurrence_id'] = occurrence_id_from_history(round_config, values.get('occurrence_id'), values.get('exam_date'))
         values['raw_data'] = {str(key): value for key, value in item.items() if value not in (None, '')}
         existing_result = RoundResult.objects.filter(participation=participation, round_id=values['round_id'], occurrence_id=values['occurrence_id']).first() if values['round_id'] and values['occurrence_id'] else RoundResult.objects.filter(participation=participation, round_name=round_name, occurrence_id=values['occurrence_id']).first()
+        if not existing_result and values['round_id']:
+            # A registration made before the slot was known has a blank
+            # occurrence. Fill that row instead of creating a second result for
+            # the same round (the Sheet would then be rewritten from the empty one).
+            same_round = RoundResult.objects.filter(participation=participation, round_id=values['round_id'])
+            existing_result = same_round.filter(occurrence_id='').first() or (same_round.first() if same_round.count() == 1 else None)
         if existing_result:
             for model_field in ROUND_HISTORY_FIELD_MAP.values():
                 if not values.get(model_field):
@@ -776,7 +782,8 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
                 setattr(existing_result, key, value)
             existing_result.save()
         else:
-            RoundResult.objects.create(participation=participation, round_name=round_name, **values)
+            # Use the session's own round name, not the Sheet's upper-case group label.
+            RoundResult.objects.create(participation=participation, round_name=clean_txt(round_config.get('name')) or round_name, **values)
     return participation
 
 def append_existing_candidate_link_note(candidate, session_id, previous_session_ids):
@@ -1498,8 +1505,18 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         relevant_conflicts = [conflict for conflict in alignment['matchConflicts']
                               if clean_txt(_export_row_record(current[conflict['row'] - 3])['code']).upper() in selected_codes
                               or normalise_str(_export_row_record(current[conflict['row'] - 3])['name']) in selected_names]
-        if relevant_conflicts:
-            raise ValueError('Có dòng Sheet không khớp an toàn với hồ sơ cần cập nhật; giữ hàng đợi để kiểm tra.')
+        # An ambiguous Sheet row holds back only the candidates it may belong
+        # to; every other selected row is still written.
+        skipped_codes = set()
+        for conflict in relevant_conflicts:
+            record = _export_row_record(current[conflict['row'] - 3])
+            row_code, row_name = clean_txt(record['code']).upper(), normalise_str(record['name'])
+            if row_code in selected_codes:
+                skipped_codes.add(row_code)
+            skipped_codes |= {clean_txt(_export_row_record(row)['code']).upper() for row in values
+                              if normalise_str(_export_row_record(row)['name']) == row_name
+                              and clean_txt(_export_row_record(row)['code']).upper() in selected_codes}
+        selected_codes -= skipped_codes
         resulting_values = [list(row) for row in current]
         updates = []
         for index, row in enumerate(alignment['values'][:len(current)]):
@@ -1535,7 +1552,7 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
             if comparable(verified) != comparable(resulting_values):
                 raise ValueError('Sheet chưa khớp sau khi cập nhật; giữ hàng đợi để thử lại.')
         return {'success': True, 'sessionId': session.id, 'sheetTab': tab_name,
-                'exported': len(new_rows), 'updated': refreshed_rows,
+                'exported': len(new_rows), 'updated': refreshed_rows, 'skippedCodes': sorted(skipped_codes),
                 'currentFingerprint': sheet_values_fingerprint(current),
                 'fingerprint': sheet_values_fingerprint(resulting_values)}
     if export_mode == 'merge':
@@ -1871,6 +1888,7 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
         existing_codes_set = {candidate.code for candidate in existing}
         created = 0
         updated = 0
+        updated_ids = []
         linked_existing = 0
         for cand in incoming:
             candidate_assessments = []
@@ -1933,6 +1951,7 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
                     linked_existing += 1
                     append_existing_candidate_link_note(base, session_id, previous_session_ids)
                 updated += 1
+                updated_ids.append(str(base.pk))
                 continue
 
             code = cand['code'].replace('/', '-').replace('?', '-').replace('#', '-').strip().upper() if cand['code'] else ''
@@ -1959,6 +1978,7 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
             'linkedExisting': linked_existing,
             'total': len(incoming),
             'skipped': skipped,
+            'updatedIds': updated_ids,
             'fingerprint': fingerprint,
             'timestamp': ts_vn
         }

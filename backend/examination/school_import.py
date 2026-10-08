@@ -409,34 +409,16 @@ def _build_plan(content, options, skip_rows=frozenset()):
         first_round = next((r for r in session.rounds if isinstance(r, dict) and r.get('name')), {})
         slots = [s for s in first_round.get('slots', []) if isinstance(s, dict)]
         occurrence = str(slots[0].get('id') or '') if len(slots) == 1 else ''
-        rooms = list(ExamRoom.objects.filter(session=session, round_id=str(first_round.get('id') or ''), occurrence_id=occurrence).order_by('position', 'room_number', 'id')) if len(slots) <= 1 else []
-        counts = {str(room.pk): room.assignments.count() for room in rooms}
-        for room in rooms:
-            room_state.append([str(room.pk), room.updated_at.isoformat(), counts[str(room.pk)]])
-        assigned, waiting, already_assigned = 0, 0, 0
+        # Rooms, exam date, time and mode are never assigned at registration.
+        # A group registered later stays blank until Khảo thí places it; copying
+        # an earlier group's room (or a round that already took place) is wrong.
+        assigned, already_assigned, waiting = 0, 0, 0
         for entry in entries:
             candidate_id = profiles[entry['profileIndex']]['candidateId']
-            existing_result = RoundResult.objects.filter(participation__candidate_id=candidate_id, participation__session_id=session_id, round_id=str(first_round.get('id') or ''), occurrence_id=occurrence).first() if candidate_id else None
-            if entry['preserveIndividual']:
-                already_assigned += bool(existing_result and existing_result.exam_room_id)
-                entry['roomId'] = ''
-                continue
-            if existing_result and (existing_result.exam_room_id or existing_result.eligibility != 'Đủ điều kiện'):
-                if existing_result.exam_room_id:
-                    already_assigned += 1
-                entry['roomId'] = ''
-                continue
-            available = [room for room in rooms if room.capacity is None or counts[str(room.pk)] < room.capacity]
-            if available:
-                room = min(available, key=lambda r: counts[str(r.pk)]) if available[0].allocation_strategy == ExamRoom.STRATEGY_BALANCED else available[0]
-                entry['roomId'] = str(room.pk)
-                counts[str(room.pk)] += 1
-                assigned += 1
-            else:
-                entry['roomId'] = ''
-                waiting += 1
-        if waiting:
-            issue('warning', f'{session.code}: {waiting} lượt chờ phân phòng (chưa cấu hình phòng/đợt hoặc hết sức chứa).')
+            has_room = bool(candidate_id) and RoundResult.objects.filter(participation__candidate_id=candidate_id, participation__session_id=session_id, round_id=str(first_round.get('id') or '')).exclude(exam_room=None).exists()
+            already_assigned += has_room
+            waiting += not has_room and not entry['preserveIndividual']
+            entry['roomId'] = ''
         groups.append({'sessionId': session_id, 'competitionCode': session.code, 'competitionName': session.name, 'label': f'{session.code} · {session.name} · {session.time}', 'registrations': len(entries), 'newCandidates': sum(not profiles[e['profileIndex']]['candidateId'] for e in entries), 'existingCandidates': sum(bool(profiles[e['profileIndex']]['candidateId']) for e in entries), 'newRegistrations': additions, 'existingRegistrations': len(entries) - additions, 'schoolRegistrations': len(school_entries), 'preservedIndividualRegistrations': len(entries) - len(school_entries), 'amount': sum(e['amount'] or 0 for e in school_entries) if all(e['amount'] is not None for e in school_entries) else None, 'assigned': assigned, 'alreadyAssigned': already_assigned, 'waiting': waiting, 'round': first_round, 'occurrenceId': occurrence, 'billingVersion': billing.updated_at.isoformat() if billing else '', 'sessionVersion': session.updated_at.isoformat()})
     plan = {'partner': partner, 'newPartner': new_partner, 'sheet': sheet, 'sheets': sheets, 'rows': rows, 'profiles': profiles, 'registrations': list(registrations.values()), 'routes': list(routes.values()), 'groups': groups, 'issues': issues, 'roomState': room_state, 'fileHash': hashlib.sha256(content).hexdigest(), 'candidateState': fingerprint([(c.pk, c.updated_at.isoformat()) for c in existing])}
     plan['summary'] = {'rows': len(raw_rows), 'candidates': len(profiles), 'newCandidates': sum(not p['candidateId'] for p in profiles), 'existingCandidates': sum(bool(p['candidateId']) for p in profiles), 'registrations': len(registrations), 'newRegistrations': sum(g['newRegistrations'] for g in groups), 'existingRegistrations': sum(g['existingRegistrations'] for g in groups), 'sessions': len(groups)}
@@ -521,27 +503,6 @@ def commit_plan(plan, request, filename):
         participation.save()
         registration = {'registrationMethod': 'Trường học', 'registrationUnit': partner['school'], 'generalNote': entry['note'], 'subject': entry['subject'], 'category': entry['category'], 'examLanguage': entry['examLanguage']}
         participation = upsert_participation_history(candidate, session.pk, [], f'Excel trường: {filename}', registration, 'fill-empty')
-        configured = next(g for g in plan['groups'] if g['sessionId'] == session.pk)
-        initial_result = participation.round_results.filter(round_id=str(configured['round'].get('id') or '')).first()
-        if initial_result:
-            initial_result.exam_date = initial_result.exam_date or configured['round'].get('date', '')
-            initial_result.save(update_fields=['exam_date', 'updated_at'])
-        if entry.get('roomId'):
-            room = ExamRoom.objects.get(pk=entry['roomId'])
-            result = participation.round_results.filter(round_id=room.round_id).first()
-            if result and not result.exam_room_id:
-                result.exam_room = room
-                result.occurrence_id = room.occurrence_id
-                result.room_name = room.label
-                result.mode = 'Trực tiếp' if room.mode == ExamRoom.MODE_IN_PERSON else 'Trực tuyến'
-                result.location = f'{room.label}:\n{room.link}' if room.mode == ExamRoom.MODE_ONLINE else ' · '.join(v for v in (room.label, room.location) if v)
-                config = next((g for g in plan['groups'] if g['sessionId'] == session.pk), {})
-                slot = next((s for s in config.get('round', {}).get('slots', []) if s.get('id') == room.occurrence_id), {})
-                result.exam_date = result.exam_date or slot.get('date') or config.get('round', {}).get('date', '')
-                result.time_slot = result.time_slot or slot.get('time', '')
-                if room.exam_link:
-                    result.link = room.exam_link
-                result.save()
     for session_id, group in group_map.items():
         fees = [(p.registration_data or {}).get('schoolFee') for p in group.participations.all()]
         billing, created = ExaminationBillingRecord.objects.get_or_create(school_registration=group)
