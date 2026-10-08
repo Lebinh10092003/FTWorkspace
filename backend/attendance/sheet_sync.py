@@ -1,6 +1,8 @@
 import math
 import re
+from calendar import monthrange
 from collections import defaultdict
+from datetime import date
 
 from authentication.models import UserProfile
 from authentication.monthly_sheets import get_monthly_sheet_links, normalize_label
@@ -16,6 +18,7 @@ MAX_SCAN_ROW = 160
 SHIFT_COLUMNS_PER_ROW = 3
 YELLOW = {"red": 1, "green": 1, "blue": 0}
 WEEKDAY_LABELS = {"hai", "ba", "tu", "nam", "sau", "bay", "cn"}
+WEEKDAY_TEXT = ["Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy", "CN"]
 
 
 def _quote_sheet_name(value):
@@ -207,6 +210,50 @@ def _insert_overflow_rows(service, spreadsheet_id, sheet_id, source_row, count):
     ).execute()
 
 
+def _append_missing_days(service, spreadsheet_id, sheet_id, title, rows_by_day, year, month, through_day):
+    """Add rows for days missing at the end of a month tab (e.g. the 31st).
+
+    Month tabs are often copied from a 30-day month. Each missing day gets a
+    row inserted above the last row of the previous day, so the "Tổng" formulas
+    that end on that row grow to include it; the previous day's content is
+    copied up and the freed last row becomes the new day with empty shifts.
+    Returns the number of inserted rows.
+    """
+    last_day = monthrange(year, month)[1]
+    inserted = 0
+    quoted = _quote_sheet_name(title)
+    for day in range(max(rows_by_day, default=0) + 1, min(through_day, last_day) + 1):
+        previous_rows = rows_by_day.get(day - 1)
+        if not previous_rows:
+            break
+        anchor_row = previous_rows[-1]
+        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": [
+            {"insertDimension": {
+                "range": {"sheetId": sheet_id, "dimension": "ROWS", "startIndex": anchor_row - 1, "endIndex": anchor_row},
+                "inheritFromBefore": True,
+            }},
+            {"copyPaste": {
+                "source": {"sheetId": sheet_id, "startRowIndex": anchor_row, "endRowIndex": anchor_row + 1},
+                "destination": {"sheetId": sheet_id, "startRowIndex": anchor_row - 1, "endRowIndex": anchor_row},
+                "pasteType": "PASTE_NORMAL", "pasteOrientation": "NORMAL",
+            }},
+        ]}).execute()
+        new_row = anchor_row + 1
+        service.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_id, body={
+            "valueInputOption": "USER_ENTERED",
+            "data": [
+                {"range": f"{quoted}!A{new_row}:B{new_row}", "values": [[WEEKDAY_TEXT[date(year, month, day).weekday()], day]]},
+                {"range": f"{quoted}!C{new_row}:K{new_row}", "values": [["", "", False, "", "", False, "", "", False]]},
+                {"range": f"{quoted}!R{new_row}", "values": [[""]]},
+            ],
+        }).execute()
+        for other_day, row_numbers in rows_by_day.items():
+            rows_by_day[other_day] = [row + 1 if row > anchor_row else row for row in row_numbers]
+        rows_by_day[day] = [new_row]
+        inserted += 1
+    return inserted
+
+
 def push_groups_to_attendance_sheet(service, groups):
     """Write web timesheets to the configured monthly attendance workbook.
 
@@ -277,6 +324,12 @@ def push_groups_to_attendance_sheet(service, groups):
                     skip(email, work_date, str(exc))
                     continue
                 matching_rows = rows_by_day.get(work_date.day, [])
+                if not matching_rows and 28 <= max(rows_by_day, default=0) < work_date.day:
+                    inserted_rows += _append_missing_days(
+                        service, spreadsheet_id, properties["sheetId"], title, rows_by_day,
+                        work_date.year, work_date.month, work_date.day,
+                    )
+                    matching_rows = rows_by_day.get(work_date.day, [])
                 if not matching_rows:
                     skip(email, work_date, f"Không tìm thấy ngày {work_date.day} trong cột B của tab {title}.")
                     continue

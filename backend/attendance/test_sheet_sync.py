@@ -66,6 +66,29 @@ class AttendanceSheetSyncTests(TestCase):
             work_mode=mode,
         )
 
+    def test_tab_copied_from_a_30_day_month_gets_the_31st_inside_the_totals(self):
+        SystemConfig.objects.filter(key="monthly_sheet_links").update(data={"links": {"attendance": {
+            "2026-10": f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit"}}})
+        TimesheetEntry.objects.create(employee=self.profile, work_date=date(2026, 10, 31), shift_number=1,
+            shift_start=time(8, 0), shift_end=time(9, 0), work_mode="direct")
+        service = self.service(month="10")
+        labels = ["Năm", "Sáu", "Bảy", "CN", "Hai", "Ba", "Tư"]
+        service.spreadsheets.return_value.values.return_value.batchGet.return_value.execute.return_value = {
+            "valueRanges": [{"values": [["10", "2026"]]},
+                            {"values": [[labels[(day - 1) % 7], str(day)] for day in range(1, 31)] + [["Tổng"]]}]}
+
+        result = push_groups_to_attendance_sheet(service, {(self.profile.email, date(2026, 10, 31))})
+
+        self.assertEqual(result["skipped"], [])
+        self.assertEqual(result["insertedRows"], 1)
+        insert = service.spreadsheets.return_value.batchUpdate.call_args_list[0].kwargs["body"]["requests"][0]["insertDimension"]
+        # Day 30 sits on row 38; the new row is inserted above it (index 37) so
+        # SUM(…9:…38) grows, then the freed row 39 becomes the 31st.
+        self.assertEqual((insert["range"]["startIndex"], insert["range"]["endIndex"]), (37, 38))
+        writes = [call.kwargs["body"]["data"] for call in service.spreadsheets.return_value.values.return_value.batchUpdate.call_args_list]
+        self.assertIn({"range": "'Nguyễn Thanh Phong'!A39:B39", "values": [["Bảy", 31]]}, writes[0])
+        self.assertTrue(any(item["range"] == "'Nguyễn Thanh Phong'!C39:K39" and item["values"][0][:2] == ["08:00", "09:00"] for item in writes[-1]))
+
     def test_date_lookup_requires_weekday_and_uses_column_b(self):
         rows = [["Ba", "1"], ["", "2"], ["Tổng", "3"], ["Năm", "3"]]
         self.assertEqual(dict(_date_rows(rows)), {1: [9], 3: [12]})
