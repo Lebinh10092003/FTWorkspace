@@ -284,6 +284,9 @@ class ExamInvigilationShift(models.Model):
     """Employee duties, independent of the legacy automatic room allocator."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     session = models.ForeignKey(ExamSession, on_delete=models.CASCADE, related_name='invigilation_shifts')
+    # A real duty reads its candidates live from this room's assignments; only
+    # demo duties keep a stored roster.
+    exam_room = models.ForeignKey(ExamRoom, null=True, blank=True, on_delete=models.SET_NULL, related_name='invigilation_shifts')
     occurrence_id = models.CharField(max_length=255)
     round_name = models.CharField(max_length=255)
     label = models.CharField(max_length=255)

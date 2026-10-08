@@ -4,6 +4,7 @@ from datetime import timedelta
 from urllib.parse import urlparse
 
 from django.db import transaction
+from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -11,9 +12,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.models import SystemConfig, UserProfile
+from authentication.notifications import notify_workspace
 from authentication.permissions import IsWorkspaceAuthenticated, has_module_access, request_role
 from integrations.google_sheets import build_sheets_service, extract_spreadsheet_id
-from .models import ExamInvigilationAudit, ExamInvigilationShift, ExamSession, LogNote, RoundResult
+from .candidate_sheet_queue import launch_candidate_sheet_worker
+from .models import ExamInvigilationAudit, ExamInvigilationShift, ExamRoom, ExamSession, LogNote, RoundResult
 from .partner_contact_sync import _single_worker
 
 ATTENDANCE = ('Chưa điểm danh', 'Có mặt', 'Vắng', 'Đến muộn')
@@ -30,7 +33,33 @@ def visible_shifts(request):
     return qs.distinct()
 
 
+def live_entry(result, audit=None):
+    """A room candidate read straight from Khảo thí; the result row is the truth."""
+    candidate = result.participation.candidate
+    entry = {
+        'code': candidate.code, 'sbd': result.sbd, 'name': candidate.name, 'school': candidate.school,
+        'grade': candidate.grade, 'attendance': result.attendance or ATTENDANCE[0], 'score': result.score,
+        'note': result.note, 'revision': result.updated_at.isoformat(), 'resultId': str(result.pk),
+    }
+    if audit:
+        entry.update(updatedBy=audit.actor.email if audit.actor else '', updatedAt=audit.created_at.isoformat())
+    return entry
+
+
+def room_results(shift):
+    return RoundResult.objects.filter(exam_room_id=shift.exam_room_id).select_related(
+        'participation__candidate').order_by('sbd', 'participation__candidate__name')
+
+
+def shift_roster(shift):
+    if not shift.exam_room_id:
+        return shift.roster
+    audits = {audit.candidate_code: audit for audit in shift.audit.select_related('actor').order_by('created_at')}
+    return [live_entry(result, audits.get(result.participation.candidate.code)) for result in room_results(shift)]
+
+
 def serialize_shift(shift, include_roster=False):
+    roster = shift_roster(shift) if include_roster or shift.exam_room_id else shift.roster
     value = {
         'id': str(shift.pk), 'sessionId': shift.session_id, 'sessionName': shift.session.name,
         'competitionCode': shift.session.code, 'roundName': shift.round_name,
@@ -39,14 +68,34 @@ def serialize_shift(shift, include_roster=False):
         'remindAt': (shift.starts_at - timedelta(minutes=15)).isoformat(),
         'invigilators': [{'email': u.email, 'name': u.name or u.email} for u in shift.invigilators.all()],
         'invigilatorLabel': shift.invigilator_label, 'sheetUrl': shift.sheet_url,
-        'demo': shift.demo, 'enabled': shift.enabled, 'candidateCount': len(shift.roster),
+        'demo': shift.demo, 'enabled': shift.enabled, 'candidateCount': len(roster),
+        'examRoomId': str(shift.exam_room_id or ''),
         'pendingSheetCount': len(shift.pending_sheet_rows), 'sheetError': bool(shift.sheet_error),
         'actionUrl': f'/examination/invigilation/{shift.session_id}?shift={shift.pk}',
         'revision': str(shift.revision),
     }
     if include_roster:
-        value['roster'] = shift.roster
+        value['roster'] = roster
     return value
+
+
+def notify_duty(shift):
+    """Tell the assigned staff when a duty is created or its time/room changes.
+
+    Reminders are timed in the browser from the loaded schedule, so a change
+    is pushed as a Workspace notification instead of being polled for.
+    """
+    if not shift.enabled:
+        return
+    local = timezone.localtime(shift.starts_at)
+    for user in shift.invigilators.all():
+        notify_workspace(
+            event_key=f'examination:duty:{shift.pk}:{user.email}:{int(shift.starts_at.timestamp())}:{shift.room_number}',
+            title='Lịch coi thi của bạn',
+            message=f'{shift.session.code} · {shift.label} · Phòng {shift.room_number} · {local:%H:%M %d/%m/%Y}',
+            category='examination', action_url=f'/examination/invigilation/{shift.session_id}?shift={shift.pk}',
+            target_emails=[user.email],
+        )
 
 
 @api_view(['GET'])
@@ -89,6 +138,19 @@ def configure(shift, payload):
             if parsed is None or timezone.is_naive(parsed):
                 raise ValueError('Ngày giờ ca thi phải kèm múi giờ.')
             setattr(shift, field, parsed)
+    if 'examRoomId' in payload:
+        room_id = str(payload['examRoomId'] or '')
+        room = ExamRoom.objects.filter(pk=room_id, session=shift.session).first() if room_id else None
+        if room_id and not room:
+            raise ValueError('Phòng thi không thuộc kỳ tổ chức này.')
+        shift.exam_room = room
+        if room:
+            # The duty follows the room configured in Khảo thí.
+            shift.room_number = room.room_number
+            shift.round_name = room.round_name
+            shift.occurrence_id = room.occurrence_id or room.round_id
+            if not str(payload.get('roomLink') or '').strip():
+                shift.room_link = room.exam_link or room.link
     if not shift.starts_at or not shift.ends_at or shift.ends_at <= shift.starts_at:
         raise ValueError('Giờ kết thúc phải sau giờ bắt đầu.')
     if not all((shift.label, shift.room_number, shift.round_name, shift.occurrence_id)):
@@ -125,6 +187,7 @@ def shifts(request):
                 shift.save()
                 if employees is not None:
                     shift.invigilators.set(employees)
+                notify_duty(shift)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)
         return Response(serialize_shift(shift, True), status=201)
@@ -134,12 +197,17 @@ def shifts(request):
         qs = qs.filter(session_id=session_id)
     else:
         qs = qs.filter(ends_at__gt=timezone.now() - timedelta(days=1))
-    staff = []
+    staff, rooms = [], []
     if can_manage(request):
         staff = [{'email': u.email, 'name': u.name or u.email, 'employeeCode': u.employee_code or ''}
                  for u in UserProfile.objects.filter(employment_status='ACTIVE').order_by('name', 'email')]
+        if session_id:
+            rooms = [{'id': str(room.pk), 'label': room.label, 'roomNumber': room.room_number, 'roundName': room.round_name,
+                      'occurrenceId': room.occurrence_id or room.round_id, 'link': room.exam_link or room.link,
+                      'candidateCount': room.candidate_count}
+                     for room in ExamRoom.objects.filter(session_id=session_id).annotate(candidate_count=Count('assignments'))]
     return Response({'serverNow': timezone.now().isoformat(), 'canManage': can_manage(request),
-                     'staff': staff, 'shifts': [serialize_shift(s, True) for s in qs]})
+                     'staff': staff, 'rooms': rooms, 'shifts': [serialize_shift(s, True) for s in qs]})
 
 
 @api_view(['GET', 'PATCH'])
@@ -163,12 +231,13 @@ def shift_detail(request, pk):
             changed = ExamInvigilationShift.objects.filter(pk=pk, revision=before_revision).update(
                 **{field: getattr(shift, field) for field in (
                     'label', 'room_number', 'round_name', 'occurrence_id', 'room_link',
-                    'sheet_url', 'sheet_tab', 'starts_at', 'ends_at', 'enabled', 'revision')},
+                    'sheet_url', 'sheet_tab', 'starts_at', 'ends_at', 'enabled', 'revision', 'exam_room')},
                 updated_at=timezone.now())
             if not changed:
                 return Response({'error': 'Phòng thi vừa thay đổi. Hãy tải lại trước khi lưu.'}, status=409)
             if employees is not None:
                 shift.invigilators.set(employees)
+            notify_duty(shift)
     except ValueError as exc:
         return Response({'error': str(exc)}, status=400)
     return Response(serialize_shift(shift, True))
@@ -243,45 +312,76 @@ def drain_invigilation_sheet_queue():
     return summary
 
 
+def roster_changes(data):
+    allowed = {'attendance', 'score', 'note', 'revision'}
+    if set(data) - allowed:
+        raise ValueError('Chỉ được sửa điểm danh, điểm và ghi chú.')
+    changes = {}
+    for key in ('attendance', 'score', 'note'):
+        if key in data:
+            value = str(data[key] if data[key] is not None else '')
+            if len(value) > (2000 if key == 'note' else 255):
+                raise ValueError('Nội dung vượt quá độ dài cho phép.')
+            if key == 'attendance' and value not in ATTENDANCE:
+                raise ValueError('Trạng thái điểm danh không hợp lệ.')
+            changes[key] = value
+    return changes
+
+
 @api_view(['PATCH'])
 @permission_classes([IsWorkspaceAuthenticated])
 def roster_update(request, pk, code):
+    """Save one candidate and answer immediately; Sheet writes run in the background.
+
+    Each candidate is versioned on its own, so invigilators of different rooms
+    (or two in one room) never wait for or block each other.
+    """
     shift = get_object_or_404(visible_shifts(request), pk=pk)
-    allowed = {'attendance', 'score', 'note', 'revision'}
-    if set(request.data) - allowed:
-        return Response({'error': 'Chỉ được sửa điểm danh, điểm và ghi chú.'}, status=400)
-    entry = next((e for e in shift.roster if e.get('code') == code), None)
-    if not entry:
-        return Response({'error': 'Thí sinh không thuộc phòng thi này.'}, status=404)
-    if not request.data.get('revision') or request.data['revision'] != entry.get('revision'):
-        return Response({'error': 'Hồ sơ vừa được người khác cập nhật. Hãy tải lại trước khi lưu.'}, status=409)
-    after = dict(entry)
-    for key in ('attendance', 'score', 'note'):
-        if key in request.data:
-            value = str(request.data[key] if request.data[key] is not None else '')
-            if len(value) > (2000 if key == 'note' else 255):
-                return Response({'error': 'Nội dung vượt quá độ dài cho phép.'}, status=400)
-            if key == 'attendance' and value not in ATTENDANCE:
-                return Response({'error': 'Trạng thái điểm danh không hợp lệ.'}, status=400)
-            after[key] = value
-    after.update(revision=str(uuid.uuid4()), updatedBy=request.user.email, updatedAt=timezone.now().isoformat())
-    roster = [after if e.get('code') == code else e for e in shift.roster]
-    pending = {**shift.pending_sheet_rows, code: after['revision']} if shift.sheet_url else dict(shift.pending_sheet_rows)
-    with transaction.atomic():
-        revision = uuid.uuid4()
-        changed = ExamInvigilationShift.objects.filter(pk=pk, revision=shift.revision).update(
-            roster=roster, pending_sheet_rows=pending, revision=revision, updated_at=timezone.now())
-        if not changed:
-            return Response({'error': 'Phòng thi vừa thay đổi. Hãy tải lại trước khi lưu.'}, status=409)
-        if not shift.demo and entry.get('resultId'):
-            result = get_object_or_404(RoundResult, pk=entry['resultId'], participation__session_id=shift.session_id,
-                                       occurrence_id=shift.occurrence_id)
-            result.attendance, result.score, result.note = after.get('attendance', ''), after.get('score', ''), after.get('note', '')
-            result.save(update_fields=['attendance', 'score', 'note', 'updated_at'])
-        ExamInvigilationAudit.objects.create(shift=shift, candidate_code=code, actor=request.user,
-                                            before=entry, after=after)
-    shift.refresh_from_db()
-    # Save durably first. The queue retries if Google is unavailable.
-    export_pending(shift)
-    shift.refresh_from_db()
-    return Response({'entry': after, 'pendingSheet': code in shift.pending_sheet_rows})
+    try:
+        changes = roster_changes(request.data)
+    except ValueError as exc:
+        return Response({'error': str(exc)}, status=400)
+    if not request.data.get('revision'):
+        return Response({'error': 'Thiếu phiên bản hồ sơ. Hãy tải lại.'}, status=409)
+    stale = Response({'error': 'Hồ sơ vừa được người khác cập nhật. Hãy tải lại trước khi lưu.'}, status=409)
+
+    if shift.exam_room_id:
+        with transaction.atomic():
+            result = room_results(shift).filter(participation__candidate__code=code).first()
+            if not result:
+                return Response({'error': 'Thí sinh không thuộc phòng thi này.'}, status=404)
+            if request.data['revision'] != result.updated_at.isoformat():
+                return stale
+            before = live_entry(result)
+            for key, value in changes.items():
+                setattr(result, key, value)
+            # save() keeps the existing signal that queues the session Sheet row.
+            result.save(update_fields=[*changes, 'updated_at'])
+            audit = ExamInvigilationAudit.objects.create(shift=shift, candidate_code=code, actor=request.user,
+                                                         before=before, after=live_entry(result))
+        return Response({'entry': live_entry(result, audit), 'pendingSheet': False})
+
+    # Demo rooms keep a stored roster. Re-read and merge so edits to other
+    # candidates of the same room never turn into a conflict.
+    for _ in range(5):
+        shift.refresh_from_db()
+        entry = next((e for e in shift.roster if e.get('code') == code), None)
+        if not entry:
+            return Response({'error': 'Thí sinh không thuộc phòng thi này.'}, status=404)
+        if request.data['revision'] != entry.get('revision'):
+            return stale
+        after = {**entry, **changes, 'revision': str(uuid.uuid4()), 'updatedBy': request.user.email,
+                 'updatedAt': timezone.now().isoformat()}
+        roster = [after if e.get('code') == code else e for e in shift.roster]
+        pending = {**shift.pending_sheet_rows, code: after['revision']} if shift.sheet_url else dict(shift.pending_sheet_rows)
+        with transaction.atomic():
+            changed = ExamInvigilationShift.objects.filter(pk=pk, revision=shift.revision).update(
+                roster=roster, pending_sheet_rows=pending, revision=uuid.uuid4(), updated_at=timezone.now())
+            if not changed:
+                continue
+            ExamInvigilationAudit.objects.create(shift=shift, candidate_code=code, actor=request.user,
+                                                before=entry, after=after)
+            if code in pending:
+                transaction.on_commit(launch_candidate_sheet_worker)
+        return Response({'entry': after, 'pendingSheet': code in pending})
+    return Response({'error': 'Phòng thi đang được cập nhật liên tục. Hãy thử lại.'}, status=409)

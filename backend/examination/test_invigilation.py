@@ -191,3 +191,98 @@ class InvigilationTests(TestCase):
     def test_roster_rejects_unrelated_fields_and_invalid_attendance(self):
         self.assertEqual(self.client.patch(self.row_url(), {'revision': self.row['revision'], 'demo': False}, format='json').status_code, 400)
         self.assertEqual(self.client.patch(self.row_url(), {'revision': self.row['revision'], 'attendance': 'invalid'}, format='json').status_code, 400)
+
+    def test_saves_answer_without_calling_google_and_do_not_conflict_within_a_room(self):
+        second = {**self.row, 'code': 'DEMO-002', 'revision': str(uuid.uuid4()), 'sheetRow': 5}
+        self.shift.roster = [self.row, second]
+        self.shift.sheet_url = 'https://docs.google.com/spreadsheets/d/demo/edit'
+        self.shift.sheet_tab = 'Phòng 1'
+        self.shift.save()
+        with patch('examination.invigilation.sheet_service') as service, \
+             patch('examination.invigilation.launch_candidate_sheet_worker') as launch:
+            with self.captureOnCommitCallbacks(execute=True):
+                first = self.client.patch(self.row_url(), {'revision': self.row['revision'], 'attendance': 'Có mặt'}, format='json')
+            with self.captureOnCommitCallbacks(execute=True):
+                other = self.client.patch(self.row_url().replace('DEMO-001', 'DEMO-002'), {'revision': second['revision'], 'attendance': 'Vắng'}, format='json')
+        self.assertEqual((first.status_code, other.status_code), (200, 200))
+        service.assert_not_called()
+        self.assertEqual(launch.call_count, 2)
+        self.shift.refresh_from_db()
+        self.assertEqual(set(self.shift.pending_sheet_rows), {'DEMO-001', 'DEMO-002'})
+
+
+class LiveRoomDutyTests(TestCase):
+    """Real duties read candidates from the room allocation in Khảo thí."""
+
+    def setUp(self):
+        from .models import CandidateParticipation, ExamRoom, RoundResult
+        tz = ZoneInfo('Asia/Ho_Chi_Minh')
+        self.session = ExamSession.objects.create(id='live-fimo', code='FIMO', name='FIMO thật', rounds=[])
+        self.room = ExamRoom.objects.create(session=self.session, round_id='round-national', occurrence_id='day-1',
+            round_name='Vòng loại Quốc gia', common_name='Phòng', room_number='7', label='Phòng 7',
+            mode=ExamRoom.MODE_ONLINE, exam_link='https://meet.example.com/p7')
+        self.results = []
+        for index, name in enumerate(['Nguyễn An', 'Trần Bình']):
+            candidate = Candidate.objects.create(id=f'FT-9{index}', code=f'FT-9{index}', name=name, sort_key=name)
+            participation = CandidateParticipation.objects.create(candidate=candidate, session=self.session)
+            self.results.append(RoundResult.objects.create(participation=participation, round_id='round-national',
+                round_name='Vòng loại Quốc gia', occurrence_id='day-1', exam_room=self.room, sbd=f'SBD{index}'))
+        self.manager = UserProfile.objects.create(email='lead@example.com', name='Lead', role='ADMIN')
+        self.invigilator = UserProfile.objects.create(email='gt@example.com', name='Giám thị', access_modules=[])
+        self.client = APIClient()
+        self.client.force_authenticate(self.manager)
+        response = self.client.post('/api/examination/invigilation/shifts', {
+            'sessionId': self.session.pk, 'examRoomId': str(self.room.pk), 'label': 'Ca 1',
+            'roundName': 'x', 'occurrenceId': 'x', 'roomNumber': 'x',
+            'startsAt': datetime(2026, 10, 11, 9, tzinfo=tz).isoformat(), 'endsAt': datetime(2026, 10, 11, 10, tzinfo=tz).isoformat(),
+            'invigilatorEmails': [self.invigilator.email]}, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.shift_id = response.data['id']
+        self.client.force_authenticate(self.invigilator)
+
+    def roster(self):
+        return self.client.get(f'/api/examination/invigilation/shifts/{self.shift_id}').data['roster']
+
+    def test_duty_follows_the_room_and_lists_assigned_candidates(self):
+        shift = ExamInvigilationShift.objects.get(pk=self.shift_id)
+        self.assertEqual((shift.room_number, shift.occurrence_id, shift.room_link), ('7', 'day-1', 'https://meet.example.com/p7'))
+        self.assertEqual([entry['sbd'] for entry in self.roster()], ['SBD0', 'SBD1'])
+        # A later allocation change shows up without any re-import.
+        self.results[1].exam_room = None
+        self.results[1].save()
+        self.assertEqual([entry['code'] for entry in self.roster()], ['FT-90'])
+
+    def test_saving_writes_the_round_result_and_other_candidates_stay_editable(self):
+        first, second = self.roster()
+        url = f'/api/examination/invigilation/shifts/{self.shift_id}/roster/'
+        response = self.client.patch(url + first['code'], {'revision': first['revision'], 'attendance': 'Có mặt', 'score': '18'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['entry']['updatedBy'], self.invigilator.email)
+        # The second row was loaded before the first save and is still accepted.
+        response = self.client.patch(url + second['code'], {'revision': second['revision'], 'attendance': 'Vắng'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.results[0].refresh_from_db()
+        self.assertEqual((self.results[0].attendance, self.results[0].score), ('Có mặt', '18'))
+        # Re-using the first row's old revision is rejected.
+        self.assertEqual(self.client.patch(url + first['code'], {'revision': first['revision'], 'attendance': 'Vắng'}, format='json').status_code, 409)
+
+    def test_room_from_another_session_is_rejected(self):
+        self.client.force_authenticate(self.manager)
+        other = ExamSession.objects.create(id='other-session', code='FIEO', name='FIEO', rounds=[])
+        response = self.client.patch(f'/api/examination/invigilation/shifts/{self.shift_id}', {'examRoomId': str(self.room.pk)}, format='json')
+        self.assertEqual(response.status_code, 200)
+        foreign = self.room.__class__.objects.create(session=other, round_id='r', round_name='r', common_name='P', room_number='1', label='P1', mode='ONLINE')
+        response = self.client.patch(f'/api/examination/invigilation/shifts/{self.shift_id}', {'examRoomId': str(foreign.pk)}, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_assignment_and_time_change_notify_the_invigilator_once(self):
+        from authentication.models import WorkspaceNotification
+        notes = WorkspaceNotification.objects.filter(event_key__startswith='examination:duty:')
+        self.assertEqual(notes.count(), 1)
+        self.client.force_authenticate(self.manager)
+        shift = ExamInvigilationShift.objects.get(pk=self.shift_id)
+        self.client.patch(f'/api/examination/invigilation/shifts/{self.shift_id}', {'label': 'Ca 1'}, format='json')
+        self.assertEqual(notes.count(), 1)
+        self.client.patch(f'/api/examination/invigilation/shifts/{self.shift_id}', {
+            'startsAt': (shift.starts_at + timedelta(minutes=30)).isoformat(), 'endsAt': (shift.ends_at + timedelta(minutes=30)).isoformat()}, format='json')
+        self.assertEqual(notes.count(), 2)

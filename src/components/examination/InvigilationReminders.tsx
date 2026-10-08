@@ -66,7 +66,7 @@ export default function InvigilationReminders({ token, email, canPreview = false
     };
     const tick = () => {
       const current = clock.current.now(performance.now());
-      if (current === null) return;
+      if (current === null || (!latest.current.length && !popupRef.current)) return;
       setNow(current);
       if (document.visibilityState !== 'visible') { release(); setActivePopup(null); return; }
       const existing = popupRef.current;
@@ -91,10 +91,13 @@ export default function InvigilationReminders({ token, email, canPreview = false
       if (canPreview) { setActivePopup({ shift: (event as CustomEvent<Duty>).detail, preview: true }); }
     };
     const interval = window.setInterval(tick, 1000);
-    const polling = window.setInterval(() => void refresh(), 15_000);
+    // Duties rarely change and reminders are timed locally from server time:
+    // fetch on open, on return to the tab, after a duty edit, plus a slow safety net.
+    const polling = window.setInterval(() => void refresh(), 10 * 60_000);
     document.addEventListener('visibilitychange', wake);
     window.addEventListener('focus', wake); window.addEventListener('pageshow', wake); window.addEventListener('online', wake);
     window.addEventListener('ft-exam-reminder-preview', preview);
+    window.addEventListener('ft-exam-duties-changed', wake);
     void refresh();
     return () => {
       active = false; controller.abort(); release();
@@ -102,6 +105,7 @@ export default function InvigilationReminders({ token, email, canPreview = false
       document.removeEventListener('visibilitychange', wake);
       window.removeEventListener('focus', wake); window.removeEventListener('pageshow', wake); window.removeEventListener('online', wake);
       window.removeEventListener('ft-exam-reminder-preview', preview);
+      window.removeEventListener('ft-exam-duties-changed', wake);
     };
   }, [token, email, canPreview]);
 
