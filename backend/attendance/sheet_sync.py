@@ -90,7 +90,7 @@ def _row_values(entries):
     return values
 
 
-def _sheet_index(metadata, profiles):
+def _sheet_index(metadata, profiles, missing=None):
     sheets = metadata.get("sheets", [])
     by_name = {}
     for sheet in sheets:
@@ -103,7 +103,10 @@ def _sheet_index(metadata, profiles):
     for email, profile in profiles.items():
         target = by_name.get(normalize_label(profile.name))
         if not target:
-            raise RuntimeError(f"Không tìm thấy tab chấm công của {profile.name or email}.")
+            if missing is None:
+                raise RuntimeError(f"Không tìm thấy tab chấm công của {profile.name or email}.")
+            missing[email] = f"Không tìm thấy tab chấm công của {profile.name or email}."
+            continue
         result[email] = target
     return result
 
@@ -224,17 +227,27 @@ def push_groups_to_attendance_sheet(service, groups):
 
     total_groups = 0
     inserted_rows = 0
+    # A group that cannot be placed (missing tab, wrong month, no row for the
+    # date) is skipped on its own. One bad date must never block the rest of
+    # the attendance writes or the work-schedule sync that calls this.
+    skipped = []
+
+    def skip(email, work_date, reason):
+        skipped.append({"email": email, "date": work_date.isoformat(), "reason": reason})
+
     for spreadsheet_id, spreadsheet_groups in by_spreadsheet.items():
         emails = {email for email, _ in spreadsheet_groups}
         profiles = UserProfile.objects.in_bulk(emails, field_name="email")
-        missing_profiles = emails - set(profiles)
-        if missing_profiles:
-            raise RuntimeError(f"Không tìm thấy hồ sơ nhân sự: {', '.join(sorted(missing_profiles))}.")
         metadata = service.spreadsheets().get(
             spreadsheetId=spreadsheet_id,
             fields="sheets.properties(sheetId,title,gridProperties(rowCount,columnCount))",
         ).execute()
-        sheet_by_email = _sheet_index(metadata, profiles)
+        missing_tabs = {email: "Không tìm thấy hồ sơ nhân sự." for email in emails - set(profiles)}
+        sheet_by_email = _sheet_index(metadata, profiles, missing_tabs)
+        for group in sorted(spreadsheet_groups):
+            if group[0] in missing_tabs:
+                skip(group[0], group[1], missing_tabs[group[0]])
+        spreadsheet_groups = {group for group in spreadsheet_groups if group[0] not in missing_tabs}
         entries_by_group = defaultdict(list)
         entries = TimesheetEntry.objects.filter(
             employee_id__in=emails,
@@ -256,11 +269,18 @@ def push_groups_to_attendance_sheet(service, groups):
             rows_by_day = _date_rows(visible_rows)
             # Insert overflow rows first. When an insertion shifts later dates,
             # update the cached row map before composing the batched writes.
+            placeable = []
             for email, work_date in sorted(tab_groups, key=lambda item: item[1], reverse=True):
-                _validate_month(title, month_year, work_date)
+                try:
+                    _validate_month(title, month_year, work_date)
+                except RuntimeError as exc:
+                    skip(email, work_date, str(exc))
+                    continue
                 matching_rows = rows_by_day.get(work_date.day, [])
                 if not matching_rows:
-                    raise RuntimeError(f"Không tìm thấy ngày {work_date.day} trong cột B của tab {title}.")
+                    skip(email, work_date, f"Không tìm thấy ngày {work_date.day} trong cột B của tab {title}.")
+                    continue
+                placeable.append((email, work_date))
                 day_entries = entries_by_group[(email, work_date)]
                 required_rows = max(1, math.ceil(len(day_entries) / SHIFT_COLUMNS_PER_ROW))
                 if len(matching_rows) < required_rows:
@@ -284,7 +304,7 @@ def push_groups_to_attendance_sheet(service, groups):
                     rows_by_day[work_date.day].sort()
                     inserted_rows += missing
 
-            for email, work_date in sorted(tab_groups, key=lambda item: item[1]):
+            for email, work_date in sorted(placeable, key=lambda item: item[1]):
                 matching_rows = rows_by_day[work_date.day]
                 day_entries = entries_by_group[(email, work_date)]
                 quoted = _quote_sheet_name(title)
@@ -332,4 +352,5 @@ def push_groups_to_attendance_sheet(service, groups):
         "groups": total_groups,
         "spreadsheets": len(by_spreadsheet),
         "insertedRows": inserted_rows,
+        "skipped": skipped,
     }

@@ -144,13 +144,25 @@ class AttendanceSheetSyncTests(TestCase):
         ])
         self.assertEqual(data[2]["values"][0][:3], ["16:00", "17:00", False])
 
-    def test_wrong_m4_stops_before_any_value_write(self):
+    def test_wrong_m4_skips_the_group_without_any_value_write(self):
         self.create_shift(1)
         service = self.service(month="8")
 
-        with self.assertRaisesRegex(RuntimeError, "M4 đang là tháng 8"):
-            push_groups_to_attendance_sheet(
-                service, {(self.profile.email, date(2026, 9, 3))}
-            )
+        result = push_groups_to_attendance_sheet(
+            service, {(self.profile.email, date(2026, 9, 3))}
+        )
 
+        self.assertIn("M4 đang là tháng 8", result["skipped"][0]["reason"])
         service.spreadsheets.return_value.values.return_value.batchUpdate.assert_not_called()
+
+    def test_missing_date_row_skips_only_that_day(self):
+        self.create_shift(1)
+        service = self.service()
+
+        result = push_groups_to_attendance_sheet(
+            service, {(self.profile.email, date(2026, 9, 3)), (self.profile.email, date(2026, 9, 30))}
+        )
+
+        self.assertEqual([item["date"] for item in result["skipped"]], ["2026-09-30"])
+        self.assertEqual(result["groups"], 1)
+        service.spreadsheets.return_value.values.return_value.batchUpdate.assert_called_once()

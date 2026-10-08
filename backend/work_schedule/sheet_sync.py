@@ -1908,7 +1908,7 @@ def sync_to_sheet(google_token=None, force=False):
             service = _service(google_token)
             ensure_sync_columns(service)
             result = push_groups_to_sheet(service, groups, force=force)
-            result["attendance"] = push_groups_to_attendance_sheet(service, groups)
+            result["attendance"] = push_attendance_safely(service, groups)
             conflict_groups = {(row["email"], datetime.fromisoformat(row["date"]).date()) for row in result["conflicts"]}
             for change in pending:
                 is_conflict = (change.executor_email, change.work_date) in conflict_groups
@@ -1921,6 +1921,24 @@ def sync_to_sheet(google_token=None, force=False):
         except Exception as exc:
             WorkScheduleSheetChange.objects.filter(pk__in=ids).update(status=WorkScheduleSheetChange.STATUS_FAILED, last_error=str(exc), attempts=models.F("attempts") + 1, processed_at=timezone.now())
             raise
+
+
+def push_attendance_safely(service, groups):
+    """Mirror timesheets to the monthly attendance workbook without blocking.
+
+    The attendance workbook is a secondary mirror. Its problems (a month tab
+    without a row for the 31st, a renamed employee tab, Google errors) are
+    logged and reported, but must not fail or retry the work-schedule changes
+    that already reached the schedule Sheet.
+    """
+    try:
+        result = push_groups_to_attendance_sheet(service, groups)
+    except Exception as exc:
+        logger.warning("Attendance workbook sync failed: %s", exc)
+        return {"error": str(exc)}
+    for item in result.get("skipped", [])[:20]:
+        logger.warning("Attendance workbook skipped %s %s: %s", item["email"], item["date"], item["reason"])
+    return result
 
 
 def _two_way_sync(google_token, start, end):
@@ -1949,7 +1967,7 @@ def _two_way_sync(google_token, start, end):
         force=False,
         preserve_sheet_groups=pulled_groups,
     )
-    pushed["attendance"] = push_groups_to_attendance_sheet(service, groups)
+    pushed["attendance"] = push_attendance_safely(service, groups)
     WorkScheduleSheetChange.objects.filter(executor_email__in=[g[0] for g in groups], work_date__range=(start, end), status__in=["pending", "failed", "conflict"]).update(status="done", processed_at=timezone.now(), last_error="")
     result = {"start": start.isoformat(), "end": end.isoformat(), "pulled": pulled, "pushed": pushed}
     result["pulled"]["groups"] = len(result["pulled"]["groups"])
