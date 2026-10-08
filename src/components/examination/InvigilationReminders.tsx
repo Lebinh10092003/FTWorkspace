@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BellRing, ChevronDown, Clock3, ExternalLink, X } from 'lucide-react';
-import { dutyDate, dutyTime, reminderDue, reminderKey, ServerClock } from './invigilationTiming';
+import { cardVisible, dutyDate, dutyTime, reminderDue, reminderKey, ServerClock } from './invigilationTiming';
 
 export type Duty = {
   id: string; sessionId: string; sessionName: string; competitionCode: string; roundName: string;
@@ -127,7 +127,8 @@ export default function InvigilationReminders({ token, email, canPreview = false
     return () => { document.removeEventListener('keydown', handleKey); if (previous?.isConnected) previous.focus(); };
   }, [popup]);
 
-  const relevant = now === null ? [] : shifts.filter(s => s.enabled && Date.parse(s.endsAt) > now);
+  const upcoming = now === null ? [] : shifts.filter(s => s.enabled && Date.parse(s.endsAt) > now);
+  const relevant = now === null ? [] : upcoming.filter(s => cardVisible(s, now));
   const next = relevant[0];
   const open = (shift: Duty) => { dismiss(); window.location.assign(shift.actionUrl); };
   const active = popup?.shift;
@@ -142,7 +143,7 @@ export default function InvigilationReminders({ token, email, canPreview = false
           {minutes > 0 && minutes <= 60 && <p className="mt-1 text-sm text-amber-700">Còn {minutes} phút</p>}
           {offline && <p className="mt-1 text-xs text-amber-700">Đang dùng lịch đã tải; chờ kết nối để cập nhật.</p>}
           <button type="button" onClick={() => open(next)} className="mt-3 w-full rounded-xl bg-emerald-700 px-3 py-2 text-sm font-bold text-white">Mở phòng thi / Điểm danh</button>
-          {relevant.length > 1 && <p className="mt-2 text-xs text-slate-500">Ca tiếp: {relevant[1].label} · {dutyTime(relevant[1].startsAt)} · Phòng {relevant[1].roomNumber}</p>}
+          {upcoming[upcoming.indexOf(next) + 1] && (() => { const after = upcoming[upcoming.indexOf(next) + 1]; return <p className="mt-2 text-xs text-slate-500">Ca tiếp: {after.label} · {dutyTime(after.startsAt)} · Phòng {after.roomNumber}</p>; })()}
         </div>}
     </aside>}
     {active && <div className="fixed inset-0 z-[12000] grid place-items-center bg-slate-950/60 p-4 font-sans backdrop-blur-sm">

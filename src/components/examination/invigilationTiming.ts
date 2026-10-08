@@ -9,6 +9,15 @@ export function reminderDue(shift: TimedDuty, now: number): boolean {
   return shift.enabled && Number.isFinite(start) && end > start && now >= start - 15 * 60_000 && now < end;
 }
 
+// The floating "next duty" card is only useful on the day itself: it appears
+// one hour before the start and stays until the duty ends. Earlier duties are
+// announced by the Workspace notification sent when the duty is assigned.
+export const CARD_LEAD_MS = 60 * 60_000;
+export function cardVisible(shift: TimedDuty, now: number): boolean {
+  const start = Date.parse(shift.startsAt), end = Date.parse(shift.endsAt);
+  return shift.enabled && Number.isFinite(start) && end > start && now >= start - CARD_LEAD_MS && now < end;
+}
+
 // Scheduling uses server time advanced by a monotonic clock, never the computer's wall clock.
 export class ServerClock {
   private anchor: { server: number; monotonic: number } | null = null;

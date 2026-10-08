@@ -8,11 +8,19 @@ const code = ts.transpileModule(fs.readFileSync('src/components/examination/invi
 }).outputText;
 const context = { exports: {}, Date, Intl, Number, Math };
 vm.runInNewContext(code, context);
-const { reminderDue, reminderKey, ServerClock, dutyTime, dutyDate } = context.exports;
+const { reminderDue, reminderKey, ServerClock, dutyTime, dutyDate, cardVisible } = context.exports;
 const first = { id: 'first', startsAt: '2026-10-11T09:00:00+07:00', endsAt: '2026-10-11T10:00:00+07:00', enabled: true };
 const second = { id: 'second', startsAt: '2026-10-11T10:30:00+07:00', endsAt: '2026-10-11T11:30:00+07:00', enabled: true };
 const at = value => Date.parse(`2026-10-11T${value}+07:00`);
 
+test('Next-duty card stays hidden until one hour before and disappears at the end', () => {
+  assert.equal(cardVisible(first, Date.parse('2026-10-09T01:52:00+07:00')), false);
+  assert.equal(cardVisible(first, at('07:59:59')), false);
+  assert.equal(cardVisible(first, at('08:00:00')), true);
+  assert.equal(cardVisible(first, at('09:59:59')), true);
+  assert.equal(cardVisible(first, at('10:00:00')), false);
+  assert.equal(cardVisible({ ...first, enabled: false }, at('08:30:00')), false);
+});
 test('Reminder opens exactly at 08:45, not before the 15-minute boundary', () => {
   assert.equal(reminderDue(first, at('08:44:59')), false);
   assert.equal(reminderDue(first, at('08:45:00')), true);
