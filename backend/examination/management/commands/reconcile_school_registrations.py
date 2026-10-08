@@ -57,6 +57,8 @@ class Command(BaseCommand):
         parser.add_argument('--academic-year', required=True)
         parser.add_argument('--partner-id', default='')
         parser.add_argument('--matches', default='{}', help='JSON {"row": "FT-xxxxx" | "__new__"} for rows needing a decision.')
+        parser.add_argument('--update-profiles', action='store_true',
+                            help='Also replace non-empty profile values that differ from the file (the school list is authoritative).')
         parser.add_argument('--apply', action='store_true')
 
     def handle(self, *args, **options):
@@ -67,13 +69,13 @@ class Command(BaseCommand):
         school = metadata.get('school', '')
         self.stdout.write(f'Tab {sheet}: {len(records)} dòng · trường {school or "(không đọc được)"}')
         with transaction.atomic():
-            repaired = self.repair_profiles(records, sessions, school)
+            repaired = self.repair_profiles(records, sessions, school, options['update_profiles'])
             plan_options = {'academicYear': year, 'sheet': sheet, 'partnerId': options['partner_id'],
                             'candidateMatches': json.loads(options['matches'])}
             plan = build_plan(content, plan_options)
             self.report_plan(plan)
             if not plan['canCommit']:
-                raise CommandError('Kế hoạch nhập còn lỗi; không ghi gì. Xử lý các dòng ở trên rồi chạy lại.')
+                raise CommandError('File có lỗi chung (không phải lỗi từng dòng); không ghi gì.')
             if plan['summary']['newRegistrations'] or plan['summary']['newCandidates'] or repaired:
                 commit_plan(plan, None, f'đối soát {options["file"].rsplit("/", 1)[-1]}')
             if not options['apply']:
@@ -82,7 +84,7 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(self.style.SUCCESS('Đã ghi thay đổi.'))
 
-    def repair_profiles(self, records, sessions, school):
+    def repair_profiles(self, records, sessions, school, update_profiles=False):
         session_ids = [s.pk for s in sessions]
         members = list(Candidate.objects.filter(participations__session_id__in=session_ids).distinct())
         by_identity = {}
@@ -108,6 +110,8 @@ class Command(BaseCommand):
             changes = []
             birth = parse_dob(raw.get('dob', ''))
             reason = birth_repair(candidate.birth_date, birth)
+            if not reason and update_profiles and re.fullmatch(r'\d{4}-\d{2}-\d{2}', birth) and birth != candidate.birth_date:
+                reason = 'theo danh sách trường'
             if reason:
                 changes.append(f'ngày sinh {candidate.birth_date or "trống"} → {birth} ({reason})')
                 candidate.birth_date = birth
@@ -116,9 +120,14 @@ class Command(BaseCommand):
                 'email': raw.get('email', ''), 'parent': format_person_name(raw.get('parent', '')),
                 'identity': format_identity(raw.get('cccd', '')),
             }
+            if update_profiles:
+                fills['name'] = name
             for field, value in fills.items():
-                if value and not getattr(candidate, field):
-                    changes.append(f'{field} trống → {value}')
+                current = getattr(candidate, field) or ''
+                if not value or normalise_str(current) == normalise_str(value):
+                    continue
+                if not current or (update_profiles and field != 'school'):
+                    changes.append(f'{field} {current or "trống"} → {value}')
                     setattr(candidate, field, value)
             if changes:
                 repaired += 1
@@ -142,7 +151,8 @@ class Command(BaseCommand):
             if issue['level'] == 'error':
                 errors.setdefault(issue['message'], []).append(issue.get('row'))
         for message, rows in errors.items():
-            self.stdout.write(self.style.ERROR(f'  LỖI {message} — dòng {", ".join(str(r) for r in rows if r)}'))
+            label = 'BỎ QUA' if any(rows) else 'LỖI CHUNG'
+            self.stdout.write(self.style.ERROR(f'  {label} {message} — dòng {", ".join(str(r) for r in rows if r)}'))
         for row in plan['rows']:
             if row.get('needsDecision'):
                 options = '; '.join(f'{m["code"]} {m["name"]} {m["birthDate"]} ({m["reason"]})' for m in row['matches'])

@@ -198,7 +198,7 @@ def registered_contests(value, sessions):
     return result
 
 
-def build_plan(content, options):
+def _build_plan(content, options, skip_rows=frozenset()):
     raw_rows, metadata, sheet, sheets = read_workbook(content, str(options.get('sheet') or ''))
     issues = []
     def issue(level, message, row=None):
@@ -239,6 +239,8 @@ def build_plan(content, options):
     missing_fee_rows = []
     for raw in raw_rows:
         row = raw['row']
+        if row in skip_rows:
+            continue
         profile = {
             'name': format_person_name(raw.get('name', '')), 'birth_date': parse_dob(raw.get('dob', '')),
             'identity': format_identity(raw.get('cccd', '')), 'class_name': raw.get('className', ''), 'school': partner.get('school', ''),
@@ -259,10 +261,14 @@ def build_plan(content, options):
             if not profile[field]:
                 issue('warning', f'Thiếu {label} trong file gốc; không tự tạo thông tin.', row)
         if profile['email']:
+            # Typing slips such as "name 0801@gmail.com" lose the space; an
+            # email that is still invalid is left empty instead of blocking.
+            profile['email'] = re.sub(r'\s+', '', profile['email'])
             try:
                 validate_email(profile['email'])
             except ValidationError:
-                issue('error', 'Email thí sinh không hợp lệ.', row)
+                issue('warning', f'Email "{profile["email"]}" không hợp lệ; để trống để bổ sung sau.', row)
+                profile['email'] = ''
         if len(norm(profile['identity'])) >= 6 and any(
             norm(p['profile']['identity']) == norm(profile['identity']) and
             (norm(p['profile']['name']) != norm(profile['name']) or (p['profile']['birth_date'] and profile['birth_date'] and p['profile']['birth_date'] != profile['birth_date']))
@@ -402,9 +408,33 @@ def build_plan(content, options):
             issue('warning', f'{session.code}: {waiting} lượt chờ phân phòng (chưa cấu hình phòng/đợt hoặc hết sức chứa).')
         groups.append({'sessionId': session_id, 'competitionCode': session.code, 'competitionName': session.name, 'label': f'{session.code} · {session.name} · {session.time}', 'registrations': len(entries), 'newCandidates': sum(not profiles[e['profileIndex']]['candidateId'] for e in entries), 'existingCandidates': sum(bool(profiles[e['profileIndex']]['candidateId']) for e in entries), 'newRegistrations': additions, 'existingRegistrations': len(entries) - additions, 'schoolRegistrations': len(school_entries), 'preservedIndividualRegistrations': len(entries) - len(school_entries), 'amount': sum(e['amount'] or 0 for e in school_entries) if all(e['amount'] is not None for e in school_entries) else None, 'assigned': assigned, 'alreadyAssigned': already_assigned, 'waiting': waiting, 'round': first_round, 'occurrenceId': occurrence, 'billingVersion': billing.updated_at.isoformat() if billing else '', 'sessionVersion': session.updated_at.isoformat()})
     plan = {'partner': partner, 'newPartner': new_partner, 'sheet': sheet, 'sheets': sheets, 'rows': rows, 'profiles': profiles, 'registrations': list(registrations.values()), 'routes': list(routes.values()), 'groups': groups, 'issues': issues, 'roomState': room_state, 'fileHash': hashlib.sha256(content).hexdigest(), 'candidateState': fingerprint([(c.pk, c.updated_at.isoformat()) for c in existing])}
-    plan['canCommit'] = not any(i['level'] == 'error' for i in issues)
     plan['summary'] = {'rows': len(raw_rows), 'candidates': len(profiles), 'newCandidates': sum(not p['candidateId'] for p in profiles), 'existingCandidates': sum(bool(p['candidateId']) for p in profiles), 'registrations': len(registrations), 'newRegistrations': sum(g['newRegistrations'] for g in groups), 'existingRegistrations': sum(g['existingRegistrations'] for g in groups), 'sessions': len(groups)}
     plan['summary']['preservedIndividualRegistrations'] = sum(g['preservedIndividualRegistrations'] for g in groups)
+    return plan
+
+
+def build_plan(content, options):
+    """Plan an import in which a faulty row only drops that row.
+
+    Errors tied to a row (invalid name, ambiguous profile, unknown contest…)
+    remove the row and are reported; the other pupils import normally. Only
+    file-level errors (school, accounting state) block the import.
+    """
+    skipped, carried_issues, carried_rows = set(), [], []
+    for _ in range(5):
+        plan = _build_plan(content, options, frozenset(skipped))
+        row_errors = [i for i in plan['issues'] if i['level'] == 'error' and i.get('row')]
+        if not row_errors:
+            break
+        new_rows = {i['row'] for i in row_errors}
+        carried_issues += row_errors
+        carried_rows += [row | {'skipped': True} for row in plan['rows'] if row['row'] in new_rows]
+        skipped |= new_rows
+    plan['issues'] = carried_issues + [i for i in plan['issues'] if not (i.get('row') in skipped)]
+    plan['rows'] = sorted(plan['rows'] + carried_rows, key=lambda row: row['row'])
+    plan['skippedRows'] = sorted(skipped)
+    plan['summary']['skippedRows'] = len(skipped)
+    plan['canCommit'] = bool(plan['registrations']) and not any(i['level'] == 'error' and not i.get('row') for i in plan['issues'])
     return plan
 
 

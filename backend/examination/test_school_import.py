@@ -174,7 +174,7 @@ class SchoolImportTests(TestCase):
         CandidateParticipation.objects.create(candidate=old, session=self.sessions['TESTA'])
         content = self.appendix_workbook([
             [1, 'Nguyễn Bảo Hoàng', datetime(2015, 6, 10), '001215047377', '6A1', 'TESTA & TESTB', 'Mai Thu Trang', '0984127270', 'mtt@example.test', '500.000VNĐ'],
-            [2, 'Trần Minh Bình', datetime(2015, 2, 14), '1315028059', '6A2', 'TESTB', 'Trần Văn A', '907654321', 'b@example.test', '250.000VNĐ'],
+            [2, 'Trần Minh Bình', datetime(2015, 2, 14), '1315028059', '6A2', 'TESTB', 'Trần Văn A', '907654321', 'b @example.test', '250.000VNĐ'],
         ])
         with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as handle:
             handle.write(content)
@@ -195,6 +195,21 @@ class SchoolImportTests(TestCase):
         self.assertIsNone(old.participations.get(session_id='TESTA-2026').school_registration_id)
         new = Candidate.objects.get(name='Trần Minh Bình')
         self.assertEqual(new.identity, '001315028059')
+        self.assertEqual(new.email, 'b@example.test')
+
+        # The school later corrects a pupil: only --update-profiles overwrites.
+        changed = self.appendix_workbook([
+            [1, 'Nguyễn Bảo Hoàng', datetime(2015, 6, 10), '001215047377', '7A3', 'TESTA & TESTB', 'Mai Thu Trang', '0984127270', 'new@example.test', '500.000VNĐ'],
+        ])
+        with open(handle.name, 'wb') as stream:
+            stream.write(changed)
+        with patch('examination.partner_contact_sync.launch_partner_contact_sync'):
+            call_command(*arguments, '--apply', stdout=io.StringIO())
+            old.refresh_from_db()
+            self.assertEqual(old.class_name, '6A1')
+            call_command(*arguments, '--update-profiles', '--apply', stdout=io.StringIO())
+        old.refresh_from_db()
+        self.assertEqual((old.class_name, old.email), ('7A3', 'new@example.test'))
         self.assertEqual(new.participations.get().school_registration.school, 'Trường A')
 
     def test_official_appendix_template_reads_school_block_and_text_fees(self):
@@ -286,13 +301,14 @@ class SchoolImportTests(TestCase):
         self.assertEqual(result.data['summary']['registrations'], 2)
         self.assertEqual(Candidate.objects.get().birth_date, '2015-07-12')
 
-    def test_unknown_combined_contest_still_blocks_all_writes(self):
+    def test_unknown_combined_contest_skips_the_whole_row(self):
         row = self.rows[0][:]
         row[5] = 'TESTA & UNKNOWN'
         preview = self.preview(self.workbook([row], school_headers=True))
 
+        # Half of a row is never imported; with no other row nothing commits.
         self.assertFalse(preview.data['canCommit'])
-        self.assertEqual({route['contest'] for route in preview.data['routes']}, {'TESTA', 'UNKNOWN'})
+        self.assertEqual(preview.data['skippedRows'], [2])
         self.assertEqual(CandidateParticipation.objects.count(), 0)
 
     def test_exact_session_name_with_separator_is_preserved(self):
@@ -416,23 +432,23 @@ class SchoolImportTests(TestCase):
         self.assertEqual(Candidate.objects.count(), 1)
         self.assertEqual(CandidateParticipation.objects.count(), 1)
 
-    def test_unknown_contest_and_invalid_date_block_all_writes(self):
+    def test_faulty_rows_are_skipped_and_other_pupils_import(self):
         rows = [r[:] for r in self.rows]
         rows[0][5] = 'UNKNOWN'
         rows[1][2] = '31/02/2015'
         content = self.workbook(rows)
         preview = self.preview(content)
-        self.assertFalse(preview.data['canCommit'])
-        response = self.post(content, self.options | {'action': 'commit', 'previewToken': preview.data['previewToken']})
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(Candidate.objects.count(), 0)
-        self.assertEqual(SchoolRegistration.objects.count(), 0)
+        self.assertTrue(preview.data['canCommit'])
+        self.assertEqual(preview.data['skippedRows'], [2, 3])
+        self.assertTrue(any(issue['row'] == 2 and issue['level'] == 'error' for issue in preview.data['issues']))
+        self.commit(content)
+        self.assertEqual(list(Candidate.objects.values_list('name', flat=True)), ['Trần Minh Bình'])
 
     def test_ambiguous_sessions_require_mapping(self):
         original = self.sessions['TESTA']
         ExamSession.objects.create(id='TESTA-other', competition_id='TESTA', code='TESTA', name='Đợt khác', parent='TESTA', organizer='Test', time=original.time, sort_key='z', rounds=original.rounds)
         preview = self.preview()
-        self.assertFalse(preview.data['canCommit'])
+        self.assertEqual(preview.data['skippedRows'], [2, 4])
         self.commit(options=self.options | {'sessionMapping': {'TESTA': original.pk}})
         self.assertEqual(CandidateParticipation.objects.filter(session_id=original.pk).count(), 2)
 
@@ -462,13 +478,13 @@ class SchoolImportTests(TestCase):
         rows = self.rows + [self.rows[0][:]]
         rows[-1][6] = 999000
         preview = self.preview(self.workbook(rows))
-        self.assertFalse(preview.data['canCommit'])
+        self.assertIn(5, preview.data['skippedRows'])
 
     def test_same_identity_with_different_names_in_file_is_not_duplicated(self):
         rows = [r[:] for r in self.rows]
         rows[1][1] = 'Nguyễn Minh Anh'
         preview = self.preview(self.workbook(rows))
-        self.assertFalse(preview.data['canCommit'])
+        self.assertIn(3, preview.data['skippedRows'])
         self.assertTrue(any('Cùng giấy tờ' in issue['message'] for issue in preview.data['issues']))
 
     def test_reverse_sheet_sync_preserves_school_accounting_metadata(self):
@@ -485,7 +501,7 @@ class SchoolImportTests(TestCase):
     def test_shared_parent_contact_with_different_identity_requires_confirmation(self):
         Candidate.objects.create(id='EXISTING', code='EXISTING', name='Nguyễn Minh An', birth_date='2015-07-12', identity='009999012345', phone='0901234567', email='parent@example.test', school='Trường A', class_name='Lớp 6', sort_key='a')
         preview = self.preview()
-        self.assertFalse(preview.data['canCommit'])
+        self.assertEqual(preview.data['skippedRows'], [2, 3])
         options = self.options | {'candidateMatches': {'2': '__new__', '3': '__new__'}}
         self.commit(options=options)
         self.assertEqual(Candidate.objects.filter(name='Nguyễn Minh An').count(), 2)
