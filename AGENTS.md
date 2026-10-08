@@ -40,6 +40,12 @@ Commit `6985864` từng chuyển sang "duyệt tay + banner + quét mỗi phút"
 - Không ghi đè thông tin đã có của hồ sơ, trừ khi chủ dự án yêu cầu rõ (lệnh `reconcile_school_registrations --update-profiles`).
 - **Đăng ký không bao giờ tự xếp phòng, ngày thi, giờ/ca thi, hình thức thi hay link.** Nhóm nhập sau để trống, chờ Khảo thí xếp. Không sao chép theo nhóm trước hoặc theo vòng đã diễn ra.
 
+## Dữ liệu thí sinh trong từng kỳ
+- **Mỗi kỳ chỉ chứa kết quả của chính kỳ đó.** Thêm thí sinh có sẵn (từ kho, Excel, Sheet) vào kỳ mới **không bao giờ** chép kết quả vòng thi của kỳ khác. Mọi đường ghi kết quả đi qua `history_for_session` (bỏ dòng có `sessionId` khác hoặc mã vòng không có trong kỳ).
+- **"Điều kiện tham gia" không có giá trị mặc định.** Vòng đầu nhận mọi thí sinh đã đăng ký trừ người bị đánh dấu "Không đủ điều kiện" (`eligible_for_round_q`); vòng sau chỉ nhận người được đánh dấu "Đủ điều kiện" sau khi có kết quả vòng trước. Không tự ghi "Đủ điều kiện" ra Sheet.
+- **Khối lớp lưu dạng số** ("6"), theo lớp khi lớp bắt đầu bằng số (`normalize_grade`).
+- Khi sửa một lỗi dữ liệu: rà **tất cả** kỳ và tab cùng loại, đọc từng cột và các dòng cuối, không chỉ dòng được báo.
+
 ## Lịch công tác và bảng chấm công
 - Bảng chấm công tháng (`attendance/sheet_sync.py`) là bản phụ. Lỗi ở đó (thiếu tab, sai tháng, thiếu dòng ngày) **chỉ bỏ qua đúng nhân viên–ngày đó** và ghi log. Không được làm hỏng hàng đợi Lịch công tác (`push_attendance_safely` trong `work_schedule/sheet_sync.py`).
 - File chấm công tháng do kế toán tạo bằng cách sao từ tháng trước. Tab thiếu ngày cuối tháng (vd ngày 31) thì hệ thống tự chèn dòng **bên trong** vùng công thức Tổng. Không chèn bên dưới dòng cuối, vì như vậy dòng mới nằm ngoài vùng SUM.
