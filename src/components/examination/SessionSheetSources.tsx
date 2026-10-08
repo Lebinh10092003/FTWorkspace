@@ -50,6 +50,11 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
       });
       const preview = await previewResponse.json().catch(() => ({}));
       if (!previewResponse.ok) throw new Error(preview?.error || '\u004b\u0068\u00f4\u006e\u0067 th\u1ec3 \u0111\u1ecdc ngu\u1ed3n d\u1eef li\u1ec7u n\u00e0y.');
+      const summary = (preview as ImportPreview).summary || {};
+      if (!Number(summary.new || 0) && !Number(summary.changed || 0) && !Number(summary.conflicts || 0) && !Number(summary.webOnly || 0)) {
+        setImportMessage(`Tab “${source.sheetTab || source.name || 'Google Sheets'}” đã khớp với web (${summary.total || 0} hồ sơ), không có thay đổi cần nhập.`);
+        return;
+      }
       setImportNewRecords(true);
       setImportEmptyValues(true);
       setOverwriteExistingValues(true);

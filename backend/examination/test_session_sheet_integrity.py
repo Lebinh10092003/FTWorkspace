@@ -31,6 +31,23 @@ class SessionSheetIntegrityTests(TestCase):
         self.assertEqual(format_phone('0986096894/ 0973213868'), '0986096894 / 0973213868')
         self.assertEqual(format_phone('09860968940973213868'), '0986096894 / 0973213868')
 
+    def test_same_name_sheet_row_with_another_code_does_not_block_appending(self):
+        from .sync import _aligned_export_rows
+        twin = Candidate.objects.create(id='integrity-twin', code='FT-90001', name='Nguyễn An',
+            birth_date='2014-08-12', identity='001214004150', sort_key='2')
+        CandidateParticipation.objects.create(candidate=twin, session=self.session)
+        rows = session_export_rows(self.session.pk)[2:]
+        existing = next(row for row in rows if row[1] == 'FT-90000')
+        alignment = _aligned_export_rows([existing], self.session.pk)
+        self.assertEqual(alignment['matchConflicts'], [])
+        self.assertEqual([row[1] for row in alignment['appendedValues']], ['FT-90001'])
+        # A hand-typed row without a code is still treated as a possible duplicate.
+        codeless = list(existing)
+        codeless[1] = ''
+        codeless[4] = codeless[7] = codeless[8] = ''
+        alignment = _aligned_export_rows([codeless], self.session.pk)
+        self.assertTrue(alignment['matchConflicts'])
+
     def test_eligibility_scores_and_previous_session_medal_do_not_award_current_round(self):
         RoundResult.objects.create(participation=self.participation, round_id='qualifying',
             round_name='Vòng loại Quốc gia', eligibility='Đủ điều kiện', score='90')

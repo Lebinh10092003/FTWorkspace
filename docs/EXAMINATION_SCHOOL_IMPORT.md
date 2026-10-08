@@ -49,3 +49,21 @@ Công cụ sử dụng thông tin xác thực Google hiện có và hỗ trợ S
 Ảnh/chứng từ lịch sử nằm trong các trường legacy vẫn xem được qua luồng cũ. Chưa tự tải link ảnh bên ngoài hoặc chuyển toàn bộ chứng từ lịch sử sang Drive trong thay đổi này.
 
 Triển khai: chạy migration `0052_school_import_and_transfer_proofs` trước khi dùng giao diện mới. File mẫu chỉ được đọc để kiểm tra cấu trúc; chưa nhập dữ liệu thật hoặc bật Drive.
+
+## Cập nhật 10/2026
+
+- Trang Khảo thí → Nhập dữ liệu chỉ còn một luồng: **Nhập Excel đăng ký của trường** (chọn file hoặc kéo thả). Đăng ký cá nhân đi qua Form; Sheet khảo thí tự đồng bộ hai chiều nên không còn nhập tay từ Google Sheets/CSV. File mẫu: `public/templates/Mau_dang_ky_theo_truong.xlsx` (Phụ lục 4).
+- Đọc khối thông tin trường của mẫu Phụ lục 4 (nhãn không có dấu ":", "Họ và tên: … Chức vụ: …", "Số điện thoại: … Email: …").
+- Lệ phí dạng chữ ("500.000VNĐ", "250,000 đ") được đọc thành số. Dòng nhiều cuộc thi có một lệ phí được chia đều cho từng cuộc thi; không chia đều được thì báo lỗi.
+- Popup tự kiểm tra lại sau mỗi lựa chọn, gom lỗi/lưu ý theo loại và chỉ liệt kê học sinh cần chọn hồ sơ.
+- Sửa dữ liệu do bộ nhập Excel cũ để lại (ngày sinh đảo ngày/tháng, trống tên trường) và bổ sung lượt còn thiếu:
+
+```text
+python manage.py reconcile_school_registrations --file <file.xlsx> --sheet "Cả trường" --academic-year 2026-2027 [--partner-id <id>] [--apply]
+```
+
+  Mặc định chỉ chạy thử và hoàn tác. Ngày sinh chỉ được thay khi giá trị trên web là ngày/tháng bị đảo hoặc năm nhập nhầm; các trường khác chỉ được điền khi đang trống.
+
+## Đồng bộ Sheet khảo thí
+
+Sửa tay trên tab Sheet của kỳ thi được tự cập nhật về web theo từng dòng (Apps Script báo ngay, quét định kỳ mỗi giờ). Dòng có mã FT khớp họ tên/CCCD luôn ghép đúng hồ sơ đó. Dòng không ghép chắc chắn được thì giữ nguyên và ghi vào nhật ký kỳ; không gắn cờ "cần kiểm tra" và không chặn các dòng khác. Hàng đợi ghi ra Sheet coi dòng cùng họ tên nhưng mang mã FT khác là người khác, nên không còn kẹt khi có học sinh trùng tên.

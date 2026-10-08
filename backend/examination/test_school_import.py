@@ -134,19 +134,104 @@ class SchoolImportTests(TestCase):
         self.assertEqual(ExaminationBillingRecord.objects.count(), 2)
         self.assertTrue(all(amount is None for amount in ExaminationBillingRecord.objects.values_list('amount', flat=True)))
 
-    def test_combined_contests_with_one_fee_block_instead_of_double_billing(self):
+    def test_combined_contests_split_one_fee_instead_of_double_billing(self):
         row = self.rows[0][:]
         row[5] = 'TESTA & TESTB'
+        row[6] = '500.000VNĐ'
+        preview = self.preview(self.workbook([row]))
+        self.assertTrue(preview.data['canCommit'], preview.data['issues'])
+        self.assertEqual({group['amount'] for group in preview.data['groups']}, {250000})
+
+        row[6] = 250001
         content = self.workbook([row])
         preview = self.preview(content)
-
         self.assertFalse(preview.data['canCommit'])
-        self.assertTrue(any('lệ phí chung' in issue['message'] for issue in preview.data['issues']))
-        self.assertTrue(all(group['amount'] is None for group in preview.data['groups']))
+        self.assertTrue(any('phí chung' in issue['message'] for issue in preview.data['issues']))
         response = self.post(content, self.options | {'action': 'commit', 'previewToken': preview.data['previewToken']})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(Candidate.objects.count(), 0)
         self.assertEqual(ExaminationBillingRecord.objects.count(), 0)
+
+    def appendix_workbook(self, rows):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = 'Cả trường'
+        sheet.append(['Tên trường học/tổ chức', None, 'Trường A'])
+        sheet.append(['Người phụ trách', None, 'Họ và tên: Người Liên Lạc. Chức vụ: Hiệu phó.'])
+        sheet.append(['Thông tin liên hệ', None, 'Số điện thoại: 0912345678.', None, 'Email: school@example.test'])
+        sheet.append(['STT', 'Họ và tên thí sinh', 'Ngày, tháng,\nnăm sinh', 'Căn cước công dân/\nHộ chiếu', 'Lớp đang\nhọc', 'Cuộc thi đăng ký\n(FIMO/FIEO)', 'Họ và tên phụ huynh/\nngười giám hộ', 'Số điện thoại', 'Email học sinh/\nphụ huynh', 'Lệ phí'])
+        for row in rows:
+            sheet.append(row)
+        stream = io.BytesIO()
+        workbook.save(stream)
+        return stream.getvalue()
+
+    def test_reconcile_command_repairs_swapped_birth_dates_and_adds_missing_registrations(self):
+        import tempfile
+        from django.core.management import call_command
+        old = Candidate.objects.create(id='FT-00562', code='FT-00562', name='Nguyễn Bảo Hoàng', birth_date='2015-10-06',
+            identity='001215047377', class_name='6A1', sort_key='old')
+        CandidateParticipation.objects.create(candidate=old, session=self.sessions['TESTA'])
+        content = self.appendix_workbook([
+            [1, 'Nguyễn Bảo Hoàng', datetime(2015, 6, 10), '001215047377', '6A1', 'TESTA & TESTB', 'Mai Thu Trang', '0984127270', 'mtt@example.test', '500.000VNĐ'],
+            [2, 'Trần Minh Bình', datetime(2015, 2, 14), '1315028059', '6A2', 'TESTB', 'Trần Văn A', '907654321', 'b@example.test', '250.000VNĐ'],
+        ])
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as handle:
+            handle.write(content)
+        arguments = ['reconcile_school_registrations', '--file', handle.name, '--academic-year', '2026-2027']
+        with patch('examination.partner_contact_sync.launch_partner_contact_sync'):
+            call_command(*arguments, stdout=io.StringIO())
+            old.refresh_from_db()
+            self.assertEqual(old.birth_date, '2015-10-06')
+            self.assertEqual(Candidate.objects.count(), 1)
+            output = io.StringIO()
+            call_command(*arguments, '--apply', stdout=output)
+        old.refresh_from_db()
+        self.assertEqual(old.birth_date, '2015-06-10', output.getvalue())
+        self.assertEqual(old.school, 'Trường A')
+        self.assertEqual(old.parent, 'Mai Thu Trang')
+        self.assertEqual(set(old.participations.values_list('session_id', flat=True)), {'TESTA-2026', 'TESTB-2026'})
+        # The individual registration that already existed keeps its own billing.
+        self.assertIsNone(old.participations.get(session_id='TESTA-2026').school_registration_id)
+        new = Candidate.objects.get(name='Trần Minh Bình')
+        self.assertEqual(new.identity, '001315028059')
+        self.assertEqual(new.participations.get().school_registration.school, 'Trường A')
+
+    def test_official_appendix_template_reads_school_block_and_text_fees(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = 'Cả trường'
+        sheet.append(['DANH SÁCH ĐĂNG KÝ THAM DỰ CUỘC THI'])
+        sheet.append([])
+        sheet.append(['Nội dung', None, 'Thông tin'])
+        sheet.append(['Tên trường học/tổ chức', None, 'Trường A'])
+        sheet.append(['Loại hình đơn vị', None, 'THCS'])
+        sheet.append(['Địa chỉ', None, 'Phố A, phường B, Hà Nội'])
+        sheet.append(['Người phụ trách', None, 'Họ và tên: Người Liên Lạc. Chức vụ: Phó Hiệu trưởng.'])
+        sheet.append(['Thông tin liên hệ', None, 'Số điện thoại: 0912345678. ', None, None, 'Email: school@example.test.'])
+        sheet.append(['Địa chỉ nhận chứng nhận (nếu có)', None, 'Trường A'])
+        sheet.append([])
+        sheet.append(['STT', 'Họ và tên thí sinh', 'Ngày, tháng,\nnăm sinh', 'Căn cước công dân/\nHộ chiếu', 'Lớp đang\nhọc', 'Cuộc thi đăng ký\n(FIMO/FIEO)', 'Họ và tên phụ huynh/\nngười giám hộ', 'Số điện thoại', 'Email học sinh/\nphụ huynh', 'Lệ phí', 'Nộp lệ phí', 'Ghi chú', 'Tổng thí sinh'])
+        sheet.append([1, 'Nguyễn Minh An', datetime(2015, 6, 10), '001215012345', '6A1', 'TESTA & TESTB', 'Nguyễn Văn A', '0901234567', 'parent@example.test', '500.000VNĐ', True, None, 'TESTA'])
+        sheet.append([2, 'Trần Minh Bình', datetime(2015, 2, 14), '1315028059', '6A1', 'TESTB', 'Trần Văn A', '907654321', 'parent2@example.test', '250,000VNĐ', False, None, 'TESTB'])
+        stream = io.BytesIO()
+        workbook.save(stream)
+        preview = self.preview(stream.getvalue(), {'academicYear': '2026-2027'})
+        partner = preview.data['partner']
+        self.assertEqual(partner['school'], 'Trường A')
+        self.assertEqual(partner['representative'], 'Người Liên Lạc')
+        self.assertEqual(partner['phone'], '0912345678')
+        self.assertEqual(partner['email'], 'school@example.test')
+        self.assertTrue(preview.data['canCommit'], preview.data['issues'])
+        self.assertEqual(preview.data['summary']['candidates'], 2)
+        self.assertEqual(preview.data['summary']['registrations'], 3)
+        self.assertEqual({group['amount'] for group in preview.data['groups']}, {250000, 500000})
+        self.commit(stream.getvalue(), {'academicYear': '2026-2027'})
+        an = Candidate.objects.get(name='Nguyễn Minh An')
+        self.assertEqual(an.birth_date, '2015-06-10')
+        binh = Candidate.objects.get(name='Trần Minh Bình')
+        self.assertEqual(binh.identity, '001315028059')
+        self.assertEqual(binh.phone, '0907654321')
 
     def test_missing_fields_warn_without_dropping_students(self):
         rows = [r[:] for r in (self.rows[0], self.rows[2])]

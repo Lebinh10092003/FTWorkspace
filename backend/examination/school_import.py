@@ -1,6 +1,7 @@
 """Preview and atomically import the standardized school registration workbook."""
 import hashlib
 import io
+import itertools
 import json
 import re
 import unicodedata
@@ -37,6 +38,68 @@ def cell_text(value):
     return unicodedata.normalize('NFC', str(value if value is not None else '')).strip()
 
 
+SCHOOL_METADATA_LABELS = (
+    # (normalised label prefix, field); first match wins.
+    ('ten truong', 'school'), ('dia chi nhan chung nhan', ''), ('dia chi', 'address'),
+    ('chuc vu', 'position'), ('nguoi phu trach', 'representative'), ('thong tin lien he', 'contact'),
+    ('so dien thoai', 'phone'), ('email', 'email'), ('ma so thue', 'taxCode'), ('loai hinh', ''),
+)
+PLACEHOLDER_VALUES = {'truong tieu hoc thcs trung tam to chuc khac'}
+
+
+def metadata_field(value):
+    label = norm(value)
+    return next((field for prefix, field in SCHOOL_METADATA_LABELS if label.startswith(prefix)), None)
+
+
+def read_school_metadata(row, metadata):
+    """Read "label | value" pairs from the school information block.
+
+    Official templates use labels without a colon (``Tên trường học/tổ chức``),
+    sometimes put two pairs on one row (``Người phụ trách … Chức vụ …``) or free
+    text such as ``Số điện thoại: 0356…`` / ``Email: a@b`` in the value cells.
+    """
+    cells = [cell_text(value) for value in row]
+    for index, label in enumerate(cells):
+        field = metadata_field(label) if label else None
+        if not field:
+            continue
+        rest = [cell for cell in cells[index + 1:] if cell]
+        inline = label.split(':', 1)[1].strip() if ':' in label else ''
+        value = inline or next((cell for cell in rest if metadata_field(cell) is None), '')
+        if field in {'contact', 'phone', 'email'}:
+            text = ' '.join([inline, *rest]) if field == 'contact' else value
+            phone = re.search(r'(?<![\w@])0?\d[\d .]{7,12}\d', text) if field != 'email' else None
+            email = re.search(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+', text) if field != 'phone' else None
+            if phone:
+                metadata.setdefault('phone', re.sub(r'\D', '', phone.group(0)))
+            if email:
+                metadata.setdefault('email', email.group(0).rstrip('.'))
+            continue
+        if not value or norm(value) in PLACEHOLDER_VALUES:
+            continue
+        if field == 'representative' and ':' in value:
+            name = re.search(r't[eê]n\s*:\s*([^.;]+)', value, re.IGNORECASE)
+            position = re.search(r'ch[uứ]c v[uụ]\s*:\s*([^.;]+)', value, re.IGNORECASE)
+            if name:
+                metadata.setdefault('representative', name.group(1).strip())
+            if position:
+                metadata.setdefault('position', position.group(1).strip())
+            continue
+        metadata.setdefault(field, value)
+
+
+def parse_fee(value):
+    """Read "500.000VNĐ", "250,000 đ" or 500000 as an integer amount in VND."""
+    digits = re.sub(r'\D', '', str(value or ''))
+    if not digits:
+        raise InvalidOperation
+    amount = int(digits)
+    if not 0 < amount <= 999999999999:
+        raise InvalidOperation
+    return amount
+
+
 def read_workbook(content, sheet_name=''):
     if len(content) > 10 * 1024 * 1024:
         raise ValueError('File Excel tối đa 10 MB.')
@@ -51,24 +114,17 @@ def read_workbook(content, sheet_name=''):
         tables = []
         metadata = {}
         for sheet in workbook:
-            if sheet.max_row > 10000 or sheet.max_column > 200:
+            # Google Sheets exports omit the dimension record (max_row is None
+            # in read-only mode), so count while reading instead.
+            grid = list(itertools.islice(sheet.values, 10001))
+            if len(grid) > 10000 or any(len(row) > 200 for row in grid):
                 raise ValueError('Mỗi tab tối đa 10.000 dòng và 200 cột.')
-            grid = list(sheet.values)
             for row in grid[:40]:
-                for index, value in enumerate(row):
-                    label = norm(value)
-                    field = next((field for field, prefix in {
-                        'school': 'ten truong don vi', 'address': 'dia chi don vi',
-                        'representative': 'nguoi phu trach', 'position': 'chuc vu nguoi phu trach',
-                        'phone': 'so dien thoai', 'email': 'email nhan thong tin', 'taxCode': 'ma so thue',
-                    }.items() if label.startswith(prefix)), None)
-                    if field and ':' in cell_text(value) and (not metadata.get(field)):
-                        found = next((cell_text(v) for v in row[index + 1:] if cell_text(v)), '')
-                        # Metadata ends before the next label; no document instructions are executed.
-                        if found and not any(token in norm(found) for token in ('nguoi phu trach', 'loai hinh don vi')):
-                            metadata[field] = found
                 mapping = resolve_column_indices([cell_text(v) for v in row], include_defaults=False)
-                if {'name', 'dob', 'className'}.issubset(mapping):
+                is_table_header = {'name', 'dob', 'className'}.issubset(mapping)
+                if not is_table_header:
+                    read_school_metadata(row, metadata)
+                if is_table_header:
                     # The school template uses "Cuộc thi đăng ký", absent in old Sheet aliases.
                     for index, value in enumerate(row):
                         label = norm(value)
@@ -231,6 +287,8 @@ def build_plan(content, options):
             issue('error', 'Hồ sơ được xác nhận không thuộc các kết quả đối chiếu.', row)
         elif matches and not candidate and forced != '__new__':
             issue('error', 'Cần xác nhận hồ sơ có khả năng trùng.', row)
+        needs_decision = bool(matches) and not candidate and forced != '__new__'
+        resolved_code = candidate.code if candidate else ('__new__' if forced == '__new__' or not matches else '')
         same_profiles = [(i, p) for i, p in enumerate(profiles) if (candidate and p['candidateId'] == candidate.pk) or (school_match(p['profile'], profile) or {}).get('status') == 'confirmed']
         if len(same_profiles) > 1:
             issue('error', 'Danh tính khớp nhiều học sinh trong file.', row)
@@ -254,17 +312,18 @@ def build_plan(content, options):
         amount = None
         if raw.get('amount'):
             try:
-                amount_value = Decimal(raw['amount'].replace(',', '').replace(' ', ''))
-                if not amount_value.is_finite() or amount_value != amount_value.to_integral_value() or not 0 < amount_value <= 999999999999:
-                    raise InvalidOperation
-                amount = int(amount_value)
+                amount = parse_fee(raw['amount'])
             except InvalidOperation:
-                issue('error', 'Lệ phí cần là số nguyên dương.', row)
+                issue('error', 'Lệ phí cần là số tiền, ví dụ 250.000.', row)
         else:
             missing_fee_rows.append(row)
         if len(contests) > 1 and amount is not None:
-            issue('error', 'Một dòng đăng ký nhiều cuộc thi có lệ phí chung. Tách thành từng dòng với lệ phí riêng cho mỗi cuộc thi.', row)
-            amount = None
+            # "FIMO & FIEO · 500.000" is one fee covering both contests.
+            if amount % len(contests):
+                issue('error', 'Lệ phí chung của dòng nhiều cuộc thi không chia đều được. Tách thành từng dòng với lệ phí riêng.', row)
+                amount = None
+            else:
+                amount //= len(contests)
         for contest in contests or ['']:
             possible = [s for s in sessions if norm(contest) in {norm(s.pk), norm(s.code), norm(s.name)} or norm(contest).startswith(norm(s.code) + ' ')] if contest else []
             if year:
@@ -274,7 +333,7 @@ def build_plan(content, options):
             if not target and contest not in routes:
                 issue('error', 'Không xác định được duy nhất kỳ tổ chức. Chọn kỳ cho ' + (contest or 'dòng này') + '.', row)
             routes[contest] = {'contest': contest, 'sessionId': target.pk if target else '', 'options': [{'id': s.pk, 'label': f'{s.code} · {s.name} · {s.time}'} for s in possible]}
-            entry = {'row': row, 'name': profile['name'], 'contest': contest, 'profileIndex': profile_index, 'sessionId': target.pk if target else '', 'amount': amount, 'note': raw.get('generalNote') or raw.get('note', ''), 'subject': raw.get('subject', ''), 'category': raw.get('category', ''), 'examLanguage': raw.get('examLanguage', ''), 'matches': [{'code': c.code, 'name': c.name, 'birthDate': c.birth_date, 'school': c.school, 'reason': a['reason']} for c, a in matches]}
+            entry = {'row': row, 'name': profile['name'], 'contest': contest, 'profileIndex': profile_index, 'sessionId': target.pk if target else '', 'amount': amount, 'note': raw.get('generalNote') or raw.get('note', ''), 'subject': raw.get('subject', ''), 'category': raw.get('category', ''), 'examLanguage': raw.get('examLanguage', ''), 'needsDecision': needs_decision, 'resolvedCode': resolved_code, 'matches': [{'code': c.code, 'name': c.name, 'birthDate': c.birth_date, 'school': c.school, 'reason': a['reason']} for c, a in matches]}
             rows.append(entry)
             if target:
                 key = f'{profile_index}:{target.pk}'

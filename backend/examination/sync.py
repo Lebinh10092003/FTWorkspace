@@ -187,6 +187,22 @@ def candidate_match_assessment(a, b):
 def same_candidate(a, b):
     assessment = candidate_match_assessment(a, b)
     return bool(assessment and assessment['status'] == 'confirmed')
+
+
+def code_matches_candidate(incoming, existing):
+    """Trust a Sheet's profile code only when the row still describes that person.
+
+    Rows exported by the web carry the FT code, so the code is the primary key
+    on re-import. A different identity, or a different name without the same
+    identity, means the code was copied onto another pupil.
+    """
+    if not existing:
+        return False
+    incoming_identity = normalized_identity(incoming.get('identity'))
+    existing_identity = normalized_identity(existing.identity)
+    if incoming_identity and existing_identity:
+        return incoming_identity == existing_identity
+    return normalise_str(incoming.get('name')) == normalise_str(existing.name)
 def next_code(existing_codes_set, offset=0):
     """Return the next stable, human-readable FermatTech candidate code."""
     numbers = [int(match.group(1)) for code in existing_codes_set if (match := re.fullmatch(r'FT-(\d+)', str(code).strip().upper()))]
@@ -553,7 +569,8 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
                 assessments.append((candidate, assessment))
         confirmed = [(candidate, assessment) for candidate, assessment in assessments if assessment['status'] == 'confirmed']
         same_code = next((candidate for candidate in existing if item.get('code') and candidate.code.upper() == item['code'].upper()), None)
-        base = confirmed[0][0] if len(confirmed) == 1 else same_code
+        trusted_code = same_code if code_matches_candidate(item, same_code) else None
+        base = trusted_code or (confirmed[0][0] if len(confirmed) == 1 else same_code)
         possible = [(candidate, assessment) for candidate, assessment in assessments if assessment['status'] == 'possible']
         # Mirror the selected import policy. The old implementation always
         # previewed fill-empty changes, even though the default policy replaces
@@ -614,7 +631,8 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
                 changed += 1
             else:
                 unchanged += 1
-        is_conflict = len(confirmed) > 1 or (not base and possible)
+        # A trusted code wins over look-alike duplicate profiles already on web.
+        is_conflict = not trusted_code and (len(confirmed) > 1 or (not base and bool(possible)))
         if is_conflict:
             conflicts += 1
             if base:
@@ -1159,7 +1177,14 @@ def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=Fals
     for candidate_index in sorted(remaining):
         candidate_row = proposed_rows[candidate_index]
         candidate_record = _export_row_record(candidate_row)
-        possible_rows = [index + 3 for index, sheet_row in enumerate(current_rows) if same_nonempty(_export_row_record(sheet_row)['name'], candidate_record['name'])]
+        # A same-name Sheet row that already carries a different FT code is
+        # another person (codes never match across people); only a code-less
+        # row could be this candidate typed by hand.
+        possible_rows = [
+            index + 3 for index, sheet_row in enumerate(current_rows)
+            if same_nonempty(_export_row_record(sheet_row)['name'], candidate_record['name'])
+            and not (clean_txt(_export_row_record(sheet_row)['code']) and clean_txt(candidate_record['code']))
+        ]
         if possible_rows:
             row = possible_rows[0]
             conflicts.append(_match_conflict(
@@ -1649,6 +1674,55 @@ def public_sheet_fingerprint(spreadsheet_url, sheet_tab=''):
     raise ValueError(str(last_error or 'Kh?ng ??c ???c CSV c?ng khai c?a Google Sheet.'))
 
 
+def automatic_import_rows(incoming, headers, columns, raw, session_id, source_url, sheet_tab, source_row_offset):
+    """Pick the Sheet rows that can be applied without a person deciding.
+
+    Only new or changed rows are returned, so an unrelated edit does not
+    rewrite every profile. Ambiguous rows are skipped individually instead of
+    blocking the whole tab; the caller records them in the session log.
+    """
+    from .models import SessionSheetOutbox
+    comparison = build_sheet_preview(incoming, headers, columns, raw, session_id, source_url, sheet_tab, source_row_offset)
+    existing_by_code = {candidate.code.upper(): candidate for candidate in Candidate.objects.all()}
+    # A web edit still on its way to the Sheet must not be reverted by the older
+    # value the Sheet holds. Jobs the worker already failed (e.g. a legacy tab
+    # layout) do not block Sheet edits indefinitely.
+    pending_ids = set(SessionSheetOutbox.objects.filter(
+        session_id=str(session_id), attempts=0,
+        enqueued_at__gte=timezone.now() - datetime.timedelta(minutes=10),
+    ).values_list('candidate_id', flat=True)) if session_id else set()
+    session_names = {
+        normalise_str(name) for name in Candidate.objects.filter(participations__session_id=session_id).values_list('name', flat=True)
+    } if session_id else set()
+    names_by_code = {}
+    selected, skipped = [], []
+    for item, record in zip(incoming, comparison['records']):
+        preview = record['_preview']
+        status = preview['status']
+        code = clean_txt(item.get('code')).upper()
+        reason = ''
+        if code:
+            previous_name = names_by_code.setdefault(code, item['name'])
+            existing_candidate = existing_by_code.get(code)
+            if normalise_str(previous_name) != normalise_str(item['name']):
+                reason = f'Mã hồ sơ {code} đang dùng cho nhiều học sinh khác nhau trên Sheet.'
+            elif existing_candidate and not code_matches_candidate(item, existing_candidate):
+                reason = f'Mã hồ sơ {code} trên Sheet không khớp họ tên/CCCD của hồ sơ {existing_candidate.name} trên web.'
+        if not reason and status == 'conflict':
+            reason = 'Có hồ sơ trên web gần giống học sinh này; cần chọn đúng hồ sơ trước khi ghép.'
+        if not reason and status == 'new' and normalise_str(item['name']) in session_names:
+            reason = 'Trùng họ tên với thí sinh đã có trong kỳ nhưng thiếu mã hồ sơ/CCCD để ghép chắc chắn.'
+        if reason:
+            skipped.append({'row': preview['sourceRow'], 'name': item['name'], 'reason': reason})
+            continue
+        matched_candidate = existing_by_code.get(clean_txt(preview.get('matchedCode')).upper())
+        if matched_candidate and matched_candidate.pk in pending_ids:
+            continue
+        if status in ('new', 'changed'):
+            selected.append(item)
+    return selected, skipped
+
+
 def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None, preview=False, sheet_tab='', preview_update_mode='replace-nonempty', preview_import_empty_values=True, automatic=False):
     def update_state(data):
         if sheet_doc_id:
@@ -1761,36 +1835,12 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
             if len(incoming) > 1000:
                 raise Exception('Mỗi lần chỉ được xử lý tối đa 1.000 hồ sơ. Hãy chia tab nguồn thành nhiều đợt nhỏ hơn.')
         fingerprint = 'csv:' + hashlib.sha256(raw.encode('utf-8')).hexdigest()
+        skipped = []
         if automatic and not preview:
-            comparison = build_sheet_preview(incoming, header_row, col, raw, session_id, spreadsheet_url, sheet_tab, header_index + 2)
-            # An explicit code must not silently redirect a different person's
-            # registration, even when the manual preview accepts that code.
-            existing_by_code = {candidate.code.upper(): candidate for candidate in Candidate.objects.all()}
-            code_conflicts = 0
-            incoming_codes = {}
-            for candidate in incoming:
-                code = candidate['code'].upper()
-                if not code:
-                    continue
-                previous = incoming_codes.get(code)
-                if previous and normalise_str(previous['name']) != normalise_str(candidate['name']):
-                    code_conflicts += 1
-                incoming_codes[code] = candidate
-                existing_candidate = existing_by_code.get(code)
-                if existing_candidate:
-                    different_identity = candidate['identity'] and existing_candidate.identity and candidate['identity'] != existing_candidate.identity
-                    same_identity = candidate['identity'] and candidate['identity'] == existing_candidate.identity
-                    different_name = normalise_str(candidate['name']) != normalise_str(existing_candidate.name)
-                    if different_identity or (different_name and not same_identity):
-                        code_conflicts += 1
-            conflicts = comparison['summary']['conflicts'] + code_conflicts
-            if conflicts:
-                return {'success': False, 'needsReview': True, 'conflicts': conflicts,
-                        'message': f'Có {conflicts} hồ sơ trùng hoặc không khớp danh tính cần kiểm tra; chưa tự động nhập tab này.',
-                        'fingerprint': fingerprint, 'created': 0, 'updated': 0, 'total': len(incoming)}
-            if incoming and not comparison['summary']['new'] and not comparison['summary']['changed']:
-                return {'success': True, 'unchanged': True, 'created': 0, 'updated': 0,
-                        'total': len(incoming), 'fingerprint': fingerprint, 'timestamp': ts_vn}
+            incoming, skipped = automatic_import_rows(incoming, header_row, col, raw, session_id, spreadsheet_url, sheet_tab, header_index + 2)
+            if not incoming:
+                return {'success': True, 'unchanged': not skipped, 'created': 0, 'updated': 0,
+                        'total': 0, 'skipped': skipped, 'fingerprint': fingerprint, 'timestamp': ts_vn}
         if not incoming:
             if preview:
                 result = build_sheet_preview([], header_row, col, raw, session_id, spreadsheet_url, sheet_tab, header_index + 2, preview_update_mode, preview_import_empty_values)
@@ -1835,7 +1885,13 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
             confirmed = [(candidate, assessment) for candidate, assessment in candidate_assessments if assessment['status'] == 'confirmed']
             matched, matched_assessment = confirmed[0] if len(confirmed) == 1 else (None, None)
             same_code = next((candidate for candidate in existing if cand['code'] and candidate.code.upper() == cand['code'].upper()), None)
-            base = matched or same_code
+            if code_matches_candidate(cand, same_code):
+                # Rows written by the web keep their FT code; never re-route
+                # them to a look-alike profile.
+                matched, matched_assessment = None, None
+                base = same_code
+            else:
+                base = matched or same_code
             if base:
                 before_values = {field: getattr(base, field) for field in ('name', 'birth_date', 'identity', 'email', 'phone', 'school', 'class_name', 'city', 'ward', 'nationality', 'grade', 'address', 'achievement', 'highest_round', 'parent')}
                 previous_session_ids = list(base.session_ids or [])
@@ -1902,6 +1958,7 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
             'updated': updated,
             'linkedExisting': linked_existing,
             'total': len(incoming),
+            'skipped': skipped,
             'fingerprint': fingerprint,
             'timestamp': ts_vn
         }

@@ -8,7 +8,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 from unittest.mock import MagicMock, patch
 
-from .models import Candidate, CandidateParticipation, Competition, ExamRoom, ExamSession, ExaminationBillingRecord, ExaminationSheet, LogNote, RoundResult
+from .models import Candidate, CandidateParticipation, Competition, ExamRoom, ExamSession, ExaminationBillingRecord, ExaminationSheet, LogNote, RoundResult, SessionSheetOutbox
 
 
 class AysbcOrganisationBatchMigrationTests(TestCase):
@@ -1420,11 +1420,9 @@ class ExaminationSheetAutomationTests(TestCase):
         self.assertIsNotNone(source.last_import_at)
 
     @patch('examination.sheet_scheduler.export_session_to_google_sheet')
-    @patch('examination.sheet_scheduler.output_sheet_export_preview')
     @patch('examination.sheet_scheduler.output_sheet_has_unreviewed_changes')
-    def test_output_schedule_exports_only_when_sheet_has_no_pending_edit(self, changed, preview, export_sheet):
+    def test_output_schedule_exports_only_when_sheet_has_no_pending_edit(self, changed, export_sheet):
         changed.return_value = (False, 'same')
-        preview.return_value = {'appendedRows': 0, 'unmatchedSheetRows': []}
         export_sheet.return_value = {'success': True, 'exported': 5, 'fingerprint': 'new-fingerprint'}
         output = ExaminationSheet.objects.create(
             id='output-auto', name='Sheet tổng hợp', url='https://docs.google.com/spreadsheets/d/output',
@@ -1442,30 +1440,12 @@ class ExaminationSheetAutomationTests(TestCase):
         self.assertFalse(output.pending_manual_import)
 
     @patch('examination.sheet_scheduler.export_session_to_google_sheet')
-    @patch('examination.sheet_scheduler.output_sheet_export_preview')
+    @patch('examination.sheet_scheduler.import_registration_sheet')
     @patch('examination.sheet_scheduler.output_sheet_has_unreviewed_changes')
-    def test_output_schedule_blocks_roster_mismatch_for_manual_resolution(self, changed, preview, export_sheet):
-        changed.return_value = (False, 'same')
-        preview.return_value = {'appendedRows': 2, 'unmatchedSheetRows': []}
-        output = ExaminationSheet.objects.create(
-            id='output-mismatch', name='Sheet tổng hợp', url='https://docs.google.com/spreadsheets/d/output',
-            session_id=self.session.id, stage='session-output', automation_enabled=True,
-            created_at=timezone.now(), updated_at=timezone.now(),
-        )
-
-        from .sheet_scheduler import run_output_exports
-        result = run_output_exports()
-
-        self.assertEqual(result['blocked'], 1)
-        export_sheet.assert_not_called()
-        output.refresh_from_db()
-        self.assertTrue(output.pending_manual_import)
-        self.assertEqual(output.status, 'attention')
-
-    @patch('examination.sheet_scheduler.export_session_to_google_sheet')
-    @patch('examination.sheet_scheduler.output_sheet_has_unreviewed_changes')
-    def test_output_schedule_blocks_export_when_people_edited_sheet(self, changed, export_sheet):
+    def test_output_schedule_imports_sheet_edits_before_exporting(self, changed, import_sheet, export_sheet):
         changed.return_value = (True, 'changed')
+        import_sheet.return_value = {'success': True, 'created': 0, 'updated': 1, 'skipped': []}
+        export_sheet.return_value = {'success': True, 'exported': 5, 'fingerprint': 'new-fingerprint'}
         output = ExaminationSheet.objects.create(
             id='output-edited', name='Sheet tổng hợp', url='https://docs.google.com/spreadsheets/d/output',
             session_id=self.session.id, stage='session-output', automation_enabled=True,
@@ -1475,11 +1455,34 @@ class ExaminationSheetAutomationTests(TestCase):
         from .sheet_scheduler import run_output_exports
         result = run_output_exports()
 
+        self.assertEqual(result['success'], 1)
+        import_sheet.assert_called_once()
+        export_sheet.assert_called_once_with(output)
+        output.refresh_from_db()
+        self.assertFalse(output.pending_manual_import)
+
+    @patch('examination.sheet_scheduler.export_session_to_google_sheet')
+    @patch('examination.sheet_scheduler.import_registration_sheet')
+    @patch('examination.sheet_scheduler.output_sheet_has_unreviewed_changes')
+    def test_output_schedule_keeps_sheet_when_rows_could_not_be_matched(self, changed, import_sheet, export_sheet):
+        changed.return_value = (True, 'changed')
+        import_sheet.return_value = {'success': True, 'created': 0, 'updated': 0,
+                                     'skipped': [{'row': 4, 'name': 'Nguyễn Minh An', 'reason': 'test'}]}
+        output = ExaminationSheet.objects.create(
+            id='output-unmatched', name='Sheet tổng hợp', url='https://docs.google.com/spreadsheets/d/output',
+            session_id=self.session.id, stage='session-output', automation_enabled=True,
+            last_content_fingerprint='old-fingerprint', created_at=timezone.now(), updated_at=timezone.now(),
+        )
+
+        from .sheet_scheduler import run_output_exports
+        result = run_output_exports()
+
+        # A full rewrite would delete the unmatched Sheet row; keep the tab and
+        # do not raise a manual-review flag.
         self.assertEqual(result['blocked'], 1)
         export_sheet.assert_not_called()
         output.refresh_from_db()
-        self.assertTrue(output.pending_manual_import)
-        self.assertEqual(output.status, 'attention')
+        self.assertFalse(output.pending_manual_import)
 
 
 class SheetCandidateImportPreviewTests(TestCase):
@@ -1778,19 +1781,20 @@ class SheetChangeScanTests(TestCase):
         self.assertEqual(billing.amount, 650000)
         self.assertEqual(billing.transfer_status, 'confirmed')
 
-    def test_ambiguous_profile_requires_review_without_writing_or_repeating_alerts(self):
+    def test_ambiguous_row_is_skipped_and_logged_while_other_rows_import(self):
         source = self.automatic_source()
         candidate = Candidate.objects.create(id='FT-OLD', code='FT-OLD', name='Nguyễn Minh An', email='same@example.test', sort_key='old')
-        raw = 'Họ và tên,Email\nNguyễn Minh Bình,same@example.test\n'
+        alerts = WorkspaceNotification.objects.filter(category='examination').count()
+        raw = 'Họ và tên,Email\nNguyễn Minh Bình,same@example.test\nTrần Thu Hà,ha@example.test\n'
         self.assertEqual(self.scan_csv(raw)['needsReview'], 1)
         source.refresh_from_db()
-        self.assertTrue(source.pending_manual_import)
-        self.assertEqual(source.status, 'attention')
+        self.assertFalse(source.pending_manual_import)
+        self.assertEqual(source.status, 'success')
         candidate.refresh_from_db()
         self.assertEqual(candidate.name, 'Nguyễn Minh An')
-        self.assertEqual(Candidate.objects.count(), 1)
-        alerts = WorkspaceNotification.objects.filter(category='examination').count()
-        self.scan_csv(raw)
+        self.assertTrue(Candidate.objects.filter(name='Trần Thu Hà').exists())
+        self.assertFalse(Candidate.objects.filter(name='Nguyễn Minh Bình').exists())
+        self.assertTrue(LogNote.objects.filter(entity_key=f'session-{self.session.pk}', content__contains='Nguyễn Minh Bình').exists())
         self.assertEqual(WorkspaceNotification.objects.filter(category='examination').count(), alerts)
 
     def test_failed_import_rolls_back_partially_created_profiles(self):
@@ -1812,6 +1816,8 @@ class SheetChangeScanTests(TestCase):
         billing.transfer_status = 'confirmed'
         billing.save()
         raw = 'Mã hồ sơ,Họ và tên,Email,Trường\nFT-EXISTING,Nguyễn Minh An,an@example.test,Trường mới\n'
+        # The web-to-Sheet worker has already written this candidate.
+        SessionSheetOutbox.objects.all().delete()
         self.assertEqual(self.scan_csv(raw)['autoImported'], 1)
         candidate.refresh_from_db()
         self.assertEqual(candidate.school, 'Trường mới')
@@ -1821,6 +1827,20 @@ class SheetChangeScanTests(TestCase):
         billing.refresh_from_db()
         self.assertEqual(billing.transfer_status, 'confirmed')
         self.assertEqual(billing.amount, 650000)
+
+    def test_web_written_code_wins_over_duplicate_look_alike_profiles(self):
+        self.automatic_source()
+        kept = Candidate.objects.create(id='FT-KEEP', code='FT-KEEP', name='Nguyễn Minh An', email='an@example.test', sort_key='keep')
+        Candidate.objects.create(id='FT-COPY', code='FT-COPY', name='Nguyễn Minh An', email='an@example.test', sort_key='copy')
+        CandidateParticipation.objects.create(candidate=kept, session=self.session)
+        SessionSheetOutbox.objects.all().delete()
+        raw = 'Mã hồ sơ,Họ và tên,Email,Trường\nFT-KEEP,Nguyễn Minh An,an@example.test,Trường mới\n'
+        result = self.scan_csv(raw)
+        self.assertEqual(result['autoImported'], 1)
+        self.assertEqual(result['needsReview'], 0)
+        kept.refresh_from_db()
+        self.assertEqual(kept.school, 'Trường mới')
+        self.assertEqual(Candidate.objects.get(pk='FT-COPY').school or '', '')
 
     def test_conflicting_explicit_code_never_overwrites_a_different_person(self):
         self.automatic_source()
@@ -1836,30 +1856,27 @@ class SheetChangeScanTests(TestCase):
         self.assertEqual(self.scan_csv('Trường,Email\nTrường A,an@example.test\n')['failed'], 1)
         self.assertEqual(Candidate.objects.count(), 0)
 
-    @patch('examination.sheet_scheduler.tab_content_fingerprint')
-    def test_change_scan_alerts_once_after_baseline(self, fingerprint):
-        from .sheet_scheduler import scan_sheet_changes
+    def test_tab_without_automation_window_still_applies_sheet_edits_without_alerts(self):
         source = ExaminationSheet.objects.create(
             id='sheet-watch', name='SCO - SIAIO',
-            url='https://docs.google.com/spreadsheets/d/watched',
-            session_id=self.session.id, sheet_tab='SCO - SIAIO',
-            stage='registration-source', created_at=timezone.now(), updated_at=timezone.now(),
+            url='https://docs.google.com/spreadsheets/d/watched/edit',
+            session_id=self.session.id, sheet_tab='SCO - SIAIO', pending_manual_import=True,
+            stage='session-output', created_at=timezone.now(), updated_at=timezone.now(),
         )
-        fingerprint.return_value = 'api:first'
-        self.assertEqual(scan_sheet_changes()['baselined'], 1)
+        alerts = WorkspaceNotification.objects.filter(category='examination').count()
+        raw = 'Họ và tên,Email\nNguyễn Minh An,an@example.test\n'
+        self.assertEqual(self.scan_csv(raw)['autoImported'], 1)
         source.refresh_from_db()
         self.assertFalse(source.pending_manual_import)
-
-        fingerprint.return_value = 'api:second'
-        self.assertEqual(scan_sheet_changes()['changed'], 1)
-        source.refresh_from_db()
-        self.assertTrue(source.pending_manual_import)
-        self.assertIsNotNone(source.change_detected_at)
-        self.assertEqual(scan_sheet_changes()['changed'], 0)
+        self.assertIsNone(source.change_detected_at)
+        self.assertEqual(Candidate.objects.count(), 1)
+        self.assertEqual(self.scan_csv(raw)['changed'], 0)
+        self.assertEqual(WorkspaceNotification.objects.filter(category='examination').count(), alerts)
 
     @patch('examination.sheet_webhook.cache.add', return_value=True)
     @patch('examination.sheet_scheduler.tab_content_fingerprint')
-    def test_apps_script_hint_checks_only_mapped_tab_and_notifies_without_importing(self, fingerprint, _throttle):
+    @patch('examination.sync.requests.get')
+    def test_apps_script_hint_applies_only_the_mapped_tab(self, get, fingerprint, _throttle):
         from .sheet_webhook import SPREADSHEET_ID
 
         source = ExaminationSheet.objects.create(
@@ -1868,21 +1885,18 @@ class SheetChangeScanTests(TestCase):
             session_id=self.session.id, sheet_tab='SCO - SIAIO',
             stage='registration-source', created_at=timezone.now(), updated_at=timezone.now(),
         )
+        get.return_value = MagicMock(status_code=200, text='Họ và tên,Email\nNguyễn Minh An,an@example.test\n',
+                                     url=f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export')
         payload = {'spreadsheetId': SPREADSHEET_ID, 'sheetTab': 'SCO - SIAIO'}
         client = APIClient()
-        fingerprint.return_value = 'csv:before'
-        baseline = client.post('/api/examination/sheets/change-webhook', payload, format='json')
-        self.assertEqual(baseline.status_code, 200)
-        self.assertEqual(baseline.data['baselined'], 1)
-
         fingerprint.return_value = 'csv:after'
         changed = client.post('/api/examination/sheets/change-webhook', payload, format='json')
         self.assertEqual(changed.status_code, 200)
-        self.assertEqual(changed.data['changed'], 1)
+        self.assertEqual(changed.data['autoImported'], 1)
         source.refresh_from_db()
-        self.assertTrue(source.pending_manual_import)
-        self.assertEqual(Candidate.objects.count(), 0)
-        self.assertEqual(WorkspaceNotification.objects.filter(category='examination').count(), 1)
+        self.assertFalse(source.pending_manual_import)
+        self.assertEqual(Candidate.objects.count(), 1)
+        self.assertFalse(WorkspaceNotification.objects.filter(category='examination', title__startswith='Sheet khảo thí').exists())
 
     def test_apps_script_hint_rejects_unmapped_spreadsheet(self):
         response = APIClient().post('/api/examination/sheets/change-webhook', {
