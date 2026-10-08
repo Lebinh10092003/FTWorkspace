@@ -776,7 +776,10 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
             source: "Th\u00eam th\u00ed sinh t\u1eeb kho",
             records: [
               {
+                // A profile from the repository joins this session with no
+                // round data: its history belongs to other competitions.
                 ...candidateEnroll,
+                examHistory: [],
                 contests: candidateEnroll.contests || selected.code,
               },
             ],

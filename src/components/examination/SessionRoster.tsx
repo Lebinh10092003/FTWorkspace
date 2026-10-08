@@ -67,7 +67,8 @@ export default function SessionRoster({ session, candidates, toolbar, onOpenCand
     if (!occurrence) return occurrenceId ? 'Đợt chưa xác định' : 'Chưa gán đợt';
     return occurrence.label || [occurrence.date && `Đợt ${occurrence.date.split('-').reverse().join('/')}`, occurrence.time].filter(Boolean).join(' · ') || 'Đợt tổ chức';
   };
-  const isEligibleForRound = (candidate: Candidate, index: number) => entryForRound(candidate, index)?.eligibility === 'Đủ điều kiện';
+  // First round: every registrant unless marked ineligible. Later rounds: only those explicitly marked eligible.
+  const isEligibleForRound = (candidate: Candidate, index: number) => index === 0 ? entryForRound(candidate, index)?.eligibility !== 'Không đủ điều kiện' : entryForRound(candidate, index)?.eligibility === 'Đủ điều kiện';
   const handleAllocatedCandidates = (updated: Candidate[], roundId?: string, rooms?: SavedRoom[], occurrenceId = '') => {
     if (roundId && rooms) setRoomsByRound(current => ({ ...current, [occurrenceKey(roundId, occurrenceId)]: rooms }));
     if (onCandidatesUpdated) onCandidatesUpdated(updated);

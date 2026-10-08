@@ -49,7 +49,8 @@ class CandidateRosterSyncTests(TestCase):
         self.assertEqual(rows[0], HEADERS)
         self.assertEqual(len(rows), 2)
         self.assertEqual(len(rows[1]), 16)
-        self.assertEqual(rows[1][:6], ['FT-001', 'Nguyễn Minh An', 'Trường A', '', 'SCO, SILSO', '01/10/2026 10:21'])
+        # Grade follows the class "6A" when none was entered.
+        self.assertEqual(rows[1][:6], ['FT-001', 'Nguyễn Minh An', 'Trường A', '6', 'SCO, SILSO', '01/10/2026 10:21'])
         self.assertEqual(rows[1][6:11], ['03/04/2015', 'Phụ huynh A', '0900000000', '000012345678', ''])
         self.assertEqual(rows[1][11:], ['Việt Nam', '6A', 'Hà Nội', 'Phường A', 'Địa chỉ kiểm thử'])
         self.assertFalse(any('kỳ' in header.lower() for header in HEADERS))

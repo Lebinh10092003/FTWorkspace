@@ -1,6 +1,6 @@
 import uuid
 from django.db import models
-from .eligibility import ELIGIBILITY_ELIGIBLE
+
 
 class Competition(models.Model):
     id = models.CharField(max_length=255, primary_key=True)
@@ -332,7 +332,7 @@ class RoundResult(models.Model):
     round_name = models.CharField(max_length=255)
     exam_room = models.ForeignKey(ExamRoom, on_delete=models.SET_NULL, null=True, blank=True, related_name='assignments')
     room_name = models.CharField(max_length=500, blank=True, default='')
-    eligibility = models.CharField(max_length=1000, blank=True, default=ELIGIBILITY_ELIGIBLE)
+    eligibility = models.CharField(max_length=1000, blank=True, default='')
     sbd = models.CharField(max_length=255, blank=True, default='')
     exam_date = models.CharField(max_length=255, blank=True, default='')
     time_slot = models.CharField(max_length=255, blank=True, default='')

@@ -67,6 +67,21 @@ def normalized_identity(value):
     return compact if len(compact) >= 6 and (not compact.isdigit() or len(set(compact)) > 1) else ''
 
 
+def normalize_grade(grade, class_name=''):
+    """Grade is a bare number ("6"), taken from the class when it names one.
+
+    "Khối 6" becomes "6"; a class such as "7H", "8A2" or "Lớp 6" decides the
+    grade, so a stale grade from last year cannot contradict the class.
+    """
+    class_match = re.match(r'\s*(?:l[oớ]p\s*)?(\d{1,2})(?!\d)', str(class_name or ''), flags=re.IGNORECASE)
+    if class_match and 1 <= int(class_match.group(1)) <= 12:
+        return str(int(class_match.group(1)))
+    grade_match = re.search(r'\d{1,2}', str(grade or ''))
+    if grade_match and 1 <= int(grade_match.group()) <= 12:
+        return str(int(grade_match.group()))
+    return clean_txt(grade)
+
+
 def format_identity(value):
     """Restore leading zeros lost by Excel; retain alphanumeric passports."""
     text = clean_txt(value)
@@ -716,6 +731,28 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
     }
 
 
+def history_for_session(history, session):
+    """Keep only round data that belongs to this session.
+
+    A candidate's history spans every competition they ever sat. Adding them
+    to a new session must never copy rounds of another session (IMO 2026
+    results into FIMO 2026-2027) or rounds the session does not have.
+    """
+    round_ids = {str(item.get('id')) for item in (session.rounds or []) if isinstance(item, dict) and item.get('id')}
+    kept = []
+    for item in history or []:
+        if not isinstance(item, dict):
+            continue
+        source_session = str(item.get('sessionId') or '').strip()
+        round_id = str(item.get('roundId') or '').strip()
+        if source_session and source_session != str(session.pk):
+            continue
+        if round_id and round_ids and round_id not in round_ids:
+            continue
+        kept.append(item)
+    return kept
+
+
 def upsert_participation_history(candidate, session_id, history, source='', registration=None):
     if not session_id:
         return None
@@ -748,6 +785,7 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
     if updates:
         participation.save(update_fields=list(set(updates)) + ['updated_at'])
     configured_rounds = [item for item in (session.rounds or []) if isinstance(item, dict)]
+    history = history_for_session(history, session)
     for position, item in enumerate(history or []):
         if not isinstance(item, dict):
             continue

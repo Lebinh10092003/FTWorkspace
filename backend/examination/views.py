@@ -13,7 +13,7 @@ from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.utils import timezone
 from .models import Competition, ExamSession, Candidate, CandidateParticipation, RoundResult, ExamRoom, LogNote, ExaminationSheet, ExaminationSheetPublication
-from .eligibility import ELIGIBILITY_ELIGIBLE, normalize_eligibility
+from .eligibility import eligible_for_round_q, normalize_eligibility
 from authentication.models import SystemConfig, UserProfile
 from authentication.notifications import notify_workspace
 from authentication.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsManagerOrAdmin, IsAdmin
@@ -672,6 +672,28 @@ def occurrence_id_from_round(round_config, occurrence_id='', exam_date=''):
     return ''
 
 
+def history_for_session(history, session):
+    """Keep only round data that belongs to this session.
+
+    A candidate's history spans every competition they ever sat. Adding them
+    to a new session must never copy rounds of another session (IMO 2026
+    results into FIMO 2026-2027) or rounds the session does not have.
+    """
+    round_ids = {str(item.get('id')) for item in (session.rounds or []) if isinstance(item, dict) and item.get('id')}
+    kept = []
+    for item in history or []:
+        if not isinstance(item, dict):
+            continue
+        source_session = str(item.get('sessionId') or '').strip()
+        round_id = str(item.get('roundId') or '').strip()
+        if source_session and source_session != str(session.pk):
+            continue
+        if round_id and round_ids and round_id not in round_ids:
+            continue
+        kept.append(item)
+    return kept
+
+
 def upsert_participation_history(candidate, session_id, history, source='', registration=None, update_mode='replace-nonempty', import_empty_values=True, historical_import=False):
     """Store a source tab as one session and each populated round independently."""
     if not session_id:
@@ -725,6 +747,7 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
         participation.save(update_fields=list(set(updates)) + ['updated_at'])
 
     configured_rounds = [item for item in (session.rounds or []) if isinstance(item, dict)]
+    history = history_for_session(history, session)
     for history_index, item in enumerate(history or []):
         if not isinstance(item, dict):
             continue
@@ -1690,8 +1713,7 @@ def exam_room_allocation(request, session_id, round_id):
         return Response({'error': 'Đợt tổ chức không thuộc vòng thi đã chọn.'}, status=status.HTTP_400_BAD_REQUEST)
     result_query = RoundResult.objects.filter(
         participation__session=session,
-        eligibility=ELIGIBILITY_ELIGIBLE,
-    ).filter(
+    ).filter(eligible_for_round_q(session, round_id)).filter(
         Q(round_id=str(round_id)) | Q(round_id='', round_name=round_name),
     )
     if occurrence_id:
@@ -1908,8 +1930,7 @@ def apply_round_slot(request, session_id, round_id):
     round_name = str(round_config.get('name') or '').strip()
     results = RoundResult.objects.filter(
         participation__session=session,
-        eligibility=ELIGIBILITY_ELIGIBLE,
-    ).filter(Q(round_id=str(round_id)) | Q(round_id='', round_name=round_name)).select_related('participation__candidate')
+    ).filter(eligible_for_round_q(session, round_id)).filter(Q(round_id=str(round_id)) | Q(round_id='', round_name=round_name)).select_related('participation__candidate')
     is_batched_round = len(slots) > 1 and any(str(slot.get('label') or '').strip() for slot in slots if isinstance(slot, dict))
     if occurrence_id and is_batched_round and results.exclude(occurrence_id='').exists():
         # A batch action must never overwrite candidates in another batch.

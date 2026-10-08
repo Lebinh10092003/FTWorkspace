@@ -287,3 +287,50 @@ class SheetRoundMatchingTests(TestCase):
         self.original.refresh_from_db()
         self.assertEqual((self.original.round_name, self.original.score, self.original.time_slot),
                          ('Vòng loại Quốc gia', '49', '9:00-12:00'))
+
+
+class SessionIsolationTests(TestCase):
+    """Regression (09/10/2026): IMO/ISO/AYSBC history appeared in FIMO/FIEO 2026-2027."""
+
+    def setUp(self):
+        from authentication.models import UserProfile
+        from rest_framework.test import APIClient
+        self.old = ExamSession.objects.create(id='imo-old', competition_id='IMO', code='IMO', name='IMO 2026',
+            parent='SCO', organizer='SCO', time='2025-2026', sort_key='1',
+            rounds=[{'id': 'round-national', 'name': 'Vòng loại Quốc gia'}])
+        self.new = ExamSession.objects.create(id='fimo-new', competition_id='FIMO', code='FIMO', name='FIMO 2026-2027',
+            parent='FT', organizer='FT', time='2026-2027', sort_key='2',
+            rounds=[{'id': 'round-national', 'name': 'Vòng loại Quốc gia'}, {'id': 'round-final', 'name': 'Chung kết'}])
+        self.candidate = Candidate.objects.create(id='FT-00104', code='FT-00104', name='Nguyễn Hà An',
+            identity='001314007465', grade='Khối 6', class_name='7S', sort_key='1')
+        old_part = CandidateParticipation.objects.create(candidate=self.candidate, session=self.old)
+        RoundResult.objects.create(participation=old_part, round_id='round-national', round_name='Vòng loại Quốc gia',
+            exam_date='2026-05-17', sbd='IMO-IEO-067', score='34/50')
+        self.client = APIClient()
+        self.client.force_authenticate(UserProfile.objects.create(email='staff@example.test', role='ADMIN'))
+
+    def test_adding_a_repository_candidate_copies_no_other_session_rounds(self):
+        history = [{'sessionId': 'imo-old', 'roundId': 'round-national', 'round': 'Vòng loại Quốc gia',
+                    'date': '2026-05-17', 'sbd': 'IMO-IEO-067', 'score': '34/50'},
+                   {'roundId': 'aysbc-regional', 'round': 'Vòng 2', 'score': '74'}]
+        response = self.client.post('/api/examination/import/candidates', {
+            'sessionId': self.new.pk, 'source': 'Thêm thí sinh từ kho',
+            'records': [{'code': 'FT-00104', 'name': 'Nguyễn Hà An', 'identity': '001314007465', 'examHistory': history}],
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        new_results = RoundResult.objects.filter(participation__session=self.new)
+        self.assertFalse(new_results.exclude(sbd='', score='').exists())
+        self.assertFalse(new_results.filter(round_id='aysbc-regional').exists())
+
+    def test_grade_follows_class_and_is_a_bare_number(self):
+        self.candidate.refresh_from_db()
+        self.assertEqual(self.candidate.grade, '7')
+
+    def test_first_round_admits_registrants_without_writing_eligibility(self):
+        from .eligibility import eligible_for_round_q
+        part = CandidateParticipation.objects.create(candidate=self.candidate, session=self.new)
+        first = RoundResult.objects.create(participation=part, round_id='round-national', round_name='Vòng loại Quốc gia')
+        later = RoundResult.objects.create(participation=part, round_id='round-final', round_name='Chung kết')
+        self.assertEqual(first.eligibility, '')
+        self.assertTrue(RoundResult.objects.filter(pk=first.pk).filter(eligible_for_round_q(self.new, 'round-national')).exists())
+        self.assertFalse(RoundResult.objects.filter(pk=later.pk).filter(eligible_for_round_q(self.new, 'round-final')).exists())
