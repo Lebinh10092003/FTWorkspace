@@ -67,7 +67,7 @@ const OverviewChartTick = ({ x, y, payload }: { x?: number; y?: number; payload?
 };
 const EXAMINATION_CACHE_KEY = "ft-examination-bootstrap-v4";
 const EXAMINATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const sheetImportVersion = (rows: any[]) => rows.filter(item => item.stage === 'registration-source')
+const sheetImportVersion = (rows: any[]) => rows.filter(item => item.stage !== 'form-webhook')
   .map(item => `${item.id}:${item.lastImportAt || ''}`).sort().join('|');
 const loadExaminationCache = () => {
   try {
@@ -335,7 +335,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         }
       } catch { /* Next poll will retry. */ }
     };
-    const timer = window.setInterval(refreshAlerts, 60_000);
+    const timer = window.setInterval(refreshAlerts, 15_000);
     window.addEventListener('focus', refreshAlerts);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', refreshAlerts); };
   }, [idToken, isGuest, editing, dialog, showCreate, showCandidateAdd, page]);
@@ -2108,6 +2108,11 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-8">
           {bootstrapError && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{bootstrapError}</div>}
+          {!isGuest && sheetLinks.some(source => source.pendingManualImport) && <div role="status" className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+            <p className="font-bold">Google Sheet có thay đổi đang chờ đưa vào web</p>
+            <p className="mt-1">Mở kỳ tổ chức để xem trước và nhập dữ liệu.</p>
+            <div className="mt-2 flex flex-wrap gap-2">{sheetLinks.filter(source => source.pendingManualImport).map(source => <button key={source.id} className="rounded-lg border border-amber-300 bg-white px-3 py-2 font-semibold" onClick={() => { const session = sessions.find(item => item.id === source.sessionId); if (session) select(session); }}>{source.sheetTab || source.name}</button>)}</div>
+          </div>}
           {page !== 'registration-forms' && sessions === initialSessions && !bootstrapError ? (
             <div className="grid min-h-[60vh] place-items-center text-sm font-semibold text-slate-500">
               <span className="inline-flex items-center gap-3">

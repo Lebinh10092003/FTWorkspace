@@ -1,8 +1,9 @@
 [Unit]
-Description=Synchronize examination registration sources hourly
+Description=Detect examination Sheet changes every minute for manual review
 
 [Timer]
-OnCalendar=*-*-* *:00:00 Asia/Ho_Chi_Minh
+OnCalendar=*-*-* *:*:00 Asia/Ho_Chi_Minh
+AccuracySec=1s
 Persistent=true
 Unit=workspace-examination-sheet-scan.service
 
