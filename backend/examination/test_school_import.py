@@ -212,6 +212,30 @@ class SchoolImportTests(TestCase):
         self.assertEqual((old.class_name, old.email), ('7A3', 'new@example.test'))
         self.assertEqual(new.participations.get().school_registration.school, 'Trường A')
 
+    def test_three_contests_split_fee_by_prices_learnt_from_the_file(self):
+        ExamSession.objects.create(id='TESTC-2026', competition_id='TESTC', code='TESTC', name='TESTC', parent='TESTC', organizer='Test', time='2026–2027', sort_key='TESTC',
+            rounds=[{'id': 'round-1', 'name': 'Vòng 1', 'date': '2026-10-25'}])
+        rows = [
+            [1, 'Nguyễn Minh An', '12/07/2015', '001215012345', 'Lớp 6', 'TESTA & TESTB & TESTC', '900.000VNĐ', 'Nguyễn Văn A', '0901234567', 'a@example.test', ''],
+            [2, 'Trần Minh Bình', '10/02/2014', '002214012345', 'Lớp 7', 'TESTC', '400.000', 'Trần Văn A', '0907654321', 'b@example.test', ''],
+            [3, 'Lê Thu Hà', '01/03/2014', '003214012345', 'Lớp 7', 'TESTA', '250000', 'Lê Văn A', '0907654000', 'c@example.test', ''],
+        ]
+        preview = self.preview(self.workbook(rows))
+        self.assertTrue(preview.data['canCommit'], preview.data['issues'])
+        self.assertEqual(preview.data['summary']['registrations'], 5)
+        amounts = {group['sessionId']: group['amount'] for group in preview.data['groups']}
+        # TESTA 250k (learnt) + TESTC 400k (learnt) → TESTB gets the remaining 250k.
+        self.assertEqual(amounts, {'TESTA-2026': 500000, 'TESTB-2026': 250000, 'TESTC-2026': 800000})
+
+    def test_many_contests_and_separators_without_price_hints(self):
+        from .school_import import registered_contests
+        for value in ('TESTA & TESTB & TESTC', 'TESTA, TESTB và TESTC', 'TESTA - TESTB - TESTC', 'TESTA | TESTB | TESTC', 'TESTA+TESTB/TESTC'):
+            self.assertEqual(registered_contests(value, []), ['TESTA', 'TESTB', 'TESTC'], value)
+        from .school_import import split_fee
+        self.assertEqual(split_fee(750000, ['TESTA', 'TESTB', 'TESTC'], {}), {'TESTA': 250000, 'TESTB': 250000, 'TESTC': 250000})
+        self.assertIsNone(split_fee(800000, ['TESTA', 'TESTB', 'TESTC'], {}))
+        self.assertIsNone(split_fee(800000, ['TESTA', 'TESTB'], {'testa': 250000, 'testb': 250000}))
+
     def test_paid_checkbox_column_is_not_read_as_the_fee(self):
         from .sync import resolve_column_indices
         mapping = resolve_column_indices(['STT', 'Họ và tên thí sinh', 'Nộp lệ phí', 'Ghi chú'], include_defaults=False)

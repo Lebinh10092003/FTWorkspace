@@ -7,6 +7,7 @@ import re
 import unicodedata
 import uuid
 import zipfile
+from collections import Counter
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -100,6 +101,24 @@ def parse_fee(value):
     return amount
 
 
+def split_fee(total, contests, known_fees):
+    """Split one fee across several contests of the same row, or return None.
+
+    Uses per-contest fees learnt from the file: an exact match, or all but one
+    known with the remainder for the last. Without fee hints an even split is
+    used when it divides exactly.
+    """
+    known = {contest: known_fees[norm(contest)] for contest in contests if norm(contest) in known_fees}
+    if len(known) == len(contests):
+        return known if sum(known.values()) == total else None
+    if len(known) == len(contests) - 1:
+        remainder = total - sum(known.values())
+        return known | {next(c for c in contests if c not in known): remainder} if remainder > 0 else None
+    if not known and total % len(contests) == 0:
+        return {contest: total // len(contests) for contest in contests}
+    return None
+
+
 def read_workbook(content, sheet_name=''):
     if len(content) > 10 * 1024 * 1024:
         raise ValueError('File Excel tối đa 10 MB.')
@@ -189,7 +208,8 @@ def registered_contests(value, sessions):
     if any(norm(value) in {norm(s.pk), norm(s.code), norm(s.name)} for s in sessions):
         return [value]
     result, seen = [], set()
-    for part in re.split(r'[,;&/+\n]+|\s+và\s+', value, flags=re.IGNORECASE):
+    # "FIMO & FIEO & SIAIO", "FIMO, FIEO và SIAIO", "FIMO - FIEO", "FIMO | FIEO"…
+    for part in re.split(r'[,;&/+|\n]+|\s+[-–—]\s+|\s+(?:và|and|hoặc)\s+', value, flags=re.IGNORECASE):
         part = part.strip()
         key = norm(part)
         if key and key not in seen:
@@ -237,6 +257,18 @@ def _build_plan(content, options, skip_rows=frozenset()):
     existing = list(Candidate.objects.all().order_by('id'))
     profiles, rows, registrations, routes = [], [], {}, {}
     missing_fee_rows = []
+    # Fees per contest learnt from single-contest rows of this same file; they
+    # split a combined fee such as "FIMO & FIEO & SIAIO · 800.000" correctly
+    # when the contests cost different amounts.
+    known_fees = {}
+    for raw in raw_rows:
+        single = registered_contests(raw.get('contests', ''), sessions)
+        if len(single) == 1 and raw.get('amount'):
+            try:
+                known_fees.setdefault(norm(single[0]), Counter())[parse_fee(raw['amount'])] += 1
+            except InvalidOperation:
+                pass
+    known_fees = {contest: counts.most_common(1)[0][0] for contest, counts in known_fees.items()}
     for raw in raw_rows:
         row = raw['row']
         if row in skip_rows:
@@ -323,13 +355,12 @@ def _build_plan(content, options, skip_rows=frozenset()):
                 issue('error', 'Lệ phí cần là số tiền, ví dụ 250.000.', row)
         else:
             missing_fee_rows.append(row)
+        contest_fees = {contest: amount for contest in contests}
         if len(contests) > 1 and amount is not None:
-            # "FIMO & FIEO · 500.000" is one fee covering both contests.
-            if amount % len(contests):
-                issue('error', 'Lệ phí chung của dòng nhiều cuộc thi không chia đều được. Tách thành từng dòng với lệ phí riêng.', row)
-                amount = None
-            else:
-                amount //= len(contests)
+            contest_fees = split_fee(amount, contests, known_fees)
+            if contest_fees is None:
+                issue('error', 'Lệ phí chung của dòng nhiều cuộc thi không chia được theo giá từng cuộc thi. Tách thành từng dòng với lệ phí riêng.', row)
+                contest_fees = {contest: None for contest in contests}
         for contest in contests or ['']:
             possible = [s for s in sessions if norm(contest) in {norm(s.pk), norm(s.code), norm(s.name)} or norm(contest).startswith(norm(s.code) + ' ')] if contest else []
             if year:
@@ -339,7 +370,7 @@ def _build_plan(content, options, skip_rows=frozenset()):
             if not target and contest not in routes:
                 issue('error', 'Không xác định được duy nhất kỳ tổ chức. Chọn kỳ cho ' + (contest or 'dòng này') + '.', row)
             routes[contest] = {'contest': contest, 'sessionId': target.pk if target else '', 'options': [{'id': s.pk, 'label': f'{s.code} · {s.name} · {s.time}'} for s in possible]}
-            entry = {'row': row, 'name': profile['name'], 'contest': contest, 'profileIndex': profile_index, 'sessionId': target.pk if target else '', 'amount': amount, 'note': raw.get('generalNote') or raw.get('note', ''), 'subject': raw.get('subject', ''), 'category': raw.get('category', ''), 'examLanguage': raw.get('examLanguage', ''), 'needsDecision': needs_decision, 'resolvedCode': resolved_code, 'matches': [{'code': c.code, 'name': c.name, 'birthDate': c.birth_date, 'school': c.school, 'reason': a['reason']} for c, a in matches]}
+            entry = {'row': row, 'name': profile['name'], 'contest': contest, 'profileIndex': profile_index, 'sessionId': target.pk if target else '', 'amount': contest_fees.get(contest, amount), 'note': raw.get('generalNote') or raw.get('note', ''), 'subject': raw.get('subject', ''), 'category': raw.get('category', ''), 'examLanguage': raw.get('examLanguage', ''), 'needsDecision': needs_decision, 'resolvedCode': resolved_code, 'matches': [{'code': c.code, 'name': c.name, 'birthDate': c.birth_date, 'school': c.school, 'reason': a['reason']} for c, a in matches]}
             rows.append(entry)
             if target:
                 key = f'{profile_index}:{target.pk}'
@@ -359,7 +390,7 @@ def _build_plan(content, options, skip_rows=frozenset()):
                         if participation.school_registration_id and participation.school_registration.partner_id != partner.get('id'):
                             issue('error', 'Lượt đăng ký đã thuộc nhóm đối soát của trường khác.', row)
                         prior_fee = (participation.registration_data or {}).get('schoolFee')
-                        if participation.school_registration_id and prior_fee != amount:
+                        if participation.school_registration_id and prior_fee != entry['amount']:
                             issue('error', 'Lệ phí khác lượt đăng ký đã nhập. Sửa ở đối soát trước khi nhập lại.', row)
                     registrations[key] = entry
     if missing_fee_rows:
