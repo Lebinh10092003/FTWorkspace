@@ -278,7 +278,7 @@ def resolve_column_indices(header, include_defaults=True):
             idx['stt'] = i
         elif 'name' not in idx and ('hovantenthisinh' in nh or 'hovaten' in nh or 'thisinh' in nh or nh == 'ten'):
             idx['name'] = i
-        elif 'amount' not in idx and ('sotiendanop' in nh or 'lephi' in nh or nh == 'tien'):
+        elif 'amount' not in idx and ('sotiendanop' in nh or ('lephi' in nh and 'noplephi' not in nh) or nh == 'tien'):
             idx['amount'] = i
         elif 'invoice' not in idx and ('hoadon' in nh or 'hoadien' in nh):
             idx['invoice'] = i

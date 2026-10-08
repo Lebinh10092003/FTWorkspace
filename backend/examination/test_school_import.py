@@ -212,6 +212,14 @@ class SchoolImportTests(TestCase):
         self.assertEqual((old.class_name, old.email), ('7A3', 'new@example.test'))
         self.assertEqual(new.participations.get().school_registration.school, 'Trường A')
 
+    def test_paid_checkbox_column_is_not_read_as_the_fee(self):
+        from .sync import resolve_column_indices
+        mapping = resolve_column_indices(['STT', 'Họ và tên thí sinh', 'Nộp lệ phí', 'Ghi chú'], include_defaults=False)
+        self.assertNotIn('amount', mapping)
+        self.assertEqual(mapping['paymentStatus'], 2)
+        mapping = resolve_column_indices(['Họ và tên thí sinh', 'Lệ phí', 'Nộp lệ phí'], include_defaults=False)
+        self.assertEqual((mapping['amount'], mapping['paymentStatus']), (1, 2))
+
     def test_official_appendix_template_reads_school_block_and_text_fees(self):
         workbook = openpyxl.Workbook()
         sheet = workbook.active
