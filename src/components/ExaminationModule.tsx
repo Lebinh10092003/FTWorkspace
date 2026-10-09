@@ -1525,6 +1525,14 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
       )}{" "}
       {sessionTab !== "classes" && (
         <SessionRoster
+          sessions={sessions}
+          onTransferred={(result) => {
+            setCandidates((list) => list.map((item) => (item.code === result.candidate.code ? result.candidate : item)));
+            setSessions((list) => list.map((item) => result.sessions.find((saved) => saved.id === item.id) || item));
+            const current = result.sessions.find((saved) => saved.id === selected.id);
+            if (current) setSelected(current);
+            setNotice(result.message);
+          }}
           tab={sessionTab === "students" ? "all" : sessionTab}
           hideTabs
           session={selected}

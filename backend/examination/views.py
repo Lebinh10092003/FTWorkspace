@@ -2243,7 +2243,12 @@ def candidate_remove_from_session(request, pk, session_id):
         derived = [s.id for s in all_sessions if s.code.upper() in sess_codes]
         
     cand.session_ids = [s_id for s_id in derived if s_id != session_id]
+    removed = CandidateParticipation.objects.filter(candidate=cand, session_id=session_id).select_related('school_registration').first()
+    group = removed.school_registration if removed else None
     CandidateParticipation.objects.filter(candidate=cand, session_id=session_id).delete()
+    # The school's total drops by the removed pupil's fee (until accounting acted).
+    from .transfer import refresh_school_group
+    refresh_school_group(group)
     cand.updated = timezone.now().strftime('%d/%m/%Y %H:%M')
     cand.save()
     action = f'Gỡ thí sinh {cand.code} ({cand.name}) khỏi kỳ tổ chức.'
@@ -2253,6 +2258,32 @@ def candidate_remove_from_session(request, pk, session_id):
     
     sync_session_candidate_totals()
     return Response(serialize_candidate(cand))
+
+@api_view(['POST'])
+@permission_classes([IsManagerOrAdmin])
+def candidate_transfer_session(request, pk, session_id):
+    """Đổi cuộc thi: move one registration to another session."""
+    from .transfer import transfer_participation
+    data = request.data or {}
+    participation = CandidateParticipation.objects.filter(candidate__code=pk, session_id=session_id).select_related('candidate', 'session', 'school_registration').first()
+    if not participation:
+        return Response({'error': 'Thí sinh không thuộc kỳ tổ chức này.'}, status=status.HTTP_404_NOT_FOUND)
+    target = ExamSession.objects.filter(pk=str(data.get('targetSessionId') or '').strip()).first()
+    if not target:
+        return Response({'error': 'Hãy chọn cuộc thi mới.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        _, summary = transfer_participation(participation, target, data.get('examRoom') if isinstance(data.get('examRoom'), dict) else None, audit_actor(request))
+    except ValueError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    candidate = Candidate.objects.get(pk=participation.candidate.pk)
+    append_audit(f'candidate-{candidate.code}', summary, request)
+    for session in (participation.session, target):
+        append_audit(f'session-{session.pk}', summary, request)
+        append_competition_scope_audit(session, summary, request)
+    sync_session_candidate_totals()
+    return Response({'candidate': serialize_candidate(candidate), 'message': summary,
+                     'sessions': [serialize_session(session) for session in ExamSession.objects.filter(pk__in=[session_id, target.pk])]})
+
 
 @api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
