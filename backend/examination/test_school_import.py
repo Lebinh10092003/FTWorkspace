@@ -619,3 +619,15 @@ class SchoolImportTests(TestCase):
         self.assertEqual(proof.drive_file_id, 'existing-file')
         service.files.return_value.create.assert_not_called()
         self.assertEqual(archive_pending(service=service)['synced'], 0)
+
+
+class FeeParsingTests(TestCase):
+    """Regression (09/10/2026): Trưng Vương fees read 10x too high or 1000x too low."""
+
+    def test_excel_numbers_separators_and_thousand_units(self):
+        from .school_import import parse_fee
+        cases = {'250000.0': 250000, 250000.0: 250000, '250.0': 250000, '750.0': 750000, '500.000VNĐ': 500000,
+                 '250,000VNĐ': 250000, '1.250.000,00': 1250000, '250': 250000}
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(parse_fee(raw), expected)

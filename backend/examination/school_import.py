@@ -92,10 +92,19 @@ def read_school_metadata(row, metadata):
 
 def parse_fee(value):
     """Read "500.000VNĐ", "250,000 đ" or 500000 as an integer amount in VND."""
-    digits = re.sub(r'\D', '', str(value or ''))
-    if not digits:
+    text = re.sub(r'(?i)\s|vn[dđ]|đồng|đ|d', '', str(value or '').strip())
+    if re.fullmatch(r'\d+(?:\.\d+)?', text):
+        # An Excel number cell arrives as "250000.0": the dot is decimal.
+        amount = int(float(text))
+    elif re.fullmatch(r'\d{1,3}(?:[.,]\d{3})+(?:[.,]0{1,2})?', text):
+        # "500.000", "250,000", "1.250.000,00": thousands separators.
+        amount = int(re.sub(r'[.,]0{1,2}$', '', text).replace('.', '').replace(',', ''))
+    else:
         raise InvalidOperation
-    amount = int(digits)
+    if 0 < amount < 10000:
+        # Schools often write fees in thousands ("250" for 250.000 đ); no
+        # contest fee is below 10.000 đ.
+        amount *= 1000
     if not 0 < amount <= 999999999999:
         raise InvalidOperation
     return amount
