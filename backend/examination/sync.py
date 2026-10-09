@@ -1218,8 +1218,8 @@ def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=Fals
         remaining.discard(candidate_index)
         matched_rows += 1
 
-    # New rows continue the running number (gaps are closed on export).
-    next_stt = sum(1 for row in current_rows if clean_txt(_export_row_record(row)['code']) or clean_txt(_export_row_record(row)['name'])) + 1
+    # New rows continue the running number of the STT formula.
+    next_stt = sum(1 for row in current_rows if row and len(row) > 1 and clean_txt(row[1])) + 1
 
     # Do not append a possible duplicate. It is safer to pause and ask for a
     # stable identifier than to create a second record for the same person.
@@ -1484,6 +1484,47 @@ def tab_content_fingerprint(sheet, google_access_token=None):
             f'CSV công khai: {public_failure}; Google API: {api_error}'
         ) from api_error
 
+# Column A (STT) is owned by one formula in A3 that numbers every row with a
+# code in column B, so deleted, inserted or sorted rows never leave gaps. The
+# web writes from column B only.
+STT_FORMULA = '=ARRAYFORMULA(IF(B3:B="","",COUNTIFS(B3:B,"<>",ROW(B3:B),"<="&ROW(B3:B))))'
+
+
+def stt_values(rows):
+    """What the STT formula shows for these data rows (row 3 onwards)."""
+    number, result = 0, []
+    for row in rows:
+        if row and len(row) > 1 and clean_txt(row[1]):
+            number += 1
+            result.append(str(number))
+        else:
+            result.append('')
+    return result
+
+
+def ensure_stt_formula(service, spreadsheet_id, range_title):
+    """Install the STT formula once; returns True when it had to be written."""
+    current = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=f'{range_title}!A3',
+        valueRenderOption='FORMULA').execute(num_retries=6).get('values', [])
+    if current and current[0] and str(current[0][0]).replace(' ', '').upper() == STT_FORMULA.replace(' ', '').upper():
+        return False
+    # Typed numbers below A3 would block the array formula (#REF!).
+    service.spreadsheets().values().clear(spreadsheetId=spreadsheet_id, range=f'{range_title}!A3:A', body={}).execute(num_retries=6)
+    service.spreadsheets().values().update(spreadsheetId=spreadsheet_id, range=f'{range_title}!A3',
+        valueInputOption='USER_ENTERED', body={'values': [[STT_FORMULA]]}).execute(num_retries=6)
+    return True
+
+
+def ensure_sheet_stt(sheet, google_access_token=None):
+    spreadsheet_id = extract_spreadsheet_id(sheet.url)
+    if not spreadsheet_id:
+        return False
+    config = SystemConfig.objects.filter(key='main').first()
+    service = build_sheets_service(google_access_token or (config.last_google_access_token if config else None), (config.data if config else {}) or {})
+    target = _output_sheet_target(sheet, service)
+    return ensure_stt_formula(service, spreadsheet_id, _sheet_range_title(target['title']))
+
+
 def remove_session_sheet_rows(sheet, codes, google_access_token=None):
     """Delete the rows of candidates who no longer belong to this session.
 
@@ -1592,28 +1633,18 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
             code = clean_txt(_export_row_record(row)['code']).upper()
             differs = [clean_txt(v) for v in current[index]] != [clean_txt(v) for v in row[:len(current[index])]] or any(clean_txt(v) for v in row[len(current[index]):])
             if code in selected_codes and differs:
-                updates.append({'range': f'{range_title}!A{index + 3}:{end_column}{index + 3}', 'values': [row]})
+                updates.append({'range': f'{range_title}!B{index + 3}:{end_column}{index + 3}', 'values': [row[1:]]})
                 resulting_values[index] = list(row)
         new_rows = [project(row) for row in alignment['appendedValues']
                     if clean_txt(_export_row_record(row)['code']).upper() in selected_codes]
         if new_rows:
-            updates.append({'range': f'{range_title}!A{len(current) + 3}:{end_column}{len(current) + len(new_rows) + 2}', 'values': new_rows})
+            updates.append({'range': f'{range_title}!B{len(current) + 3}:{end_column}{len(current) + len(new_rows) + 2}', 'values': [row[1:] for row in new_rows]})
             resulting_values.extend(new_rows)
         refreshed_rows = len(updates) - bool(new_rows)
-        # STT is a running number: rows removed from the tab must not leave
-        # gaps. Only the STT cells that are wrong are rewritten, in place.
-        number = 0
-        for index, row in enumerate(resulting_values):
-            record = _export_row_record(row)
-            if not (clean_txt(record['code']) or clean_txt(record['name'])):
-                continue
-            number += 1
-            if clean_txt(row[0] if row else '') != str(number):
-                if row:
-                    row[0] = number
-                else:
-                    row.append(number)
-                updates.append({'range': f'{range_title}!A{index + 3}', 'values': [[number]]})
+        # Column A shows the STT formula's numbers.
+        for row, number in zip(resulting_values, stt_values(resulting_values)):
+            if row:
+                row[0] = number
         if updates:
             service.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_id,
                 body={'valueInputOption': 'RAW', 'data': updates}).execute(num_retries=6)
@@ -1626,7 +1657,8 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
             def comparable(rows):
                 result = []
                 for row in rows:
-                    values = [clean_txt(value) for value in row]
+                    # Column A is the Sheet's STT formula, not written by the web.
+                    values = [clean_txt(value) for value in row[1:]]
                     while values and not values[-1]:
                         values.pop()
                     result.append(values)

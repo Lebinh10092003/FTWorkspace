@@ -10,7 +10,7 @@ from django.utils import timezone
 from .candidate_sheet_queue import launch_candidate_sheet_worker
 from .models import Candidate, CandidateParticipation, ExaminationSheet, SessionSheetOutbox
 from .partner_contact_sync import _single_worker
-from .sync import export_session_to_google_sheet, remove_session_sheet_rows, sheet_values_fingerprint
+from .sync import ensure_sheet_stt, export_session_to_google_sheet, remove_session_sheet_rows, sheet_values_fingerprint
 
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,12 @@ def drain_session_sheet_queue(limit=100):
                 codes = [code for pk, code in code_by_id.items() if pk in members]
                 failures, held = [], set()
                 for sheet in destinations(session_id):
+                    if sheet.stage == 'session-output':
+                        try:
+                            # STT is a formula on the Sheet; a failure here never blocks the queue.
+                            ensure_sheet_stt(sheet)
+                        except Exception as exc:
+                            logger.warning('Không đặt được công thức STT cho %s: %s', sheet.pk, exc)
                     try:
                         deleted = remove_session_sheet_rows(sheet, removed)
                         if deleted:
