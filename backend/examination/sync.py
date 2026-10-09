@@ -386,15 +386,16 @@ ROUND_HISTORY_FIELD_MAP = {
 }
 
 
-def occurrence_id_from_history(round_config, occurrence_id='', exam_date=''):
+def occurrence_id_from_history(round_config, occurrence_id='', exam_date='', time_slot=''):
     explicit = clean_txt(occurrence_id)
     if explicit:
         return explicit
+    from .views import slot_for_date_and_time
     date_value = clean_txt(exam_date)
     slots = (round_config or {}).get('slots') or []
-    for slot in slots:
-        if isinstance(slot, dict) and date_value and clean_txt(slot.get('date')) == date_value:
-            return clean_txt(slot.get('id'))
+    matched = slot_for_date_and_time(slots, date_value, time_slot)
+    if matched:
+        return clean_txt(matched.get('id'))
     if len(slots) == 1 and isinstance(slots[0], dict):
         return clean_txt(slots[0].get('id'))
     return ''
@@ -802,7 +803,7 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
             values['exam_date'] = parse_dob(values['exam_date']) or values['exam_date']
         round_config = next((config for config in configured_rounds if clean_txt(config.get('name')).casefold() == round_name.casefold()), configured_rounds[position] if position < len(configured_rounds) else {})
         values['round_id'] = clean_txt(item.get('roundId')) or clean_txt(round_config.get('id'))
-        values['occurrence_id'] = occurrence_id_from_history(round_config, values.get('occurrence_id'), values.get('exam_date'))
+        values['occurrence_id'] = occurrence_id_from_history(round_config, values.get('occurrence_id'), values.get('exam_date'), values.get('time_slot'))
         values['raw_data'] = {str(key): value for key, value in item.items() if value not in (None, '')}
         existing_result = RoundResult.objects.filter(participation=participation, round_id=values['round_id'], occurrence_id=values['occurrence_id']).first() if values['round_id'] and values['occurrence_id'] else RoundResult.objects.filter(participation=participation, round_name=round_name, occurrence_id=values['occurrence_id']).first()
         if not existing_result and values['round_id']:
@@ -819,9 +820,12 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
             for key, value in values.items():
                 setattr(existing_result, key, value)
             existing_result.save()
+            saved = existing_result
         else:
             # Use the session's own round name, not the Sheet's upper-case group label.
-            RoundResult.objects.create(participation=participation, round_name=clean_txt(round_config.get('name')) or round_name, **values)
+            saved = RoundResult.objects.create(participation=participation, round_name=clean_txt(round_config.get('name')) or round_name, **values)
+        from .views import ensure_sheet_room_assignment
+        ensure_sheet_room_assignment(saved)
     return participation
 
 def append_existing_candidate_link_note(candidate, session_id, previous_session_ids):

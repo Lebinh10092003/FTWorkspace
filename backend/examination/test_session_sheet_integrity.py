@@ -372,3 +372,50 @@ class RemovedRegistrationRowTests(TestCase):
             self.assertEqual(remove_session_sheet_rows(self.sheet, ['FT-2']), 2)
         requests = service.spreadsheets.return_value.batchUpdate.call_args.kwargs['body']['requests']
         self.assertEqual([r['deleteDimension']['range']['startIndex'] for r in requests], [5, 3])
+
+
+class ShiftRoomCompatibilityTests(TestCase):
+    """FIMO 11/10/2026: two shifts on one day, rooms written as 'Room N: meet…'."""
+
+    def setUp(self):
+        from .models import ExamRoom
+        self.session = ExamSession.objects.create(id='fimo-ca', competition_id='FIMO', code='FIMO', name='FIMO',
+            parent='FT', organizer='FT', time='2026-2027', sort_key='1',
+            rounds=[{'id': 'round-national', 'name': 'Vòng loại Quốc gia', 'slots': [
+                {'id': 'day-1', 'date': '2026-10-11', 'time': '09:00-10:00', 'label': 'Ca 1'},
+                {'id': 'day-1-ca-2', 'date': '2026-10-11', 'time': '10:30-11:30', 'label': 'Ca 2'},
+                {'id': 'day-2', 'date': '2026-12-06'}]}])
+        self.rooms = {}
+        for occurrence in ('day-1', 'day-1-ca-2'):
+            for number in (1, 2):
+                self.rooms[(occurrence, number)] = ExamRoom.objects.create(session=self.session, round_id='round-national',
+                    occurrence_id=occurrence, round_name='Vòng loại Quốc gia', common_name='Room', room_number=str(number),
+                    label=f'Room {number}', mode=ExamRoom.MODE_ONLINE, link=f'https://meet.google.com/room-{number}')
+        self.candidate = Candidate.objects.create(id='FT-CA', code='FT-CA', name='Thí sinh ca', sort_key='1')
+        participation = CandidateParticipation.objects.create(candidate=self.candidate, session=self.session)
+        self.result = RoundResult.objects.create(participation=participation, round_id='round-national', round_name='Vòng loại Quốc gia')
+
+    def sheet(self, time, room):
+        from .sync import upsert_participation_history
+        upsert_participation_history(self.candidate, self.session.pk, [{
+            'round': 'VÒNG LOẠI QUỐC GIA', 'date': '11/10/2026', 'time': time, 'mode': 'Trực tuyến',
+            'location': f'Room {room}: meet.google.com/room-{room}'}], 'sheet')
+        self.result.refresh_from_db()
+
+    def test_room_cell_parses_label_and_link(self):
+        from .views import sheet_room_details
+        details = sheet_room_details('Room 4: meet.google.com/bhi-ofgf-yia', 'Trực tuyến')
+        self.assertEqual((details['label'], details['link']), ('Room 4', 'https://meet.google.com/bhi-ofgf-yia'))
+
+    def test_time_picks_the_shift_and_the_existing_room(self):
+        from .models import ExamRoom
+        self.sheet('10:30-11:30', 2)
+        self.assertEqual(self.result.occurrence_id, 'day-1-ca-2')
+        self.assertEqual(self.result.exam_room, self.rooms[('day-1-ca-2', 2)])
+        self.assertEqual(ExamRoom.objects.filter(session=self.session).count(), 4)
+
+    def test_room_change_on_the_sheet_moves_the_candidate(self):
+        self.sheet('9:00-10:00', 1)
+        self.assertEqual(self.result.exam_room, self.rooms[('day-1', 1)])
+        self.sheet('9:00-10:00', 2)
+        self.assertEqual(self.result.exam_room, self.rooms[('day-1', 2)])

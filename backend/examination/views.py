@@ -83,6 +83,11 @@ def sheet_room_details(location, mode=''):
     if not raw_location:
         return None
     lines = [line.strip() for line in raw_location.splitlines() if line.strip()]
+    inline = re.match(r'^(?P<label>[^:]{1,100}?)\s*:\s*(?P<link>(?:https?://)?[a-z0-9.-]+\.[a-z]{2,}/\S+)$', lines[0], re.I) if len(lines) == 1 else None
+    if inline:
+        # One-cell form used by coordinators: "Room 4: meet.google.com/abc-defg-hij".
+        lines = [inline.group('label'), inline.group('link') if inline.group('link').lower().startswith('http') else 'https://' + inline.group('link')]
+        raw_location = '\n'.join(lines)
     label = next((line.rstrip(':').strip() for line in lines if not re.match(r'^https?://', line, re.I)), '')
     if not label:
         return None
@@ -107,36 +112,46 @@ def sheet_room_details(location, mode=''):
 def ensure_sheet_room_assignment(result):
     """Create/reuse the room named by the source Sheet and attach this result.
 
-    A manually allocated room always wins.  This makes Sheet imports safe to
-    rerun without unexpectedly replacing a coordinator's later room decision.
+    The room written on the Sheet is followed (Sheet edits apply to the web);
+    reruns are idempotent because existing rooms are matched first.
     """
-    if result.exam_room_id or not result.round_id:
+    if not result.round_id:
         return False
     details = sheet_room_details(result.location, result.mode)
     if not details:
         return False
     session = result.participation.session
-    room, created = ExamRoom.objects.get_or_create(
-        session=session,
-        round_id=result.round_id,
-        occurrence_id=result.occurrence_id or '',
-        room_number=details['room_number'],
-        defaults={
-            'round_name': result.round_name,
-            'common_name': 'Phòng từ Google Sheet',
-            'label': details['label'],
-            'mode': details['mode'],
-            'location': details['location'],
-            'link': details['link'],
-            'allocation_strategy': ExamRoom.STRATEGY_BALANCED,
-            'position': ExamRoom.objects.filter(
-                session=session,
-                round_id=result.round_id,
-                occurrence_id=result.occurrence_id or '',
-            ).count(),
-            'created_by': 'Google Sheet import',
-        },
-    )
+    # The Sheet is edited by people: a changed room there moves the candidate.
+    # Rooms made on the web are found by their label, number or link so a
+    # web allocation written to the Sheet never creates a duplicate room.
+    same_slot = ExamRoom.objects.filter(session=session, round_id=result.round_id, occurrence_id=result.occurrence_id or '')
+    existing = (same_slot.filter(label__iexact=details['label']).first()
+                or same_slot.filter(room_number__iexact=details['room_number']).first()
+                or (same_slot.filter(link=details['link']).first() if details['link'] else None))
+    if existing:
+        room, created = existing, False
+    else:
+        room, created = ExamRoom.objects.get_or_create(
+            session=session,
+            round_id=result.round_id,
+            occurrence_id=result.occurrence_id or '',
+            room_number=details['room_number'],
+            defaults={
+                'round_name': result.round_name,
+                'common_name': 'Phòng từ Google Sheet',
+                'label': details['label'],
+                'mode': details['mode'],
+                'location': details['location'],
+                'link': details['link'],
+                'allocation_strategy': ExamRoom.STRATEGY_BALANCED,
+                'position': ExamRoom.objects.filter(
+                    session=session,
+                    round_id=result.round_id,
+                    occurrence_id=result.occurrence_id or '',
+                ).count(),
+                'created_by': 'Google Sheet import',
+            },
+        )
     updates = []
     if result.exam_room_id != room.id:
         result.exam_room = room
@@ -652,7 +667,22 @@ ROUND_FIELD_MAP = {
 }
 
 
-def occurrence_id_from_round(round_config, occurrence_id='', exam_date=''):
+def _time_key(value):
+    return tuple((int(h), int(m)) for h, m in re.findall(r'(\d{1,2})\s*[:hg]\s*(\d{2})', str(value or '')))
+
+
+def slot_for_date_and_time(slots, exam_date, time_slot=''):
+    """Pick the configured batch for a date; with several batches on one day
+    (Ca 1 09:00-10:00, Ca 2 10:30-11:30) the exam time decides."""
+    same_day = [slot for slot in slots if isinstance(slot, dict) and exam_date and str(slot.get('date') or '').strip() == exam_date]
+    if len(same_day) > 1 and _time_key(time_slot):
+        timed = next((slot for slot in same_day if _time_key(slot.get('time')) == _time_key(time_slot)), None)
+        if timed:
+            return timed
+    return same_day[0] if same_day else None
+
+
+def occurrence_id_from_round(round_config, occurrence_id='', exam_date='', time_slot=''):
     """Resolve a candidate to one declared organisation batch of a round.
 
     The ID is explicit in new payloads.  Imports that only contain ``Ngày thi``
@@ -664,9 +694,9 @@ def occurrence_id_from_round(round_config, occurrence_id='', exam_date=''):
         return explicit
     date_value = str(exam_date or '').strip()
     slots = (round_config or {}).get('slots') or []
-    for slot in slots:
-        if isinstance(slot, dict) and date_value and str(slot.get('date') or '').strip() == date_value:
-            return str(slot.get('id') or '').strip()
+    matched = slot_for_date_and_time(slots, date_value, time_slot)
+    if matched:
+        return str(matched.get('id') or '').strip()
     if len(slots) == 1 and isinstance(slots[0], dict):
         return str(slots[0].get('id') or '').strip()
     return ''
@@ -771,7 +801,7 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
             values['eligibility'] = normalize_eligibility(values['eligibility'])
         if values.get('exam_date'):
             values['exam_date'] = parse_dob(values['exam_date']) or values['exam_date']
-        values['occurrence_id'] = occurrence_id_from_round(matching_round, values.get('occurrence_id'), values.get('exam_date'))
+        values['occurrence_id'] = occurrence_id_from_round(matching_round, values.get('occurrence_id'), values.get('exam_date'), values.get('time_slot'))
         values['raw_data'] = {str(key): value for key, value in item.items() if value not in (None, '')}
         existing_result = RoundResult.objects.filter(
             participation=participation,
