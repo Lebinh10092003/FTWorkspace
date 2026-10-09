@@ -51,6 +51,7 @@ Commit `6985864` từng chuyển sang "duyệt tay + banner + quét mỗi phút"
 ## Dữ liệu thí sinh trong từng kỳ
 - **Mỗi kỳ chỉ chứa kết quả của chính kỳ đó.** Thêm thí sinh có sẵn (từ kho, Excel, Sheet) vào kỳ mới **không bao giờ** chép kết quả vòng thi của kỳ khác. Mọi đường ghi kết quả đi qua `history_for_session` (bỏ dòng có `sessionId` khác hoặc mã vòng không có trong kỳ).
 - **"Điều kiện tham gia" không có giá trị mặc định.** Vòng đầu nhận mọi thí sinh đã đăng ký trừ người bị đánh dấu "Không đủ điều kiện" (`eligible_for_round_q`); vòng sau chỉ nhận người được đánh dấu "Đủ điều kiện" sau khi có kết quả vòng trước. Không tự ghi "Đủ điều kiện" ra Sheet.
+- **Tab của kỳ đã qua** (trạng thái Hoàn thành hoặc năm học trước, `session_is_past`) chỉ ghi vào dữ liệu riêng của kỳ đó (điểm, giải, SBD…). Hồ sơ chung (lớp, khối, trường, SĐT, giải cao nhất…) chỉ được điền khi đang trống, không bao giờ bị ghi đè bằng dữ liệu năm cũ. Chiều ngược lại, web không ghi lớp/khối/trường của năm nay đè lên tab cũ.
 - **Khối lớp lưu dạng số** ("6"), theo lớp khi lớp bắt đầu bằng số (`normalize_grade`).
 - Khi sửa một lỗi dữ liệu: rà **tất cả** kỳ và tab cùng loại, đọc từng cột và các dòng cuối, không chỉ dòng được báo.
 

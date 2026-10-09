@@ -1544,6 +1544,37 @@ class SheetCandidateImportPreviewTests(TestCase):
         self.assertEqual(preview['records'][0]['_preview']['status'], 'unchanged', preview['records'][0]['_preview'].get('changes'))
 
     @patch('examination.sync.requests.get')
+    def test_past_season_tab_never_overwrites_this_years_profile(self, mock_get):
+        # IMO 2025-2026 tab says 6H2 (last year); the profile is 7H2 now. Editing
+        # any cell of that old tab must not move the pupil back a year.
+        from .sync import build_sheet_preview, session_is_past, sync_single_sheet
+        self.session.phase = 'Hoàn thành'
+        self.session.save()
+        self.assertTrue(session_is_past(self.session.id))
+        candidate = Candidate.objects.create(id='FT-PAST', code='FT-PAST', name='Năm Cũ', class_name='7H2', grade='7',
+                                             achievement='Vàng', phone='', sort_key='past')
+        participation = CandidateParticipation.objects.create(candidate=candidate, session=self.session)
+        RoundResult.objects.create(participation=participation, round_id='national', round_name='Vòng Chung kết Quốc gia')
+        row = {'code': 'FT-PAST', 'name': 'Năm Cũ', 'class_name': '6H2', 'grade': 'Khối 6', 'achievement': 'Bạc', 'phone': '0901000000',
+               'exam_history': [{'round': 'Vòng Chung kết Quốc gia', 'score': '35'}]}
+        preview = build_sheet_preview([row], [], {}, '', self.session.id, 'https://docs.google.com/spreadsheets/d/example/edit')
+        fields = {item['field'] for item in preview['records'][0]['_preview']['changes']}
+        self.assertEqual(fields, {'phone', 'round.Vòng Chung kết Quốc gia.score'})
+        csv_text = (
+            'HỒ SƠ THÍ SINH,,,,,,VÒNG 1 – VÒNG CHUNG KẾT QUỐC GIA\n'
+            'Mã hồ sơ,Họ và tên thí sinh,Lớp đang học,Khối lớp,Kết quả cao nhất,Số điện thoại,Điểm\n'
+            'FT-PAST,Năm Cũ,6H2,Khối 6,Bạc,0901000000,35\n'
+        )
+        response_mock = MagicMock(status_code=200, text=csv_text, url='https://docs.google.com/export.csv')
+        response_mock.raise_for_status.return_value = None
+        mock_get.return_value = response_mock
+        result = sync_single_sheet('https://docs.google.com/spreadsheets/d/example/edit?gid=1', '10/10/2026', None, self.session.id, sheet_tab='SCO - IMO')
+        self.assertTrue(result['success'], result)
+        candidate.refresh_from_db()
+        self.assertEqual((candidate.class_name, candidate.grade, candidate.achievement, candidate.phone), ('7H2', '7', 'Vàng', '0901000000'))
+        self.assertEqual(RoundResult.objects.get(participation=participation, round_id='national').score, '35')
+
+    @patch('examination.sync.requests.get')
     def test_preview_reads_two_row_schema_without_mutating_candidates(self, mock_get):
         csv_text = (
             'HỒ SƠ THÍ SINH,,,,,,,VÒNG 2 – VÒNG QUỐC TẾ,\n'

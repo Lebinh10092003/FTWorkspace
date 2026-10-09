@@ -558,7 +558,25 @@ def sync_candidate_payload(candidate):
     }
 
 
+def session_is_past(session_id):
+    """A finished session or one of an earlier school year.
+
+    Its tab records the pupil as they were then (last year's class, that
+    season's award). It may fill an empty profile field but never overwrites
+    the shared profile used by this year's contests.
+    """
+    from .sheet_publication import academic_year_for_date, session_academic_year
+    session = ExamSession.objects.filter(pk=session_id).first() if session_id else None
+    if not session:
+        return False
+    if normalise_str(session.phase) == 'hoanthanh':
+        return True
+    year = session_academic_year(session)
+    return bool(year) and year < academic_year_for_date(timezone.localdate())
+
+
 def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url, sheet_tab='', source_row_offset=1, update_mode='replace-nonempty', import_empty_values=True):
+    past_session = session_is_past(session_id)
     existing = list(Candidate.objects.all())
     # Compare against memberships in this session, not every historic profile.
     session_candidates = list(Candidate.objects.filter(participations__session_id=session_id).distinct()) if session_id else []
@@ -594,11 +612,11 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
         changed_fields = []
         changes = []
 
-        def add_change(field, label, current, incoming_value):
+        def add_change(field, label, current, incoming_value, profile=False):
             current_value = clean_txt(current)
             next_value = clean_txt(incoming_value)
             can_write = next_value and (
-                not current_value if update_mode == 'fill-empty'
+                not current_value if update_mode == 'fill-empty' or (profile and past_session)
                 else (import_empty_values or bool(current_value))
             )
             same_percentage = field.endswith('.scoreRate') and format_sheet_percentage(current_value) == format_sheet_percentage(next_value)
@@ -612,7 +630,7 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
                 matched_session_candidate_ids.add(base.id)
             for model_field, incoming_field, label in profile_fields:
                 incoming_value = clean_txt(item.get(incoming_field))
-                add_change(model_field, label, getattr(base, model_field), incoming_value)
+                add_change(model_field, label, getattr(base, model_field), incoming_value, profile=True)
             participation = CandidateParticipation.objects.filter(candidate=base, session_id=session_id).select_related('session').prefetch_related('round_results').first() if session_id else None
             if not participation:
                 add_change('session', 'Kỳ tổ chức', '', 'Thêm vào kỳ tổ chức')
@@ -1316,7 +1334,7 @@ def _project_session_sheet_row(row, previous, legacy_headers, session):
             # A shared household identifier is not evidence of this child's
             # missing CCCD. Keep the historical blank until it is verified.
             row[4] = ''
-    if previous and normalise_str(session.phase) == 'hoanthanh':
+    if previous and (normalise_str(session.phase) == 'hoanthanh' or session_is_past(session.pk)):
         # A shared profile may already be in the next school year. Preserve
         # the school/class/grade actually recorded for a completed session.
         for index in (12, 13, 14):
@@ -2023,6 +2041,7 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
             return result
             
         # Perform Sync
+        past_session = session_is_past(session_id)
         existing = list(Candidate.objects.all())
         existing_codes_set = {candidate.code for candidate in existing}
         created = 0
@@ -2053,11 +2072,16 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
                 before_values = {field: getattr(base, field) for field in ('name', 'birth_date', 'identity', 'email', 'phone', 'school', 'class_name', 'city', 'ward', 'nationality', 'grade', 'address', 'achievement', 'highest_round', 'parent')}
                 previous_session_ids = list(base.session_ids or [])
                 already_in_target_session = session_id in previous_session_ids or CandidateParticipation.objects.filter(candidate=base, session_id=session_id).exists()
-                base.name = cand['name']
+                # A past season's tab only fills empty profile fields.
+                keep_profile = past_session
+                if not keep_profile or not base.name:
+                    base.name = cand['name']
                 for field, key in [('birth_date', 'birth_date'), ('identity', 'identity'), ('email', 'email'), ('phone', 'phone'), ('school', 'school'), ('class_name', 'class_name'), ('city', 'city'), ('ward', 'ward'), ('nationality', 'nationality'), ('grade', 'grade'), ('address', 'address'), ('achievement', 'achievement'), ('highest_round', 'highest_round')]:
+                    if keep_profile and getattr(base, field):
+                        continue
                     if cand[key] and (field != 'birth_date' or should_replace_birth_date(base.birth_date, cand[key])):
                         setattr(base, field, cand[key])
-                if cand['parent']:
+                if cand['parent'] and not (keep_profile and base.parent):
                     base.parent = cand['parent']
                 base.contests = merge_contest_codes(base.contests, cand['contests'])
                 linked_sessions = list(base.session_ids or [])
