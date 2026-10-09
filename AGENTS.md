@@ -38,6 +38,11 @@ Commit `6985864` từng chuyển sang "duyệt tay + banner + quét mỗi phút"
 - Lệ phí chung của dòng nhiều cuộc thi được chia theo giá từng cuộc thi, học từ các dòng chỉ đăng ký một cuộc thi trong cùng file. Không có thông tin giá thì chia đều nếu chia hết; không chia được thì bỏ qua riêng dòng đó.
 - Đọc ngày trong Excel bằng serial/ISO, **không** đọc chuỗi hiển thị (M/D/YY gây đảo ngày/tháng). Giữ số 0 đầu của CCCD/SĐT. Cột "Nộp lệ phí" là ô tích, không phải số tiền.
 - Không ghi đè thông tin đã có của hồ sơ, trừ khi chủ dự án yêu cầu rõ (lệnh `reconcile_school_registrations --update-profiles`).
+- **Lệ phí:** ô Excel số thực ("250000.0") là số, không bỏ dấu thập phân; "500.000VNĐ"/"250,000" là dấu phân cách nghìn; số dưới 10.000 là nghìn đồng ("250" = 250.000đ).
+- **Lớp và khối** của học sinh luôn theo danh sách năm học mới nhất của trường (các trường khác chỉ điền khi trống).
+- **Lượt cá nhân của học sinh có trong danh sách trường:** chỉ giữ riêng khi đã có thanh toán/chứng từ/kế toán xử lý (`has_individual_accounting`); còn lại chuyển vào nhóm trường và bỏ khoản thu cá nhân trống, để tổng của trường đủ và không tính hai lần.
+- **Nhập tay cho học sinh của trường** (dòng file không nhập được): chọn "Đăng ký qua" trường + lệ phí trong "Thêm hồ sơ"/"Thêm thí sinh từ kho" (`attach_to_school`, `refresh_group_billing`).
+- Khi đối chiếu danh sách trường với web: kiểm tra **cả thiếu lẫn thừa** theo từng cuộc thi, sai thông tin, tab Sheet, và tổng lệ phí.
 - **Đăng ký không bao giờ tự xếp phòng, ngày thi, giờ/ca thi, hình thức thi hay link.** Nhóm nhập sau để trống, chờ Khảo thí xếp. Không sao chép theo nhóm trước hoặc theo vòng đã diễn ra.
 
 ## Dữ liệu thí sinh trong từng kỳ
