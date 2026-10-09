@@ -1503,15 +1503,25 @@ def stt_values(rows):
 
 
 def ensure_stt_formula(service, spreadsheet_id, range_title):
-    """Install the STT formula once; returns True when it had to be written."""
-    current = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=f'{range_title}!A3',
-        valueRenderOption='FORMULA').execute(num_retries=6).get('values', [])
-    if current and current[0] and str(current[0][0]).replace(' ', '').upper() == STT_FORMULA.replace(' ', '').upper():
+    """Install the STT formula once; returns True when it had to be written.
+
+    Formulas are parsed in the spreadsheet's locale: Vietnamese files need
+    ';' between arguments, so the ',' form is retried with ';' on #ERROR!.
+    """
+    def read(option):
+        values = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=f'{range_title}!A3',
+            valueRenderOption=option).execute(num_retries=6).get('values', [])
+        return str(values[0][0]) if values and values[0] else ''
+    normal = lambda text: text.replace(' ', '').replace(';', ',').upper()
+    if normal(read('FORMULA')) == normal(STT_FORMULA) and not read('FORMATTED_VALUE').startswith('#'):
         return False
     # Typed numbers below A3 would block the array formula (#REF!).
     service.spreadsheets().values().clear(spreadsheetId=spreadsheet_id, range=f'{range_title}!A3:A', body={}).execute(num_retries=6)
-    service.spreadsheets().values().update(spreadsheetId=spreadsheet_id, range=f'{range_title}!A3',
-        valueInputOption='USER_ENTERED', body={'values': [[STT_FORMULA]]}).execute(num_retries=6)
+    for formula in (STT_FORMULA, STT_FORMULA.replace(',', ';')):
+        service.spreadsheets().values().update(spreadsheetId=spreadsheet_id, range=f'{range_title}!A3',
+            valueInputOption='USER_ENTERED', body={'values': [[formula]]}).execute(num_retries=6)
+        if not read('FORMATTED_VALUE').startswith('#'):
+            break
     return True
 
 

@@ -136,10 +136,14 @@ class SessionSheetIntegrityTests(TestCase):
         from unittest.mock import MagicMock
         from .sync import STT_FORMULA, ensure_stt_formula
         service = MagicMock()
-        service.spreadsheets().values().get().execute.return_value = {'values': [['1']]}
+        # Old typed number, then a Vietnamese-locale file rejects ',' and accepts ';'.
+        service.spreadsheets().values().get().execute.side_effect = [
+            {'values': [['1']]}, {'values': [['#ERROR!']]}, {'values': [['1']]}]
         self.assertTrue(ensure_stt_formula(service, 'sid', "'FIMO'"))
         service.spreadsheets().values().clear.assert_called_with(spreadsheetId='sid', range="'FIMO'!A3:A", body={})
-        service.spreadsheets().values().get().execute.return_value = {'values': [[STT_FORMULA]]}
+        self.assertEqual(service.spreadsheets().values().update.call_args.kwargs['body'], {'values': [[STT_FORMULA.replace(',', ';')]]})
+        service.spreadsheets().values().get().execute.side_effect = None
+        service.spreadsheets().values().get().execute.return_value = {'values': [[STT_FORMULA.replace(',', ';')]]}
         service.spreadsheets().values().clear.reset_mock()
         self.assertFalse(ensure_stt_formula(service, 'sid', "'FIMO'"))
         service.spreadsheets().values().clear.assert_not_called()
