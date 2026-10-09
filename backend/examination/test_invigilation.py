@@ -1,10 +1,8 @@
 import uuid
 from datetime import datetime, timedelta
-from io import StringIO
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
-from django.core.management import call_command
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -174,19 +172,6 @@ class InvigilationTests(TestCase):
         second.enabled = False; second.save()
         with patch('examination.invigilation.timezone.now', return_value=self.now + timedelta(minutes=75)):
             self.assertEqual(self.client.get('/api/examination/invigilation/my-shifts').data['shifts'], [])
-
-    def test_demo_seed_is_idempotent_and_keeps_operator_edits(self):
-        for email in ['tienthm@fermat.edu.vn', 'phuongnt@fermat.edu.vn', 'binhlv@fermat.edu.vn', 'phongnt@fermat.edu.vn']:
-            UserProfile.objects.get_or_create(email=email, defaults={'name': email})
-        call_command('setup_exam_invigilation_demo', apply=True, stdout=StringIO())
-        seeded = ExamInvigilationShift.objects.get(session=self.session, occurrence_id='vlqg-2026-10-11-ca-1', room_number='1')
-        self.assertEqual(seeded.invigilators.get().email, 'tienthm@fermat.edu.vn')
-        seeded.roster[0]['name'] = 'Operator edit'; seeded.save()
-        call_command('setup_exam_invigilation_demo', apply=True, stdout=StringIO())
-        seeded.refresh_from_db()
-        self.assertEqual(seeded.roster[0]['name'], 'Operator edit')
-        self.assertEqual(ExamInvigilationShift.objects.filter(occurrence_id__startswith='vlqg-').count(), 8)
-        self.assertEqual(Candidate.objects.count(), 0)
 
     def test_roster_rejects_unrelated_fields_and_invalid_attendance(self):
         self.assertEqual(self.client.patch(self.row_url(), {'revision': self.row['revision'], 'demo': False}, format='json').status_code, 400)

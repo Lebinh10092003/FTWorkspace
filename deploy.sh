@@ -62,9 +62,6 @@ fi
   "$VENV_DIR/bin/python" manage.py backup_workspace_db --destination "$DATABASE_BACKUP_DIR" --keep "$DATABASE_BACKUP_KEEP"
   "$VENV_DIR/bin/python" manage.py migrate --noinput
   "$VENV_DIR/bin/python" manage.py collectstatic --noinput
-  "$VENV_DIR/bin/python" manage.py setup_exam_invigilation_demo
-  "$VENV_DIR/bin/python" manage.py backup_workspace_db --destination "$DATABASE_BACKUP_DIR" --keep "$DATABASE_BACKUP_KEEP"
-  "$VENV_DIR/bin/python" manage.py setup_exam_invigilation_demo --apply
 )
 
 sudo install -m 0644 workspace-django.service "/etc/systemd/system/$SERVICE_NAME"
