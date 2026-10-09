@@ -1528,6 +1528,21 @@ class SheetCandidateImportPreviewTests(TestCase):
         self.assertEqual(changes['round.International.score']['current'], '5')
         self.assertEqual(changes['round.International.score']['next'], '9')
         self.assertEqual(changes['round.International.result']['next'], 'New award')
+    def test_sheet_group_label_compares_with_the_same_round_not_a_stale_one(self):
+        # FIMO 10/10/2026: 46 rows were "changed" on every import because the
+        # Sheet label "LOẠI QUỐC GIA (3 ĐỢT)" fell back to an empty later-round result.
+        from .sync import build_sheet_preview
+        candidate = Candidate.objects.create(id='FT-STALE', code='FT-STALE', name='Stale Round', sort_key='stale')
+        participation = CandidateParticipation.objects.create(candidate=candidate, session=self.session)
+        RoundResult.objects.create(participation=participation, round_id='international', round_name='Vòng Quốc tế')
+        RoundResult.objects.create(participation=participation, round_id='national', round_name='Vòng Chung kết Quốc gia',
+                                   occurrence_id='day-1', sbd='150059', time_slot='10:30-11:30')
+        preview = build_sheet_preview([{
+            'code': 'FT-STALE', 'name': 'Stale Round',
+            'exam_history': [{'round': 'LOẠI QUỐC GIA (3 ĐỢT)', 'sbd': '150059', 'time': '10:30-11:30'}],
+        }], [], {}, '', self.session.id, 'https://docs.google.com/spreadsheets/d/example/edit')
+        self.assertEqual(preview['records'][0]['_preview']['status'], 'unchanged', preview['records'][0]['_preview'].get('changes'))
+
     @patch('examination.sync.requests.get')
     def test_preview_reads_two_row_schema_without_mutating_candidates(self, mock_get):
         csv_text = (

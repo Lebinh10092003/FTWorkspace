@@ -613,7 +613,7 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
             for model_field, incoming_field, label in profile_fields:
                 incoming_value = clean_txt(item.get(incoming_field))
                 add_change(model_field, label, getattr(base, model_field), incoming_value)
-            participation = CandidateParticipation.objects.filter(candidate=base, session_id=session_id).prefetch_related('round_results').first() if session_id else None
+            participation = CandidateParticipation.objects.filter(candidate=base, session_id=session_id).select_related('session').prefetch_related('round_results').first() if session_id else None
             if not participation:
                 add_change('session', 'Kỳ tổ chức', '', 'Thêm vào kỳ tổ chức')
             else:
@@ -626,10 +626,20 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
                     incoming_value = clean_txt((item.get('registration') or {}).get(incoming_field))
                     add_change(f'registration.{incoming_field}', incoming_field, getattr(participation, model_field), incoming_value)
                 existing_rounds = list(participation.round_results.all())
+                configured_rounds = [config for config in (participation.session.rounds or []) if isinstance(config, dict)]
                 for history_index, history_item in enumerate(item.get('exam_history') or []):
                     incoming_round = clean_txt(history_item.get('round'))
-                    existing_round = next((round_item for round_item in existing_rounds if clean_txt(round_item.round_name).casefold() == incoming_round.casefold()), None)
-                    if not existing_round and history_index < len(existing_rounds):
+                    # Same round resolution as the import itself (the Sheet's group
+                    # label, e.g. "LOẠI QUỐC GIA (3 ĐỢT)", maps by position to the
+                    # session's round), so a stale result of another round is never
+                    # compared and the row is not reported as changed forever.
+                    round_config = next((config for config in configured_rounds if clean_txt(config.get('name')).casefold() == incoming_round.casefold()),
+                                        configured_rounds[history_index] if history_index < len(configured_rounds) else {})
+                    round_id = clean_txt(history_item.get('roundId')) or clean_txt(round_config.get('id'))
+                    same_id = [round_item for round_item in existing_rounds if round_id and round_item.round_id == round_id]
+                    existing_round = (same_id[0] if len(same_id) == 1 else next((round_item for round_item in same_id if round_item.occurrence_id), None)) if same_id else None
+                    existing_round = existing_round or next((round_item for round_item in existing_rounds if clean_txt(round_item.round_name).casefold() == incoming_round.casefold()), None)
+                    if not existing_round and not round_id and history_index < len(existing_rounds):
                         existing_round = existing_rounds[history_index]
                     if not existing_round:
                         add_change(f'round.{incoming_round}', incoming_round or 'Vòng thi', '', 'Thêm dữ liệu vòng')
