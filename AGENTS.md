@@ -19,6 +19,9 @@
 - **Dự phòng:** `workspace-examination-sheet-scan.timer` chỉ chạy **06:00, 12:00, 18:00**. Lần quét chỉ so dấu vân tay (fingerprint) của tab, không đổi thì bỏ qua.
 - **CẤM** đổi lịch quét thành mỗi phút hoặc mỗi giờ. CẤM thêm polling để "phát hiện nhanh hơn". Cần nhanh hơn thì sửa Apps Script/webhook.
 - Lượt web tự ghi ra Sheet (fingerprint khớp `last_content_fingerprint`) không được coi là có người sửa.
+- **Web → Sheet không bao giờ ghi ô trống đè lên ô đang có nội dung** (ví dụ năm sinh, link, phòng, điểm người dùng gõ trên Sheet mà web chưa có).
+- **Trước khi hàng đợi ghi ra Sheet, phải nhập thay đổi của tab vào web trước** (`scan_sheet_changes` trong `drain_session_sheet_queue`). Dữ liệu đã nhập từ Sheet vào web thì không ghi ngược lại tab đó.
+- **Cột A (STT) là công thức `ARRAYFORMULA` ở A3, đếm theo cột B.** Web chỉ ghi từ cột B trở đi. File ở locale Việt Nam dùng dấu `;` trong công thức (`ensure_stt_formula`).
 - **Không bao giờ xóa trắng rồi ghi lại cả tab.** Mọi lần xuất (kể cả lịch 11:00/16:00) chỉ cập nhật đúng dòng tại chỗ và thêm dòng mới ở cuối, để giữ thứ tự dòng và các ô chỉ có trên Sheet.
 - Dòng vừa nhập từ Sheet vào web **không được ghi ngược lại** chính tab đó (xóa job `SessionSheetOutbox` của các hồ sơ vừa cập nhật).
 - Nhập kết quả vòng thi phải ghép vào kết quả sẵn có của cùng vòng (kể cả bản có mã ca rỗng), giữ tên vòng theo cấu hình kỳ. Không tạo bản kết quả thứ hai cho cùng một vòng.
