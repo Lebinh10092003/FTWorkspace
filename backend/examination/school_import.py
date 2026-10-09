@@ -485,7 +485,9 @@ def commit_plan(plan, request, filename):
             candidate.identity = format_identity(candidate.identity)
             candidate.phone = format_phone(candidate.phone)
             for field, value in profile.items():
-                if value and not getattr(candidate, field):
+                # Class and grade change every school year: the school's
+                # current list wins. Other known facts are only filled in.
+                if value and (not getattr(candidate, field) or field in ('class_name', 'grade')):
                     setattr(candidate, field, value)
         else:
             code = next_code(codes)

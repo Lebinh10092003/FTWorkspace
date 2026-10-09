@@ -620,6 +620,14 @@ class SchoolImportTests(TestCase):
         service.files.return_value.create.assert_not_called()
         self.assertEqual(archive_pending(service=service)['synced'], 0)
 
+    def test_new_school_year_list_updates_class_and_grade_of_existing_pupils(self):
+        Candidate.objects.create(id='FT-OLD', code='FT-OLD', name='Nguyễn Minh An', birth_date='2015-07-12',
+            identity='001215012345', phone='0901234567', email='parent@example.test', class_name='5A', grade='5', sort_key='a')
+        self.commit()
+        pupil = Candidate.objects.get(pk='FT-OLD')
+        self.assertEqual((pupil.class_name, pupil.grade), ('Lớp 6', '6'))
+        self.assertEqual(pupil.phone, '0901234567')
+
 
 class FeeParsingTests(TestCase):
     """Regression (09/10/2026): Trưng Vương fees read 10x too high or 1000x too low."""
@@ -631,3 +639,4 @@ class FeeParsingTests(TestCase):
         for raw, expected in cases.items():
             with self.subTest(raw=raw):
                 self.assertEqual(parse_fee(raw), expected)
+
