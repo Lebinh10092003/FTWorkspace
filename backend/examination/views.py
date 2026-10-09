@@ -1725,6 +1725,17 @@ def _serialize_exam_room(room):
     }
 
 
+@api_view(['GET'])
+@permission_classes([IsManagerOrAdmin])
+def session_room_options(request, session_id):
+    """Rooms a newly added candidate can join (first round only)."""
+    from .room_entry import room_options
+    session = ExamSession.objects.filter(id=session_id).first()
+    if not session:
+        return Response({'error': 'Không tìm thấy kỳ tổ chức.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(room_options(session) or {'rooms': [], 'occurrences': []})
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsManagerOrAdmin])
 def exam_room_allocation(request, session_id, round_id):
@@ -3000,6 +3011,26 @@ def import_candidates(request):
             for group in groups.values():
                 refresh_group_billing(group)
             import_summary += f' Đăng ký qua trường {partner["school"]}' + (f'; giữ cá nhân (đã có thanh toán): {", ".join(kept)}.' if kept else '.')
+        room_choices = data.get('examRooms') if isinstance(data.get('examRooms'), dict) else {}
+        if room_choices:
+            # Rooms were already allocated: the person adding the candidate
+            # chose a room (or a new one) for each session.
+            from .room_entry import assign_to_room, create_room
+            codes = [item['code'] for item in items_returned]
+            for session in target_sessions:
+                choice = room_choices.get(session.pk) if isinstance(room_choices.get(session.pk), dict) else {}
+                if choice.get('newRoom'):
+                    room = create_room(session, choice['newRoom'], audit_actor(request))
+                elif choice.get('roomId'):
+                    room = ExamRoom.objects.filter(pk=choice['roomId'], session=session).first()
+                    if not room:
+                        raise ValueError('Phòng thi đã chọn không còn trong kỳ tổ chức, hãy tải lại.')
+                else:
+                    continue
+                for participation in CandidateParticipation.objects.filter(candidate__code__in=codes, session=session).select_related('session'):
+                    assign_to_room(participation, room)
+                import_summary += f' Xếp vào {room.label} ({session.code}).'
+            items_returned = [serialize_candidate(candidate) for candidate in Candidate.objects.filter(code__in=codes)]
         for session in target_sessions:
             append_audit(f'session-{session.pk}', import_summary, request, system=True)
             append_competition_scope_audit(session, import_summary, request, system=True)

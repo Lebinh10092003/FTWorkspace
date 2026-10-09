@@ -71,6 +71,7 @@ urlpatterns = [
     path('examination/sessions/<str:pk>', views.session_detail, name='session_detail'),
     path('examination/sessions/<str:session_id>/rounds/<str:round_id>/apply-slot', views.apply_round_slot, name='apply_round_slot'),
     path('examination/sessions/<str:session_id>/rounds/<str:round_id>/rooms', views.exam_room_allocation, name='exam_room_allocation'),
+    path('examination/sessions/<str:session_id>/room-options', views.session_room_options, name='session_room_options'),
     path('examination/candidates/<str:pk>', views.candidate_detail, name='candidate_detail'),
     path('examination/round-results/<uuid:pk>', views.round_result_detail, name='round_result_detail'),
     path('examination/candidates/<str:pk>/sessions/<str:session_id>', views.candidate_remove_from_session, name='candidate_remove_from_session'),

@@ -419,3 +419,52 @@ class ShiftRoomCompatibilityTests(TestCase):
         self.assertEqual(self.result.exam_room, self.rooms[('day-1', 1)])
         self.sheet('9:00-10:00', 2)
         self.assertEqual(self.result.exam_room, self.rooms[('day-1', 2)])
+
+    def manager(self):
+        from rest_framework.test import APIClient
+        from authentication.models import UserProfile
+        client = APIClient()
+        client.force_authenticate(UserProfile.objects.get_or_create(email='room-entry@example.test', defaults={'role': 'ADMIN'})[0])
+        return client
+
+    def test_room_options_list_count_time_and_invigilators(self):
+        from datetime import datetime, timezone as tz
+        from authentication.models import UserProfile
+        from .models import ExamInvigilationShift
+        self.sheet('9:00-10:00', 1)
+        staff = UserProfile.objects.create(email='gt@example.test', name='Giám thị A', role='EMPLOYEE')
+        shift = ExamInvigilationShift.objects.create(session=self.session, exam_room=self.rooms[('day-1', 1)], occurrence_id='day-1',
+            round_name='Vòng loại Quốc gia', label='Room 1', room_number='1', starts_at=datetime(2026, 10, 11, 2, tzinfo=tz.utc),
+            ends_at=datetime(2026, 10, 11, 3, tzinfo=tz.utc))
+        shift.invigilators.add(staff)
+        data = self.manager().get(f'/api/examination/sessions/{self.session.pk}/room-options').data
+        room = next(item for item in data['rooms'] if item['label'] == 'Room 1' and item['occurrenceId'] == 'day-1')
+        self.assertEqual((room['assignedCount'], room['time'], room['invigilators']), (1, '9:00-10:00', ['Giám thị A']))
+        self.assertEqual(len(data['rooms']), 4)
+
+    def test_new_candidate_joins_the_chosen_room_like_its_neighbours(self):
+        self.sheet('10:30-11:30', 2)
+        response = self.manager().post('/api/examination/import/candidates', {
+            'sessionIds': [self.session.pk], 'source': 'Nhập thủ công', 'records': [{'name': 'Thí sinh mới'}],
+            'examRooms': {self.session.pk: {'roomId': str(self.rooms[('day-1-ca-2', 2)].id)}}}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        result = RoundResult.objects.get(participation__candidate__name='Thí Sinh Mới')
+        self.assertEqual((result.occurrence_id, result.exam_room, result.round_name), ('day-1-ca-2', self.rooms[('day-1-ca-2', 2)], 'Vòng loại Quốc gia'))
+        self.assertEqual(response.data['items'][0]['participations'][0]['rounds'][0]['roomName'], 'Room 2')
+        self.assertEqual((result.exam_date, result.time_slot, result.mode, result.location),
+                         (self.result.exam_date, '10:30-11:30', 'Trực tuyến', 'Room 2: meet.google.com/room-2'))
+
+    def test_new_room_can_be_created_for_a_new_candidate(self):
+        from .models import ExamRoom
+        response = self.manager().post('/api/examination/import/candidates', {
+            'sessionIds': [self.session.pk], 'source': 'Nhập thủ công', 'records': [{'name': 'Thí sinh phòng mới'}],
+            'examRooms': {self.session.pk: {'newRoom': {'occurrenceId': 'day-1', 'label': 'Room 5', 'link': 'meet.google.com/new-room'}}}}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        room = ExamRoom.objects.get(session=self.session, occurrence_id='day-1', label='Room 5')
+        result = RoundResult.objects.get(participation__candidate__name='Thí Sinh Phòng Mới')
+        self.assertEqual((result.exam_room, result.time_slot, result.location), (room, '09:00-10:00', 'Room 5: https://meet.google.com/new-room'))
+        duplicate = self.manager().post('/api/examination/import/candidates', {
+            'sessionIds': [self.session.pk], 'source': 'Nhập thủ công', 'records': [{'name': 'Người khác'}],
+            'examRooms': {self.session.pk: {'newRoom': {'occurrenceId': 'day-1', 'label': 'Room 1'}}}}, format='json')
+        self.assertEqual(duplicate.status_code, 500)
+        self.assertFalse(Candidate.objects.filter(name='Người Khác').exists())
