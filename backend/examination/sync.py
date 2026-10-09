@@ -1480,6 +1480,32 @@ def tab_content_fingerprint(sheet, google_access_token=None):
             f'CSV công khai: {public_failure}; Google API: {api_error}'
         ) from api_error
 
+def remove_session_sheet_rows(sheet, codes, google_access_token=None):
+    """Delete the rows of candidates who no longer belong to this session.
+
+    Otherwise a removed registration stays on the tab and the Sheet-to-web
+    sync would add the candidate back. Rows are matched by FT code only.
+    """
+    codes = {clean_txt(code).upper() for code in codes if clean_txt(code)}
+    spreadsheet_id = extract_spreadsheet_id(sheet.url)
+    if not codes or not spreadsheet_id:
+        return 0
+    config = SystemConfig.objects.filter(key='main').first()
+    service = build_sheets_service(google_access_token or (config.last_google_access_token if config else None), (config.data if config else {}) or {})
+    target = _output_sheet_target(sheet, service)
+    current = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id, range=f"{_sheet_range_title(target['title'])}!A3:B",
+    ).execute(num_retries=6).get('values', [])
+    rows = [index + 3 for index, row in enumerate(current) if len(row) > 1 and clean_txt(row[1]).upper() in codes]
+    if rows:
+        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': [
+            {'deleteDimension': {'range': {'sheetId': target['sheetId'], 'dimension': 'ROWS',
+                                           'startIndex': row - 1, 'endIndex': row}}}
+            for row in sorted(rows, reverse=True)
+        ]}).execute(num_retries=6)
+    return len(rows)
+
+
 def export_session_to_google_sheet(sheet, google_access_token=None, export_mode='merge', append_candidate_codes=None, validate_template=False):
     session = ExamSession.objects.filter(id=sheet.session_id).first()
     if not session:

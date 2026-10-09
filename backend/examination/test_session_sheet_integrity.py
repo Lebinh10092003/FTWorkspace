@@ -334,3 +334,41 @@ class SessionIsolationTests(TestCase):
         self.assertEqual(first.eligibility, '')
         self.assertTrue(RoundResult.objects.filter(pk=first.pk).filter(eligible_for_round_q(self.new, 'round-national')).exists())
         self.assertFalse(RoundResult.objects.filter(pk=later.pk).filter(eligible_for_round_q(self.new, 'round-final')).exists())
+
+
+class RemovedRegistrationRowTests(TestCase):
+    """Regression (09/10/2026): Phú La pupils removed from FIMO stayed on FT - FIMO."""
+
+    def setUp(self):
+        self.session = ExamSession.objects.create(id='fimo-rm', competition_id='FIMO', code='FIMO', name='FIMO',
+            parent='FT', organizer='FT', time='2026-2027', sort_key='1', rounds=[{'id': 'round-national', 'name': 'Vòng loại'}])
+        self.sheet = ExaminationSheet.objects.create(id='fimo-rm-sheet', name='FT - FIMO', session_id=self.session.pk,
+            url='https://docs.google.com/spreadsheets/d/x/edit', sheet_tab='FT - FIMO', stage='session-output',
+            created_at=timezone.now(), updated_at=timezone.now())
+        self.kept = Candidate.objects.create(id='FT-1', code='FT-1', name='Ở lại', sort_key='1')
+        self.gone = Candidate.objects.create(id='FT-2', code='FT-2', name='Bị gỡ', sort_key='2')
+        CandidateParticipation.objects.create(candidate=self.kept, session=self.session)
+        CandidateParticipation.objects.create(candidate=self.gone, session=self.session).delete()
+
+    def test_queue_deletes_rows_of_removed_candidates_only(self):
+        from .models import SessionSheetOutbox
+        from .session_sheet_queue import drain_session_sheet_queue
+        self.assertTrue(SessionSheetOutbox.objects.filter(candidate_id='FT-2').exists())
+        with patch('examination.session_sheet_queue.remove_session_sheet_rows', return_value=1) as remove, \
+             patch('examination.session_sheet_queue.export_session_to_google_sheet', return_value={'success': True, 'exported': 0, 'updated': 0}) as export:
+            drain_session_sheet_queue()
+        self.assertEqual(remove.call_args.args[1], ['FT-2'])
+        self.assertNotIn('FT-2', export.call_args.kwargs['append_candidate_codes'])
+        self.assertFalse(SessionSheetOutbox.objects.exists())
+
+    def test_row_deletion_matches_the_ft_code_and_deletes_bottom_up(self):
+        from unittest.mock import MagicMock
+        from .sync import remove_session_sheet_rows
+        service = MagicMock()
+        service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {
+            'values': [['1', 'FT-1'], ['2', 'FT-2'], ['3', 'FT-3'], ['4', 'ft-2']]}
+        with patch('examination.sync.build_sheets_service', return_value=service), \
+             patch('examination.sync._output_sheet_target', return_value={'title': 'FT - FIMO', 'sheetId': 7}):
+            self.assertEqual(remove_session_sheet_rows(self.sheet, ['FT-2']), 2)
+        requests = service.spreadsheets.return_value.batchUpdate.call_args.kwargs['body']['requests']
+        self.assertEqual([r['deleteDimension']['range']['startIndex'] for r in requests], [5, 3])

@@ -8,9 +8,9 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 from .candidate_sheet_queue import launch_candidate_sheet_worker
-from .models import Candidate, ExaminationSheet, SessionSheetOutbox
+from .models import Candidate, CandidateParticipation, ExaminationSheet, SessionSheetOutbox
 from .partner_contact_sync import _single_worker
-from .sync import export_session_to_google_sheet, sheet_values_fingerprint
+from .sync import export_session_to_google_sheet, remove_session_sheet_rows, sheet_values_fingerprint
 
 
 logger = logging.getLogger(__name__)
@@ -44,10 +44,18 @@ def drain_session_sheet_queue(limit=100):
         for session_id, jobs in grouped.items():
             try:
                 code_by_id = dict(Candidate.objects.filter(pk__in=[job.candidate_id for job in jobs]).values_list('pk', 'code'))
-                codes = list(code_by_id.values())
+                # Older sessions record membership only in Candidate.session_ids.
+                members = set(CandidateParticipation.objects.filter(session_id=session_id, candidate_id__in=code_by_id).values_list('candidate_id', flat=True))
+                members |= {pk for pk, ids in Candidate.objects.filter(pk__in=code_by_id).values_list('pk', 'session_ids') if session_id in (ids or [])}
+                removed = [code for pk, code in code_by_id.items() if pk not in members]
+                codes = [code for pk, code in code_by_id.items() if pk in members]
                 failures, held = [], set()
                 for sheet in destinations(session_id):
                     try:
+                        deleted = remove_session_sheet_rows(sheet, removed)
+                        if deleted:
+                            from .sheet_scheduler import record_sheet_log
+                            record_sheet_log(sheet, f'Đã xóa {deleted} dòng của thí sinh đã gỡ khỏi kỳ trong tab {sheet.sheet_tab}.')
                         result = export_session_to_google_sheet(sheet, export_mode='refresh-selected', append_candidate_codes=codes, validate_template=True)
                     except Exception as exc:
                         failures.append(f'{sheet.name}: {exc}')
