@@ -85,11 +85,11 @@ class SessionSheetIntegrityTests(TestCase):
             url='https://docs.google.com/spreadsheets/d/integrity', sheet_tab='FIMO',
             session_id=self.session.pk, stage='session-output', created_at=timezone.now(), updated_at=timezone.now())
         row = session_export_rows(self.session.pk)[2]
-        row[0] = '8'
+        row[0] = '1'
         current = list(row)
         current[1] = ' '
         current[4] = ''
-        unrelated = ['9', 'UNKNOWN', 'Other person']
+        unrelated = ['2', 'UNKNOWN', 'Other person']
         service = build.return_value
         service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {'sheetId': 8, 'title': 'FIMO'}}]}
         service.spreadsheets().values().get().execute.side_effect = [
@@ -104,6 +104,35 @@ class SessionSheetIntegrityTests(TestCase):
         service.spreadsheets().values().append.assert_not_called()
         requests = service.spreadsheets().batchUpdate.call_args.kwargs['body']['requests']
         self.assertTrue(all(item['repeatCell']['range']['startRowIndex'] == 2 for item in requests))
+
+    @patch('examination.sync.build_sheets_service')
+    def test_stt_gaps_left_by_removed_rows_are_closed_in_place(self, build):
+        # FIMO 09/10/2026: 230 rows numbered up to 278 after removed candidates' rows were deleted.
+        sheet = ExaminationSheet.objects.create(id='stt-output', name='FIMO',
+            url='https://docs.google.com/spreadsheets/d/integrity', sheet_tab='FIMO',
+            session_id=self.session.pk, stage='session-output', created_at=timezone.now(), updated_at=timezone.now())
+        twin = Candidate.objects.create(id='stt-new', code='FT-90002', name='Trần Bình', birth_date='2014-01-01', sort_key='3')
+        CandidateParticipation.objects.create(candidate=twin, session=self.session)
+        row = next(r for r in session_export_rows(self.session.pk)[2:] if r[1] == 'FT-90000')
+        row[0] = '5'
+        other = ['9', 'FT-OTHER', 'Người trên Sheet']
+        blank = []
+        expected_new = next(r for r in session_export_rows(self.session.pk)[2:] if r[1] == 'FT-90002')
+        service = build.return_value
+        service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {'sheetId': 8, 'title': 'FIMO'}}]}
+        fixed = [list(row), list(other), blank, list(expected_new)]
+        fixed[0][0], fixed[1][0], fixed[3][0] = 1, 2, 3
+        service.spreadsheets().values().get().execute.side_effect = [
+            {'values': [PROFILE_EXPORT_HEADERS]}, {'values': [row, other, blank]}, {'values': fixed}]
+        result = export_session_to_google_sheet(sheet, export_mode='refresh-selected',
+            append_candidate_codes=['FT-90002'], validate_template=True)
+        self.assertEqual((result['exported'], result['updated']), (1, 0))
+        data = service.spreadsheets().values().batchUpdate.call_args.kwargs['body']['data']
+        stt = {item['range']: item['values'] for item in data if item['range'].count('!A') and ':' not in item['range']}
+        self.assertEqual(stt, {"'FIMO'!A3": [[1]], "'FIMO'!A4": [[2]]})
+        appended = next(item for item in data if item['range'].startswith("'FIMO'!A6:"))
+        self.assertEqual(appended['values'][0][0], 3)
+        service.spreadsheets().values().clear.assert_not_called()
 
     def test_body_format_does_not_copy_header_or_change_dimensions(self):
         requests = candidate_body_format_requests(8, 2, 60)
@@ -127,6 +156,7 @@ class SessionSheetIntegrityTests(TestCase):
             row = session_export_rows(self.session.pk)[2][:51] + ['', '', '', 'old', 'old']
             row[1], row[15], row[23], row[30], row[34] = '', subject, '2020-01-01', 'Đã có kết quả', award
             row[3] = '02/10/2014'
+            row[0] = str(len(rows) + 1)
             rows.append(row)
         service = build.return_value
         service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {

@@ -1218,8 +1218,8 @@ def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=Fals
         remaining.discard(candidate_index)
         matched_rows += 1
 
-    existing_stt = [int(clean_txt(row[0])) for row in current_rows if row and clean_txt(row[0]).isdigit()]
-    next_stt = max(existing_stt, default=0) + 1
+    # New rows continue the running number (gaps are closed on export).
+    next_stt = sum(1 for row in current_rows if clean_txt(_export_row_record(row)['code']) or clean_txt(_export_row_record(row)['name'])) + 1
 
     # Do not append a possible duplicate. It is safer to pause and ask for a
     # stable identifier than to create a second record for the same person.
@@ -1599,10 +1599,24 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         if new_rows:
             updates.append({'range': f'{range_title}!A{len(current) + 3}:{end_column}{len(current) + len(new_rows) + 2}', 'values': new_rows})
             resulting_values.extend(new_rows)
+        refreshed_rows = len(updates) - bool(new_rows)
+        # STT is a running number: rows removed from the tab must not leave
+        # gaps. Only the STT cells that are wrong are rewritten, in place.
+        number = 0
+        for index, row in enumerate(resulting_values):
+            record = _export_row_record(row)
+            if not (clean_txt(record['code']) or clean_txt(record['name'])):
+                continue
+            number += 1
+            if clean_txt(row[0] if row else '') != str(number):
+                if row:
+                    row[0] = number
+                else:
+                    row.append(number)
+                updates.append({'range': f'{range_title}!A{index + 3}', 'values': [[number]]})
         if updates:
             service.spreadsheets().values().batchUpdate(spreadsheetId=spreadsheet_id,
                 body={'valueInputOption': 'RAW', 'data': updates}).execute(num_retries=6)
-        refreshed_rows = len(updates) - bool(new_rows)
         requests = candidate_body_format_requests(target['sheetId'], 2, len(resulting_values) + 2, column_count)
         if requests:
             service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute(num_retries=6)
