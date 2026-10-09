@@ -37,7 +37,7 @@ Commit `6985864` từng chuyển sang "duyệt tay + banner + quét mỗi phút"
 - Cột "Cuộc thi đăng ký" nhận nhiều mã: `FIMO & FIEO & SIAIO`, `A, B và C`, `A - B`, `A | B`, `A + B / C`.
 - Lệ phí chung của dòng nhiều cuộc thi được chia theo giá từng cuộc thi, học từ các dòng chỉ đăng ký một cuộc thi trong cùng file. Không có thông tin giá thì chia đều nếu chia hết; không chia được thì bỏ qua riêng dòng đó.
 - Đọc ngày trong Excel bằng serial/ISO, **không** đọc chuỗi hiển thị (M/D/YY gây đảo ngày/tháng). Giữ số 0 đầu của CCCD/SĐT. Cột "Nộp lệ phí" là ô tích, không phải số tiền.
-- Không ghi đè thông tin đã có của hồ sơ, trừ khi chủ dự án yêu cầu rõ (lệnh `reconcile_school_registrations --update-profiles`).
+- **Thông tin hồ sơ ưu tiên theo danh sách của trường** khi giá trị hợp chuẩn (`standard_value`: email đúng mẫu, SĐT 10 số bắt đầu bằng 0, CCCD 12 số hoặc hộ chiếu, ngày sinh đầy đủ và năm hợp lý). Giá trị sai chuẩn không ghi đè. Năm sinh vô lý thì tính theo khối: năm học 2026-2027, năm sinh = 2021 − khối (giữ ngày/tháng).
 - **Lệ phí:** ô Excel số thực ("250000.0") là số, không bỏ dấu thập phân; "500.000VNĐ"/"250,000" là dấu phân cách nghìn; số dưới 10.000 là nghìn đồng ("250" = 250.000đ).
 - **Lớp và khối** của học sinh luôn theo danh sách năm học mới nhất của trường (các trường khác chỉ điền khi trống).
 - **Lượt cá nhân của học sinh có trong danh sách trường:** chỉ giữ riêng khi đã có thanh toán/chứng từ/kế toán xử lý (`has_individual_accounting`); còn lại chuyển vào nhóm trường và bỏ khoản thu cá nhân trống, để tổng của trường đủ và không tính hai lần.

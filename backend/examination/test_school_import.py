@@ -648,6 +648,19 @@ class SchoolImportTests(TestCase):
             self.assertFalse(ExaminationBillingRecord.objects.filter(participation=part).exists())
         self.assertEqual(sorted(ExaminationBillingRecord.objects.filter(school_registration__isnull=False).values_list('amount', flat=True)), [250000, 250000])
 
+    def test_standard_values_from_the_school_list_win_and_malformed_ones_do_not(self):
+        Candidate.objects.create(id='FT-OLD', code='FT-OLD', name='Nguyễn Minh An', birth_date='2015-07-12',
+            identity='001215012345', phone='0911111111', email='old@example.test', parent='Cũ', sort_key='a')
+        rows = [self.rows[0][:]]
+        self.commit(self.workbook(rows))
+        pupil = Candidate.objects.get(pk='FT-OLD')
+        self.assertEqual((pupil.phone, pupil.email, pupil.parent), ('0901234567', 'parent@example.test', 'Nguyễn Văn A'))
+        rows[0][9] = 'khongcoacong.example.test'
+        rows[0][8] = '90123'
+        self.commit(self.workbook(rows))
+        pupil.refresh_from_db()
+        self.assertEqual((pupil.phone, pupil.email), ('0901234567', 'parent@example.test'))
+
 
 class FeeParsingTests(TestCase):
     """Regression (09/10/2026): Trưng Vương fees read 10x too high or 1000x too low."""

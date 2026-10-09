@@ -110,6 +110,32 @@ def parse_fee(value):
     return amount
 
 
+def standard_value(field, value):
+    """True when a value from the school list meets the data standard.
+
+    The school list is the most recent source, so a standard value replaces
+    what the web holds; a malformed one (bad email, short phone, CCCD with
+    too few/many digits, impossible birth date) never does.
+    """
+    value = str(value or '').strip()
+    if not value:
+        return False
+    if field == 'email':
+        try:
+            validate_email(value)
+        except ValidationError:
+            return False
+        return not re.search(r'@(gmai|gmial|gamil)\.com$', value, re.IGNORECASE)
+    if field == 'phone':
+        return all(re.fullmatch(r'0\d{9}', part.strip()) for part in value.split('/'))
+    if field == 'identity':
+        return bool(re.fullmatch(r'\d{12}', value) or re.fullmatch(r'[A-Za-z]\d{7,8}', value))
+    if field == 'birth_date':
+        match = re.fullmatch(r'(\d{4})-\d{2}-\d{2}', value)
+        return bool(match) and 2005 <= int(match.group(1)) <= timezone.localdate().year - 4
+    return True
+
+
 def has_individual_accounting(participation):
     """An individual registration keeps its own billing only once money or
     accounting work exists (amount, transfer/invoice status, proof). An empty
@@ -543,9 +569,9 @@ def commit_plan(plan, request, filename):
             candidate.identity = format_identity(candidate.identity)
             candidate.phone = format_phone(candidate.phone)
             for field, value in profile.items():
-                # Class and grade change every school year: the school's
-                # current list wins. Other known facts are only filled in.
-                if value and (not getattr(candidate, field) or field in ('class_name', 'grade')):
+                # The school's current list wins for every standard value;
+                # malformed ones only fill an empty field.
+                if value and (not getattr(candidate, field) or standard_value(field, value)):
                     setattr(candidate, field, value)
         else:
             code = next_code(codes)
