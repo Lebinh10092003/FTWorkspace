@@ -51,18 +51,28 @@ def drain_session_sheet_queue(limit=100):
                 codes = [code for pk, code in code_by_id.items() if pk in members]
                 failures, held = [], set()
                 for sheet in destinations(session_id):
+                    sheet_codes = codes
                     if sheet.stage == 'session-output':
                         try:
                             # STT is a formula on the Sheet; a failure here never blocks the queue.
                             ensure_sheet_stt(sheet)
                         except Exception as exc:
                             logger.warning('Không đặt được công thức STT cho %s: %s', sheet.pk, exc)
+                        try:
+                            # Hand edits on the Sheet (rooms, scores, ...) reach the web
+                            # before the web writes its rows, so they are never overwritten.
+                            from .sheet_scheduler import scan_sheet_changes
+                            scan_sheet_changes(sheets=[sheet])
+                            live = set(SessionSheetOutbox.objects.filter(pk__in=[job.pk for job in jobs]).values_list('candidate_id', flat=True))
+                            sheet_codes = [code for pk, code in code_by_id.items() if pk in members and pk in live]
+                        except Exception as exc:
+                            logger.warning('Không đọc được thay đổi trên Sheet %s trước khi ghi: %s', sheet.pk, exc)
                     try:
                         deleted = remove_session_sheet_rows(sheet, removed)
                         if deleted:
                             from .sheet_scheduler import record_sheet_log
                             record_sheet_log(sheet, f'Đã xóa {deleted} dòng của thí sinh đã gỡ khỏi kỳ trong tab {sheet.sheet_tab}.')
-                        result = export_session_to_google_sheet(sheet, export_mode='refresh-selected', append_candidate_codes=codes, validate_template=True)
+                        result = export_session_to_google_sheet(sheet, export_mode='refresh-selected', append_candidate_codes=sheet_codes, validate_template=True)
                     except Exception as exc:
                         failures.append(f'{sheet.name}: {exc}')
                         ExaminationSheet.objects.filter(pk=sheet.pk).update(last_error=str(exc)[:1000])

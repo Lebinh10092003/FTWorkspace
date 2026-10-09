@@ -1640,6 +1640,11 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         updates = []
         for index, row in enumerate(alignment['values'][:len(current)]):
             row = project(row, current[index])
+            # An empty web value never erases what someone typed on the Sheet
+            # (e.g. a birth year the web could not read yet).
+            for cell, value in enumerate(current[index][:len(row)]):
+                if clean_txt(value) and not clean_txt(row[cell]):
+                    row[cell] = value
             code = clean_txt(_export_row_record(row)['code']).upper()
             differs = [clean_txt(v) for v in current[index]] != [clean_txt(v) for v in row[:len(current[index])]] or any(clean_txt(v) for v in row[len(current[index]):])
             if code in selected_codes and differs:

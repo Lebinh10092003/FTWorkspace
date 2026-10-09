@@ -132,6 +132,32 @@ class SessionSheetIntegrityTests(TestCase):
         from .sync import sheet_values_fingerprint
         self.assertEqual(result['fingerprint'], sheet_values_fingerprint(shown))
 
+    @patch('examination.sync.build_sheets_service')
+    def test_empty_web_value_never_erases_a_cell_typed_on_the_sheet(self, build):
+        # FIMO 09/10/2026: a birth year typed in D34 vanished when the web rewrote the row.
+        sheet = ExaminationSheet.objects.create(id='keep-output', name='FIMO',
+            url='https://docs.google.com/spreadsheets/d/integrity', sheet_tab='FIMO',
+            session_id=self.session.pk, stage='session-output', created_at=timezone.now(), updated_at=timezone.now())
+        row = session_export_rows(self.session.pk)[2]
+        self.assertEqual(row[3], '')
+        current = list(row)
+        current[3] = '2014'
+        current[10] = 'Ghi chú chỉ có trên Sheet'
+        self.candidate.email = 'moi@example.test'
+        self.candidate.save()
+        service = build.return_value
+        service.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {'sheetId': 8, 'title': 'FIMO'}}]}
+        def reads():
+            yield {'values': [PROFILE_EXPORT_HEADERS]}
+            yield {'values': [current]}
+            written = service.spreadsheets().values().batchUpdate.call_args.kwargs['body']['data'][0]['values'][0]
+            yield {'values': [['1', *written]]}
+        service.spreadsheets().values().get().execute.side_effect = reads()
+        export_session_to_google_sheet(sheet, export_mode='refresh-selected', append_candidate_codes=[self.candidate.code], validate_template=True)
+        written = service.spreadsheets().values().batchUpdate.call_args.kwargs['body']['data'][0]['values'][0]
+        self.assertEqual((written[2], written[9]), ('2014', 'Ghi chú chỉ có trên Sheet'))
+        self.assertIn('moi@example.test', written)
+
     def test_stt_formula_is_installed_once(self):
         from unittest.mock import MagicMock
         from .sync import STT_FORMULA, ensure_stt_formula
@@ -404,6 +430,23 @@ class RemovedRegistrationRowTests(TestCase):
         self.assertEqual(remove.call_args.args[1], ['FT-2'])
         self.assertNotIn('FT-2', export.call_args.kwargs['append_candidate_codes'])
         self.assertFalse(SessionSheetOutbox.objects.exists())
+
+    def test_sheet_edits_are_imported_before_the_queue_writes_rows(self):
+        # A room or score typed on the Sheet reaches the web first; the rows it
+        # updated are not written back over the Sheet.
+        from .models import SessionSheetOutbox
+        from .session_sheet_queue import drain_session_sheet_queue
+        order = []
+        def scan(sheets):
+            order.append('import')
+            SessionSheetOutbox.objects.filter(candidate_id='FT-1').delete()
+        def export(*args, **kwargs):
+            order.append('export')
+            return {'success': True, 'exported': 0, 'updated': 0}
+        with patch('examination.session_sheet_queue.ensure_sheet_stt'),              patch('examination.sheet_scheduler.scan_sheet_changes', side_effect=scan),              patch('examination.session_sheet_queue.remove_session_sheet_rows', return_value=0),              patch('examination.session_sheet_queue.export_session_to_google_sheet', side_effect=export) as exported:
+            drain_session_sheet_queue()
+        self.assertEqual(order, ['import', 'export'])
+        self.assertEqual(exported.call_args.kwargs['append_candidate_codes'], [])
 
     def test_row_deletion_matches_the_ft_code_and_deletes_bottom_up(self):
         from unittest.mock import MagicMock
