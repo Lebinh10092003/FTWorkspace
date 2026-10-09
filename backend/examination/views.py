@@ -2951,6 +2951,25 @@ def import_candidates(request):
         import_summary = f'Hệ thống nhập dữ liệu từ {source_label}: thêm {created} thí sinh, cập nhật {updated} thí sinh, gỡ {removed_from_session} thí sinh khỏi kỳ thi{existing_summary}; chính sách: {policy_label}. Không xóa dữ liệu do ô nguồn trống.'
         if historical_import:
             import_summary += ' Nhập dữ liệu lịch sử: không tạo khoản đối soát hoặc thông báo đăng ký mới.'
+        school_partner_id = str(data.get('schoolPartnerId') or '').strip()
+        if school_partner_id:
+            # Pupils entered by hand for a school join that school's billing group.
+            from .school_import import attach_to_school, parse_fee, partner_rows, refresh_group_billing
+            partner = next((item for item in partner_rows() if item['id'] == school_partner_id), None)
+            if not partner:
+                raise ValueError('Không tìm thấy trường (đối tác) đã chọn.')
+            fee = parse_fee(data['schoolFee']) if str(data.get('schoolFee') or '').strip() else None
+            codes = [item['code'] for item in items_returned]
+            groups, kept = {}, []
+            for participation in CandidateParticipation.objects.filter(candidate__code__in=codes, session__in=target_sessions).select_related('session', 'candidate'):
+                group = attach_to_school(participation, partner, fee)
+                if group:
+                    groups[group.pk] = group
+                else:
+                    kept.append(participation.candidate.name)
+            for group in groups.values():
+                refresh_group_billing(group)
+            import_summary += f' Đăng ký qua trường {partner["school"]}' + (f'; giữ cá nhân (đã có thanh toán): {", ".join(kept)}.' if kept else '.')
         for session in target_sessions:
             append_audit(f'session-{session.pk}', import_summary, request, system=True)
             append_competition_scope_audit(session, import_summary, request, system=True)

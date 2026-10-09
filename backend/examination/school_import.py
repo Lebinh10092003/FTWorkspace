@@ -110,6 +110,61 @@ def parse_fee(value):
     return amount
 
 
+def has_individual_accounting(participation):
+    """An individual registration keeps its own billing only once money or
+    accounting work exists (amount, transfer/invoice status, proof). An empty
+    one belongs in the school group, otherwise the school total misses it."""
+    from .models import UnmatchedTransfer
+    billing = ExaminationBillingRecord.objects.filter(participation=participation).first()
+    data = participation.registration_data or {}
+    return bool(
+        data.get('paymentProof')
+        or UnmatchedTransfer.objects.filter(matched_participation=participation).exists()
+        or (billing and (billing.amount is not None or billing.transfer_status != 'pending'
+                         or billing.invoice_status != 'pending' or billing.transfer_reference
+                         or billing.invoice_number or billing.proofs.exists()))
+    )
+
+
+def attach_to_school(participation, partner, fee=None):
+    """Put a registration into the school's billing group (manual entry, or a
+    pupil the school file could not import). Returns the group, or None when
+    the registration already carries its own payment and must stay individual."""
+    group, _ = SchoolRegistration.objects.get_or_create(
+        partner_id=partner['id'], session=participation.session,
+        defaults={'school': partner['school'], 'contact': partner})
+    if participation.school_registration_id == group.pk:
+        if fee is not None:
+            data = dict(participation.registration_data or {}) | {'schoolFee': fee}
+            CandidateParticipation.objects.filter(pk=participation.pk).update(registration_data=data)
+        return group
+    if participation.school_registration_id:
+        raise ValueError(f'{participation.candidate.name} đã thuộc nhóm đối soát của trường khác.')
+    if has_individual_accounting(participation):
+        return None
+    ExaminationBillingRecord.objects.filter(participation=participation).delete()
+    data = dict(participation.registration_data or {}) | {'schoolFee': fee, 'schoolPartnerId': partner['id']}
+    # update() bypasses the signal that freezes an existing school fee.
+    CandidateParticipation.objects.filter(pk=participation.pk).update(
+        school_registration=group, registration_method='Trường học',
+        registration_unit=partner['school'], registration_data=data)
+    return group
+
+
+def refresh_group_billing(group):
+    """School total = sum of member fees, while accounting has not acted yet."""
+    fees = [(p.registration_data or {}).get('schoolFee') for p in group.participations.all()]
+    amount = sum(fees) if fees and all(fee is not None for fee in fees) else None
+    billing, _ = ExaminationBillingRecord.objects.get_or_create(school_registration=group)
+    processed = (billing.transfer_status != 'pending' or billing.invoice_status != 'pending'
+                 or billing.invoice_number or billing.proofs.exists())
+    if billing.amount != amount and not processed:
+        billing.amount = amount
+        billing.seen_by_accountant = False
+        billing.save()
+    return billing
+
+
 def split_fee(total, contests, known_fees):
     """Split one fee across several contests of the same row, or return None.
 
@@ -392,10 +447,13 @@ def _build_plan(content, options, skip_rows=frozenset()):
                 else:
                     participation = CandidateParticipation.objects.filter(candidate=candidate, session=target).select_related('school_registration').first() if candidate else None
                     entry['participationVersion'] = participation.updated_at.isoformat() if participation else ''
-                    entry['preserveIndividual'] = bool(participation and not participation.school_registration_id)
+                    individual = bool(participation and not participation.school_registration_id)
+                    entry['preserveIndividual'] = individual and has_individual_accounting(participation)
                     if participation:
-                        if not participation.school_registration_id:
+                        if entry['preserveIndividual']:
                             issue('warning', 'Giữ nguyên lượt đăng ký cá nhân và dữ liệu thanh toán đã có; không tính lại vào khoản thu của trường.', row)
+                        elif individual:
+                            issue('warning', 'Lượt đăng ký cá nhân chưa có thanh toán được chuyển vào nhóm đối soát của trường.', row)
                         if participation.school_registration_id and participation.school_registration.partner_id != partner.get('id'):
                             issue('error', 'Lượt đăng ký đã thuộc nhóm đối soát của trường khác.', row)
                         prior_fee = (participation.registration_data or {}).get('schoolFee')
@@ -510,6 +568,8 @@ def commit_plan(plan, request, filename):
             # Attach the school before the creation signal can generate individual accounting alerts.
             participation = CandidateParticipation.objects.create(candidate=candidate, session=session, school_registration=group)
         participation.school_registration = group
+        # An empty individual bill would count this registration twice.
+        ExaminationBillingRecord.objects.filter(participation=participation).delete()
         participation.registration_data = dict(participation.registration_data or {}) | {'schoolFee': entry['amount'], 'schoolPartnerId': partner['id']}
         participation.save()
         registration = {'registrationMethod': 'Trường học', 'registrationUnit': partner['school'], 'generalNote': entry['note'], 'subject': entry['subject'], 'category': entry['category'], 'examLanguage': entry['examLanguage']}

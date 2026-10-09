@@ -14,6 +14,7 @@ import { AiConfig, PaperCreate, PaperEditor, PaperLibrary } from "./examination/
 import { BlueprintEditor, BlueprintLibrary } from "./examination/ExamBlueprints";
 import LogNotes, { appendLogNote as saveLogNote, formatChangeLog } from "./examination/LogNotes";
 import DetailEditDialogs from "./examination/DetailEditDialogs";
+import SchoolEntryPicker, { emptySchoolEntry, type SchoolEntry } from "./examination/SchoolEntryPicker";
 import CandidateProfileDetail from "./examination/CandidateProfileDetail";
 import SessionRoster from "./examination/SessionRoster";
 import RegistrationPageStudio from "./examination/RegistrationPageStudio";
@@ -220,6 +221,8 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     [teacherQuery, setTeacherQuery] = useState(""),
     [showCandidateAdd, setShowCandidateAdd] = useState(false),
     [candidateAddSaving, setCandidateAddSaving] = useState(false),
+    [candidateAddSchool, setCandidateAddSchool] = useState<SchoolEntry>(emptySchoolEntry),
+    [enrolSchool, setEnrolSchool] = useState<SchoolEntry>(emptySchoolEntry),
     [candidateAdd, setCandidateAdd] = useState({
       code: "",
       name: "",
@@ -639,6 +642,8 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
           records: [item],
           sessionIds: candidateAdd.sessionIds,
           source: "Nhập thủ công",
+          schoolPartnerId: candidateAddSchool.partnerId,
+          schoolFee: candidateAddSchool.fee,
         }),
       });
       (result.items || [item]).forEach((candidate: Candidate) => appendLogNote(`candidate-${candidate.code}`, "Tạo thí sinh mới.", userName || "Nhân viên FT Workspace"));
@@ -647,6 +652,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         return [...list.filter(candidate => !saved.has(candidate.code)), ...saved.values()];
       });
       setSessions(list => list.map(session => result.sessions?.find((saved: Session) => saved.id === session.id) || session));
+      setCandidateAddSchool(emptySchoolEntry);
       setCandidateAdd({
         code: "",
         name: "",
@@ -774,6 +780,8 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
           body: JSON.stringify({
             sessionId: selected.id,
             source: "Th\u00eam th\u00ed sinh t\u1eeb kho",
+            schoolPartnerId: enrolSchool.partnerId,
+            schoolFee: enrolSchool.fee,
             records: [
               {
                 // A profile from the repository joins this session with no
@@ -790,6 +798,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         setSessions(refreshed.sessions || []);
         const refreshedSession = (refreshed.sessions || []).find((item: Session) => item.id === selected.id);
         if (refreshedSession) setSelected(refreshedSession);
+        setEnrolSchool(emptySchoolEntry);
         setNotice(`\u0110\u00e3 th\u00eam ${candidateEnroll.name} v\u00e0o k\u1ef3 t\u1ed5 ch\u1ee9c.`);
       } else if (dialog === "teacher") {
         const before = selectedTeacher;
@@ -1805,6 +1814,13 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
                   placeholder="Chọn một hoặc nhiều kỳ tổ chức" searchPlaceholder="Tìm cuộc thi hoặc kỳ tổ chức..." />
                 <p className="mt-2 text-xs text-slate-500">Có thể chọn nhiều cuộc thi. Một mã FT dùng chung, thông tin đăng ký được lưu riêng cho từng kỳ.</p>
               </div>
+              <div className="sm:col-span-2">
+                <SchoolEntryPicker partners={partners} value={candidateAddSchool} onChange={value => {
+                  setCandidateAddSchool(value);
+                  const partner = partners.find(item => item.id === value.partnerId);
+                  if (partner && !candidateAdd.school.trim()) setCandidateAdd(current => ({ ...current, school: partner.school }));
+                }} />
+              </div>
             </div>
             <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button
@@ -2142,6 +2158,9 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         onCompetitionChange={setCompetitionEdit}
         onSessionChange={setSessionEdit}
         onCandidateChange={(value) => (dialog === "enrol" ? setCandidateEnroll(value) : setCandidateEdit(value))}
+        partners={partners}
+        schoolEntry={enrolSchool}
+        onSchoolEntryChange={setEnrolSchool}
         onTeacherChange={setTeacherEdit}
         onSave={saveDialog}
       />

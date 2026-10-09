@@ -191,8 +191,11 @@ class SchoolImportTests(TestCase):
         self.assertEqual(old.school, 'Trường A')
         self.assertEqual(old.parent, 'Mai Thu Trang')
         self.assertEqual(set(old.participations.values_list('session_id', flat=True)), {'TESTA-2026', 'TESTB-2026'})
-        # The individual registration that already existed keeps its own billing.
-        self.assertIsNone(old.participations.get(session_id='TESTA-2026').school_registration_id)
+        # The earlier individual registration had no payment: it joins the
+        # school group and its empty individual bill is removed.
+        moved = old.participations.get(session_id='TESTA-2026')
+        self.assertIsNotNone(moved.school_registration_id)
+        self.assertFalse(ExaminationBillingRecord.objects.filter(participation=moved).exists())
         new = Candidate.objects.get(name='Trần Minh Bình')
         self.assertEqual(new.identity, '001315028059')
         self.assertEqual(new.email, 'b@example.test')
@@ -627,6 +630,23 @@ class SchoolImportTests(TestCase):
         pupil = Candidate.objects.get(pk='FT-OLD')
         self.assertEqual((pupil.class_name, pupil.grade), ('Lớp 6', '6'))
         self.assertEqual(pupil.phone, '0901234567')
+
+    def test_manual_entry_for_a_school_joins_its_billing_group(self):
+        # Pupils the school file could not import are entered by hand.
+        self.client.force_authenticate(self.finance)
+        SystemConfig.objects.update_or_create(key='examination_partners', defaults={'data': {'partners': [
+            {'id': 'tv', 'school': 'Trường THCS Trưng Vương', 'representative': 'A', 'phone': '0900000000', 'email': 'tv@example.test'}]}})
+        response = self.client.post('/api/examination/import/candidates', {
+            'sessionIds': ['TESTA-2026', 'TESTB-2026'], 'source': 'Nhập thủ công', 'schoolPartnerId': 'tv', 'schoolFee': '250',
+            'records': [{'name': 'Lê Khang', 'birthDate': '2015-12-16', 'className': '6S'}]}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        parts = CandidateParticipation.objects.filter(candidate__name='Lê Khang')
+        self.assertEqual(parts.count(), 2)
+        for part in parts:
+            self.assertEqual(part.school_registration.school, 'Trường THCS Trưng Vương')
+            self.assertEqual(part.registration_data['schoolFee'], 250000)
+            self.assertFalse(ExaminationBillingRecord.objects.filter(participation=part).exists())
+        self.assertEqual(sorted(ExaminationBillingRecord.objects.filter(school_registration__isnull=False).values_list('amount', flat=True)), [250000, 250000])
 
 
 class FeeParsingTests(TestCase):

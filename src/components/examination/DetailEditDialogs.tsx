@@ -1,3 +1,5 @@
+import SchoolEntryPicker, { type SchoolEntry } from './SchoolEntryPicker';
+import type { Partner } from './Partners';
 import React, { useState } from 'react';
 import type { Candidate, Competition, ExaminationSession, SessionRound } from './types';
 import ExamDialog from './ExamDialog';
@@ -8,7 +10,7 @@ import { matchesSearch } from '../../lib/searchText';
 
 type Teacher = { name: string; subject: string; phone: string; email: string; workplace: string };
 type Mode = 'competition' | 'session' | 'candidate' | 'teacher' | 'enrol' | null;
-type Props = { mode: Mode; error: string; busy: boolean; competitions: Competition[]; competition: Competition; session: ExaminationSession; candidate: Candidate; candidates?: Candidate[]; enrollmentSessionId?: string; teacher: Teacher; onClose: () => void; onCompetitionChange: (value: Competition) => void; onSessionChange: (value: ExaminationSession) => void; onCandidateChange: (value: Candidate) => void; onTeacherChange: (value: Teacher) => void; onSave: () => void | Promise<void>; };
+type Props = { mode: Mode; error: string; busy: boolean; competitions: Competition[]; competition: Competition; session: ExaminationSession; candidate: Candidate; candidates?: Candidate[]; enrollmentSessionId?: string; teacher: Teacher; onClose: () => void; onCompetitionChange: (value: Competition) => void; onSessionChange: (value: ExaminationSession) => void; onCandidateChange: (value: Candidate) => void; onTeacherChange: (value: Teacher) => void; onSave: () => void | Promise<void>; partners?: Partner[]; schoolEntry?: SchoolEntry; onSchoolEntryChange?: (value: SchoolEntry) => void; };
 const input = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2';
 const SESSION_PHASE_SUGGESTIONS = [
   'Chuẩn bị/Truyền thông',
@@ -85,10 +87,10 @@ function SessionFields({ value, competitions, onChange }: { value: ExaminationSe
   </div>;
 }
 export default function DetailEditDialogs(props: Props) {
-  const { mode, error, busy, competitions, competition, session, candidate, candidates, enrollmentSessionId, teacher, onClose, onCompetitionChange, onSessionChange, onCandidateChange, onTeacherChange, onSave } = props;
+  const { mode, error, busy, competitions, competition, session, candidate, candidates, enrollmentSessionId, teacher, onClose, onCompetitionChange, onSessionChange, onCandidateChange, onTeacherChange, onSave, partners, schoolEntry, onSchoolEntryChange } = props;
   if (!mode) return null;
   const body = mode === 'competition' ? <div className="grid gap-4 sm:grid-cols-2">{([['code', 'Mã cuộc thi'], ['name', 'Tên cuộc thi'], ['organizer', 'Ban tổ chức quốc tế'], ['parent', 'Cuộc thi mẹ']] as [keyof Competition, string][]).map(([field, label]) => <label key={field} className={field === 'name' ? 'sm:col-span-2' : ''}><span className="text-sm font-bold">{label}</span><input value={competition[field]} onChange={event => onCompetitionChange({ ...competition, [field]: event.target.value })} className={input}/></label>)}</div> : mode === 'session' ? <SessionFields value={session} competitions={competitions} onChange={onSessionChange}/> : mode === 'teacher' ? <div className="grid gap-4 sm:grid-cols-2">{([['name', 'Họ và tên'], ['subject', 'Chuyên môn'], ['phone', 'Điện thoại'], ['email', 'Email'], ['workplace', 'Đơn vị công tác']] as [keyof Teacher, string][]).map(([field, label]) => <label key={field} className={field === 'workplace' ? 'sm:col-span-2' : ''}><span className="text-sm font-bold">{label}</span><input value={teacher[field]} onChange={event => onTeacherChange({ ...teacher, [field]: event.target.value })} className={input}/></label>)}</div> : mode === 'enrol' ? <CandidatePoolPicker value={candidate} candidates={candidates} sessionId={enrollmentSessionId} onChange={onCandidateChange}/> : <CandidateFields value={candidate} onChange={onCandidateChange}/>;
   const title = mode === 'competition' ? 'Thay đổi thông tin cuộc thi' : mode === 'session' ? 'Thay đổi thông tin kỳ tổ chức' : mode === 'teacher' ? 'Thay đổi thông tin giáo viên' : mode === 'enrol' ? 'Thêm thí sinh vào kỳ thi' : 'Thay đổi hồ sơ thí sinh';
   const description = mode === 'session' ? 'Cập nhật cùng một cấu trúc với lúc tạo kỳ: tên kỳ, cuộc thi, các vòng và mốc ngày. Vòng chưa có thông tin có thể để trống ngày.' : mode === 'enrol' ? 'Chọn hồ sơ từ kho để liên kết vào kỳ tổ chức. Hồ sơ mới chỉ được tạo khi bạn chủ động nhập trong phần bên dưới.' : 'Các thay đổi được cập nhật ngay vào dữ liệu chung và những luồng liên quan.';
-  return <ExamDialog open title={title} description={description} onClose={onClose} onSubmit={onSave} busy={busy} submitLabel={mode === 'enrol' ? 'Thêm và đồng bộ' : 'Lưu thay đổi'}>{body}{error && <p className="mt-4 text-sm font-semibold text-rose-600">{error}</p>}</ExamDialog>;
+  return <ExamDialog open title={title} description={description} onClose={onClose} onSubmit={onSave} busy={busy} submitLabel={mode === 'enrol' ? 'Thêm và đồng bộ' : 'Lưu thay đổi'}>{body}{mode === 'enrol' && partners && schoolEntry && onSchoolEntryChange && <div className="mt-4"><SchoolEntryPicker partners={partners} value={schoolEntry} onChange={onSchoolEntryChange} /></div>}{error && <p className="mt-4 text-sm font-semibold text-rose-600">{error}</p>}</ExamDialog>;
 }
