@@ -4,7 +4,7 @@ from datetime import timedelta
 from urllib.parse import urlparse
 
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -20,6 +20,7 @@ from .models import ExamInvigilationAudit, ExamInvigilationShift, ExamRoom, Exam
 from .partner_contact_sync import _single_worker
 
 ATTENDANCE = ('Chưa điểm danh', 'Có mặt', 'Vắng', 'Đến muộn')
+ABSENT_AFTER = timedelta(minutes=15)
 
 
 def _plain(text):
@@ -62,8 +63,32 @@ def live_entry(result, audit=None):
         'note': result.note, 'revision': result.updated_at.isoformat(), 'resultId': str(result.pk),
     }
     if audit:
-        entry.update(updatedBy=audit.actor.email if audit.actor else '', updatedAt=audit.created_at.isoformat())
+        entry.update(updatedBy=audit.actor.email if audit.actor else 'Hệ thống', updatedAt=audit.created_at.isoformat(),
+                     autoAbsent=audit.actor_id is None and entry['attendance'] == 'Vắng')
     return entry
+
+
+def auto_mark_absent(now=None):
+    """15 minutes after a real duty starts, candidates nobody has marked become
+    "Vắng". Runs from the per-minute queue command and when rooms are opened; a
+    candidate already marked (any state) is never touched, and the invigilator
+    can still change it."""
+    now = now or timezone.now()
+    marked = 0
+    shifts = ExamInvigilationShift.objects.filter(enabled=True, exam_room__isnull=False,
+                                                  starts_at__lte=now - ABSENT_AFTER, ends_at__gt=now)
+    for shift in shifts:
+        pending = RoundResult.objects.filter(exam_room_id=shift.exam_room_id).filter(
+            Q(attendance='') | Q(attendance=ATTENDANCE[0])).select_related('participation__candidate')
+        for result in pending:
+            with transaction.atomic():
+                before = live_entry(result)
+                result.attendance = 'Vắng'
+                result.save(update_fields=['attendance', 'updated_at'])
+                ExamInvigilationAudit.objects.create(shift=shift, candidate_code=result.participation.candidate.code,
+                                                     actor=None, before=before, after=live_entry(result))
+            marked += 1
+    return marked
 
 
 def room_results(shift):
@@ -213,6 +238,7 @@ def shifts(request):
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)
         return Response(serialize_shift(shift, True), status=201)
+    auto_mark_absent()
     qs = visible_shifts(request)
     session_id = request.query_params.get('sessionId')
     if session_id:

@@ -7,7 +7,7 @@ from examination.candidate_sheet_queue import drain_candidate_sheet_queue
 from examination.candidate_roster_sync import LAYOUT_VERSION, SYNC_CONFIG_KEY, audit_candidate_roster, sync_candidate_roster
 from authentication.models import SystemConfig
 from examination.session_sheet_queue import drain_session_sheet_queue
-from examination.invigilation import drain_invigilation_sheet_queue
+from examination.invigilation import auto_mark_absent, drain_invigilation_sheet_queue
 from examination.models import CandidateSheetOutbox, SessionSheetOutbox
 from examination.public_registration_sheet import sync_pending
 
@@ -23,6 +23,11 @@ class Command(BaseCommand):
         results = {}
         errors = []
         if not options['audit_only']:
+            try:
+                # 15 minutes into a duty, unmarked candidates become "Vắng" (before the Sheet queue runs).
+                results['autoAbsent'] = auto_mark_absent()
+            except Exception as exc:
+                results['autoAbsent'] = {'error': str(exc)}
             try:
                 results['invigilation'] = drain_invigilation_sheet_queue()
             except Exception as exc:

@@ -259,6 +259,27 @@ class LiveRoomDutyTests(TestCase):
         self.results[1].save()
         self.assertEqual([entry['code'] for entry in self.roster()], ['FT-90'])
 
+    def test_unmarked_candidates_become_absent_15_minutes_after_start(self):
+        from .invigilation import auto_mark_absent
+        tz = ZoneInfo('Asia/Ho_Chi_Minh')
+        self.results[0].attendance = 'Có mặt'
+        self.results[0].save()
+        self.assertEqual(auto_mark_absent(datetime(2026, 10, 11, 9, 14, tzinfo=tz)), 0)
+        self.assertEqual(auto_mark_absent(datetime(2026, 10, 11, 9, 15, tzinfo=tz)), 1)
+        for result in self.results:
+            result.refresh_from_db()
+        self.assertEqual([r.attendance for r in self.results], ['Có mặt', 'Vắng'])
+        entry = next(e for e in self.roster() if e['code'] == 'FT-91')
+        self.assertEqual((entry['attendance'], entry['autoAbsent'], entry['updatedBy']), ('Vắng', True, 'Hệ thống'))
+        # The invigilator can still mark a late arrival; nothing is redone afterwards.
+        response = self.client.patch(f'/api/examination/invigilation/shifts/{self.shift_id}/roster/FT-91', {'revision': entry['revision'], 'attendance': 'Đến muộn'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(auto_mark_absent(datetime(2026, 10, 11, 9, 20, tzinfo=tz)), 0)
+        # Shifts that already ended are never touched.
+        self.results[0].attendance = ''
+        self.results[0].save()
+        self.assertEqual(auto_mark_absent(datetime(2026, 10, 11, 10, 1, tzinfo=tz)), 0)
+
     def test_profile_edits_show_in_the_room_at_once(self):
         # Email/SĐT changed in Khảo thí or on the Sheet appear for the invigilator without re-import.
         candidate = Candidate.objects.get(code='FT-90')

@@ -3,7 +3,7 @@ import { ArrowLeft, BellRing, CheckCircle2, ExternalLink, Loader2, Mail, Phone, 
 import type { Duty } from './InvigilationReminders';
 import { dutyDate, dutyTime } from './invigilationTiming';
 
-type Entry = { code: string; sbd?: string; name: string; school: string; grade: string; className?: string; birthDate?: string; email?: string; phone?: string; parent?: string; attendance: string; score: string; note: string; revision: string; updatedBy?: string; updatedAt?: string };
+type Entry = { code: string; sbd?: string; name: string; school: string; grade: string; className?: string; birthDate?: string; email?: string; phone?: string; parent?: string; attendance: string; score: string; note: string; revision: string; updatedBy?: string; updatedAt?: string; autoAbsent?: boolean };
 type Shift = Duty & { roster: Entry[]; pendingSheetCount: number; sheetError: boolean; revision: string; occurrenceId: string; sheetTab?: string; examRoomId?: string };
 type Room = { id: string; label: string; roomNumber: string; roundName: string; occurrenceId: string; link: string; candidateCount: number };
 type Employee = { email: string; name: string; employeeCode: string };
@@ -38,6 +38,11 @@ function RosterRow({ index, entry, token, shiftId, onBegin, onEnd, onSaved }: { 
         body: JSON.stringify({ attendance: value.attendance, score: value.score, note: value.note, revision: value.revision }),
       });
       const data = await response.json();
+      if (response.status === 409) {
+        // Someone (or the automatic absent marking) changed this row first: show the
+        // current value instead of keeping the stale draft.
+        setDirty(false); setError('Dòng này vừa được cập nhật. Đã tải lại, hãy kiểm tra và bấm lại nếu cần.'); return;
+      }
       if (!response.ok) throw new Error(data.error || 'Chưa lưu được. Hãy thử lại.');
       setDraft({ ...value, ...data.entry }); setDirty(false); setPending(data.pendingSheet); onSaved(data.entry);
     } catch (e) { setDirty(true); setError(e instanceof Error ? e.message : 'Chưa lưu được.'); }
@@ -63,6 +68,7 @@ function RosterRow({ index, entry, token, shiftId, onBegin, onEnd, onSaved }: { 
     <td className="min-w-52 px-3 py-3"><textarea aria-label={`Ghi chú ${entry.name}`} disabled={saving} className={inputClass} rows={1} value={draft.note} placeholder="Ghi chú" onChange={e => { setDraft({ ...draft, note: e.target.value }); setDirty(true); }} onBlur={() => { if (dirty) void save(); }} /></td>
     <td className="w-28 px-3 py-3 text-xs text-slate-500">{saving ? <span className="flex items-center gap-1 text-blue-700"><Loader2 size={14} className="animate-spin" />Đang lưu</span> : dirty ? <button type="button" onClick={() => void save()} className="rounded-lg bg-blue-600 px-3 py-1.5 font-bold text-white">Lưu lại</button> : <span title={pending ? 'Đã lưu web, đang ghi Sheet' : 'Đã lưu'} className="flex items-center gap-1 text-emerald-700"><CheckCircle2 size={14} />{pending ? 'Chờ Sheet' : 'Đã lưu'}</span>}
       {error && <p role="alert" className="mt-1 text-rose-700">{error}</p>}
+      {entry.autoAbsent && <p className="mt-1 font-semibold text-rose-700">Tự động đánh vắng</p>}
       {entry.updatedAt && <p className="mt-1" title={entry.updatedBy}>{new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }).format(new Date(entry.updatedAt))}</p>}
     </td>
   </tr>;
@@ -158,6 +164,7 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
           <div><h2 className="text-lg font-extrabold text-[#001e40]">{selected.competitionCode} · {selected.label} · Phòng {selected.roomNumber}</h2><p className="mt-1 text-sm text-slate-500">{selected.roundName} · {dutyTime(selected.startsAt)}–{dutyTime(selected.endsAt)} {dutyDate(selected.startsAt)} · Giám thị: {selected.invigilators.map(u => u.name).join(', ') || 'chưa phân công'}</p></div>
           <div className="flex flex-wrap gap-2">{selected.roomLink && <a href={selected.roomLink} target="_blank" rel="noreferrer" className="flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white"><ExternalLink size={15} />Vào phòng thi</a>}{canManage && <button type="button" onClick={() => edit(selected)} className="flex items-center gap-1 rounded-lg border px-3 py-2 text-sm font-bold"><Settings2 size={15} />Lịch & giám thị</button>}</div>
         </div>
+        <p className="border-b bg-amber-50 px-4 py-2 text-sm text-amber-900">Đến {dutyTime(new Date(new Date(selected.startsAt).getTime() + 15 * 60_000).toISOString())}, thí sinh chưa được điểm danh sẽ tự chuyển sang <b>Vắng</b>. Em vào muộn sau đó: bấm <b>Muộn</b> để sửa lại.</p>
         {selected.pendingSheetCount > 0 && <p className="border-b bg-blue-50 px-4 py-2 text-sm text-blue-800">{selected.pendingSheetCount} thí sinh đã lưu trên web, đang ghi sang Sheet.{selected.sheetError && ' Một số dòng chưa ghi được; hệ thống tự thử lại riêng các dòng đó.'}</p>}
         <div className="flex flex-wrap items-center gap-2 border-b p-4">
           {chip('all', 'Tất cả', counts.total, 'bg-white text-slate-700')}
