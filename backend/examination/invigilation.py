@@ -36,9 +36,9 @@ def is_exam_staff(request):
         return False
     if profile.role == 'MANAGER':
         return True
-    # The main department decides: staff of other departments who also help
-    # Khảo thí (listed in several departments) still only see their own rooms.
-    return bool(profile.department_id) and _plain(profile.department.name) == 'khao thi'
+    # Anyone with Khảo thí among their departments (as shown on the account page).
+    names = {_plain(d.name) for d in profile.departments.all()} | ({_plain(profile.department.name)} if profile.department_id else set())
+    return 'khao thi' in names
 
 
 def can_manage(request):

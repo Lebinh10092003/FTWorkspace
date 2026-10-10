@@ -17,6 +17,7 @@ export type SavedRoom = {
   allocationStrategy: AllocationStrategy;
   capacity?: number | null;
   assignedCount: number;
+  occurrenceId?: string;
 };
 type AllocationResponse = {
   roundName: string;

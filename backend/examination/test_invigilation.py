@@ -201,7 +201,6 @@ class InvigilationTests(TestCase):
         # An administrator of another department who invigilates sees only their room.
         tech = UserProfile.objects.create(email='tech@example.com', name='Tech', role='ADMIN')
         tech.department = Department.objects.get_or_create(name='Công nghệ')[0]; tech.save()
-        tech.departments.add(Department.objects.get_or_create(name='Khảo thí')[0])  # also helps Khảo thí
         other_room = ExamInvigilationShift.objects.create(session=self.session, occurrence_id='ca-1', round_name='Vòng loại Quốc gia',
             label='Ca 1', room_number='2', starts_at=self.now + timedelta(minutes=15), ends_at=self.now + timedelta(minutes=75))
         other_room.invigilators.add(tech)
@@ -212,6 +211,10 @@ class InvigilationTests(TestCase):
         self.client.force_authenticate(self.admin)
         data = self.client.get('/api/examination/invigilation/shifts?sessionId=fimo-2026-2027').data
         self.assertEqual((sorted(s['roomNumber'] for s in data['shifts']), data['canManage']), (['1', '2'], True))
+        # Khảo thí listed among their departments (e.g. Mr Phong) opens every room.
+        tech.departments.add(Department.objects.get_or_create(name='Khảo thí')[0])
+        self.client.force_authenticate(tech)
+        self.assertEqual(len(self.client.get('/api/examination/invigilation/shifts?sessionId=fimo-2026-2027').data['shifts']), 2)
 
 
 class LiveRoomDutyTests(TestCase):

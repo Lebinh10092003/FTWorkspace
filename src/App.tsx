@@ -227,6 +227,7 @@ export default function App() {
   const [idToken, setIdToken] = useState<string | null>(initialSession?.token || null);
   const [userRole, setUserRole] = useState<UserRole>(initialSession?.role || 'EMPLOYEE');
   const [authChecking, setAuthChecking] = useState(true);
+  const [upcomingDuties, setUpcomingDuties] = useState(0);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -261,6 +262,15 @@ export default function App() {
   const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
   const canAccessView = (mode: ViewMode) => { if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
+  useEffect(() => {
+    if (isGuest || !idToken) { setUpcomingDuties(0); return; }
+    let active = true;
+    fetch('/api/examination/invigilation/my-shifts', { headers: { Authorization: `Bearer ${idToken}` }, cache: 'no-store' })
+      .then(response => response.ok ? response.json() : { shifts: [] })
+      .then(data => { if (active) setUpcomingDuties(Array.isArray(data.shifts) ? data.shifts.length : 0); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [idToken, isGuest]);
 
   const persistSession = (token: string, nextUser: AppUser, role: UserRole) => {
     localStorage.setItem('ft_auth_session', JSON.stringify({ token, user: nextUser, role }));
@@ -707,6 +717,8 @@ export default function App() {
       icon: CalendarCheck,
     });
 
+    // Invigilators outside Khảo thí reach their rooms here (Khảo thí staff use the module menu).
+    if (upcomingDuties && !canAccessView('examination')) apps.push({ mode: 'examination-invigilation', title: 'Ca coi thi của tôi', description: `Bạn có ${upcomingDuties} ca coi thi sắp tới: mở phòng, điểm danh và xem thông tin thí sinh.`, gradient: 'from-emerald-600 to-teal-500', icon: CalendarCheck });
     const visibleApps = apps.filter(app => canAccessView(app.mode));
     return (
       <div className={`workspace-theme workspace-theme-${appearance.theme} min-h-dvh liquid-bg flex flex-col font-sans relative overflow-x-hidden`} style={workspaceAppearanceStyle(appearance)}>
