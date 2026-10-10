@@ -36,8 +36,9 @@ class RoomSheetTests(TestCase):
 
     def test_tabs_follow_batch_order_with_room_details_and_contacts(self):
         tabs = room_tabs(self.session)
-        self.assertEqual([title for title, _ in tabs], ['Ca 1 - Room 1', 'Ca 2 - Room 1'])
-        values = tabs[0][1]
+        self.assertEqual([title for title, _ in tabs], ['Danh sách phòng', 'Ca 1 - Room 1', 'Ca 2 - Room 1'])
+        self.assertEqual(tabs[0][1][3], ['Ca 1', '11/10/2026', '9:00-10:00', 'Room 1', 'https://meet.google.com/aju-tvvv-kik', 'Trần Hoàng Minh Tiến', 2, 'Ca 1 - Room 1'])
+        values = tabs[1][1]
         self.assertEqual(values[0][0], 'FIMO · Vòng loại Quốc gia · Ca 1 (9:00-10:00) · 11/10/2026')
         self.assertEqual(values[1], ['Phòng: Room 1', 'https://meet.google.com/aju-tvvv-kik'])
         self.assertEqual(values[2][0], 'Giám thị: Trần Hoàng Minh Tiến')
@@ -59,17 +60,17 @@ class RoomSheetTests(TestCase):
             return response
         service.spreadsheets().values().get = read
         service.spreadsheets().batchUpdate().execute.return_value = {'replies': [
-            {'addSheet': {'properties': {'title': 'Ca 1 - Room 1', 'sheetId': 11}}}, {'addSheet': {'properties': {'title': 'Ca 2 - Room 1', 'sheetId': 12}}}]}
+            {'addSheet': {'properties': {'title': 'Danh sách phòng', 'sheetId': 10}}}, {'addSheet': {'properties': {'title': 'Ca 1 - Room 1', 'sheetId': 11}}}, {'addSheet': {'properties': {'title': 'Ca 2 - Room 1', 'sheetId': 12}}}]}
         result = export_room_sheet(self.session.pk)
-        self.assertEqual(result, {'tabs': 2, 'created': 2, 'removed': 1})
+        self.assertEqual(result, {'tabs': 3, 'created': 3, 'removed': 1})
         requests = service.spreadsheets().batchUpdate.call_args_list[-2].kwargs['body']['requests']
         self.assertIn({'deleteSheet': {'sheetId': 9}}, requests)
         data = service.spreadsheets().values().batchUpdate.call_args.kwargs['body']['data']
-        self.assertEqual([item['range'] for item in data], ["'Ca 1 - Room 1'!A1:L8", "'Ca 2 - Room 1'!A1:L7"])
+        self.assertEqual([item['range'] for item in data], ["'Danh sách phòng'!A1:L5", "'Ca 1 - Room 1'!A1:L8", "'Ca 2 - Room 1'!A1:L7"])
         service.spreadsheets().values().batchUpdate.reset_mock()
-        self.assertEqual(export_room_sheet(self.session.pk), {'tabs': 2, 'unchanged': True})
+        self.assertEqual(export_room_sheet(self.session.pk), {'tabs': 3, 'unchanged': True})
         service.spreadsheets().values().batchUpdate.assert_not_called()
         # A change in Khảo thí (new email) is written again.
         Candidate.objects.filter(code='FT-R1').update(email='moi@example.test')
-        self.assertEqual(export_room_sheet(self.session.pk)['tabs'], 2)
+        self.assertEqual(export_room_sheet(self.session.pk)['tabs'], 3)
         service.spreadsheets().values().batchUpdate.assert_called()

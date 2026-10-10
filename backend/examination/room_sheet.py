@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 HEADER = ['STT', 'SBD', 'Mã FT', 'Họ và tên', 'Ngày sinh', 'Lớp', 'Trường', 'Số điện thoại', 'Email', 'Phụ huynh', 'Điểm danh', 'Ghi chú']
 HEADER_ROW = 6
+OVERVIEW = 'Danh sách phòng'
+OVERVIEW_HEADER = ['Ca', 'Ngày thi', 'Giờ thi', 'Phòng', 'Link phòng thi', 'Giám thị', 'Số thí sinh', 'Tab danh sách']
 
 
 def _date(value):
@@ -32,14 +34,14 @@ def _tab_title(text):
 
 
 def room_tabs(session):
-    """[(title, values)] in round, batch and room order."""
+    """[(title, values)] in round, batch and room order; the room overview comes first."""
     rounds = [item for item in (session.rounds or []) if isinstance(item, dict)]
     round_order = {str(item.get('id')): index for index, item in enumerate(rounds)}
     slots = {str(slot.get('id')): (index, slot) for item in rounds for index, slot in enumerate(item.get('slots') or []) if isinstance(slot, dict)}
     rooms = list(ExamRoom.objects.filter(session=session).annotate(seated=Count('assignments')).filter(seated__gt=0))
     rooms.sort(key=lambda room: (round_order.get(room.round_id, 99), slots.get(room.occurrence_id, (99, {}))[0], room.position, room.room_number))
     several_rounds = len({room.round_id for room in rooms}) > 1
-    tabs = []
+    tabs, overview = [], []
     for room in rooms:
         slot = slots.get(room.occurrence_id, (0, {}))[1]
         results = list(RoundResult.objects.filter(exam_room=room).select_related('participation__candidate').order_by('sbd', 'participation__candidate__name'))
@@ -64,7 +66,12 @@ def room_tabs(session):
                            candidate.school, candidate.phone, candidate.email, candidate.parent,
                            result.attendance or 'Chưa điểm danh', result.note])
         tabs.append((title, values))
-    return tabs
+        overview.append([batch, date_text, time_text, room.label, room.link or room.exam_link or room.location,
+                         ', '.join(invigilators) or 'chưa phân công', len(results), title])
+    if not tabs:
+        return []
+    total = sum(row[6] for row in overview)
+    return [(OVERVIEW, [[f'{session.code} · Danh sách phòng thi · {len(overview)} phòng · {total} thí sinh'], [], OVERVIEW_HEADER, *overview])] + tabs
 
 
 def export_room_sheet(session_id, force=False):
@@ -84,7 +91,8 @@ def export_room_sheet(session_id, force=False):
                 service.spreadsheets().get(spreadsheetId=sid, fields='sheets(properties(title,sheetId))').execute()['sheets']}
     wanted = [title for title, _ in tabs]
     created = [title for title in wanted if title not in existing]
-    requests = [{'addSheet': {'properties': {'title': title, 'gridProperties': {'frozenRowCount': HEADER_ROW}}}} for title in created]
+    requests = [{'addSheet': {'properties': {'title': title, 'gridProperties': {'frozenRowCount': HEADER_ROW}}}} if title != OVERVIEW
+                else {'addSheet': {'properties': {'title': title, 'index': 0, 'gridProperties': {'frozenRowCount': 3}}}} for title in created]
     # Tabs this export made for rooms that are gone (same header row) are removed.
     stale = []
     for title, sheet_id in existing.items():
@@ -106,7 +114,10 @@ def export_room_sheet(session_id, force=False):
     data, clears = [], []
     for title, values in tabs:
         values = [list(row) for row in values]
-        values[3] = [f'{values[3][0]} · Cập nhật {stamp}']
+        if title == OVERVIEW:
+            values[1] = [f'Cập nhật {stamp}']
+        else:
+            values[3] = [f'{values[3][0]} · Cập nhật {stamp}']
         data.append({'range': f"'{title}'!A1:L{len(values)}", 'values': [row + [''] * (12 - len(row)) for row in values]})
         clears.append(f"'{title}'!A{len(values) + 1}:L2000")
     if data:
@@ -118,7 +129,7 @@ def export_room_sheet(session_id, force=False):
             sheet_id = existing[title]
             fmt += [
                 {'repeatCell': {'range': {'sheetId': sheet_id, 'startRowIndex': 0, 'endRowIndex': 1}, 'cell': {'userEnteredFormat': {'textFormat': {'bold': True, 'fontSize': 12}}}, 'fields': 'userEnteredFormat.textFormat'}},
-                {'repeatCell': {'range': {'sheetId': sheet_id, 'startRowIndex': HEADER_ROW - 1, 'endRowIndex': HEADER_ROW}, 'cell': {'userEnteredFormat': {'textFormat': {'bold': True}, 'backgroundColor': {'red': 0.9, 'green': 0.94, 'blue': 1}}}, 'fields': 'userEnteredFormat(textFormat,backgroundColor)'}},
+                {'repeatCell': {'range': {'sheetId': sheet_id, 'startRowIndex': (2 if title == OVERVIEW else HEADER_ROW - 1), 'endRowIndex': (3 if title == OVERVIEW else HEADER_ROW)}, 'cell': {'userEnteredFormat': {'textFormat': {'bold': True}, 'backgroundColor': {'red': 0.9, 'green': 0.94, 'blue': 1}}}, 'fields': 'userEnteredFormat(textFormat,backgroundColor)'}},
                 {'updateDimensionProperties': {'range': {'sheetId': sheet_id, 'dimension': 'COLUMNS', 'startIndex': 3, 'endIndex': 4}, 'properties': {'pixelSize': 200}, 'fields': 'pixelSize'}},
                 {'updateDimensionProperties': {'range': {'sheetId': sheet_id, 'dimension': 'COLUMNS', 'startIndex': 6, 'endIndex': 9}, 'properties': {'pixelSize': 170}, 'fields': 'pixelSize'}},
             ]
