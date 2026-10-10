@@ -208,6 +208,8 @@ def shifts(request):
                 if employees is not None:
                     shift.invigilators.set(employees)
                 notify_duty(shift)
+                from .room_sheet import refresh_room_sheet_safely
+                transaction.on_commit(lambda session_id=shift.session_id: refresh_room_sheet_safely(session_id))
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)
         return Response(serialize_shift(shift, True), status=201)
@@ -258,6 +260,8 @@ def shift_detail(request, pk):
             if employees is not None:
                 shift.invigilators.set(employees)
             notify_duty(shift)
+            from .room_sheet import refresh_room_sheet_safely
+            transaction.on_commit(lambda session_id=shift.session_id: refresh_room_sheet_safely(session_id))
     except ValueError as exc:
         return Response({'error': str(exc)}, status=400)
     return Response(serialize_shift(shift, True))

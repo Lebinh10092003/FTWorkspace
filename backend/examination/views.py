@@ -903,6 +903,28 @@ def ensure_output_sheet_source(session, url, sheet_tab='', created_by=None):
         created_by=created_by or None,
     )
 
+def ensure_room_sheet_source(session, url, created_by=None):
+    """The room output file (one tab per room), separate from the data Sheet."""
+    url = str(url or '').strip()
+    existing = ExaminationSheet.objects.filter(session_id=session.id, stage='room-output').first()
+    if not url:
+        if existing:
+            existing.delete()
+        return None
+    if existing:
+        if existing.url != url:
+            existing.url = url
+            existing.last_content_fingerprint = ''
+            existing.updated_at = timezone.now()
+            existing.save(update_fields=['url', 'last_content_fingerprint', 'updated_at'])
+        return existing
+    return ExaminationSheet.objects.create(
+        id=f"sheet-{uuid.uuid4().hex[:10]}", name=f'Phan phong - {session.code} - {session.name}', url=url, status='idle',
+        session_id=session.id, sheet_tab='', stage='room-output', created_at=timezone.now(), updated_at=timezone.now(),
+        created_by=created_by or None,
+    )
+
+
 def ensure_registration_sheet_source(session, created_by=None):
     """Keep the registration Sheet link available as an importable source for a session."""
     url = str(session.registration_sheet_url or '').strip()
@@ -1002,6 +1024,7 @@ def serialize_session(sess, include_private=True):
         'registrationSheetTab': sess.registration_sheet_tab if include_private else '',
         'outputSheetUrl': (output_sheet.url if output_sheet else '') if include_private else '',
         'outputSheetTab': (output_sheet.sheet_tab if output_sheet else '') if include_private else '',
+        'roomSheetUrl': (ExaminationSheet.objects.filter(session_id=sess.id, stage='room-output').values_list('url', flat=True).first() or '') if include_private else '',
         'rounds': sess.rounds or [],
         'sortKey': sess.sort_key,
         'createdBy': sess.created_by,
@@ -1586,6 +1609,10 @@ def session_create(request):
     )
     ensure_registration_sheet_source(sess, getattr(request.user, 'email', ''))
     ensure_output_sheet_source(sess, data.get('outputSheetUrl'), data.get('outputSheetTab'), getattr(request.user, 'email', ''))
+    if 'roomSheetUrl' in data:
+        ensure_room_sheet_source(sess, data.get('roomSheetUrl'), getattr(request.user, 'email', ''))
+        from .room_sheet import refresh_room_sheet_safely
+        transaction.on_commit(lambda session_id=sess.id: refresh_room_sheet_safely(session_id))
     append_audit(f'session-{sess.id}', 'Tạo kỳ tổ chức: ' + audit_values({}, {'name': sess.name, 'competition': comp.code, 'phase': sess.phase, 'rounds': processed_rounds}, {'name':'Tên kỳ tổ chức', 'competition':'Cuộc thi', 'phase':'Giai đoạn', 'rounds':'Các vòng thi'}), request)
     append_audit(f'competition-{comp.id}', 'Tạo kỳ tổ chức: ' + audit_values({}, {'name': sess.name, 'competition': comp.code, 'phase': sess.phase, 'rounds': processed_rounds}, {'name':'Tên kỳ tổ chức', 'competition':'Cuộc thi', 'phase':'Giai đoạn', 'rounds':'Các vòng thi'}), request)
     notify_examination_staff(
@@ -1655,6 +1682,10 @@ def session_detail(request, pk):
         sync_session_candidate_totals()
         ensure_registration_sheet_source(sess, getattr(request.user, 'email', ''))
         ensure_output_sheet_source(sess, data.get('outputSheetUrl'), data.get('outputSheetTab'), getattr(request.user, 'email', ''))
+        if 'roomSheetUrl' in data:
+            ensure_room_sheet_source(sess, data.get('roomSheetUrl'), getattr(request.user, 'email', ''))
+            from .room_sheet import refresh_room_sheet_safely
+            transaction.on_commit(lambda session_id=sess.id: refresh_room_sheet_safely(session_id))
         sess.refresh_from_db()
         after = {'name': sess.name, 'phase': sess.phase, 'note': sess.note, 'registrationSheetUrl': sess.registration_sheet_url, 'registrationSheetTab': sess.registration_sheet_tab, 'outputSheetUrl': (ExaminationSheet.objects.filter(session_id=sess.id, stage='session-output').first().url if ExaminationSheet.objects.filter(session_id=sess.id, stage='session-output').first() else ''), 'outputSheetTab': (ExaminationSheet.objects.filter(session_id=sess.id, stage='session-output').first().sheet_tab if ExaminationSheet.objects.filter(session_id=sess.id, stage='session-output').first() else ''), 'national': sess.national, 'nationalDate': sess.national_date, 'international': sess.international, 'internationalDate': sess.international_date, 'competitionId': sess.competition_id, 'rounds': sess.rounds or []}
         change_text = audit_values(before, after, {'name':'Tên kỳ tổ chức', 'phase':'Giai đoạn hiện tại', 'note':'Ghi chú', 'registrationSheetUrl':'Danh sách đăng ký', 'registrationSheetTab':'Tab danh sách đăng ký', 'outputSheetUrl':'Google Sheet output', 'outputSheetTab':'Tab Google Sheet output', 'national':'Mốc vòng quốc gia', 'nationalDate':'Ngày vòng quốc gia', 'international':'Mốc vòng quốc tế', 'internationalDate':'Ngày vòng quốc tế', 'competitionId':'Cuộc thi', 'rounds':'Thông tin các vòng thi'})

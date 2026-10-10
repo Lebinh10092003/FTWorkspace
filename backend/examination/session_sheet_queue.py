@@ -91,6 +91,9 @@ def drain_session_sheet_queue(limit=100):
                         sheet.save(update_fields=fields)
                         from .sheet_scheduler import record_sheet_log
                         record_sheet_log(sheet, f'Hàng đợi đã ghi thêm {result["exported"]} và cập nhật {result.get("updated", 0)} thí sinh từ web vào tab {sheet.sheet_tab}.')
+                # The room Sheet (one tab per room) follows the same changes; it never blocks the queue.
+                from .room_sheet import refresh_room_sheet_safely
+                refresh_room_sheet_safely(session_id)
                 if failures:
                     raise ValueError('; '.join(failures))
                 for job in jobs:
