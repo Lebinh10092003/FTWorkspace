@@ -18,7 +18,7 @@ class InvigilationTests(TestCase):
         self.employee = UserProfile.objects.create(email='staff@example.com', name='Staff', access_modules=[])
         self.other = UserProfile.objects.create(email='other@example.com', name='Other', access_modules=[])
         self.admin = UserProfile.objects.create(email='admin@example.com', name='Admin', role='ADMIN')
-        self.admin.departments.add(Department.objects.get_or_create(name='Khảo thí')[0])
+        self.admin.department = Department.objects.get_or_create(name='Khảo thí')[0]; self.admin.save()
         self.row = {'code': 'DEMO-001', 'name': 'Thí sinh demo 001', 'revision': str(uuid.uuid4()),
                     'attendance': 'Chưa điểm danh', 'score': '', 'note': '', 'sheetRow': 4,
                     'sheetSnapshot': ['Chưa điểm danh', '', '']}
@@ -200,6 +200,8 @@ class InvigilationTests(TestCase):
     def test_only_khao_thi_staff_see_every_room(self):
         # An administrator of another department who invigilates sees only their room.
         tech = UserProfile.objects.create(email='tech@example.com', name='Tech', role='ADMIN')
+        tech.department = Department.objects.get_or_create(name='Công nghệ')[0]; tech.save()
+        tech.departments.add(Department.objects.get_or_create(name='Khảo thí')[0])  # also helps Khảo thí
         other_room = ExamInvigilationShift.objects.create(session=self.session, occurrence_id='ca-1', round_name='Vòng loại Quốc gia',
             label='Ca 1', room_number='2', starts_at=self.now + timedelta(minutes=15), ends_at=self.now + timedelta(minutes=75))
         other_room.invigilators.add(tech)
@@ -229,7 +231,7 @@ class LiveRoomDutyTests(TestCase):
             self.results.append(RoundResult.objects.create(participation=participation, round_id='round-national',
                 round_name='Vòng loại Quốc gia', occurrence_id='day-1', exam_room=self.room, sbd=f'SBD{index}'))
         self.manager = UserProfile.objects.create(email='lead@example.com', name='Lead', role='ADMIN')
-        self.manager.departments.add(Department.objects.get_or_create(name='Khảo thí')[0])
+        self.manager.department = Department.objects.get_or_create(name='Khảo thí')[0]; self.manager.save()
         self.invigilator = UserProfile.objects.create(email='gt@example.com', name='Giám thị', access_modules=[])
         self.client = APIClient()
         self.client.force_authenticate(self.manager)
