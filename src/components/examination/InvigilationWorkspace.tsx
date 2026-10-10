@@ -49,27 +49,26 @@ function RosterRow({ index, entry, token, shiftId, onBegin, onEnd, onSaved }: { 
     finally { setSaving(false); onEnd(); }
   };
   const tone = draft.attendance === 'Vắng' ? 'bg-rose-50/60' : present(draft) ? 'bg-emerald-50/40' : '';
+  const status = saving ? <span className="flex items-center gap-1 text-blue-700"><Loader2 size={13} className="animate-spin" />Đang lưu</span>
+    : dirty ? <button type="button" onClick={() => void save()} className="rounded-md bg-blue-600 px-2 py-1 font-bold text-white">Lưu lại</button>
+    : entry.updatedAt ? <span title={entry.updatedBy} className={`flex items-center gap-1 ${entry.autoAbsent ? 'text-rose-700' : 'text-emerald-700'}`}><CheckCircle2 size={13} />{entry.autoAbsent ? 'Tự động đánh vắng' : pending ? 'Chờ ghi Sheet' : 'Đã lưu'} {new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }).format(new Date(entry.updatedAt))}</span> : null;
   return <tr className={`border-t border-slate-100 align-top ${tone}`}>
-    <td className="px-3 py-3 text-xs text-slate-400">{index}</td>
-    <td className="whitespace-nowrap px-3 py-3 font-mono text-sm font-bold text-[#001e40]">{entry.sbd || '—'}</td>
-    <td className="min-w-48 px-3 py-3"><p className="font-semibold text-slate-900">{entry.name}</p><p className="font-mono text-xs text-slate-500">{entry.code}</p></td>
-    <td className="whitespace-nowrap px-3 py-3 text-sm">{birth(entry.birthDate)}</td>
-    <td className="min-w-44 px-3 py-3 text-sm"><p>{entry.className || (entry.grade ? `Khối ${entry.grade}` : '—')}</p><p className="text-xs text-slate-500">{entry.school || '—'}</p></td>
-    <td className="min-w-56 px-3 py-3 text-sm">
-      {entry.phone ? <a href={`tel:${entry.phone.split(/[ /]/)[0]}`} className="flex items-center gap-1 font-semibold text-[#001e40] hover:underline"><Phone size={13} />{entry.phone}</a> : <p className="text-slate-400">Chưa có SĐT</p>}
-      {entry.email ? <a href={`mailto:${entry.email}`} className="mt-1 flex items-center gap-1 break-all text-xs text-slate-600 hover:underline"><Mail size={12} />{entry.email}</a> : null}
+    <td className="w-10 px-3 py-3 text-xs text-slate-400">{index}</td>
+    <td className="min-w-52 px-3 py-3"><p className="font-semibold text-slate-900"><span className="mr-2 font-mono text-sm font-bold text-[#001e40]">{entry.sbd || '—'}</span>{entry.name}</p><p className="mt-0.5 text-xs text-slate-500"><span className="font-mono">{entry.code}</span> · {birth(entry.birthDate)}</p></td>
+    <td className="min-w-36 px-3 py-3 text-sm"><p>{entry.className || (entry.grade ? `Khối ${entry.grade}` : '—')}</p><p className="text-xs text-slate-500">{entry.school || '—'}</p></td>
+    <td className="min-w-52 max-w-64 px-3 py-3 text-sm">
+      {entry.phone ? <a href={`tel:${entry.phone.split(/[ /]/)[0]}`} className="flex items-center gap-1 font-semibold text-[#001e40] hover:underline"><Phone size={13} />{entry.phone}</a> : <p className="text-rose-600">Chưa có SĐT</p>}
+      {entry.email ? <a href={`mailto:${entry.email}`} className="mt-1 flex items-center gap-1 break-all text-xs text-slate-600 hover:underline"><Mail size={12} className="shrink-0" />{entry.email}</a> : null}
       {entry.parent && <p className="mt-1 text-xs text-slate-500">PH: {entry.parent}</p>}
     </td>
-    <td className="min-w-[14rem] px-3 py-3"><div role="group" aria-label={`Điểm danh ${entry.name}`} className="flex flex-nowrap gap-1">{ATTENDANCE.map(option => {
+    <td className="min-w-[13.5rem] px-3 py-3"><div role="group" aria-label={`Điểm danh ${entry.name}`} className="flex flex-nowrap gap-1">{ATTENDANCE.map(option => {
       const active = draft.attendance === option.value;
       return <button key={option.value} type="button" disabled={saving} aria-pressed={active} onClick={() => { setDirty(true); void save({ attendance: active ? 'Chưa điểm danh' : option.value }); }} className={`whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${active ? option.active : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}>{option.short}</button>;
     })}</div></td>
-    <td className="w-24 min-w-24 px-3 py-3"><input aria-label={`Điểm ${entry.name}`} disabled={saving} inputMode="decimal" className={inputClass} value={draft.score} placeholder="—" onChange={e => { setDraft({ ...draft, score: e.target.value }); setDirty(true); }} onBlur={() => { if (dirty) void save(); }} /></td>
-    <td className="min-w-52 px-3 py-3"><textarea aria-label={`Ghi chú ${entry.name}`} disabled={saving} className={inputClass} rows={1} value={draft.note} placeholder="Ghi chú" onChange={e => { setDraft({ ...draft, note: e.target.value }); setDirty(true); }} onBlur={() => { if (dirty) void save(); }} /></td>
-    <td className="w-28 px-3 py-3 text-xs text-slate-500">{saving ? <span className="flex items-center gap-1 text-blue-700"><Loader2 size={14} className="animate-spin" />Đang lưu</span> : dirty ? <button type="button" onClick={() => void save()} className="rounded-lg bg-blue-600 px-3 py-1.5 font-bold text-white">Lưu lại</button> : <span title={pending ? 'Đã lưu web, đang ghi Sheet' : 'Đã lưu'} className="flex items-center gap-1 text-emerald-700"><CheckCircle2 size={14} />{pending ? 'Chờ Sheet' : 'Đã lưu'}</span>}
-      {error && <p role="alert" className="mt-1 text-rose-700">{error}</p>}
-      {entry.autoAbsent && <p className="mt-1 font-semibold text-rose-700">Tự động đánh vắng</p>}
-      {entry.updatedAt && <p className="mt-1" title={entry.updatedBy}>{new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }).format(new Date(entry.updatedAt))}</p>}
+    <td className="w-20 min-w-20 px-3 py-3"><input aria-label={`Điểm ${entry.name}`} disabled={saving} inputMode="decimal" className={inputClass} value={draft.score} placeholder="—" onChange={e => { setDraft({ ...draft, score: e.target.value }); setDirty(true); }} onBlur={() => { if (dirty) void save(); }} /></td>
+    <td className="min-w-48 px-3 py-3"><textarea aria-label={`Ghi chú ${entry.name}`} disabled={saving} className={inputClass} rows={1} value={draft.note} placeholder="Ghi chú sự cố" onChange={e => { setDraft({ ...draft, note: e.target.value }); setDirty(true); }} onBlur={() => { if (dirty) void save(); }} />
+      <div className="mt-1 min-h-4 text-xs">{status}</div>
+      {error && <p role="alert" className="mt-1 text-xs text-rose-700">{error}</p>}
     </td>
   </tr>;
 }
@@ -174,7 +173,7 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
           {chip('waiting', 'Chưa điểm danh', waiting, 'bg-slate-50 text-slate-700')}
           <label className="ml-auto flex w-full max-w-sm items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 sm:w-auto"><Search size={15} className="text-slate-400" /><input aria-label="Tìm thí sinh trong phòng" className="w-full text-sm outline-none" value={search} onChange={e => setSearch(e.target.value)} placeholder="SBD, tên, SĐT, email…" /></label>
         </div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[1180px] text-left"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['#', 'SBD', 'Thí sinh', 'Ngày sinh', 'Lớp · Trường', 'Liên hệ', 'Điểm danh', 'Điểm', 'Ghi chú', ''].map(h => <th key={h} className="px-3 py-3">{h}</th>)}</tr></thead>
+        <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['#', 'SBD · Thí sinh', 'Lớp · Trường', 'Liên hệ', 'Điểm danh', 'Điểm', 'Ghi chú'].map(h => <th key={h} className="px-3 py-3">{h}</th>)}</tr></thead>
           <tbody>{filtered.map((e, i) => <RosterRow key={`${selected.id}:${e.code}`} index={i + 1} entry={e} shiftId={selected.id} token={token} onBegin={() => { edits.current++; sequence.current++; }} onEnd={() => { edits.current--; void load(); }} onSaved={entry => setShifts(prev => prev.map(s => s.id === selected.id ? { ...s, roster: s.roster.map(item => item.code === entry.code ? { ...item, ...entry } : item) } : s))} />)}</tbody></table>
           {!filtered.length && <p className="p-8 text-center text-sm text-slate-500">Không có thí sinh phù hợp.</p>}</div>
       </section>}
