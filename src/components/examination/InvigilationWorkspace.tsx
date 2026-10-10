@@ -55,9 +55,9 @@ function RosterRow({ index, entry, token, shiftId, onBegin, onEnd, onSaved }: { 
       {entry.email ? <a href={`mailto:${entry.email}`} className="mt-1 flex items-center gap-1 break-all text-xs text-slate-600 hover:underline"><Mail size={12} />{entry.email}</a> : null}
       {entry.parent && <p className="mt-1 text-xs text-slate-500">PH: {entry.parent}</p>}
     </td>
-    <td className="px-3 py-3"><div role="group" aria-label={`Điểm danh ${entry.name}`} className="flex gap-1">{ATTENDANCE.map(option => {
+    <td className="min-w-[14rem] px-3 py-3"><div role="group" aria-label={`Điểm danh ${entry.name}`} className="flex flex-nowrap gap-1">{ATTENDANCE.map(option => {
       const active = draft.attendance === option.value;
-      return <button key={option.value} type="button" disabled={saving} aria-pressed={active} onClick={() => { setDirty(true); void save({ attendance: active ? 'Chưa điểm danh' : option.value }); }} className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${active ? option.active : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}>{option.short}</button>;
+      return <button key={option.value} type="button" disabled={saving} aria-pressed={active} onClick={() => { setDirty(true); void save({ attendance: active ? 'Chưa điểm danh' : option.value }); }} className={`whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${active ? option.active : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}>{option.short}</button>;
     })}</div></td>
     <td className="w-24 min-w-24 px-3 py-3"><input aria-label={`Điểm ${entry.name}`} disabled={saving} inputMode="decimal" className={inputClass} value={draft.score} placeholder="—" onChange={e => { setDraft({ ...draft, score: e.target.value }); setDirty(true); }} onBlur={() => { if (dirty) void save(); }} /></td>
     <td className="min-w-52 px-3 py-3"><textarea aria-label={`Ghi chú ${entry.name}`} disabled={saving} className={inputClass} rows={1} value={draft.note} placeholder="Ghi chú" onChange={e => { setDraft({ ...draft, note: e.target.value }); setDirty(true); }} onBlur={() => { if (dirty) void save(); }} /></td>
