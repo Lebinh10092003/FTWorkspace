@@ -15,6 +15,7 @@ import { BlueprintEditor, BlueprintLibrary } from "./examination/ExamBlueprints"
 import LogNotes, { appendLogNote as saveLogNote, formatChangeLog } from "./examination/LogNotes";
 import DetailEditDialogs from "./examination/DetailEditDialogs";
 import SchoolEntryPicker, { emptySchoolEntry, type SchoolEntry } from "./examination/SchoolEntryPicker";
+const InvigilationWorkspace = React.lazy(() => import("./examination/InvigilationWorkspace"));
 import RoomEntryPicker, { type RoomChoices } from "./examination/RoomEntryPicker";
 import CandidateProfileDetail from "./examination/CandidateProfileDetail";
 import SessionRoster from "./examination/SessionRoster";
@@ -2097,6 +2098,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     candidates: candidateList,
     "registration-forms": !isGuest && <RegistrationPageStudio idToken={idToken || ''} />,
     "unmatched-transfers": <UnmatchedTransfers idToken={idToken} mode="examination" />,
+    invigilation: !isGuest && <React.Suspense fallback={<p className="p-8 text-center text-slate-500">Đang mở phòng thi…</p>}><InvigilationWorkspace embedded token={idToken || ""} userName={userName || ""} sessions={sessions.map((session) => ({ id: session.id, code: session.code, name: sessionDisplayName(session) }))} /></React.Suspense>,
     classes,
     teachers: teachersPage,
     partners: partnersPage,

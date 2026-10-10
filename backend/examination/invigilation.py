@@ -22,13 +22,31 @@ from .partner_contact_sync import _single_worker
 ATTENDANCE = ('Chưa điểm danh', 'Có mặt', 'Vắng', 'Đến muộn')
 
 
+def _plain(text):
+    import unicodedata
+    text = unicodedata.normalize('NFD', str(text or '').casefold().replace('đ', 'd'))
+    return ''.join(c for c in text if not unicodedata.combining(c)).strip()
+
+
+def is_exam_staff(request):
+    """Khảo thí staff and the leadership see every room; any other employee,
+    even an administrator, only sees the rooms they invigilate."""
+    profile = UserProfile.objects.filter(email=getattr(request.user, 'email', ''), employment_status='ACTIVE').first()
+    if not profile:
+        return False
+    if profile.role == 'MANAGER':
+        return True
+    names = {_plain(d.name) for d in profile.departments.all()} | ({_plain(profile.department.name)} if profile.department_id else set())
+    return 'khao thi' in names
+
+
 def can_manage(request):
-    return request_role(request) in ('ADMIN', 'MANAGER') and has_module_access(request)
+    return request_role(request) in ('ADMIN', 'MANAGER') and has_module_access(request) and is_exam_staff(request)
 
 
 def visible_shifts(request):
     qs = ExamInvigilationShift.objects.select_related('session').prefetch_related('invigilators')
-    if not can_manage(request):
+    if not is_exam_staff(request):
         qs = qs.filter(invigilators__email=request.user.email, invigilators__employment_status='ACTIVE', enabled=True)
     return qs.distinct()
 
@@ -38,7 +56,8 @@ def live_entry(result, audit=None):
     candidate = result.participation.candidate
     entry = {
         'code': candidate.code, 'sbd': result.sbd, 'name': candidate.name, 'school': candidate.school,
-        'grade': candidate.grade, 'attendance': result.attendance or ATTENDANCE[0], 'score': result.score,
+        'grade': candidate.grade, 'className': candidate.class_name, 'birthDate': candidate.birth_date,
+        'email': candidate.email, 'phone': candidate.phone, 'parent': candidate.parent, 'attendance': result.attendance or ATTENDANCE[0], 'score': result.score,
         'note': result.note, 'revision': result.updated_at.isoformat(), 'resultId': str(result.pk),
     }
     if audit:

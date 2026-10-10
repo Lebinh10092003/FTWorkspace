@@ -9,6 +9,7 @@ const listRoutes: Record<string, ExaminationPage> = {
   'candidates': 'candidates',
   'registration-forms': 'registration-forms',
   'unmatched-transfers': 'unmatched-transfers',
+  'invigilation': 'invigilation',
   'classes': 'classes',
   'teachers': 'teachers',
   'partners': 'partners',
@@ -37,6 +38,7 @@ export function examinationRouteFromPath(pathname: string): ExaminationRoute {
   if (section === 'teachers' && id) return { page: 'teacher-detail', id };
   if (section === 'classes' && id) return { page: 'class-detail', id };
   if (section === 'partners' && id) return { page: 'partners', id };
+  if (section === 'invigilation') return { page: 'invigilation', id };
   return { page: listRoutes[section] || 'overview' };
 }
 
@@ -50,6 +52,7 @@ export function examinationPathFor(page: ExaminationPage, id = ''): string {
     case 'candidates': return '/examination/candidates';
     case 'registration-forms': return '/examination/registration-forms';
     case 'unmatched-transfers': return '/examination/unmatched-transfers';
+    case 'invigilation': return encoded ? `/examination/invigilation/${encoded}` : '/examination/invigilation';
     case 'candidate-detail': return encoded ? `/examination/candidates/${encoded}` : '/examination/candidates';
     case 'classes': return '/examination/classes';
     case 'class-detail': return encoded ? `/examination/classes/${encoded}` : '/examination/classes';

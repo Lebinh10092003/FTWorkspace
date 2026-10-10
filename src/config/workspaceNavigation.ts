@@ -274,6 +274,7 @@ export const EXAMINATION_NAV: ModuleNavItem[] = [
     ],
   },
   { id: 'candidates', label: 'Thí sinh', icon: Users },
+  { id: 'invigilation', label: 'Coi thi', icon: CalendarCheck },
   { id: 'registration-forms', label: 'Form đăng ký', icon: FileSignature, requires: 'member' },
   { id: 'unmatched-transfers', label: 'Khoản thu cần tra soát', icon: ReceiptText, requires: 'member' },
   { id: 'partners', label: 'Đối tác', icon: Handshake },

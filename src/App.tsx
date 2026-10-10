@@ -625,7 +625,8 @@ export default function App() {
     );
   }
 
-  if (viewMode === 'examination-invigilation') {
+  // Khảo thí staff open the rooms inside the Khảo thí module; other invigilators get the standalone page.
+  if (viewMode === 'examination-invigilation' && (isGuest || !canAccessView('examination'))) {
     return <>
       {isGuest ? <div className="grid min-h-screen place-items-center bg-slate-50"><div className="text-center"><h1 className="text-xl font-bold">Ca coi thi của tôi</h1><p className="my-4 text-slate-600">Đăng nhập bằng tài khoản nhân viên để mở phòng được phân công.</p><button type="button" onClick={() => setShowLoginModal(true)} className="rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white">Đăng nhập Workspace</button></div></div>
         : <Suspense fallback={<div className="p-12 text-center">Đang mở ca thi…</div>}><InvigilationWorkspace token={idToken || ''} userName={user.displayName} onBack={() => setViewMode('workspace')} /></Suspense>}
@@ -635,7 +636,6 @@ export default function App() {
 
   if (viewMode === 'workspace') {
     const apps: Array<{ mode: ViewMode; title: string; description: string; gradient: string; icon: React.ElementType }> = [
-      { mode: 'examination-invigilation', title: 'Ca coi thi của tôi', description: 'Mở phòng được phân công, điểm danh và ghi điểm thí sinh.', gradient: 'from-emerald-600 to-teal-500', icon: CalendarCheck },
       {
         mode: 'work-schedule',
         title: 'Lịch làm việc',
@@ -1139,7 +1139,7 @@ export default function App() {
 
   if (viewMode === 'examination' && !canAccessView('examination')) return null;
 
-  if (viewMode === 'examination') {
+  if (viewMode === 'examination' || viewMode === 'examination-invigilation') {
     return (
       <>
         <ExaminationErrorBoundary>
