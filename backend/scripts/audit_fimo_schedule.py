@@ -1,95 +1,80 @@
-"""Read only FIMO schedule evidence and encrypt it for the local operator."""
-import base64
+"""Read-only FIMO diagnosis. Export only anonymous counts and calendar dates."""
 import json
-import os
+import re
 import sqlite3
 import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
-
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
 
 ROOT = Path('/home/workspace/ft-workspace-data')
 
+def module(value):
+    value = str(value or '')
+    return 'examination' if value.startswith('REC-EXAM-') else 'web_row' if value.startswith('REC-WEB-') else 'sheet_row' if value else 'empty'
 
-def read_database(path, *, current=False):
-    with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True) as db:
-        db.execute('PRAGMA query_only=ON')
-        db.row_factory = sqlite3.Row
-        sessions = [dict(row) for row in db.execute('''
-            SELECT id, competition_id, code, name, rounds, updated_at
-            FROM examination_examsession
-            WHERE lower(competition_id) LIKE '%fimo%' OR lower(code) = 'fimo'
-        ''')]
-        for row in sessions:
-            row['rounds'] = json.loads(row['rounds'] or '[]')
-        tasks = [dict(row) for row in db.execute('''
-            SELECT w.id, w.title, w.work_date, w.start_time, w.end_time,
-                   w.priority, w.status, w.label, w.source_record_id,
-                   w.source_sheet_row, w.source_task_index, w.sync_uid,
-                   w.created_at, w.updated_at, w.creator_id, w.executor_id,
-                   p.name AS executor_name, w.sheet_emphasis,
-                   w.progress_note != '' AS has_progress,
-                   w.review_note != '' AS has_review_note, w.reviewed_at,
-                   w.review_percent
-            FROM work_schedule_workitem w
-            JOIN authentication_userprofile p ON p.email = w.executor_id
-            WHERE lower(w.title) LIKE '%fimo%'
-              AND w.work_date >= '2026-09-01' AND w.work_date < '2027-08-01'
-            ORDER BY w.executor_id, w.work_date, w.id
-        ''')]
-        report = {'database': path.name, 'sessions': sessions, 'tasks': tasks}
-        if current:
-            row_numbers = list({row['source_sheet_row'] for row in tasks if row['source_sheet_row']})
-            events = []
-            if row_numbers:
-                placeholders = ','.join('?' for _ in row_numbers)
-                for raw in db.execute(f'''
-                    SELECT event_id, row_number, status, edited_at, editor_email,
-                           received_at, processed_at, payload
-                    FROM work_schedule_workschedulesheetinboundevent
-                    WHERE row_number IN ({placeholders})
-                    ORDER BY received_at DESC LIMIT 100
-                ''', row_numbers):
-                    row = dict(raw)
-                    values = json.loads(row.pop('payload') or '{}').get('values') or []
-                    row['sheet_date'] = values[1] if len(values) > 1 else ''
-                    row['fimo_lines'] = [line for line in str(values[4] if len(values) > 4 else '').splitlines() if 'fimo' in line.lower()]
-                    row['row_record_id'] = values[8] if len(values) > 8 else ''
-                    row['task_uids'] = values[9] if len(values) > 9 else ''
-                    events.append(row)
-            report['sheet_events'] = events
-            report['session_audit'] = [dict(row) for row in db.execute('''
-                SELECT entity_key, content, actor_email, created_at
-                FROM examination_lognote
-                WHERE lower(entity_key) LIKE '%fimo%'
-                ORDER BY created_at DESC LIMIT 25
-            ''')]
-        return report
+def connect(path):
+    db = sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)
+    db.execute('PRAGMA query_only=ON')
+    db.row_factory = sqlite3.Row
+    return db
 
-
-result = {'read_at_utc': datetime.now(timezone.utc).isoformat()}
-result['server_commit'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-result['current'] = read_database(ROOT / 'workspace.sqlite3', current=True)
-result['backups'] = []
-for path in sorted((ROOT / 'backups').glob('workspace-*.sqlite3'), reverse=True)[:8]:
-    try:
-        result['backups'].append(read_database(path))
-    except sqlite3.Error as exc:
-        result['backups'].append({'database': path.name, 'error_type': type(exc).__name__})
-
-payload = json.dumps(result, ensure_ascii=False).encode('utf-8')
-public_key = serialization.load_der_public_key(base64.b64decode(os.environ['AUDIT_PUBLIC_KEY']))
-key = AESGCM.generate_key(bit_length=256)
-nonce = os.urandom(12)
-wrapped = public_key.encrypt(key, padding.OAEP(
-    mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None,
-))
-print(json.dumps({
-    'wrappedKey': base64.b64encode(wrapped).decode(),
-    'nonce': base64.b64encode(nonce).decode(),
-    'ciphertext': base64.b64encode(AESGCM(key).encrypt(nonce, payload, None)).decode(),
-}))
+with connect(ROOT / 'workspace.sqlite3') as db:
+    sessions = list(db.execute("SELECT id, rounds FROM examination_examsession WHERE id='fimo-2026-2027'"))
+    session_days = []
+    for session in sessions:
+        for round_data in json.loads(session['rounds'] or '[]'):
+            if round_data.get('id') != 'round-national':
+                continue
+            slots = round_data.get('slots') or []
+            session_days = [str(slot.get('date') or '') for slot in slots if isinstance(slot, dict)] or [str(round_data.get('date') or '')]
+    rows = [dict(row) for row in db.execute("""
+        SELECT w.id, w.title, w.work_date, w.priority, w.source_record_id,
+               w.source_sheet_row
+        FROM work_schedule_workitem w
+        WHERE w.work_date='2026-10-11' AND lower(w.title) LIKE '%fimo%'
+    """)]
+    # No titles, people, emails, note text, assessments, row IDs, or UUIDs leave this process.
+    task_metadata = []
+    for row in sorted(rows, key=lambda row: row['id']):
+        batch_match = re.search(r'(?:đợt|Đợt)\s*(\d+)', row['title'])
+        task_metadata.append({
+            'batch_number': int(batch_match.group(1)) if batch_match else None,
+            'generated_title_shape': row['title'].startswith('Tổ chức ') and '(Đợt ' in row['title'],
+            'day': row['work_date'], 'priority': row['priority'], 'source_module': module(row['source_record_id']),
+        })
+    source_rows = sorted({row['source_sheet_row'] for row in rows if row['source_sheet_row']})
+    sheet_evidence = []
+    if source_rows:
+        placeholders = ','.join('?' for _ in source_rows)
+        for event in db.execute(f"""
+            SELECT payload FROM work_schedule_workschedulesheetinboundevent
+            WHERE row_number IN ({placeholders}) ORDER BY received_at DESC LIMIT 30
+        """, source_rows):
+            values = json.loads(event['payload'] or '{}').get('values') or []
+            lines = [line for line in str(values[4] if len(values)>4 else '').splitlines() if 'fimo' in line.lower()]
+            if lines:
+                sheet_evidence.append({'day': str(values[1]) if len(values)>1 else '',
+                                       'fimo_line_count': len(lines),
+                                       'source_module': module(values[8] if len(values)>8 else '')})
+    result = {'server_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'national_calendar_days': session_days, 'pictured_day_task_metadata': task_metadata,
+              'sheet_event_evidence': sheet_evidence}
+    ids = [row['id'] for row in rows]
+    result['backup_evidence'] = []
+    for rank, path in enumerate(sorted((ROOT/'backups').glob('workspace-*.sqlite3'),reverse=True)[:8],1):
+        try:
+            with connect(path) as old:
+                if ids:
+                    placeholders=','.join('?' for _ in ids)
+                    old_rows=list(old.execute(f'SELECT id, work_date, priority, source_record_id FROM work_schedule_workitem WHERE id IN ({placeholders})',ids))
+                else:
+                    old_rows=[]
+                old_by_id={row['id']:row for row in old_rows}
+                source_changes=sum(1 for row in rows if row['id'] in old_by_id and module(row['source_record_id']) != module(old_by_id[row['id']]['source_record_id']))
+                result['backup_evidence'].append({'recency_rank':rank, 'matching_task_count':len(old_rows),
+                    'examination_source_count':sum(1 for row in old_rows if module(row['source_record_id'])=='examination'),
+                    'priority_high_count':sum(1 for row in old_rows if row['priority']=='high'),
+                    'source_module_changed_count':source_changes,
+                    'pictured_day_count':sum(1 for row in old_rows if row['work_date']=='2026-10-11')})
+        except sqlite3.Error:
+            result['backup_evidence'].append({'recency_rank':rank,'readable':False})
+print(json.dumps(result,ensure_ascii=True))
