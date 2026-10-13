@@ -29,3 +29,6 @@ backend/.env
 .DS_Store
 .vscode/
 .idea/
+
+# Worktree tạm của Claude Code, không đưa vào repo
+.claude/worktrees/
