@@ -77,20 +77,27 @@ def _day_number(value):
     return day if 1 <= day <= 31 else None
 
 
-def _row_values(entries):
-    values = []
-    for entry in entries[:SHIFT_COLUMNS_PER_ROW]:
+def _row_updates(quoted, row_number, entries):
+    """Return value updates only for shifts the web actually has.
+
+    A shift the web has no data for (no entry, or a day off) is never written
+    as blank over what is already on the Sheet (columns C:E, F:H, I:K).
+    """
+    updates = []
+    for index, entry in enumerate(entries[:SHIFT_COLUMNS_PER_ROW]):
         if entry.is_day_off:
-            values.extend(["", "", False])
-        else:
-            values.extend([
+            continue
+        first = chr(ord("C") + index * 3)
+        last = chr(ord("C") + index * 3 + 2)
+        updates.append({
+            "range": f"{quoted}!{first}{row_number}:{last}{row_number}",
+            "values": [[
                 entry.shift_start.strftime("%H:%M"),
                 entry.shift_end.strftime("%H:%M"),
                 entry.work_mode == "online",
-            ])
-    while len(values) < 9:
-        values.extend(["", "", False])
-    return values
+            ]],
+        })
+    return updates
 
 
 def _sheet_index(metadata, profiles, missing=None):
@@ -363,10 +370,7 @@ def push_groups_to_attendance_sheet(service, groups):
                 quoted = _quote_sheet_name(title)
                 for index, row_number in enumerate(matching_rows):
                     row_entries = day_entries[index * 3:(index + 1) * 3]
-                    spreadsheet_value_updates.append({
-                        "range": f"{quoted}!C{row_number}:K{row_number}",
-                        "values": [_row_values(row_entries)],
-                    })
+                    spreadsheet_value_updates.extend(_row_updates(quoted, row_number, row_entries))
                     note_lines = notes_by_group[(email, work_date)] if index == 0 else []
                     note = "\n".join(dict.fromkeys(note_lines))
                     spreadsheet_value_updates.append({

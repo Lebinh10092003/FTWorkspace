@@ -87,7 +87,7 @@ class AttendanceSheetSyncTests(TestCase):
         self.assertEqual((insert["range"]["startIndex"], insert["range"]["endIndex"]), (37, 38))
         writes = [call.kwargs["body"]["data"] for call in service.spreadsheets.return_value.values.return_value.batchUpdate.call_args_list]
         self.assertIn({"range": "'Nguyễn Thanh Phong'!A39:B39", "values": [["Bảy", 31]]}, writes[0])
-        self.assertTrue(any(item["range"] == "'Nguyễn Thanh Phong'!C39:K39" and item["values"][0][:2] == ["08:00", "09:00"] for item in writes[-1]))
+        self.assertTrue(any(item["range"] == "'Nguyễn Thanh Phong'!C39:E39" and item["values"][0][:2] == ["08:00", "09:00"] for item in writes[-1]))
 
     def test_date_lookup_requires_weekday_and_uses_column_b(self):
         rows = [["Ba", "1"], ["", "2"], ["Tổng", "3"], ["Năm", "3"]]
@@ -111,13 +111,29 @@ class AttendanceSheetSyncTests(TestCase):
         self.assertEqual(result["groups"], 1)
         data = service.spreadsheets.return_value.values.return_value.batchUpdate.call_args.kwargs["body"]["data"]
         self.assertEqual([item["range"] for item in data], [
-            "'Nguyễn Thanh Phong'!C11:K11",
+            "'Nguyễn Thanh Phong'!C11:E11",
+            "'Nguyễn Thanh Phong'!F11:H11",
             "'Nguyễn Thanh Phong'!R11",
         ])
-        self.assertEqual(data[0]["values"][0][:6], ["08:00", "09:00", False, "13:00", "14:00", True])
-        self.assertEqual(data[1]["values"], [["Tập huấn B1 GCE THCS Nguyễn Du"]])
+        self.assertEqual(data[0]["values"], [["08:00", "09:00", False]])
+        self.assertEqual(data[1]["values"], [["13:00", "14:00", True]])
+        self.assertEqual(data[2]["values"], [["Tập huấn B1 GCE THCS Nguyễn Du"]])
         format_body = service.spreadsheets.return_value.batchUpdate.call_args.kwargs["body"]
         self.assertEqual(format_body["requests"][0]["repeatCell"]["range"]["startColumnIndex"], 17)
+
+    def test_shift_without_web_data_is_never_blanked_on_the_sheet(self):
+        self.create_shift(1, 8)
+        service = self.service()
+
+        push_groups_to_attendance_sheet(
+            service, {(self.profile.email, date(2026, 9, 3))}
+        )
+
+        data = service.spreadsheets.return_value.values.return_value.batchUpdate.call_args.kwargs["body"]["data"]
+        ranges = [item["range"] for item in data]
+        self.assertIn("'Nguyễn Thanh Phong'!C11:E11", ranges)
+        self.assertNotIn("'Nguyễn Thanh Phong'!F11:H11", ranges)
+        self.assertNotIn("'Nguyễn Thanh Phong'!I11:K11", ranges)
 
     @mock.patch("attendance.sheet_sync.timezone.localdate", return_value=date(2026, 9, 2))
     def test_future_training_session_is_not_written_to_note_column(self, _localdate):
@@ -160,12 +176,14 @@ class AttendanceSheetSyncTests(TestCase):
         self.assertIn("copyPaste", structural[1])
         data = service.spreadsheets.return_value.values.return_value.batchUpdate.call_args.kwargs["body"]["data"]
         self.assertEqual([item["range"] for item in data], [
-            "'Nguyễn Thanh Phong'!C11:K11",
+            "'Nguyễn Thanh Phong'!C11:E11",
+            "'Nguyễn Thanh Phong'!F11:H11",
+            "'Nguyễn Thanh Phong'!I11:K11",
             "'Nguyễn Thanh Phong'!R11",
-            "'Nguyễn Thanh Phong'!C12:K12",
+            "'Nguyễn Thanh Phong'!C12:E12",
             "'Nguyễn Thanh Phong'!R12",
         ])
-        self.assertEqual(data[2]["values"][0][:3], ["16:00", "17:00", False])
+        self.assertEqual(data[4]["values"], [["16:00", "17:00", False]])
 
     def test_wrong_m4_skips_the_group_without_any_value_write(self):
         self.create_shift(1)
