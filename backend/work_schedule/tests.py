@@ -2678,6 +2678,50 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
             "1. Việc hôm nay\n2. Việc chuyển sang hôm nay",
         )
 
+    def test_one_run_also_exports_changes_saved_while_it_was_writing(self):
+        # A change saved during an export used to wait for the 2-minute timer,
+        # because the worker started for it found the lease busy and exited.
+        from .sheet_sync import sync_to_sheet
+
+        WorkScheduleSheetChange.objects.create(executor_email=self.EMPLOYEE_EMAIL, work_date=self.OLD_DATE)
+        calls = []
+
+        def push(service, groups, force=False):
+            calls.append(set(groups))
+            if len(calls) == 1:
+                WorkScheduleSheetChange.objects.create(executor_email=self.EMPLOYEE_EMAIL, work_date=self.NEW_DATE)
+            return {"groups": len(groups), "tasks": 0, "conflicts": []}
+
+        with mock.patch("work_schedule.sheet_sync._service"), \
+             mock.patch("work_schedule.sheet_sync.ensure_sync_columns"), \
+             mock.patch("work_schedule.sheet_sync.push_groups_to_sheet", side_effect=push), \
+             mock.patch("work_schedule.sheet_sync.push_attendance_safely", return_value={}):
+            result = sync_to_sheet()
+
+        self.assertEqual(calls, [{(self.EMPLOYEE_EMAIL, self.OLD_DATE)}, {(self.EMPLOYEE_EMAIL, self.NEW_DATE)}])
+        self.assertEqual(result["rounds"], 2)
+        self.assertFalse(WorkScheduleSheetChange.objects.exclude(status=WorkScheduleSheetChange.STATUS_DONE).exists())
+
+    def test_sync_columns_are_checked_once_per_run(self):
+        from .sheet_sync import ensure_sync_columns
+
+        service = mock.MagicMock()
+        spreadsheets = service.spreadsheets.return_value
+        spreadsheets.get.return_value.execute.return_value = {
+            "sheets": [{"properties": {"title": "Lịch công tác", "sheetId": 7, "gridProperties": {"columnCount": 20}}}],
+        }
+        spreadsheets.values.return_value.get.return_value.execute.return_value = {"values": [[
+            "Thứ", "Ngày", "Tuần", "Chủ trì", "Nội dung công việc", "Tự đánh giá", "LĐ đánh giá",
+            "EmployeeID", "WEB_RECORD_ID", "WEB_TASK_IDS", "WEB_SYNC_HASH",
+        ]]}
+        first = ensure_sync_columns(service)
+        writes = spreadsheets.batchUpdate.call_count
+        reads = spreadsheets.get.call_count + spreadsheets.values.return_value.get.call_count
+
+        self.assertEqual(ensure_sync_columns(service), first)
+        self.assertEqual(spreadsheets.batchUpdate.call_count, writes)
+        self.assertEqual(spreadsheets.get.call_count + spreadsheets.values.return_value.get.call_count, reads)
+
     def test_conflicts_are_retried_instead_of_being_dropped_forever(self):
         from .sheet_sync import sync_to_sheet
 

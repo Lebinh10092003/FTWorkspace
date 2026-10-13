@@ -64,6 +64,10 @@ SHEET_STAFF_EMAILS = {
 # Match the existing "Lịch công tác" dropdown values, including Sunday.
 WEEKDAYS = ["Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy", "CN"]
 INCREMENTAL_SYNC_LEASE_SECONDS = 300
+# Một lượt ghi lấy tiếp các thay đổi mới tới tối đa chừng này vòng, và dừng
+# trước khi khóa hết hạn một khoảng an toàn (một vòng ghi thường mất vài giây).
+DRAIN_MAX_ROUNDS = 20
+DRAIN_SAFETY_SECONDS = 90
 TWO_WAY_SYNC_LEASE_SECONDS = 1800
 CONFLICT_RETRY_MINUTES = 5
 CONFLICT_MAX_ATTEMPTS = 5
@@ -106,6 +110,10 @@ def _spreadsheet_id():
 
 
 def _sheet_properties(service):
+    spreadsheet_id = _spreadsheet_id()
+    cached = getattr(service, "_work_schedule_properties", None)
+    if isinstance(cached, dict) and cached.get("spreadsheet_id") == spreadsheet_id:
+        return dict(cached["properties"])
     metadata = service.spreadsheets().get(
         spreadsheetId=_spreadsheet_id(), fields="sheets.properties"
     ).execute()
@@ -117,6 +125,7 @@ def _sheet_properties(service):
     )
     if not target:
         raise RuntimeError("Không tìm thấy tab Lịch công tác.")
+    service._work_schedule_properties = {"spreadsheet_id": spreadsheet_id, "properties": dict(target)}
     return target
 
 
@@ -490,6 +499,11 @@ def _parse_sheet_event_timestamp(value):
 
 
 def ensure_sync_columns(service):
+    # Cột ẩn chỉ cần kiểm tra một lần cho mỗi lượt đồng bộ (một service).
+    # Trước đây hàm này gửi lại lệnh ẩn cột ở mọi lần gọi, hai lần mỗi lượt.
+    ready = getattr(service, "_work_schedule_sync_columns", None)
+    if isinstance(ready, dict) and ready.get("spreadsheet_id") == _spreadsheet_id():
+        return dict(ready["columns"])
     target = _sheet_properties(service)
     sheet_id = target["sheetId"]
     columns, headers = _sheet_columns(service)
@@ -514,12 +528,15 @@ def ensure_sync_columns(service):
         requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": index, "endIndex": index + 1}, "properties": {"hiddenByUser": True}, "fields": "hiddenByUser"}})
     if requests:
         service.spreadsheets().batchUpdate(spreadsheetId=_spreadsheet_id(), body={"requests": requests}).execute()
+        service._work_schedule_properties = None
     if header_updates:
         service.spreadsheets().values().batchUpdate(
             spreadsheetId=_spreadsheet_id(),
             body={"valueInputOption": "RAW", "data": header_updates},
         ).execute()
         service._work_schedule_columns = None
+    else:
+        service._work_schedule_sync_columns = {"spreadsheet_id": _spreadsheet_id(), "columns": dict(columns)}
     return columns
 
 
@@ -1875,52 +1892,84 @@ def sync_lease(seconds=INCREMENTAL_SYNC_LEASE_SECONDS):
         ).update(locked_until=None)
 
 
+def _claim_pending_changes():
+    """Lấy các thay đổi cần ghi ra Sheet và đánh dấu đang xử lý."""
+    retry_before = timezone.now() - timedelta(minutes=1)
+    conflict_retry_before = timezone.now() - timedelta(minutes=CONFLICT_RETRY_MINUTES)
+    stale_before = timezone.now() - timedelta(seconds=TWO_WAY_SYNC_LEASE_SECONDS)
+    pending = list(WorkScheduleSheetChange.objects.filter(
+        models.Q(status=WorkScheduleSheetChange.STATUS_PENDING)
+        # A conflict used to be final, so a Web change (e.g. moving tasks
+        # to today) could silently never reach the Sheet. Retry a few
+        # times: a late webhook or a later push often resolves it.
+        | (models.Q(status=WorkScheduleSheetChange.STATUS_CONFLICT)
+           & models.Q(attempts__lt=CONFLICT_MAX_ATTEMPTS)
+           & models.Q(processed_at__lte=conflict_retry_before))
+        | (models.Q(status=WorkScheduleSheetChange.STATUS_FAILED) & (
+            models.Q(processed_at__lte=retry_before) | models.Q(processed_at__isnull=True)
+        ))
+        | (models.Q(status=WorkScheduleSheetChange.STATUS_PROCESSING) & (
+            models.Q(processed_at__lte=stale_before)
+            | (models.Q(processed_at__isnull=True) & models.Q(created_at__lte=stale_before))
+        ))
+    ).order_by("created_at")[:1000])
+    if pending:
+        WorkScheduleSheetChange.objects.filter(pk__in=[row.pk for row in pending]).update(
+            status=WorkScheduleSheetChange.STATUS_PROCESSING, processed_at=timezone.now()
+        )
+    return pending
+
+
+def _push_pending_changes(service, pending, force):
+    groups = {(row.executor_email, row.work_date) for row in pending}
+    ids = [row.pk for row in pending]
+    try:
+        ensure_sync_columns(service)
+        result = push_groups_to_sheet(service, groups, force=force)
+        result["attendance"] = push_attendance_safely(service, groups)
+        conflict_groups = {(row["email"], datetime.fromisoformat(row["date"]).date()) for row in result["conflicts"]}
+        for change in pending:
+            is_conflict = (change.executor_email, change.work_date) in conflict_groups
+            change.status = WorkScheduleSheetChange.STATUS_CONFLICT if is_conflict else WorkScheduleSheetChange.STATUS_DONE
+            change.processed_at = timezone.now()
+            change.attempts += 1
+            change.last_error = "Sheet đã thay đổi sau lần đồng bộ trước." if is_conflict else ""
+        WorkScheduleSheetChange.objects.bulk_update(pending, ["status", "processed_at", "attempts", "last_error"])
+        return result
+    except Exception as exc:
+        WorkScheduleSheetChange.objects.filter(pk__in=ids).update(status=WorkScheduleSheetChange.STATUS_FAILED, last_error=str(exc), attempts=models.F("attempts") + 1, processed_at=timezone.now())
+        raise
+
+
 def sync_to_sheet(google_token=None, force=False):
+    """Ghi hàng đợi ra Sheet cho tới khi hết việc.
+
+    Một lượt khác đang giữ khóa thì lượt mới thoát ngay, nên thay đổi lưu trong
+    lúc đang ghi trước đây phải đợi timer 2 phút. Giờ lượt đang giữ khóa ghi
+    xong lô này thì lấy tiếp lô mới, và dừng trước khi khóa hết hạn để không
+    chạy chồng với lượt kế tiếp. Timer vẫn giữ làm dự phòng.
+    """
     purge_expired_work_schedule()
     with sync_lease() as acquired:
         if not acquired:
             return {"busy": True, "message": "Một lượt đồng bộ khác đang chạy."}
-        retry_before = timezone.now() - timedelta(minutes=1)
-        conflict_retry_before = timezone.now() - timedelta(minutes=CONFLICT_RETRY_MINUTES)
-        stale_before = timezone.now() - timedelta(seconds=TWO_WAY_SYNC_LEASE_SECONDS)
-        pending = list(WorkScheduleSheetChange.objects.filter(
-            models.Q(status=WorkScheduleSheetChange.STATUS_PENDING)
-            # A conflict used to be final, so a Web change (e.g. moving tasks
-            # to today) could silently never reach the Sheet. Retry a few
-            # times: a late webhook or a later push often resolves it.
-            | (models.Q(status=WorkScheduleSheetChange.STATUS_CONFLICT)
-               & models.Q(attempts__lt=CONFLICT_MAX_ATTEMPTS)
-               & models.Q(processed_at__lte=conflict_retry_before))
-            | (models.Q(status=WorkScheduleSheetChange.STATUS_FAILED) & (
-                models.Q(processed_at__lte=retry_before) | models.Q(processed_at__isnull=True)
-            ))
-            | (models.Q(status=WorkScheduleSheetChange.STATUS_PROCESSING) & (
-                models.Q(processed_at__lte=stale_before)
-                | (models.Q(processed_at__isnull=True) & models.Q(created_at__lte=stale_before))
-            ))
-        ).order_by("created_at")[:1000])
-        groups = {(row.executor_email, row.work_date) for row in pending}
-        if not groups:
-            return {"groups": 0, "tasks": 0, "conflicts": []}
-        ids = [row.pk for row in pending]
-        WorkScheduleSheetChange.objects.filter(pk__in=ids).update(status=WorkScheduleSheetChange.STATUS_PROCESSING, processed_at=timezone.now())
-        try:
-            service = _service(google_token)
-            ensure_sync_columns(service)
-            result = push_groups_to_sheet(service, groups, force=force)
-            result["attendance"] = push_attendance_safely(service, groups)
-            conflict_groups = {(row["email"], datetime.fromisoformat(row["date"]).date()) for row in result["conflicts"]}
-            for change in pending:
-                is_conflict = (change.executor_email, change.work_date) in conflict_groups
-                change.status = WorkScheduleSheetChange.STATUS_CONFLICT if is_conflict else WorkScheduleSheetChange.STATUS_DONE
-                change.processed_at = timezone.now()
-                change.attempts += 1
-                change.last_error = "Sheet đã thay đổi sau lần đồng bộ trước." if is_conflict else ""
-            WorkScheduleSheetChange.objects.bulk_update(pending, ["status", "processed_at", "attempts", "last_error"])
-            return result
-        except Exception as exc:
-            WorkScheduleSheetChange.objects.filter(pk__in=ids).update(status=WorkScheduleSheetChange.STATUS_FAILED, last_error=str(exc), attempts=models.F("attempts") + 1, processed_at=timezone.now())
-            raise
+        deadline = timezone.now() + timedelta(seconds=INCREMENTAL_SYNC_LEASE_SECONDS - DRAIN_SAFETY_SECONDS)
+        total = {"groups": 0, "tasks": 0, "conflicts": [], "rounds": 0}
+        service = None
+        while total["rounds"] < DRAIN_MAX_ROUNDS and timezone.now() < deadline:
+            pending = _claim_pending_changes()
+            if not pending:
+                break
+            service = service or _service(google_token)
+            result = _push_pending_changes(service, pending, force)
+            total["rounds"] += 1
+            total["groups"] += result.get("groups", 0)
+            total["tasks"] += result.get("tasks", 0)
+            total["conflicts"] += result.get("conflicts", [])
+            for key in ("sheetAuthoritySkips", "attendance"):
+                if key in result:
+                    total[key] = result[key]
+        return total
 
 
 def push_attendance_safely(service, groups):
