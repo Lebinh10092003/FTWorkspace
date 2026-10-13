@@ -47,16 +47,16 @@ const reducedMotion = () => typeof window !== 'undefined' && typeof window.match
 const delay = (ms: number) => ({ '--reveal-delay': `${ms}ms` }) as CSSProperties;
 
 function splitHeadline(site: HubSite) {
-  const code = (site.content.subject || site.title.split(/[\s·—-]+/)[0] || site.title).trim().toUpperCase();
+  const code = (site.content.subject || site.title.split(/[\s·—-]+/)[0] || site.title).trim();
   const headline = (site.content.headline || site.title).trim();
   const parts = headline.split(/\s+[—·–-]\s+/);
   const name = parts.length > 1 ? parts.slice(1).join(' · ') : headline;
-  return { code, name: name.toUpperCase() === code ? site.title : name };
+  return { code, name: name.toUpperCase() === code.toUpperCase() ? site.title : name };
 }
 
 function toCompetition(site: HubSite, index: number): Competition {
   const { code, name } = splitHeadline(site);
-  const accent = HEX.test(site.content.accentColor || '') ? site.content.accentColor! : CODE_ACCENTS[code] || FALLBACK_ACCENTS[index % FALLBACK_ACCENTS.length];
+  const accent = HEX.test(site.content.accentColor || '') ? site.content.accentColor! : CODE_ACCENTS[code.toUpperCase()] || FALLBACK_ACCENTS[index % FALLBACK_ACCENTS.length];
   return {
     slug: site.slug,
     code,
@@ -464,7 +464,7 @@ export default function CompetitionHub() {
               <div className="hub-step-links">
                 {schoolFiles.map(group => (
                   <a key={group.url} href={group.url} target="_blank" rel="noopener noreferrer" style={{ '--hub-accent': group.accent } as CSSProperties}>
-                    <FileSpreadsheet className="h-4 w-4" /> Mẫu {group.codes.join(' & ')}
+                    <FileSpreadsheet className="h-4 w-4" /> Mẫu {group.codes.join(', ')}
                   </a>
                 ))}
               </div>
@@ -478,7 +478,7 @@ export default function CompetitionHub() {
               <div className="hub-step-links">
                 {handbooks.map(group => (
                   <a key={group.url} href={group.url} target="_blank" rel="noopener noreferrer" style={{ '--hub-accent': group.accent } as CSSProperties}>
-                    <BookOpen className="h-4 w-4" /> Hướng dẫn {group.codes.join(' & ')}
+                    <BookOpen className="h-4 w-4" /> Hướng dẫn {group.codes.join(', ')}
                   </a>
                 ))}
               </div>

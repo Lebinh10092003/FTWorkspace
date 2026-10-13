@@ -165,3 +165,20 @@
 @media(min-width:761px) and (max-width:820px){.siaio-milestone{grid-template-columns:34px 88px minmax(0,1fr);gap:8px 18px}.siaio-milestone-status{grid-column:3;justify-self:start;text-align:left;margin-top:2px}}
 @media(max-width:560px){.siaio-hero-inner{padding:52px 20px 56px}.siaio-section{padding:62px 20px}.siaio-roadmap-panel{padding:22px}.siaio-roadmap-panel h3{font-size:21px}.siaio-milestone-date strong{font-size:20px}.siaio-milestone-body h3{font-size:16px}.siaio-form{padding:20px}.siaio-signal{padding:12px 20px}.siaio-to-top{right:14px;bottom:14px}}
 @media(hover:none){.siaio-about-tile:hover,.siaio-award-grid article:hover,.siaio-registration-grid article:hover,.siaio-button:hover{transform:none}}
+
+/* Các cuộc thi SCO dùng chung bố cục: hình minh họa và tiêu đề lấy theo màu nhấn của từng môn.
+   SIAIO (data-sco="ai") giữ nguyên bảng màu ban đầu. */
+.siaio-neural-svg{color:var(--siaio-accent)}
+.siaio-neural.is-animated .sco-spin{transform-box:view-box;transform-origin:285px 213px;animation:sco-orbit var(--spin,40s) linear infinite}
+@keyframes sco-orbit{from{transform:rotate(var(--spin-from,0deg))}to{transform:rotate(calc(var(--spin-from,0deg) + 360deg))}}
+.sco-spin{transform-box:view-box;transform-origin:285px 213px;transform:rotate(var(--spin-from,0deg))}
+.siaio-site:not([data-sco="ai"]) .siaio-hero h1{background:linear-gradient(115deg,#fff 18%,color-mix(in srgb,var(--siaio-accent) 75%,#fff) 62%,var(--siaio-accent) 100%);background-clip:text;-webkit-background-clip:text;color:transparent}
+.siaio-site:not([data-sco="ai"]) .siaio-neural-halo{background:radial-gradient(circle,color-mix(in srgb,var(--siaio-accent) 22%,transparent) 0%,color-mix(in srgb,var(--siaio-accent) 8%,transparent) 38%,transparent 70%)}
+.siaio-site:not([data-sco="ai"]) .siaio-neural-svg{filter:drop-shadow(0 0 9px color-mix(in srgb,var(--siaio-accent) 40%,transparent))}
+.siaio-site:not([data-sco="ai"]) .siaio-neural-tag{border-color:color-mix(in srgb,var(--siaio-accent) 45%,transparent);color:color-mix(in srgb,var(--siaio-accent) 35%,#fff)}
+.siaio-site:not([data-sco="ai"]) .siaio-kicker{border-color:color-mix(in srgb,var(--siaio-accent) 40%,transparent)}
+@media (prefers-reduced-motion: reduce){.siaio-neural.is-animated .sco-spin{animation:none}}
+
+/* Khung chung của Workspace ép nền và màu chữ tối lên phần tử gốc (#root > div:first-child),
+   làm tiêu đề trên nền tối gần như không đọc được. Landing SCO giữ bảng màu riêng. */
+body.workspace-app-theme #root > .siaio-site:first-child{background:#0b1022 !important;background-image:none !important;color:#f4f5ff !important}

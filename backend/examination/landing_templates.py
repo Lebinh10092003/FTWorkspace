@@ -167,3 +167,110 @@ def siaio_content():
                     'zaloUrl': 'https://zalo.me/fermattech', 'facebookFimoUrl': '', 'facebookFieoUrl': ''},
         'customSections': [],
     }
+
+
+SCO_CONTACT = {'email': 'khaothi@fermat.vn', 'phone': '0969 627 162',
+               'address': 'Phòng 1603, Eurowindow Multi Complex, 27 Trần Duy Hưng, phường Yên Hòa, Hà Nội'}
+SCO_RULES = drive_file('1WwFbfcZfW9GUa7fFKA_sDl_DLI27EvVX')
+SCO_PROFILE = drive_file('1ehdK9YOjLD67H0kHi5Phj0RUtuxMZF-Y')
+SCO_PAPERS = drive_folder('1e8NPQydnVBEG3q2T2Lw07fpK7zWRW3tH')
+SCO_EXCEL = drive_file('1pwQZwOtsJ86gi7lmjC4jxpXCtu4vP1SO')
+SCO_ROUNDS = 'Theo thông báo của Ban tổ chức'
+
+# Lịch theo các kỳ SCO trong mô-đun Khảo thí (migration 0037). Giải thưởng và
+# đối tượng chi tiết nằm trong thể lệ SCO, chưa xác nhận nên không ghi ở đây.
+SCO_SUBJECTS = {
+    'SIPhO': {
+        'slug': 'sipho', 'title': 'SIPhO · SCO International Physics Olympiad', 'subject_name': 'Vật lí',
+        'headline': 'SIPhO · Khám phá thế giới Vật lí', 'accent': '#7dd3fc',
+        'intro': ('Olympic Vật lí Quốc tế trong hệ thống School Connect Olympiad: vận dụng kiến thức về chuyển động, '
+                  'năng lượng, điện và ánh sáng để giải thích những hiện tượng quanh ta.'),
+        'overview': [
+            ('Vật lí trong đời sống', 'Câu hỏi xuất phát từ hiện tượng quen thuộc, giúp học sinh nhìn thế giới bằng tư duy khoa học.'),
+            ('Từ định luật đến lập luận', 'Rèn kỹ năng đọc dữ kiện, lập luận định lượng và kiểm tra kết quả.'),
+            ('Từ Quốc gia đến Quốc tế', 'Mùa thi gồm Vòng Chung kết Quốc gia và Vòng Chung kết Quốc tế; điều kiện đi tiếp theo thể lệ SCO.'),
+        ],
+        'materials': ('SIPhO · Vật lí', 'Thư mục ghi chú học tập môn Vật lí.', drive_folder('17MLVRsmEcNyZ6BK9u6_jSVElCOUt7CIo')),
+        'timeline': [('Vòng Chung kết Quốc gia', '2026-11-01'), ('Vòng Chung kết Quốc tế', '2026-12-20')],
+    },
+    'SIChO': {
+        'slug': 'sicho', 'title': 'SIChO · SCO International Chemistry Olympiad', 'subject_name': 'Hóa học',
+        'headline': 'SIChO · Khám phá thế giới Hóa học', 'accent': '#5eead4',
+        'intro': ('Olympic Hóa học Quốc tế trong hệ thống School Connect Olympiad: tìm hiểu chất, phản ứng và '
+                  'ứng dụng của hóa học trong đời sống qua các thử thách tư duy.'),
+        'overview': [
+            ('Hóa học quanh ta', 'Từ bếp ăn đến môi trường, câu hỏi gắn với những quá trình hóa học quen thuộc.'),
+            ('Quan sát và suy luận', 'Phân tích dữ kiện thí nghiệm, nhận ra quy luật và giải thích bằng kiến thức hóa học.'),
+            ('Từ Quốc gia đến Quốc tế', 'Mùa thi gồm Vòng Chung kết Quốc gia và Vòng Chung kết Quốc tế; điều kiện đi tiếp theo thể lệ SCO.'),
+        ],
+        'materials': ('SIChO · Hóa học', 'Thư mục ghi chú học tập môn Hóa học.', drive_folder('1yCGh_ncFs3wVoKNIfYW8adxTig0y4g8v')),
+        'timeline': [('Vòng Chung kết Quốc gia', '2026-11-01'), ('Vòng Chung kết Quốc tế', '2026-12-20')],
+    },
+    'SIBO': {
+        'slug': 'sibo', 'title': 'SIBO · SCO International Biology Olympiad', 'subject_name': 'Sinh học',
+        'headline': 'SIBO · Khám phá thế giới Sinh học', 'accent': '#a3e635',
+        'intro': ('Olympic Sinh học Quốc tế trong hệ thống School Connect Olympiad: khám phá tế bào, cơ thể sống, '
+                  'di truyền và hệ sinh thái qua những câu hỏi gần gũi.'),
+        'overview': [
+            ('Sự sống quanh ta', 'Câu hỏi gắn với cơ thể con người, động thực vật và môi trường sống.'),
+            ('Tư duy của nhà sinh học', 'Quan sát, so sánh, đọc biểu đồ và rút ra kết luận từ dữ kiện.'),
+            ('Từ Quốc gia đến Quốc tế', 'Mùa thi gồm Vòng Chung kết Quốc gia và Vòng Chung kết Quốc tế; điều kiện đi tiếp theo thể lệ SCO.'),
+        ],
+        'materials': ('SIBO · Sinh học', 'Tài liệu học tập song ngữ cho lớp 8–12.', drive_folder('19FffaubVHyfnEEZHhlhpNa_lAb3afw9t')),
+        'timeline': [('Vòng Chung kết Quốc gia', '2026-11-01'), ('Vòng Chung kết Quốc tế', '2026-12-20')],
+    },
+    'SILSO': {
+        'slug': 'silso', 'title': 'SILSO · SCO International Life Skill Olympiad SDGs', 'subject_name': 'Kỹ năng sống',
+        'headline': 'SILSO · Kỹ năng sống vì phát triển bền vững', 'accent': '#fcd34d',
+        'intro': ('Olympic Kỹ năng sống Quốc tế gắn với 17 Mục tiêu Phát triển Bền vững (SDGs) của Liên Hợp Quốc: '
+                  'giải quyết vấn đề, hợp tác và hành động vì cộng đồng qua các tình huống thực tế.'),
+        'overview': [
+            ('Kỹ năng cho cuộc sống', 'Tình huống gần gũi giúp học sinh rèn cách suy nghĩ, lựa chọn và ứng xử.'),
+            ('17 mục tiêu toàn cầu', 'Thử thách gắn với những vấn đề chung của thế giới như môi trường, sức khỏe, giáo dục và bình đẳng.'),
+            ('Một vòng thi Quốc gia', 'SILSO mùa 2026–2027 có một vòng thi Quốc gia duy nhất.'),
+        ],
+        'materials': None,
+        'timeline': [('Vòng thi Quốc gia duy nhất', '2026-11-08')],
+    },
+}
+
+
+def sco_content(code):
+    """Nội dung khởi tạo cho landing SIPhO, SIChO, SIBO, SILSO (bố cục SCO dùng chung với SIAIO)."""
+    data = SCO_SUBJECTS[code]
+    timeline = [{'title': title, 'date': date, 'mode': SCO_ROUNDS} for title, date in data['timeline']]
+    highlights = [{'value': f'{date[8:10]}/{date[5:7]}', 'label': title.replace('Vòng ', '')}
+                  for title, date in data['timeline']]
+    highlights.append({'value': 'SCO', 'label': 'School Connect Olympiad · 2026–2027'})
+    resources = [
+        {'category': 'Thể lệ', 'title': 'Thể lệ SCO Cycle 1 2026–2027',
+         'body': f'Nội dung {code}, lịch thi, điều kiện dự thi và giải thưởng.', 'url': SCO_RULES},
+        {'category': 'Tổ chức', 'title': 'FermatTech và School Connect Olympiad',
+         'body': 'Hồ sơ đơn vị triển khai tại Việt Nam và giới thiệu SCO.', 'url': SCO_PROFILE},
+        {'category': 'Đăng ký', 'title': 'Hướng dẫn đăng ký SCO',
+         'body': 'Hướng dẫn tham dự các cuộc thi SCO Cycle 1.', 'url': SCO_GUIDE},
+        {'category': 'Đề mẫu SCO', 'title': 'Đề tham khảo các môn SCO',
+         'body': 'Đề SIAIO, SIBO, SIChO, SIPhO và SILSO trong một thư mục.', 'url': SCO_PAPERS},
+    ]
+    if data['materials']:
+        title, body, url = data['materials']
+        resources.append({'category': 'Học liệu SCO', 'title': title, 'body': body, 'url': url})
+    return {
+        'subject': code,
+        'badge': f"SCO · OLYMPIAD {data['subject_name'].upper()} 2026–2027",
+        'headline': data['headline'],
+        'intro': data['intro'],
+        'logoUrl': '/logo.png',
+        'style': {'accentColor': data['accent']},
+        'buttons': [{'label': 'Đăng ký dự thi', 'url': '#dang-ky'}, {'label': 'Xem đề mẫu', 'url': '#de-mau'}],
+        'highlights': highlights[:3],
+        'overview': [{'title': title, 'body': body, 'url': ''} for title, body in data['overview']],
+        'paperSubjects': [data['subject_name']],
+        'papers': {data['subject_name']: {}},
+        'resources': resources,
+        'timeline': timeline,
+        'awards': [],
+        'registration': {'schoolUrl': '', 'excelUrl': SCO_EXCEL, 'individualUrl': '', 'handbookUrl': SCO_GUIDE},
+        'contact': dict(SCO_CONTACT),
+        'customSections': [],
+    }

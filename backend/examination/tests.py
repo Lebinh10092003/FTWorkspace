@@ -2013,6 +2013,20 @@ class LandingHubTests(TestCase):
         self.assertEqual(content['registration'], {'excelUrl': 'https://example.com/mau.xlsx'})
 
 
+    def test_sco_science_landings_are_seeded_published_with_valid_content(self):
+        from .landing_site_views import _clean_content
+        from .landing_templates import SCO_SUBJECTS, sco_content
+
+        for code, data in SCO_SUBJECTS.items():
+            self.assertEqual(_clean_content(sco_content(code))['subject'], code)
+        response = APIClient().get('/api/public/landing-sites/silso')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['layout'], 'siaio')
+        self.assertEqual(response.json()['content']['timeline'][0]['date'], '2026-11-08')
+        hub = {item['slug'] for item in APIClient().get('/api/public/landing-sites').json()['items']}
+        self.assertTrue({'sipho', 'sicho', 'sibo', 'silso'} <= hub)
+
+
 class CompetitionLandingPageTests(TestCase):
     def setUp(self):
         self.user = UserProfile.objects.create(email='landing-admin@example.com', name='Landing Admin', role='ADMIN')
