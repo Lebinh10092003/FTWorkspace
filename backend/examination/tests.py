@@ -1984,6 +1984,35 @@ class SheetChangeScanTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+class LandingHubTests(TestCase):
+    def test_hub_lists_only_published_sites_without_papers_or_bank_details(self):
+        from .models import LandingSite
+
+        LandingSite.objects.create(
+            slug='hub-test-fimo', title='FIMO', template='olympiad', layout='olympiad', published=True,
+            content={
+                'subject': 'FIMO', 'headline': 'FIMO', 'style': {'accentColor': '#0284c7'},
+                'timeline': [{'title': 'Vòng loại', 'date': '2026-10-11', 'mode': 'Trực tuyến'}],
+                'papers': {'FIMO': {'Lớp 1': 'https://example.com'}},
+                'contact': {'email': 'ft@example.com', 'accountNumber': '123', 'zaloUrl': 'https://zalo.me/x'},
+                'registration': {'excelUrl': 'https://example.com/mau.xlsx', 'individualUrl': ''},
+            },
+        )
+        LandingSite.objects.create(slug='hub-test-nhap', title='Nháp', template='olympiad', layout='olympiad', content={})
+
+        response = APIClient().get('/api/public/landing-sites')
+
+        self.assertEqual(response.status_code, 200)
+        items = {item['slug']: item for item in response.json()['items']}
+        self.assertNotIn('hub-test-nhap', items)
+        content = items['hub-test-fimo']['content']
+        self.assertEqual(content['accentColor'], '#0284c7')
+        self.assertEqual(content['timeline'][0]['date'], '2026-10-11')
+        self.assertNotIn('papers', content)
+        self.assertEqual(content['contact'], {'email': 'ft@example.com'})
+        self.assertEqual(content['registration'], {'excelUrl': 'https://example.com/mau.xlsx'})
+
+
 class CompetitionLandingPageTests(TestCase):
     def setUp(self):
         self.user = UserProfile.objects.create(email='landing-admin@example.com', name='Landing Admin', role='ADMIN')

@@ -147,10 +147,10 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
   return <div ref={rootRef} className={`siaio-site ${motion ? 'landing-motion' : ''}`} style={pageStyle}>
     <header className={`siaio-header ${preview ? '' : 'is-sticky'}`}>
       <a href="#dau-trang" className="siaio-brand" aria-label="SIAIO về đầu trang"><span className="siaio-brand-mark">S<span>✳</span></span><span><strong>SIAIO</strong><small>FermatTech · SCO</small></span></a>
-      <nav className="siaio-nav" aria-label="Điều hướng SIAIO">{navItems.map(([id, label]) => <a key={id} href={`#${id}`} aria-current={activeSection === id ? 'true' : undefined} className={activeSection === id ? 'is-active' : ''}>{label}</a>)}</nav>
+      <nav className="siaio-nav" aria-label="Điều hướng SIAIO">{navItems.map(([id, label]) => <a key={id} href={`#${id}`} aria-current={activeSection === id ? 'true' : undefined} className={activeSection === id ? 'is-active' : ''}>{label}</a>)}{!preview && <a href="/cuoc-thi">Các cuộc thi</a>}</nav>
       <Action url={reg.individualUrl || '#dang-ky'} className="siaio-header-cta">Tham gia ngay <ArrowUpRight size={16} /></Action>
       <button className="siaio-menu-toggle" type="button" aria-label="Mở menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</button>
-      {menuOpen && <nav className="siaio-mobile-nav" aria-label="Điều hướng di động">{navItems.map(([id, label]) => <a key={id} href={`#${id}`} onClick={() => setMenuOpen(false)}>{label}</a>)}</nav>}
+      {menuOpen && <nav className="siaio-mobile-nav" aria-label="Điều hướng di động">{navItems.map(([id, label]) => <a key={id} href={`#${id}`} onClick={() => setMenuOpen(false)}>{label}</a>)}{!preview && <a href="/cuoc-thi">Các cuộc thi khác</a>}</nav>}
       <span className="lp-progress-rail siaio-progress"><span style={{ '--lp-progress': progress } as CSSProperties} /></span>
     </header>
 

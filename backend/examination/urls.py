@@ -14,6 +14,7 @@ urlpatterns = [
     path('examination/form-registration/workspace-pending', public_registration.workspace_pending),
     path('examination/form-registration/workspace-ack', public_registration.workspace_ack),
     path('examination/public-registrations/<uuid:pk>/proof', public_registration.public_registration_proof),
+    path('public/landing-sites', landing_site_views.public_landing_hub),
     path('public/landing-sites/<slug:slug>/leads', landing_site_views.landing_site_lead),
     path('public/landing-sites/<slug:slug>', landing_site_views.public_landing_site),
     path('landing-sites', landing_site_views.landing_sites),

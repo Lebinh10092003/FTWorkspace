@@ -183,11 +183,12 @@ function OlympiadLandingView({ site, preview = false }: { site: LandingSite; pre
         </a>
         <nav className="lp-nav ml-auto hidden items-center gap-1 lg:flex" aria-label="Điều hướng">
           {navItems.map(([id, label]) => <a key={id} href={`#${id}`} aria-current={activeSection === id ? 'true' : undefined} className={activeSection === id ? 'is-active' : ''}>{label}</a>)}
+          {!preview && <a href="/cuoc-thi">Các cuộc thi</a>}
         </nav>
         <Action url={reg.individualUrl || '#dang-ky'} className="lp-header-cta lp-sheen ml-auto hidden lg:ml-3 lg:inline-flex">Đăng ký ngay <ArrowRight className="ml-2 h-4 w-4" /></Action>
         <button type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label="Mở menu" aria-expanded={menuOpen} className="lp-menu-toggle ml-auto rounded-lg p-2 lg:hidden">{menuOpen ? <X /> : <Menu />}</button>
       </div>
-      {menuOpen && <nav className="lp-mobile-nav grid px-5 py-3 lg:hidden">{navItems.map(([id, label]) => <a key={id} href={`#${id}`} onClick={() => setMenuOpen(false)}>{label}</a>)}</nav>}
+      {menuOpen && <nav className="lp-mobile-nav grid px-5 py-3 lg:hidden">{navItems.map(([id, label]) => <a key={id} href={`#${id}`} onClick={() => setMenuOpen(false)}>{label}</a>)}{!preview && <a href="/cuoc-thi">Các cuộc thi khác</a>}</nav>}
       <span className="lp-progress-rail"><span style={{ '--lp-progress': progress } as CSSProperties} /></span>
     </header>
 

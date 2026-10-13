@@ -204,6 +204,29 @@ def landing_site_detail(request, site_id):
     return Response(_payload(site))
 
 
+HUB_CONTENT_KEYS = ('subject', 'badge', 'headline', 'intro', 'logoUrl', 'highlights', 'timeline')
+HUB_CONTACT_KEYS = ('email', 'phone', 'address')
+HUB_REGISTRATION_KEYS = ('excelUrl', 'handbookUrl', 'schoolUrl')
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_landing_hub(request):
+    """Trang tổng /cuoc-thi: tóm tắt mọi landing đã công bố, không kèm đề mẫu hay tài liệu."""
+    items = []
+    for site in LandingSite.objects.filter(published=True):
+        content = _without_bank_details(site.content if isinstance(site.content, dict) else {})
+        summary = {key: content[key] for key in HUB_CONTENT_KEYS if key in content}
+        style = content.get('style') if isinstance(content.get('style'), dict) else {}
+        summary['accentColor'] = style.get('accentColor', '')
+        # Trang tổng dành cho nhà trường: chỉ cần liên hệ trực tiếp và hồ sơ đăng ký theo trường.
+        for key, keys in (('contact', HUB_CONTACT_KEYS), ('registration', HUB_REGISTRATION_KEYS)):
+            block = content.get(key) if isinstance(content.get(key), dict) else {}
+            summary[key] = {name: block[name] for name in keys if block.get(name)}
+        items.append({'slug': site.slug, 'title': site.title, 'layout': site.layout, 'content': summary})
+    return Response({'items': items})
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def public_landing_site(request, slug):

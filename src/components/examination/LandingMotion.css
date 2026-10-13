@@ -62,3 +62,7 @@
   .lp-tilt { transform: none !important; }
   .lp-sheen:hover::after { animation: none; opacity: 0; }
 }
+
+/* Trang tổng /cuoc-thi và landing riêng cùng bật, nên chuyển qua lại giữa hai trang
+   được trình duyệt làm mờ dần thay vì nháy trắng. Trình duyệt cũ bỏ qua quy tắc này. */
+@view-transition { navigation: auto; }
