@@ -12,6 +12,7 @@ import ModuleMobileNav from './components/ModuleMobileNav';
 import { readWorkspaceAppearance, WorkspaceAppearance } from './components/AppearanceSettings';
 import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
 import ModuleShellHeader from './components/layout/ModuleShellHeader';
+import { groupByDepartment, resolveDepartmentLayout } from './config/departmentLayout';
 import { ACCOUNT_MANAGEMENT_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
 
 const lazyWithRecovery = <T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) => lazy(async () => {
@@ -225,6 +226,13 @@ class ExaminationErrorBoundary extends Component<
 
 export default function App() {
   const initialSession = useMemo(readStoredSession, []);
+  const [workspaceOthersOpen, setWorkspaceOthersOpenState] = useState(() => {
+    try { return localStorage.getItem('ft-workspace-others-open') === '1'; } catch { return false; }
+  });
+  const setWorkspaceOthersOpen = (open: boolean) => {
+    setWorkspaceOthersOpenState(open);
+    try { localStorage.setItem('ft-workspace-others-open', open ? '1' : '0'); } catch { /* per-browser convenience only */ }
+  };
   const [user, setUser] = useState<AppUser>(initialSession?.user || GUEST_USER);
   const [idToken, setIdToken] = useState<string | null>(initialSession?.token || null);
   const [userRole, setUserRole] = useState<UserRole>(initialSession?.role || 'EMPLOYEE');
@@ -497,6 +505,7 @@ export default function App() {
   }, [activeTab, authChecking, canViewFinance, isGuest, user.accessModules, userRole, viewMode]);
 
   // The rail lists business domains; the Workspace launcher is always reachable.
+  const departmentLayout = isGuest ? null : resolveDepartmentLayout((user.departments || []).map(item => item.name), user.jobTitle?.name || '');
   const canAccessArea = (area: WorkspaceArea) => area.id === 'workspace' || canAccessView(area.id as ViewMode);
   const openArea = (area: WorkspaceArea) => {
     if (area.id === 'workspace') { setViewMode('workspace'); return; }
@@ -786,9 +795,9 @@ export default function App() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {accessNotice && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 sm:col-span-2 lg:col-span-3">{accessNotice}</div>}
-            {visibleApps.map(app => {
+          {accessNotice && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{accessNotice}</div>}
+          {(() => {
+            const renderApp = (app: typeof visibleApps[number]) => {
               const AppIcon = app.icon;
               return (
                 <button
@@ -805,8 +814,28 @@ export default function App() {
                   <span className="workspace-accent pt-5 text-sm font-semibold">{'Truy cập ứng dụng →'}</span>
                 </button>
               );
-            })}
-          </div>
+            };
+            const grid = 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3';
+            if (!departmentLayout) return <div className={grid}>{visibleApps.map(renderApp)}</div>;
+            // Same apps, same access: only grouped by the person's department.
+            const groups = groupByDepartment(visibleApps, app => app.mode, departmentLayout);
+            const heading = (title: string, note?: string) => <div className="mb-3 flex flex-wrap items-baseline gap-x-3"><h2 className="ft-heading ft-heading-sm">{title}</h2>{note && <span className="workspace-muted text-sm">{note}</span>}</div>;
+            return (
+              <div className="space-y-9">
+                {groups.primary.length > 0 && <section>{heading(departmentLayout.label, 'Bộ phận của bạn')}<div className={grid}>{groups.primary.map(renderApp)}</div></section>}
+                {groups.personal.length > 0 && <section>{heading('Việc của tôi')}<div className={grid}>{groups.personal.map(renderApp)}</div></section>}
+                {groups.others.length > 0 && (
+                  <details className="group/others" open={workspaceOthersOpen} onToggle={event => setWorkspaceOthersOpen((event.currentTarget as HTMLDetailsElement).open)}>
+                    <summary className="mb-3 flex cursor-pointer list-none items-center gap-2 text-sm font-bold workspace-muted">
+                      <span className="inline-block transition-transform group-open/others:rotate-90">›</span>
+                      Ứng dụng khác bạn có quyền ({groups.others.length})
+                    </summary>
+                    <div className={grid}>{groups.others.map(renderApp)}</div>
+                  </details>
+                )}
+              </div>
+            );
+          })()}
         </main>
         {loginModal}{profileModal}
       </div>
@@ -1249,6 +1278,7 @@ export default function App() {
       activeAreaId={areaForView(viewMode)}
       canAccess={canAccessArea}
       onSelect={openArea}
+      layout={departmentLayout}
     >
       {content}
     </WorkspaceAreaFrame>

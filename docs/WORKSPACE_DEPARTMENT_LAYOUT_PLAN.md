@@ -46,6 +46,15 @@ module chứa nhiều module khác. Ví dụ người Đào tạo số chỉ th�
 | Hành chính – Nhân sự | Quản lý nhân viên, bảng công |
 | Ban giám đốc | Xem tất cả |
 
+## Đã làm (13/10/2026): bố cục theo bộ phận, chỉ phần hiển thị
+- `src/config/departmentLayout.ts`: nhận bộ phận theo từ khóa không dấu (khảo thí; đào tạo số/công nghệ/cntt;
+  truyền thông; kế toán/tài chính; hành chính/nhân sự). Lãnh đạo (giám đốc, lãnh đạo, BGĐ…), admin không có
+  bộ phận và bộ phận không khớp giữ nguyên giao diện cũ.
+- Trang chủ: nhóm "Bộ phận của bạn" → "Việc của tôi" → "Ứng dụng khác bạn có quyền" (thu gọn, bấm để mở).
+- Thanh bên: nhóm bộ phận → Cá nhân → "Khác (n)" thu gọn; khu đang mở luôn hiện.
+- **Không đổi quyền, chức năng hay dữ liệu**: tập ứng dụng mỗi người thấy giống hệt trước (đã đối chiếu tự động
+  với 5 tài khoản thử). Các bước dưới đây (quyền theo mục, chặn API, ma trận admin) vẫn chưa làm.
+
 ## Thứ tự làm (mỗi bước một lần deploy)
 1. Mô hình dữ liệu (khu/mục theo phòng ban, bậc chức danh, ngoại lệ cá nhân);
    `/api/auth/me` trả danh sách khu + mục + mức quyền.

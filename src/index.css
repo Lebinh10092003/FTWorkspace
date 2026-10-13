@@ -2145,6 +2145,35 @@ body { overflow-x: hidden; }
 .ft-app-rail-item:hover .ft-app-rail-tooltip,
 .ft-app-rail-item:focus-visible .ft-app-rail-tooltip { opacity: 1; }
 
+/* Department layout: group headings and the folded "Khác" list. */
+.ft-app-rail-group {
+  margin: .7rem .55rem .2rem;
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #6b8aa6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ft-app-rail.is-compact .ft-app-rail-group { margin-inline: 0; text-align: center; font-size: .55rem; letter-spacing: .04em; }
+.ft-app-rail-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .4rem;
+  margin-top: .55rem;
+  padding: .45rem .6rem;
+  border: 1px dashed #cfe0ee;
+  border-radius: .7rem;
+  font-size: .72rem;
+  font-weight: 700;
+  color: #4f7a9f;
+  background: transparent;
+}
+.ft-app-rail-more:hover { background: #f0f8ff; color: #075da7; }
+.ft-app-rail.is-compact .ft-app-rail-more { justify-content: center; padding-inline: .2rem; font-size: .6rem; }
 .ft-app-rail-toggle {
   display: flex;
   align-items: center;
@@ -2344,6 +2373,8 @@ body { overflow-x: hidden; }
   .ft-app-rail .ft-app-rail-label { display: block; font-size: .68rem; white-space: nowrap; -webkit-line-clamp: 1; }
   .ft-app-rail-tooltip { display: none; }
   .ft-app-rail-toggle { display: none; }
+  .ft-app-rail-group { display: none; }
+  .ft-app-rail-more { flex: 0 0 auto; margin: 0; white-space: nowrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {
