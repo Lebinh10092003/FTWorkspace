@@ -1097,7 +1097,8 @@ def work_schedule_sheet_webhook(request):
                 row,
                 current_items,
                 columns,
-                repair_format=bool(getattr(task_format_runs, "cell_style_ambiguous", False)),
+                # TẠM TẮT (chờ chủ dự án duyệt): không sửa định dạng đậm/nghiêng trên Sheet.
+                # repair_format=bool(getattr(task_format_runs, "cell_style_ambiguous", False)),
             )
         except Exception as exc:
             push_back_error = str(exc)

@@ -1027,20 +1027,21 @@ def pull_from_sheet(service, start_date, end_date):
                         source_sheet_row=offset,
                     ).order_by("daily_order", "start_time", "created_at", "pk")
                 ) if email and work_date else []
-                try:
-                    repair = _repair_sheet_row_format(
-                        service,
-                        offset,
-                        _cell(row, 4),
-                        current_items,
-                        emphasis_columns,
-                    )
-                    if repair.get("updated"):
-                        format_repair_rows.append(offset)
-                except Exception:
-                    # Formatting repair must not prevent the content sync from
-                    # completing. The recovery/full-sync path can retry it.
-                    logger.exception("Không thể sửa định dạng cũ ở dòng Sheet %s.", offset)
+                # TẠM TẮT (chờ chủ dự án duyệt): không sửa định dạng đậm/nghiêng trên Sheet.
+                # try:
+                #     repair = _repair_sheet_row_format(
+                #         service,
+                #         offset,
+                #         _cell(row, 4),
+                #         current_items,
+                #         emphasis_columns,
+                #     )
+                #     if repair.get("updated"):
+                #         format_repair_rows.append(offset)
+                # except Exception:
+                #     # Formatting repair must not prevent the content sync from
+                #     # completing. The recovery/full-sync path can retry it.
+                #     logger.exception("Không thể sửa định dạng cũ ở dòng Sheet %s.", offset)
         from .training_sync import delete_training_for_work_item
         for (email, work_date), retained_ids in retained_by_group.items():
             stale_items = WorkItem.objects.filter(
@@ -1626,10 +1627,11 @@ def push_sheet_row_metadata(service, row_number, row, items, columns=None, *, re
         "updated": bool(updates),
         "syncHash": sync_hash,
     }
-    if repair_format:
-        result["formatRepair"] = _repair_sheet_row_format(
-            service, row_number, content, items, columns
-        )
+    # TẠM TẮT (chờ chủ dự án duyệt): không sửa định dạng đậm/nghiêng trên Sheet.
+    # if repair_format:
+    #     result["formatRepair"] = _repair_sheet_row_format(
+    #         service, row_number, content, items, columns
+    #     )
     return result
 
 
@@ -1835,29 +1837,30 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
                     spreadsheetId=_spreadsheet_id(),
                     body={"valueInputOption": input_option, "data": batch[start:start + 500]},
                 ).execute()
-    # Reset the cell-level style as well as each run. Otherwise a previously
-    # bold cell can keep making newly written, untimed tasks appear bold.
-    format_requests = []
-    formula_rows = _formula_content_rows(service, columns, rows_start) if synced else set()
-    format_sheet_id = _sheet_properties(service)["sheetId"] if synced else DEFAULT_SHEET_ID
-    for email, work_date, row_number, sync_hash, items in synced:
-        if row_number in formula_rows:
-            continue
-        content, _, _, _ = _group_values(items) if items else ("", "", "", "")
-        # Always replace the run list for literal cells. Leaving the old list
-        # behind is another way a previously bold first task can style later
-        # tasks after the content has been rewritten.
-        format_requests.append(
-            _content_format_update_request(
-                format_sheet_id, row_number, content, items, columns
-            )
-        )
-    if format_requests:
-        for start in range(0, len(format_requests), 500):
-            service.spreadsheets().batchUpdate(
-                spreadsheetId=_spreadsheet_id(),
-                body={'requests': format_requests[start:start + 500]},
-            ).execute()
+    # TẠM TẮT (chờ chủ dự án duyệt): web không ghi in đậm/nghiêng lên Sheet.
+    # # Reset the cell-level style as well as each run. Otherwise a previously
+    # # bold cell can keep making newly written, untimed tasks appear bold.
+    # format_requests = []
+    # formula_rows = _formula_content_rows(service, columns, rows_start) if synced else set()
+    # format_sheet_id = _sheet_properties(service)["sheetId"] if synced else DEFAULT_SHEET_ID
+    # for email, work_date, row_number, sync_hash, items in synced:
+    #     if row_number in formula_rows:
+    #         continue
+    #     content, _, _, _ = _group_values(items) if items else ("", "", "", "")
+    #     # Always replace the run list for literal cells. Leaving the old list
+    #     # behind is another way a previously bold first task can style later
+    #     # tasks after the content has been rewritten.
+    #     format_requests.append(
+    #         _content_format_update_request(
+    #             format_sheet_id, row_number, content, items, columns
+    #         )
+    #     )
+    # if format_requests:
+    #     for start in range(0, len(format_requests), 500):
+    #         service.spreadsheets().batchUpdate(
+    #             spreadsheetId=_spreadsheet_id(),
+    #             body={'requests': format_requests[start:start + 500]},
+    #         ).execute()
     with suppress_sheet_queue():
         for email, work_date, row_number, sync_hash, items in synced + metadata_synced:
             for index, item in enumerate(items, 1):
