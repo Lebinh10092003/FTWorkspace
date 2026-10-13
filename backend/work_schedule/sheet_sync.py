@@ -1946,6 +1946,7 @@ def _two_way_sync(google_token, start, end):
     start = max(start, retained_from())
     service = _service(google_token)
     ensure_sync_columns(service)
+    pull_started_at = timezone.now()
     pulled = pull_from_sheet(service, start, end)
     pulled_groups = set(pulled["groups"])
     groups = set(pulled_groups)
@@ -1968,7 +1969,22 @@ def _two_way_sync(google_token, start, end):
         preserve_sheet_groups=pulled_groups,
     )
     pushed["attendance"] = push_attendance_safely(service, groups)
-    WorkScheduleSheetChange.objects.filter(executor_email__in=[g[0] for g in groups], work_date__range=(start, end), status__in=["pending", "failed", "conflict"]).update(status="done", processed_at=timezone.now(), last_error="")
+    # Pulled rows are preserved as they are in the Sheet, so a Web change not
+    # yet exported (e.g. tasks just moved to today) is still missing from it.
+    # Keep those groups queued, along with changes queued during this pass
+    # (the old row of a moved task), so the next export writes them.
+    unexported_groups = set(
+        WorkItem.objects.filter(work_date__range=(start, end), source_sheet_row__isnull=True)
+        .values_list("executor_id", "work_date")
+    )
+    settled_ids = [
+        change_id for change_id, email, work_date in WorkScheduleSheetChange.objects.filter(
+            executor_email__in={g[0] for g in groups}, work_date__range=(start, end),
+            status__in=["pending", "failed", "conflict"], created_at__lt=pull_started_at,
+        ).values_list("pk", "executor_email", "work_date")
+        if (email, work_date) in groups and (email, work_date) not in unexported_groups
+    ]
+    WorkScheduleSheetChange.objects.filter(pk__in=settled_ids).update(status="done", processed_at=timezone.now(), last_error="")
     result = {"start": start.isoformat(), "end": end.isoformat(), "pulled": pulled, "pushed": pushed}
     result["pulled"]["groups"] = len(result["pulled"]["groups"])
     SystemConfig.objects.update_or_create(key="work_schedule_sheet_sync", defaults={"data": {"lastSuccessAt": timezone.now().isoformat(), **result}})

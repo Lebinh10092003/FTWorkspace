@@ -2617,6 +2617,67 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
             executor_email=self.EMPLOYEE_EMAIL, work_date=self.OLD_DATE,
         ).exists())
 
+    def test_full_sync_keeps_a_web_move_queued_until_it_reaches_the_sheet(self):
+        # Reported 12/10/2026 (Nguyễn Hải Hà): tasks moved to today on the Web
+        # stayed on the old day in the Sheet. A full sync (row inserted on the
+        # Sheet) kept both Sheet rows as they were and then marked the queued
+        # move as done, so no later export ever rewrote them.
+        from .sheet_sync import _two_way_sync
+        from .views import _detach_from_sheet_row
+
+        done = self.synced_item("Đã xong", self.OLD_DATE, self.OLD_ROW, 1, status="completed")
+        moved = self.synced_item("Việc chuyển sang hôm nay", self.OLD_DATE, self.OLD_ROW, 2)
+        # The hidden hash cell does not match the visible row: an old push let
+        # Sheets turn it into a number, and today's row was typed by hand.
+        old_row = self.sheet_row(self.OLD_DATE, [done, moved], "6,23E+07")
+        WorkItem.objects.filter(pk__in=[done.pk, moved.pk]).update(source_sync_hash=self.live_hash(old_row))
+        today = self.synced_item("Việc hôm nay", self.NEW_DATE, self.NEW_ROW, 1)
+        new_row = self.sheet_row(self.NEW_DATE, [today], "")
+        WorkItem.objects.filter(pk=today.pk).update(source_sync_hash=self.live_hash(new_row))
+        WorkScheduleSheetChange.objects.all().delete()
+
+        moved.refresh_from_db()
+        moved.work_date = self.NEW_DATE
+        moved.daily_order = 2
+        _detach_from_sheet_row(moved)
+        moved.save()
+        self.assertEqual(WorkScheduleSheetChange.objects.filter(status="pending").count(), 2)
+
+        rows = {self.OLD_ROW: old_row, self.NEW_ROW: new_row}
+        columns = dict(
+            weekday=0, date=1, week=2, staff=3, content=4, self_notes=5, leader_notes=6,
+            employee_id=7, record_id=8, task_ids=9, sync_hash=10,
+        )
+        service = mock.MagicMock()
+        with mock.patch("work_schedule.sheet_sync._service", return_value=service), \
+             mock.patch("work_schedule.sheet_sync.ensure_sync_columns", return_value=columns), \
+             mock.patch("work_schedule.sheet_sync._retained_sheet_start_row", return_value=self.OLD_ROW), \
+             mock.patch("work_schedule.sheet_sync._rows", return_value=[rows[self.OLD_ROW], rows[self.NEW_ROW]]), \
+             mock.patch("work_schedule.sheet_sync._row_task_format_runs_map", return_value={}), \
+             mock.patch("work_schedule.sheet_sync._reorder_misplaced_web_rows", return_value=0), \
+             mock.patch("work_schedule.sheet_sync._sheet_name_email_map", return_value={}), \
+             mock.patch("work_schedule.sheet_sync.ensure_sheet_row_capacity"), \
+             mock.patch("work_schedule.sheet_sync._formula_content_rows", return_value=set()), \
+             mock.patch("work_schedule.sheet_sync._sheet_properties", return_value={"sheetId": 1}), \
+             mock.patch("work_schedule.sheet_sync.push_attendance_safely", return_value={}), \
+             mock.patch("work_schedule.sheet_sync.purge_expired_work_schedule"), \
+             mock.patch("work_schedule.sheet_sync.retained_from", return_value=date(2026, 1, 1)):
+            _two_way_sync(None, self.OLD_DATE, self.NEW_DATE)
+
+        moved.refresh_from_db()
+        self.assertEqual(moved.work_date, self.NEW_DATE)
+        pending = set(WorkScheduleSheetChange.objects.filter(status="pending").values_list("work_date", flat=True))
+        self.assertEqual(pending, {self.OLD_DATE, self.NEW_DATE})
+
+        result, writes = self.push(rows, {(self.EMPLOYEE_EMAIL, self.OLD_DATE), (self.EMPLOYEE_EMAIL, self.NEW_DATE)})
+
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(writes[f"'Lịch công tác'!E{self.OLD_ROW}"][1], "1. Đã xong")
+        self.assertEqual(
+            writes[f"'Lịch công tác'!E{self.NEW_ROW}"][1],
+            "1. Việc hôm nay\n2. Việc chuyển sang hôm nay",
+        )
+
     def test_conflicts_are_retried_instead_of_being_dropped_forever(self):
         from .sheet_sync import sync_to_sheet
 
