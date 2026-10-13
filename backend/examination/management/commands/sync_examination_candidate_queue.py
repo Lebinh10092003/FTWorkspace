@@ -8,6 +8,7 @@ from examination.candidate_roster_sync import LAYOUT_VERSION, SYNC_CONFIG_KEY, a
 from authentication.models import SystemConfig
 from examination.session_sheet_queue import drain_session_sheet_queue
 from examination.invigilation import auto_mark_absent, drain_invigilation_sheet_queue
+from examination.room_sheet import drain_room_sheets
 from examination.models import CandidateSheetOutbox, SessionSheetOutbox
 from examination.public_registration_sheet import sync_pending
 
@@ -28,6 +29,10 @@ class Command(BaseCommand):
                 results['autoAbsent'] = auto_mark_absent()
             except Exception as exc:
                 results['autoAbsent'] = {'error': str(exc)}
+            try:
+                results['roomSheets'] = drain_room_sheets()
+            except Exception as exc:
+                results['roomSheets'] = {'failed': 1, 'error': str(exc)}
             try:
                 results['invigilation'] = drain_invigilation_sheet_queue()
             except Exception as exc:

@@ -24,53 +24,100 @@ const localInput = (iso: string) => {
 const birth = (value?: string) => { const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}/${m[2]}/${m[1]}` : value || '—'; };
 const present = (e: Entry) => e.attendance === 'Có mặt' || e.attendance === 'Đến muộn';
 
+type Field = 'attendance' | 'score' | 'note';
+
+/** Saves one candidate. Each save sends the value the screen last confirmed for the
+ *  fields it changes, so the server only refuses when that same cell was changed by
+ *  someone else. Clicks made while a save is running are sent right after it. */
+export async function saveRosterEntry(token: string, shiftId: string, code: string, patch: Partial<Record<Field, string>>, confirmed: Entry) {
+  const base = Object.fromEntries(Object.keys(patch).map(key => [key, confirmed[key as Field] ?? '']));
+  const response = await fetch(`/api/examination/invigilation/shifts/${shiftId}/roster/${encodeURIComponent(code)}`, {
+    method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...patch, base, revision: confirmed.revision }),
+  });
+  const data = await response.json().catch(() => ({}));
+  return { ok: response.ok, status: response.status, entry: data.entry as Entry | undefined, error: String(data.error || '') };
+}
+
 function RosterRow({ index, entry, token, shiftId, onBegin, onEnd, onSaved }: { index: number; entry: Entry; token: string; shiftId: string; onBegin: () => void; onEnd: () => void; onSaved: (entry: Entry) => void }) {
   const [draft, setDraft] = useState(entry);
-  const [dirty, setDirty] = useState(false), [saving, setSaving] = useState(false), [error, setError] = useState('');
-  const [pending, setPending] = useState(false);
-  useEffect(() => { if (!dirty && !saving) setDraft(entry); }, [entry, dirty, saving]);
-  const save = async (patch: Partial<Entry> = {}) => {
-    if (saving) return;
-    const value = { ...draft, ...patch }; setDraft(value); setSaving(true); setError(''); onBegin();
+  const [saving, setSaving] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const confirmed = useRef(entry);
+  const queued = useRef<Partial<Record<Field, string>> | null>(null);
+  const busy = useRef(false);
+  const typing = useRef(false);
+  useEffect(() => {
+    // A refresh from the server replaces the row unless the invigilator is mid-edit.
+    if (busy.current || typing.current) return;
+    confirmed.current = entry; setDraft(entry);
+  }, [entry]);
+
+  const flush = async () => {
+    if (busy.current || !queued.current) return;
+    const patch = queued.current; queued.current = null;
+    busy.current = true; setSaving(true); setError(''); setNotice(''); onBegin();
+    let failed = false;
     try {
-      const response = await fetch(`/api/examination/invigilation/shifts/${shiftId}/roster/${encodeURIComponent(entry.code)}`, {
-        method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attendance: value.attendance, score: value.score, note: value.note, revision: value.revision }),
-      });
-      const data = await response.json();
-      if (response.status === 409) {
-        // Someone (or the automatic absent marking) changed this row first: show the
-        // current value instead of keeping the stale draft.
-        setDirty(false); setError('Dòng này vừa được cập nhật. Đã tải lại, hãy kiểm tra và bấm lại nếu cần.'); return;
+      const result = await saveRosterEntry(token, shiftId, entry.code, patch, confirmed.current);
+      if (result.entry) { confirmed.current = result.entry; onSaved(result.entry); }
+      if (result.status === 409 && result.entry) {
+        queued.current = null;
+        setDraft(result.entry);
+        setNotice(result.error || 'Giám thị khác vừa cập nhật thí sinh này. Đã hiện giá trị mới.');
+      } else if (!result.ok) {
+        queued.current = { ...patch, ...(queued.current || {}) }; failed = true;
+        setError(result.error || 'Chưa lưu được. Bấm "Lưu lại" để thử lại.');
+      } else if (!queued.current) {
+        setDraft(current => ({ ...current, ...result.entry }));
       }
-      if (!response.ok) throw new Error(data.error || 'Chưa lưu được. Hãy thử lại.');
-      setDraft({ ...value, ...data.entry }); setDirty(false); setPending(data.pendingSheet); onSaved(data.entry);
-    } catch (e) { setDirty(true); setError(e instanceof Error ? e.message : 'Chưa lưu được.'); }
-    finally { setSaving(false); onEnd(); }
+    } catch {
+      queued.current = { ...patch, ...(queued.current || {}) }; failed = true;
+      setError('Mất kết nối, chưa lưu được. Bấm "Lưu lại" để thử lại.');
+    } finally {
+      busy.current = false; setSaving(false); onEnd();
+      if (queued.current && !failed) void flush();
+    }
   };
-  const tone = draft.attendance === 'Vắng' ? 'bg-rose-50/60' : present(draft) ? 'bg-emerald-50/40' : '';
+  const change = (patch: Partial<Record<Field, string>>, now = true) => {
+    setDraft(current => ({ ...current, ...patch }));
+    queued.current = { ...(queued.current || {}), ...patch };
+    if (now) void flush();
+  };
+  const commitText = (key: 'score' | 'note') => {
+    typing.current = false;
+    if ((draft[key] ?? '') !== (confirmed.current[key] ?? '')) change({ [key]: draft[key] ?? '' });
+  };
+
+  const tone = draft.attendance === 'Vắng' ? 'border-rose-200 bg-rose-50/50' : present(draft) ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white';
   const status = saving ? <span className="flex items-center gap-1 text-blue-700"><Loader2 size={13} className="animate-spin" />Đang lưu</span>
-    : dirty ? <button type="button" onClick={() => void save()} className="rounded-md bg-blue-600 px-2 py-1 font-bold text-white">Lưu lại</button>
-    : entry.updatedAt ? <span title={entry.updatedBy} className={`flex items-center gap-1 ${entry.autoAbsent ? 'text-rose-700' : 'text-emerald-700'}`}><CheckCircle2 size={13} />{entry.autoAbsent ? 'Tự động đánh vắng' : pending ? 'Chờ ghi Sheet' : 'Đã lưu'} {new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }).format(new Date(entry.updatedAt))}</span> : null;
-  return <tr className={`border-t border-slate-100 align-top ${tone}`}>
-    <td className="w-10 px-3 py-3 text-xs text-slate-400">{index}</td>
-    <td className="min-w-52 px-3 py-3"><p className="font-semibold text-slate-900"><span className="mr-2 font-mono text-sm font-bold text-[#001e40]">{entry.sbd || '—'}</span>{entry.name}</p><p className="mt-0.5 text-xs text-slate-500"><span className="font-mono">{entry.code}</span> · {birth(entry.birthDate)}</p></td>
-    <td className="min-w-36 px-3 py-3 text-sm"><p>{entry.className || (entry.grade ? `Khối ${entry.grade}` : '—')}</p><p className="text-xs text-slate-500">{entry.school || '—'}</p></td>
-    <td className="min-w-52 max-w-64 px-3 py-3 text-sm">
-      {entry.phone ? <a href={`tel:${entry.phone.split(/[ /]/)[0]}`} className="flex items-center gap-1 font-semibold text-[#001e40] hover:underline"><Phone size={13} />{entry.phone}</a> : <p className="text-rose-600">Chưa có SĐT</p>}
-      {entry.email ? <a href={`mailto:${entry.email}`} className="mt-1 flex items-center gap-1 break-all text-xs text-slate-600 hover:underline"><Mail size={12} className="shrink-0" />{entry.email}</a> : null}
-      {entry.parent && <p className="mt-1 text-xs text-slate-500">PH: {entry.parent}</p>}
-    </td>
-    <td className="min-w-[13.5rem] px-3 py-3"><div role="group" aria-label={`Điểm danh ${entry.name}`} className="flex flex-nowrap gap-1">{ATTENDANCE.map(option => {
-      const active = draft.attendance === option.value;
-      return <button key={option.value} type="button" disabled={saving} aria-pressed={active} onClick={() => { setDirty(true); void save({ attendance: active ? 'Chưa điểm danh' : option.value }); }} className={`whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${active ? option.active : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}>{option.short}</button>;
-    })}</div></td>
-    <td className="w-20 min-w-20 px-3 py-3"><input aria-label={`Điểm ${entry.name}`} disabled={saving} inputMode="decimal" className={inputClass} value={draft.score} placeholder="—" onChange={e => { setDraft({ ...draft, score: e.target.value }); setDirty(true); }} onBlur={() => { if (dirty) void save(); }} /></td>
-    <td className="min-w-48 px-3 py-3"><textarea aria-label={`Ghi chú ${entry.name}`} disabled={saving} className={inputClass} rows={1} value={draft.note} placeholder="Ghi chú sự cố" onChange={e => { setDraft({ ...draft, note: e.target.value }); setDirty(true); }} onBlur={() => { if (dirty) void save(); }} />
+    : error ? <button type="button" onClick={() => { setError(''); void flush(); }} className="rounded-md bg-blue-600 px-2 py-1 font-bold text-white">Lưu lại</button>
+    : entry.updatedAt ? <span title={entry.updatedBy} className={`flex items-center gap-1 ${entry.autoAbsent ? 'text-rose-700' : 'text-emerald-700'}`}><CheckCircle2 size={13} />{entry.autoAbsent ? 'Tự động đánh vắng' : 'Đã lưu'} {new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }).format(new Date(entry.updatedAt))}</span> : null;
+  return <li className={`rounded-xl border p-3 transition-colors md:grid md:grid-cols-[2.25rem_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] md:items-start md:gap-3 ${tone}`}>
+    <span className="hidden pt-1 text-xs text-slate-400 md:block">{index}</span>
+    <div className="min-w-0">
+      <p className="font-semibold text-slate-900"><span className="mr-2 font-mono text-sm font-bold text-[#001e40]">{entry.sbd || '—'}</span>{entry.name}</p>
+      <p className="mt-0.5 text-xs text-slate-500"><span className="font-mono">{entry.code}</span> · {birth(entry.birthDate)} · {entry.className || (entry.grade ? `Khối ${entry.grade}` : '—')}<span className="md:hidden"> · {entry.school || '—'}</span></p>
+    </div>
+    <p className="hidden min-w-0 text-sm md:block"><span className="block truncate text-xs text-slate-500">{entry.school || '—'}</span></p>
+    <div className="mt-1 min-w-0 text-sm md:mt-0">
+      {entry.phone ? <a href={`tel:${entry.phone.split(/[ /]/)[0]}`} className="inline-flex items-center gap-1 font-semibold text-[#001e40] hover:underline"><Phone size={13} />{entry.phone}</a> : <span className="text-xs text-rose-600">Chưa có SĐT</span>}
+      {entry.email && <a href={`mailto:${entry.email}`} className="mt-0.5 hidden items-center gap-1 break-all text-xs text-slate-600 hover:underline md:flex"><Mail size={12} className="shrink-0" />{entry.email}</a>}
+      {entry.parent && <span className="ml-2 text-xs text-slate-500 md:ml-0 md:block">PH: {entry.parent}</span>}
+    </div>
+    <div className="mt-3 md:mt-0 md:w-[19rem]">
+      <div role="group" aria-label={`Điểm danh ${entry.name}`} className="grid grid-cols-3 gap-1.5">{ATTENDANCE.map(option => {
+        const active = draft.attendance === option.value;
+        return <button key={option.value} type="button" aria-pressed={active} onClick={() => change({ attendance: active ? 'Chưa điểm danh' : option.value })} className={`min-h-11 whitespace-nowrap rounded-lg border px-2 text-sm font-bold transition active:scale-95 ${active ? option.active : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}>{option.short}</button>;
+      })}</div>
+      <div className="mt-2 grid grid-cols-[5rem_minmax(0,1fr)] gap-1.5">
+        <input aria-label={`Điểm ${entry.name}`} inputMode="decimal" className={inputClass} value={draft.score ?? ''} placeholder="Điểm" onFocus={() => { typing.current = true; }} onChange={e => setDraft({ ...draft, score: e.target.value })} onBlur={() => commitText('score')} />
+        <input aria-label={`Ghi chú ${entry.name}`} className={inputClass} value={draft.note ?? ''} placeholder="Ghi chú sự cố" onFocus={() => { typing.current = true; }} onChange={e => setDraft({ ...draft, note: e.target.value })} onBlur={() => commitText('note')} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+      </div>
       <div className="mt-1 min-h-4 text-xs">{status}</div>
       {error && <p role="alert" className="mt-1 text-xs text-rose-700">{error}</p>}
-    </td>
-  </tr>;
+      {notice && <p role="status" className="mt-1 text-xs text-amber-800">{notice}</p>}
+    </div>
+  </li>;
 }
 
 export default function InvigilationWorkspace({ token, userName, onBack, embedded = false, sessions = [] }: { token: string; userName: string; onBack?: () => void; embedded?: boolean; sessions?: SessionOption[] }) {
@@ -80,6 +127,7 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
   const [canManage, setCanManage] = useState(false), [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState(initialShift), [search, setSearch] = useState(''), [filter, setFilter] = useState('all');
   const [form, setForm] = useState<Form | null>(null), [configSaving, setConfigSaving] = useState(false);
+  const [bulkArmed, setBulkArmed] = useState(false), [bulk, setBulk] = useState<{ done: number; total: number; failed: number } | null>(null);
   const sequence = useRef(0), edits = useRef(0);
   const load = useCallback(async () => {
     if (edits.current) return;
@@ -124,6 +172,30 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
     } catch (e) { setError(e instanceof Error ? e.message : 'Chưa lưu được lịch.'); }
     finally { setConfigSaving(false); }
   };
+  const markRestPresent = async () => {
+    if (!selected) return;
+    if (!bulkArmed) { setBulkArmed(true); window.setTimeout(() => setBulkArmed(false), 4000); return; }
+    setBulkArmed(false);
+    const targets = roster.filter(e => !['Có mặt', 'Đến muộn', 'Vắng'].includes(e.attendance));
+    const shiftId = selected.id;
+    let done = 0, failed = 0;
+    setBulk({ done, total: targets.length, failed });
+    edits.current++;
+    const apply = (entry: Entry) => setShifts(prev => prev.map(s => s.id === shiftId ? { ...s, roster: s.roster.map(item => item.code === entry.code ? { ...item, ...entry } : item) } : s));
+    for (let i = 0; i < targets.length; i += 4) {
+      await Promise.all(targets.slice(i, i + 4).map(async target => {
+        try {
+          const result = await saveRosterEntry(token, shiftId, target.code, { attendance: 'Có mặt' }, target);
+          if (result.entry) apply(result.entry);
+          if (!result.ok) failed++;
+        } catch { failed++; }
+        done++; setBulk({ done, total: targets.length, failed });
+      }));
+    }
+    edits.current--;
+    window.setTimeout(() => setBulk(null), failed ? 8000 : 3000);
+    void load();
+  };
   const chip = (key: string, label: string, value: number, tone: string) => <button key={key} type="button" onClick={() => setFilter(filter === key ? 'all' : key)} className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${filter === key ? 'border-[#001e40] ring-1 ring-[#001e40]' : 'border-slate-200'} ${tone}`}>{label} <span className="ml-1">{value}</span></button>;
 
   return <div className={embedded ? 'space-y-5' : 'min-h-dvh bg-slate-50 p-4 text-slate-900 sm:p-6'}>
@@ -164,17 +236,20 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
           <div className="flex flex-wrap gap-2">{selected.roomLink && <a href={selected.roomLink} target="_blank" rel="noreferrer" className="flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white"><ExternalLink size={15} />Vào phòng thi</a>}{canManage && <button type="button" onClick={() => edit(selected)} className="flex items-center gap-1 rounded-lg border px-3 py-2 text-sm font-bold"><Settings2 size={15} />Lịch & giám thị</button>}</div>
         </div>
         <p className="border-b bg-amber-50 px-4 py-2 text-sm text-amber-900">Đến {dutyTime(new Date(new Date(selected.startsAt).getTime() + 15 * 60_000).toISOString())}, thí sinh chưa được điểm danh sẽ tự chuyển sang <b>Vắng</b>. Em vào muộn sau đó: bấm <b>Muộn</b> để sửa lại.</p>
-        {selected.pendingSheetCount > 0 && <p className="border-b bg-blue-50 px-4 py-2 text-sm text-blue-800">{selected.pendingSheetCount} thí sinh đã lưu trên web, đang ghi sang Sheet.{selected.sheetError && ' Một số dòng chưa ghi được; hệ thống tự thử lại riêng các dòng đó.'}</p>}
+        {selected.pendingSheetCount > 0 && <p className="border-b bg-blue-50 px-4 py-2 text-sm text-blue-800">{selected.pendingSheetCount} thí sinh đã lưu trên web, đang ghi sang Sheet phân phòng.{selected.sheetError && ' Một số dòng chưa ghi được; hệ thống tự thử lại riêng các dòng đó.'}</p>}
         <div className="flex flex-wrap items-center gap-2 border-b p-4">
           {chip('all', 'Tất cả', counts.total, 'bg-white text-slate-700')}
           {chip('Có mặt', 'Có mặt', counts.present, 'bg-emerald-50 text-emerald-800')}
           {chip('Đến muộn', 'Muộn', counts.late, 'bg-amber-50 text-amber-800')}
           {chip('Vắng', 'Vắng', counts.absent, 'bg-rose-50 text-rose-800')}
           {chip('waiting', 'Chưa điểm danh', waiting, 'bg-slate-50 text-slate-700')}
+          {waiting > 0 && <button type="button" disabled={Boolean(bulk)} onClick={() => void markRestPresent()} className={`rounded-lg border px-3 py-1.5 text-sm font-bold transition ${bulkArmed ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-50'}`}>{bulkArmed ? `Bấm lần nữa để đánh Có mặt ${waiting} em` : `Có mặt tất cả ${waiting} em chưa điểm danh`}</button>}
+          {bulk && <span role="status" className="text-sm font-semibold text-slate-600">{bulk.done < bulk.total ? 'Đang lưu' : 'Đã lưu'} {bulk.done - bulk.failed}/{bulk.total}{bulk.failed ? ` · ${bulk.failed} em chưa lưu được, hãy bấm lại ở từng dòng` : ''}</span>}
           <label className="ml-auto flex w-full max-w-sm items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 sm:w-auto"><Search size={15} className="text-slate-400" /><input aria-label="Tìm thí sinh trong phòng" className="w-full text-sm outline-none" value={search} onChange={e => setSearch(e.target.value)} placeholder="SBD, tên, SĐT, email…" /></label>
         </div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['#', 'SBD · Thí sinh', 'Lớp · Trường', 'Liên hệ', 'Điểm danh', 'Điểm', 'Ghi chú'].map(h => <th key={h} className="px-3 py-3">{h}</th>)}</tr></thead>
-          <tbody>{filtered.map((e, i) => <RosterRow key={`${selected.id}:${e.code}`} index={i + 1} entry={e} shiftId={selected.id} token={token} onBegin={() => { edits.current++; sequence.current++; }} onEnd={() => { edits.current--; void load(); }} onSaved={entry => setShifts(prev => prev.map(s => s.id === selected.id ? { ...s, roster: s.roster.map(item => item.code === entry.code ? { ...item, ...entry } : item) } : s))} />)}</tbody></table>
+        <div className="p-3 sm:p-4">
+          <div className="mb-2 hidden grid-cols-[2.25rem_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1.2fr)_19rem] gap-3 px-3 text-xs font-bold uppercase text-slate-500 md:grid"><span>#</span><span>SBD · Thí sinh</span><span>Trường</span><span>Liên hệ</span><span>Điểm danh · Điểm · Ghi chú</span></div>
+          <ol className="space-y-2">{filtered.map((e, i) => <RosterRow key={`${selected.id}:${e.code}`} index={i + 1} entry={e} shiftId={selected.id} token={token} onBegin={() => { edits.current++; sequence.current++; }} onEnd={() => { edits.current--; if (!edits.current) window.setTimeout(() => { if (!edits.current) void load(); }, 1500); }} onSaved={entry => setShifts(prev => prev.map(s => s.id === selected.id ? { ...s, roster: s.roster.map(item => item.code === entry.code ? { ...item, ...entry } : item) } : s))} />)}</ol>
           {!filtered.length && <p className="p-8 text-center text-sm text-slate-500">Không có thí sinh phù hợp.</p>}</div>
       </section>}
 

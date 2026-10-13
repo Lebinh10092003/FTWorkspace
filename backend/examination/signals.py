@@ -61,6 +61,9 @@ def round_result_changed(sender, instance, **kwargs):
     candidate_id = CandidateParticipation.objects.filter(pk=instance.participation_id).values_list('candidate_id', flat=True).first()
     if candidate_id:
         enqueue_candidate(candidate_id)
+        if getattr(instance, '_room_sheet_only', False):
+            # Attendance only: the session tab no longer carries it (room Sheet does).
+            return
         session_id = CandidateParticipation.objects.filter(pk=instance.participation_id).values_list('session_id', flat=True).first()
         enqueue_session_candidate(candidate_id, session_id)
 

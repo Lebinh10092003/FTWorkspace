@@ -84,11 +84,48 @@ def auto_mark_absent(now=None):
             with transaction.atomic():
                 before = live_entry(result)
                 result.attendance = 'Vắng'
+                result._room_sheet_only = True
                 result.save(update_fields=['attendance', 'updated_at'])
                 ExamInvigilationAudit.objects.create(shift=shift, candidate_code=result.participation.candidate.code,
                                                      actor=None, before=before, after=live_entry(result))
+                _queue_room_sheet(shift.session_id)
             marked += 1
     return marked
+
+
+def _queue_room_sheet(session_id):
+    from .room_sheet import mark_room_sheet_dirty
+    if mark_room_sheet_dirty(session_id):
+        transaction.on_commit(launch_candidate_sheet_worker, robust=True)
+
+
+def _current(result, key):
+    value = str(getattr(result, key) or '')
+    return value or ATTENDANCE[0] if key == 'attendance' else value
+
+
+def field_conflicts(result, shift, code, changes, base):
+    """Fields someone else changed since the invigilator's screen was loaded.
+
+    Only the cells being saved are compared, so marking attendance never fails
+    because a score, the Sheet import or another column touched the same result.
+    A value set by the automatic absent marking is a default, not a decision,
+    so the invigilator can always override it.
+    """
+    conflicts = []
+    for key, value in changes.items():
+        if key not in base:
+            continue
+        current = _current(result, key)
+        expected = str(base[key] or '') or (ATTENDANCE[0] if key == 'attendance' else '')
+        if current in (expected, value):
+            continue
+        if key == 'attendance' and current == 'Vắng':
+            last = ExamInvigilationAudit.objects.filter(shift=shift, candidate_code=code).order_by('-created_at').first()
+            if last and last.actor_id is None:
+                continue
+        conflicts.append(key)
+    return conflicts
 
 
 def room_results(shift):
@@ -363,7 +400,7 @@ def drain_invigilation_sheet_queue():
 
 
 def roster_changes(data):
-    allowed = {'attendance', 'score', 'note', 'revision'}
+    allowed = {'attendance', 'score', 'note', 'revision', 'base'}
     if set(data) - allowed:
         raise ValueError('Chỉ được sửa điểm danh, điểm và ghi chú.')
     changes = {}
@@ -391,24 +428,35 @@ def roster_update(request, pk, code):
         changes = roster_changes(request.data)
     except ValueError as exc:
         return Response({'error': str(exc)}, status=400)
-    if not request.data.get('revision'):
+    base = request.data.get('base') if isinstance(request.data.get('base'), dict) else None
+    if not request.data.get('revision') and base is None:
         return Response({'error': 'Thiếu phiên bản hồ sơ. Hãy tải lại.'}, status=409)
     stale = Response({'error': 'Hồ sơ vừa được người khác cập nhật. Hãy tải lại trước khi lưu.'}, status=409)
 
     if shift.exam_room_id:
         with transaction.atomic():
-            result = room_results(shift).filter(participation__candidate__code=code).first()
+            result = room_results(shift).select_for_update().filter(participation__candidate__code=code).first()
             if not result:
                 return Response({'error': 'Thí sinh không thuộc phòng thi này.'}, status=404)
-            if request.data['revision'] != result.updated_at.isoformat():
-                return stale
+            if base is not None:
+                conflicts = field_conflicts(result, shift, code, changes, base)
+            else:  # an older open page still sends the whole-row revision
+                conflicts = [] if request.data['revision'] == result.updated_at.isoformat() else list(changes)
+            if conflicts:
+                return Response({
+                    'error': 'Giám thị khác vừa cập nhật thí sinh này. Đã hiện giá trị mới, hãy kiểm tra rồi bấm lại nếu cần.',
+                    'entry': live_entry(result), 'conflicts': conflicts,
+                }, status=409)
             before = live_entry(result)
             for key, value in changes.items():
                 setattr(result, key, value)
-            # save() keeps the existing signal that queues the session Sheet row.
+            # Score and note still reach the session tab; attendance alone goes to the room Sheet only.
+            result._room_sheet_only = set(changes) <= {'attendance'}
             result.save(update_fields=[*changes, 'updated_at'])
             audit = ExamInvigilationAudit.objects.create(shift=shift, candidate_code=code, actor=request.user,
                                                          before=before, after=live_entry(result))
+            if set(changes) & {'attendance', 'note'}:
+                _queue_room_sheet(shift.session_id)
         return Response({'entry': live_entry(result, audit), 'pendingSheet': False})
 
     # Demo rooms keep a stored roster. Re-read and merge so edits to other

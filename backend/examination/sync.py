@@ -377,7 +377,9 @@ ROUND_HISTORY_FIELD_MAP = {
     'link': 'link',
     'account': 'account',
     'password': 'password',
-    'attendance': 'attendance',
+    # "Trạng thái dự thi" (điểm danh) is kept by invigilators on the web and
+    # written only to the room Sheet. A stale value in the session tab must not
+    # overwrite it, so the session tab no longer imports this column.
     'score': 'score',
     'scoreRate': 'score_rate',
     'rank': 'rank',
@@ -1049,7 +1051,8 @@ def session_export_rows(session_id):
                 continue
             row.extend([
                 result.eligibility, result.sbd, format_sheet_date(result.exam_date), result.time_slot, result.mode, result.location,
-                result.link, result.account, result.password, result.attendance, result.score, format_sheet_percentage(result.score_rate),
+                # Attendance goes to the room Sheet only; a blank here keeps whatever the tab already shows.
+                result.link, result.account, result.password, '', result.score, format_sheet_percentage(result.score_rate),
                 result.rank, result.result, result.note,
             ])
         awarded = [result for result in slots.values() if _award_rank(result)]

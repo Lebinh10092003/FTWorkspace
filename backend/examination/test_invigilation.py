@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from authentication.models import Department, UserProfile
@@ -301,6 +302,68 @@ class LiveRoomDutyTests(TestCase):
         self.assertEqual((self.results[0].attendance, self.results[0].score), ('Có mặt', '18'))
         # Re-using the first row's old revision is rejected.
         self.assertEqual(self.client.patch(url + first['code'], {'revision': first['revision'], 'attendance': 'Vắng'}, format='json').status_code, 409)
+
+    def test_marking_is_not_rejected_when_another_column_of_the_result_changed(self):
+        # Reported 13/10/2026: marking one or several candidates showed an error,
+        # because any other write to the result (Sheet import, score, automatic
+        # absent marking) changed the whole-row revision.
+        first = self.roster()[0]
+        url = f"/api/examination/invigilation/shifts/{self.shift_id}/roster/{first['code']}"
+        self.results[0].score = '15'
+        self.results[0].save()
+        response = self.client.patch(url, {'attendance': 'Có mặt', 'base': {'attendance': first['attendance']}}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        # Two quick clicks from the same screen: the second carries the value the first saved.
+        response = self.client.patch(url, {'attendance': 'Đến muộn', 'base': {'attendance': 'Có mặt'}}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.results[0].refresh_from_db()
+        self.assertEqual((self.results[0].attendance, self.results[0].score), ('Đến muộn', '15'))
+
+    def test_real_conflict_returns_the_current_value_to_show(self):
+        first = self.roster()[0]
+        self.results[0].attendance = 'Vắng'
+        self.results[0].save()
+        ExamInvigilationAudit.objects.create(shift_id=self.shift_id, candidate_code=first['code'], actor=self.manager,
+                                             before={}, after={'attendance': 'Vắng'})
+        response = self.client.patch(f"/api/examination/invigilation/shifts/{self.shift_id}/roster/{first['code']}",
+                                     {'attendance': 'Có mặt', 'base': {'attendance': first['attendance']}}, format='json')
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['entry']['attendance'], 'Vắng')
+        self.assertEqual(response.data['conflicts'], ['attendance'])
+
+    def test_invigilator_can_override_the_automatic_absent_mark_from_an_old_screen(self):
+        from .invigilation import auto_mark_absent
+        first = self.roster()[0]
+        auto_mark_absent(datetime(2026, 10, 11, 9, 16, tzinfo=ZoneInfo('Asia/Ho_Chi_Minh')))
+        response = self.client.patch(f"/api/examination/invigilation/shifts/{self.shift_id}/roster/{first['code']}",
+                                     {'attendance': 'Đến muộn', 'base': {'attendance': first['attendance']}}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_attendance_goes_to_the_room_sheet_not_the_session_tab(self):
+        from .models import ExaminationSheet, SessionSheetOutbox
+        room_sheet = ExaminationSheet.objects.create(session_id=self.session.pk, stage='room-output', name='Phân phòng',
+                                                     url='https://docs.google.com/spreadsheets/d/room/edit',
+                                                     last_content_fingerprint='done', created_at=timezone.now(),
+                                                     updated_at=timezone.now())
+        ExaminationSheet.objects.create(id='live-fimo-tab', session_id=self.session.pk, stage='session-output', name='FT - FIMO',
+                                        url='https://docs.google.com/spreadsheets/d/exam/edit', sheet_tab='FT - FIMO',
+                                        created_at=timezone.now(), updated_at=timezone.now())
+        SessionSheetOutbox.objects.all().delete()
+        first = self.roster()[0]
+        url = f"/api/examination/invigilation/shifts/{self.shift_id}/roster/{first['code']}"
+        response = self.client.patch(url, {'attendance': 'Có mặt', 'base': {'attendance': first['attendance']}}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(SessionSheetOutbox.objects.exists())
+        room_sheet.refresh_from_db()
+        self.assertEqual(room_sheet.last_content_fingerprint, '')
+        # A score still belongs to the session tab.
+        response = self.client.patch(url, {'score': '18', 'base': {'score': ''}}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(SessionSheetOutbox.objects.exists())
+
+    def test_session_tab_export_and_import_skip_attendance(self):
+        from .sync import ROUND_HISTORY_FIELD_MAP
+        self.assertNotIn('attendance', ROUND_HISTORY_FIELD_MAP)
 
     def test_room_from_another_session_is_rejected(self):
         self.client.force_authenticate(self.manager)

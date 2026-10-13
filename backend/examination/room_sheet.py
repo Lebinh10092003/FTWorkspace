@@ -138,6 +138,23 @@ def export_room_sheet(session_id, force=False):
     return {'tabs': len(tabs), 'created': len(created), 'removed': len(stale)}
 
 
+def mark_room_sheet_dirty(session_id):
+    """Queue a room Sheet rewrite (attendance, notes). A blank fingerprint never
+    matches, so the next queue run writes the file; a failed write stays queued."""
+    return ExaminationSheet.objects.filter(session_id=session_id, stage='room-output').exclude(url='').update(
+        last_content_fingerprint='')
+
+
+def drain_room_sheets():
+    """Write every queued room Sheet. One file failing never blocks the others."""
+    summary = {'synced': 0, 'failed': 0}
+    session_ids = ExaminationSheet.objects.filter(stage='room-output', last_content_fingerprint='').exclude(
+        url='').values_list('session_id', flat=True).distinct()
+    for session_id in list(session_ids):
+        summary['synced' if refresh_room_sheet_safely(session_id) is not None else 'failed'] += 1
+    return summary
+
+
 def refresh_room_sheet_safely(session_id):
     """Never lets the room Sheet block the queue or a save; the error is kept on the source."""
     try:
