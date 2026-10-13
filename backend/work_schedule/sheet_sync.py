@@ -26,7 +26,7 @@ from .models import (
 )
 from .retention import purge_expired_work_schedule, retained_from
 from .rich_text import format_state_at, normalize_format_runs, slice_format_runs, utf16_length
-from .sheet_parser import split_numbered_tasks, is_personal_task,is_support_task, without_task_tags, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
+from .sheet_parser import is_personal_task, is_support_task, without_task_tags, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
 from .signals import suppress_sheet_queue
 
 
@@ -382,46 +382,17 @@ def _numbered(values):
     return "\n".join(f"{index}. {value}" for index, value in enumerate(values, 1))
 
 
-def _sheet_numbers_by_uid(current):
-    """Map each task already on the Sheet row to the number typed in front of it."""
-    if not current:
-        return {}
-    tasks = split_numbered_tasks(_cell(current, 4))
-    uids = _task_uids(_cell(current, 9))
-    if len(tasks) != len(uids):
-        return {}
-    return {uid: number for (number, _), uid in zip(tasks, uids) if uid}
-
-
-def _item_numbers(items, current=None):
-    """Numbers for `items`: kept from the Sheet row, new tasks continue after the highest."""
-    old = _sheet_numbers_by_uid(current)
-    kept = [old.get(item.sync_uid) for item in items]
-    if not any(kept):
-        return list(range(1, len(items) + 1))
-    next_number = max(number for number in kept if number) + 1
-    numbers = []
-    for number in kept:
-        if not number:
-            number = next_number
-            next_number += 1
-        numbers.append(number)
-    return numbers
-
-
-def _group_values(items, current=None):
+def _group_values(items):
     # The editable web grid and the Sheet cell share the same title text. Times
     # are separate metadata and must not be reconstructed into user content.
-    # Numbers already on the Sheet row are kept: they are the user's markers.
-    numbers = _item_numbers(items, current)
-    content = "\n".join(f"{number}. {item.title}" for number, item in zip(numbers, items))
+    content = _numbered([item.title for item in items])
     all_completed = bool(items) and all(
         item.status in {WorkItem.STATUS_COMPLETED, WorkItem.STATUS_REVIEWED}
         for item in items
     )
     self_notes = "Hoàn thành" if all_completed else "\n".join(
         f"{index}. {item.progress_note or 'Hoàn thành'}"
-        for index, item in zip(numbers, items)
+        for index, item in enumerate(items, 1)
         if item.progress_note or item.status in {WorkItem.STATUS_COMPLETED, WorkItem.STATUS_REVIEWED}
     )
     all_reviewed = bool(items) and all(item.status == WorkItem.STATUS_REVIEWED for item in items)
@@ -430,7 +401,7 @@ def _group_values(items, current=None):
         (item.review_note if item.review_percent in {None, 100} and item.review_note else
          (f"{item.review_percent}%" if item.review_percent is not None else "Hoàn thành") +
          (f" · {item.review_note}" if item.review_note else ""))
-        for index, item in zip(numbers, items)
+        for index, item in enumerate(items, 1)
         if item.status == WorkItem.STATUS_REVIEWED
     )
     task_ids = _numbered([str(item.sync_uid) for item in items])
@@ -1792,7 +1763,7 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
             )
             conflicts.append({"email": email, "date": work_date.isoformat(), "row": row_number})
             continue
-        content, self_notes, leader_notes, task_ids = _group_values(items, current) if items else ("", "", "", "")
+        content, self_notes, leader_notes, task_ids = _group_values(items) if items else ("", "", "", "")
         new_hash = _row_hash(content, self_notes, leader_notes, task_ids)
         exam_generated = any(str(item.source_record_id or "").startswith("REC-EXAM-") for item in items)
         if current and (email, work_date) in preserve_sheet_groups:

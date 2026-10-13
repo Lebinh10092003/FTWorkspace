@@ -279,35 +279,6 @@ class WorkScheduleSheetParserTests(TestCase):
 
         self.assertEqual(content, "1. 7h30 - 12h30 Tham gia tập huấn TH Kim Đồng")
 
-    def test_sheet_output_keeps_numbers_already_on_the_sheet_row(self):
-        class Item:
-            start_time = None
-            progress_note = ""
-            review_percent = None
-            review_note = ""
-
-            def __init__(self, title, index, status="todo"):
-                self.title = title
-                self.status = status
-                self.sync_uid = deterministic_sheet_uid(2000, index)
-
-        a, b, c = Item("Họp", 1), Item("Soạn đề", 2, "completed"), Item("Gọi phụ huynh", 3)
-        current = [""] * 12
-        current[4] = "2. Họp\n5. Soạn đề"
-        current[9] = f"1. {a.sync_uid}\n2. {b.sync_uid}"
-
-        content, self_notes, _, _ = _group_values([a, b, c], current)
-        self.assertEqual(content, "2. Họp\n5. Soạn đề\n6. Gọi phụ huynh")
-        self.assertEqual(self_notes, "5. Hoàn thành")
-
-        content, _, _, _ = _group_values([b], current)
-        self.assertEqual(content, "5. Soạn đề")
-
-        # No row on the Sheet, or E and J disagree: number from 1 as before.
-        self.assertEqual(_group_values([a, b])[0], "1. Họp\n2. Soạn đề")
-        current[9] = f"1. {a.sync_uid}"
-        self.assertEqual(_group_values([a, b], current)[0], "1. Họp\n2. Soạn đề")
-
     def test_numbered_cell_keeps_wrapped_lines_and_accepts_duplicate_numbers(self):
         tasks = parse_sheet_tasks(
             "1. Nhiệm vụ đầu\nphần mô tả xuống dòng\n2. Nhiệm vụ hai\n2. 17h30: Tập huấn GCE1"
