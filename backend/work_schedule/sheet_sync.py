@@ -90,6 +90,10 @@ CANONICAL_COLUMNS = (
     "leader_notes", "employee_id", "record_id", "task_ids", "sync_hash",
 )
 LEGACY_COLUMNS = {name: index for index, name in enumerate(CANONICAL_COLUMNS)}
+# Rows read from the Sheet also carry the visible "Chấm công" cell, after the
+# canonical columns so every positional index above stays the same.
+ROW_COLUMNS = CANONICAL_COLUMNS + ("attendance",)
+ATTENDANCE_INDEX = len(CANONICAL_COLUMNS)
 
 
 def deterministic_sheet_uid(row_number, task_index):
@@ -171,7 +175,7 @@ def _sheet_columns(service):
 
 
 def _canonical_row(row, columns):
-    return [_cell(row, columns.get(name, -1)) if name in columns else "" for name in CANONICAL_COLUMNS]
+    return [_cell(row, columns.get(name, -1)) if name in columns else "" for name in ROW_COLUMNS]
 
 
 def _retained_sheet_start_row(service, start_date):
@@ -1736,9 +1740,13 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
                 next_row += 1
             current = []
         update_rows.append(row_number)
-        if "attendance" in columns:
+        attendance_text = _attendance_value(attendance)
+        # Web -> Sheet never writes a blank over a filled cell. Staff without
+        # Công ca entries (e.g. the director) type their hours straight into
+        # the Sheet; every later push of that row used to wipe them.
+        if "attendance" in columns and (attendance_text or not _cell(current, ATTENDANCE_INDEX).strip()):
             column = _column_letter(columns["attendance"])
-            raw_updates.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[_attendance_value(attendance)]]})
+            raw_updates.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[attendance_text]]})
         live_values = (_cell(current, 4), _cell(current, 5), _cell(current, 6), _cell(current, 9))
         live_hash = _row_hash(*live_values)
         if current and not force and live_hash not in _known_row_hashes(current, items):

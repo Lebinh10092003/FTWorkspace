@@ -174,7 +174,9 @@ class WorkScheduleSheetParserTests(TestCase):
         self.assertEqual(canonical[4], "1. Công việc")
         self.assertEqual(canonical[5], "Hoàn thành")
         self.assertEqual(canonical[6], "Lãnh đạo duyệt")
-        self.assertEqual(canonical[7:], ["EMP-1", "REC-WEB-1", "1. task-id", "hash"])
+        self.assertEqual(canonical[7:11], ["EMP-1", "REC-WEB-1", "1. task-id", "hash"])
+        # The visible attendance cell is kept after the canonical columns.
+        self.assertEqual(canonical[11:], ["Có mặt"])
 
     def test_abbreviated_leader_header_and_moved_attendance_column_are_supported(self):
         service = mock.MagicMock()
@@ -2469,13 +2471,13 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
             daily_order=order, status=status, source_sheet_row=row, source_task_index=order,
         )
 
-    def push(self, rows_by_number, groups):
+    def push(self, rows_by_number, groups, columns=None):
         from .sheet_sync import push_groups_to_sheet
 
         first = min(rows_by_number)
         rows = [rows_by_number.get(number, []) for number in range(first, max(rows_by_number) + 1)]
         service = mock.MagicMock()
-        columns = dict(
+        columns = columns or dict(
             weekday=0, date=1, week=2, staff=3, content=4, self_notes=5, leader_notes=6,
             employee_id=7, record_id=8, task_ids=9, sync_hash=10,
         )
@@ -2677,6 +2679,26 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
             writes[f"'Lịch công tác'!E{self.NEW_ROW}"][1],
             "1. Việc hôm nay\n2. Việc chuyển sang hôm nay",
         )
+
+    def test_push_keeps_hours_typed_in_the_sheet_when_the_web_has_no_timesheet(self):
+        # Reported 13/10/2026: Mr Thuận types "Onl: 19h00-22h00." straight into
+        # "Chấm công"; he has no Công ca entries, so every push blanked the cell.
+        item = self.synced_item("Việc hôm nay", self.NEW_DATE, self.NEW_ROW, 1)
+        row = self.sheet_row(self.NEW_DATE, [item], "")
+        row[10] = self.live_hash(row)
+        WorkItem.objects.filter(pk=item.pk).update(source_sync_hash=row[10])
+        row.append("Onl: 19h00-22h00.")  # the visible "Chấm công" cell
+        WorkItem.objects.filter(pk=item.pk).update(title="Việc hôm nay (đã sửa)")
+
+        columns = dict(
+            weekday=0, date=1, week=2, staff=3, content=4, self_notes=5, leader_notes=6,
+            employee_id=7, record_id=8, task_ids=9, sync_hash=10, attendance=11,
+        )
+        result, writes = self.push({self.NEW_ROW: row}, {(self.EMPLOYEE_EMAIL, self.NEW_DATE)}, columns)
+
+        self.assertEqual(result["conflicts"], [])
+        self.assertIn(f"'Lịch công tác'!E{self.NEW_ROW}", writes)
+        self.assertNotIn(f"'Lịch công tác'!L{self.NEW_ROW}", writes)
 
     def test_one_run_also_exports_changes_saved_while_it_was_writing(self):
         # A change saved during an export used to wait for the 2-minute timer,
