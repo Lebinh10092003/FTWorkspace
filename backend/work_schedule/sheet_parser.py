@@ -47,14 +47,51 @@ class ParsedSheetTask:
     has_time_prefix: bool
 
 
+LEADER_NUMBERED_LINE = re.compile(r"^\s*(\d{1,3})(?:\s*[.,):\-]\s*|\s+)(.*)$")
+
+
+def is_star_line(line: str) -> bool:
+    """A line starting with * is a personal note: never a task, never reviewed."""
+    return str(line or "").lstrip().startswith("*")
+
+
+def split_star_blocks(value: str, marker=NUMBERED_LINE) -> tuple[list[str], list[tuple[int, list[str]]]]:
+    """Separate * blocks (a * line and its wrapped lines) from the rest of a cell.
+
+    Returns the remaining lines and, for each block, how many numbered entries
+    precede it, so the block can be put back in the same place.
+    """
+    kept: list[str] = []
+    blocks: list[tuple[int, list[str]]] = []
+    entries_before = 0
+    in_block = False
+    for raw_line in str(value or "").replace("\r\n", "\n").split("\n"):
+        if is_star_line(raw_line):
+            blocks.append((entries_before, [raw_line.rstrip()]))
+            in_block = True
+        elif in_block and raw_line.strip() and not marker.match(raw_line.strip()):
+            blocks[-1][1].append(raw_line.rstrip())
+        else:
+            in_block = False
+            kept.append(raw_line)
+            if marker.match(raw_line.strip()):
+                entries_before += 1
+    return kept, blocks
+
+
+def without_star_lines(value: str, marker=NUMBERED_LINE) -> str:
+    return "\n".join(split_star_blocks(value, marker)[0])
+
+
 def split_numbered_tasks(value: str) -> list[tuple[int, str]]:
     """Split a Sheet cell into tasks while retaining wrapped continuation lines.
 
     Sheet numbers are treated as visual markers only. Duplicate or skipped numbers
-    are accepted and occurrence order remains authoritative.
+    are accepted and occurrence order remains authoritative. Lines starting with
+    * (and their wrapped lines) are personal notes and are not tasks.
     """
     entries: list[tuple[int, list[str]]] = []
-    for raw_line in str(value or "").replace("\r\n", "\n").split("\n"):
+    for raw_line in without_star_lines(value).split("\n"):
         line = raw_line.strip()
         if not line:
             continue
@@ -97,7 +134,7 @@ def parse_sheet_tasks(value: str) -> list[ParsedSheetTask]:
 
 
 def assessment_notes(value: str, task_count: int) -> list[str]:
-    raw = str(value or "").strip()
+    raw = without_star_lines(value).strip()
     if not raw:
         return [""] * task_count
     if NUMBERED_LINE.match(raw.splitlines()[0].strip()):
@@ -143,14 +180,14 @@ def training_end(start: time | None) -> time | None:
 
 def leader_assessment_notes(value: str, task_count: int) -> list[str]:
     """Map explicit review numbers without assigning invalid numbers elsewhere."""
-    raw = str(value or "").strip()
+    raw = without_star_lines(value, LEADER_NUMBERED_LINE).strip()
     notes = [""] * task_count
     if not raw:
         return notes
     entries = []
     current = None
     for line in raw.splitlines():
-        match = re.match(r"^\s*(\d{1,3})(?:\s*[.,):\-]\s*|\s+)(.*)$", line)
+        match = LEADER_NUMBERED_LINE.match(line)
         if match:
             current = (int(match.group(1)), [match.group(2).strip()])
             entries.append(current)

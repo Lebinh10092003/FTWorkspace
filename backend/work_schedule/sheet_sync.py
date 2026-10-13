@@ -26,7 +26,7 @@ from .models import (
 )
 from .retention import purge_expired_work_schedule, retained_from
 from .rich_text import format_state_at, normalize_format_runs, slice_format_runs, utf16_length
-from .sheet_parser import is_personal_task, is_support_task, without_task_tags, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
+from .sheet_parser import is_star_line, split_star_blocks, is_personal_task, is_support_task, without_task_tags, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
 from .signals import suppress_sheet_queue
 
 
@@ -406,6 +406,32 @@ def _group_values(items):
     )
     task_ids = _numbered([str(item.sync_uid) for item in items])
     return content, self_notes, leader_notes, task_ids
+
+
+def _merge_star_lines(content, current, items):
+    """Put the * lines typed on the Sheet back into content rebuilt from the web.
+
+    They are personal notes the web never stores, so a rebuild must not drop
+    them. Each block stays after the same task (found through the task ids
+    cell) or, when that task is gone, at the same position.
+    """
+    if not current:
+        return content
+    kept, blocks = split_star_blocks(_cell(current, 4))
+    if not blocks:
+        return content
+    old_uids = _task_uids(_cell(current, 9))
+    entry_count = sum(1 for line in kept if re.match(r"^\s*\d{1,3}\s*[.,)]", line))
+    item_uids = [item.sync_uid for item in items]
+    lines = content.split("\n") if content else []
+    starts = [index for index, line in enumerate(lines) if re.match(r"^\s*\d+\s*[.,)]", line)]
+    for before, block in reversed(blocks):
+        if before and len(old_uids) == entry_count and before <= len(old_uids) and old_uids[before - 1] in item_uids:
+            before = item_uids.index(old_uids[before - 1]) + 1
+        before = min(before, len(starts))
+        position = starts[before] if before < len(starts) else len(lines)
+        lines[position:position] = block
+    return "\n".join(lines)
 
 
 def _attendance_value(entries):
@@ -1233,7 +1259,13 @@ def _build_content_format_runs(content, items=None):
 
     for line in lines:
         marker = re.match(r"^\s*\d+\s*[.,)]\s*", line)
-        if marker:
+        if is_star_line(line):
+            # A * line is a personal note, never a task: keep it plain so it
+            # does not inherit the previous task's bold/italic.
+            if current_state not in (None, (False, False)):
+                append_run(offset, False, False)
+                current_state = (False, False)
+        elif marker:
             task_index += 1
             item = ordered_items[task_index] if task_index < len(ordered_items) else None
             title = parsed_items[task_index].title if task_index < len(parsed_items) else line[marker.end():]
@@ -1315,7 +1347,9 @@ def _content_task_ranges(content):
     offset = 0
     for line in str(content or "").split("\n"):
         marker = re.match(r"^\s*\d+\s*[.,)]\s*", line)
-        if marker and line[marker.end():].strip():
+        if is_star_line(line):
+            current = None
+        elif marker and line[marker.end():].strip():
             if current is not None:
                 current["endIndex"] = max(current["startIndex"], offset - 1)
             current = {
@@ -1764,6 +1798,7 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
             conflicts.append({"email": email, "date": work_date.isoformat(), "row": row_number})
             continue
         content, self_notes, leader_notes, task_ids = _group_values(items) if items else ("", "", "", "")
+        content = _merge_star_lines(content, current, items)
         new_hash = _row_hash(content, self_notes, leader_notes, task_ids)
         exam_generated = any(str(item.source_record_id or "").startswith("REC-EXAM-") for item in items)
         if current and (email, work_date) in preserve_sheet_groups:

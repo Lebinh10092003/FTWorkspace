@@ -279,6 +279,44 @@ class WorkScheduleSheetParserTests(TestCase):
 
         self.assertEqual(content, "1. 7h30 - 12h30 Tham gia tập huấn TH Kim Đồng")
 
+    def test_star_lines_are_personal_notes_not_tasks_or_reviews(self):
+        cell = "* Nhắc: đón con 16h\nphần xuống dòng\n1. Họp\n* Ghi chú riêng\n2. Soạn đề"
+        self.assertEqual([task.title for task in parse_sheet_tasks(cell)], ["Họp", "Soạn đề"])
+        self.assertEqual(assessment_notes("* ghi chú\n1. Hoàn thành\n2. Đang làm", 2), ["Hoàn thành", "Đang làm"])
+        self.assertEqual(leader_assessment_notes("* ghi chú\n1. 90%\n2. Tốt", 2), ["90%", "Tốt"])
+        # A wrapped line after a * line is part of that note, not the previous task.
+        self.assertEqual([task.title for task in parse_sheet_tasks("1. Họp\n* Ghi chú\nxuống dòng")], ["Họp"])
+
+    def test_star_lines_survive_a_web_rebuild_and_stay_plain(self):
+        from .sheet_sync import _merge_star_lines
+
+        class Item:
+            def __init__(self, index):
+                self.sync_uid = deterministic_sheet_uid(3000, index)
+
+        a, b, c = Item(1), Item(2), Item(3)
+        current = [""] * 12
+        current[4] = "1. Họp\n* Ghi chú riêng\nxuống dòng\n2. Soạn đề"
+        current[9] = f"1. {a.sync_uid}\n2. {b.sync_uid}"
+        self.assertEqual(
+            _merge_star_lines("1. Họp\n2. Soạn đề\n3. Gọi", current, [a, b, c]),
+            "1. Họp\n* Ghi chú riêng\nxuống dòng\n2. Soạn đề\n3. Gọi",
+        )
+        # The task the note followed was deleted on the web: keep it at the same place.
+        self.assertEqual(_merge_star_lines("1. Soạn đề", current, [b]), "1. Soạn đề\n* Ghi chú riêng\nxuống dòng")
+        # All tasks gone: the notes stay.
+        self.assertEqual(_merge_star_lines("", current, []), "* Ghi chú riêng\nxuống dòng")
+        self.assertEqual(_merge_star_lines("1. Họp", [""] * 12, [a]), "1. Họp")
+
+        class Styled(Item):
+            title_format_runs = None
+            sheet_emphasis = None
+            priority = "high"
+
+        runs = _build_content_format_runs("1. [Hỗ trợ] 8h Họp\n* Ghi chú\n2. Việc", [Styled(1), Styled(2)])
+        star_start = len("1. [Hỗ trợ] 8h Họp\n")
+        self.assertTrue(any(run["startIndex"] == star_start and not run["format"]["bold"] for run in runs))
+
     def test_numbered_cell_keeps_wrapped_lines_and_accepts_duplicate_numbers(self):
         tasks = parse_sheet_tasks(
             "1. Nhiệm vụ đầu\nphần mô tả xuống dòng\n2. Nhiệm vụ hai\n2. 17h30: Tập huấn GCE1"

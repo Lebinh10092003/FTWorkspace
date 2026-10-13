@@ -58,6 +58,7 @@ Commit `6985864` từng chuyển sang "duyệt tay + banner + quét mỗi phút"
 
 ## Lịch công tác và bảng chấm công
 - Bảng chấm công tháng (`attendance/sheet_sync.py`) là bản phụ. Lỗi ở đó (thiếu tab, sai tháng, thiếu dòng ngày) **chỉ bỏ qua đúng nhân viên–ngày đó** và ghi log. Không được làm hỏng hàng đợi Lịch công tác (`push_attendance_safely` trong `work_schedule/sheet_sync.py`).
+- **Dòng có dấu `*` ở đầu trong ô Nội dung (và ô đánh giá) của Lịch công tác là lịch cá nhân**, kể cả các dòng xuống hàng ngay sau nó. Web không nhập, không tính là việc, không đánh số, không đánh giá, không in đậm/nghiêng (`split_star_blocks` trong `sheet_parser.py`). Khi web ghi lại ô Nội dung thì giữ nguyên các dòng này tại chỗ (`_merge_star_lines`).
 - File chấm công tháng do kế toán tạo bằng cách sao từ tháng trước. Tab thiếu ngày cuối tháng (vd ngày 31) thì hệ thống tự chèn dòng **bên trong** vùng công thức Tổng. Không chèn bên dưới dòng cuối, vì như vậy dòng mới nằm ngoài vùng SUM.
 
 ## Cách làm việc
