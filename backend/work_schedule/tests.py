@@ -2471,7 +2471,7 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
             daily_order=order, status=status, source_sheet_row=row, source_task_index=order,
         )
 
-    def push(self, rows_by_number, groups, columns=None):
+    def push(self, rows_by_number, groups, columns=None, attendance_only_groups=None):
         from .sheet_sync import push_groups_to_sheet
 
         first = min(rows_by_number)
@@ -2490,7 +2490,7 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
              mock.patch("work_schedule.sheet_sync._formula_content_rows", return_value=set()), \
              mock.patch("work_schedule.sheet_sync._sheet_properties", return_value={"sheetId": 1}), \
              mock.patch("work_schedule.sheet_sync.retained_from", return_value=date(2026, 1, 1)):
-            result = push_groups_to_sheet(service, groups)
+            result = push_groups_to_sheet(service, groups, attendance_only_groups=attendance_only_groups)
         writes = {}
         for call in service.spreadsheets.return_value.values.return_value.batchUpdate.call_args_list:
             body = call.kwargs["body"]
@@ -2700,6 +2700,42 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
         self.assertIn(f"'Lịch công tác'!E{self.NEW_ROW}", writes)
         self.assertNotIn(f"'Lịch công tác'!L{self.NEW_ROW}", writes)
 
+    def test_attendance_only_push_writes_the_attendance_cell_and_leaves_typed_content_alone(self):
+        # Lưu chấm công trên web từng ghi lại cả ô nội dung (đánh số lại, rút gọn).
+        from attendance.models import TimesheetEntry
+
+        item = self.synced_item("Việc hôm nay", self.NEW_DATE, self.NEW_ROW, 1)
+        row = self.sheet_row(self.NEW_DATE, [item], "")
+        row[10] = self.live_hash(row)
+        WorkItem.objects.filter(pk=item.pk).update(source_sync_hash=row[10])
+        row.append("")
+        TimesheetEntry.objects.create(
+            employee=item.executor, work_date=self.NEW_DATE, shift_number=1,
+            shift_start=time(8, 0), shift_end=time(17, 0), work_mode="direct",
+        )
+        columns = dict(
+            weekday=0, date=1, week=2, staff=3, content=4, self_notes=5, leader_notes=6,
+            employee_id=7, record_id=8, task_ids=9, sync_hash=10, attendance=11,
+        )
+        group = (self.EMPLOYEE_EMAIL, self.NEW_DATE)
+        _, writes = self.push({self.NEW_ROW: row}, {group}, columns, attendance_only_groups={group})
+        self.assertEqual(writes[f"'Lịch công tác'!L{self.NEW_ROW}"][1], "Off: 08h00-17h00.")
+        for column in "EFGJK":
+            self.assertNotIn(f"'Lịch công tác'!{column}{self.NEW_ROW}", writes)
+
+        _, writes = self.push({self.NEW_ROW: row}, {group}, columns)
+        self.assertIn(f"'Lịch công tác'!E{self.NEW_ROW}", writes)
+
+    def test_attendance_only_flag_is_dropped_when_the_same_day_also_has_a_content_change(self):
+        from .sheet_sync import _push_pending_changes
+
+        a = WorkScheduleSheetChange.objects.create(executor_email=self.EMPLOYEE_EMAIL, work_date=self.OLD_DATE, attendance_only=True)
+        b = WorkScheduleSheetChange.objects.create(executor_email=self.EMPLOYEE_EMAIL, work_date=self.OLD_DATE)
+        c = WorkScheduleSheetChange.objects.create(executor_email=self.EMPLOYEE_EMAIL, work_date=self.NEW_DATE, attendance_only=True)
+        with mock.patch("work_schedule.sheet_sync.ensure_sync_columns"),              mock.patch("work_schedule.sheet_sync.push_groups_to_sheet", return_value={"conflicts": []}) as pushed,              mock.patch("work_schedule.sheet_sync.push_attendance_safely", return_value={}):
+            _push_pending_changes(mock.MagicMock(), [a, b, c], False)
+        self.assertEqual(pushed.call_args.kwargs["attendance_only_groups"], {(self.EMPLOYEE_EMAIL, self.NEW_DATE)})
+
     def test_one_run_also_exports_changes_saved_while_it_was_writing(self):
         # A change saved during an export used to wait for the 2-minute timer,
         # because the worker started for it found the lease busy and exited.
@@ -2708,7 +2744,7 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
         WorkScheduleSheetChange.objects.create(executor_email=self.EMPLOYEE_EMAIL, work_date=self.OLD_DATE)
         calls = []
 
-        def push(service, groups, force=False):
+        def push(service, groups, force=False, attendance_only_groups=None):
             calls.append(set(groups))
             if len(calls) == 1:
                 WorkScheduleSheetChange.objects.create(executor_email=self.EMPLOYEE_EMAIL, work_date=self.NEW_DATE)

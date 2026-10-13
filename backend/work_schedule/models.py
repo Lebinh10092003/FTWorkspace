@@ -124,6 +124,8 @@ class WorkScheduleSheetChange(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
     attempts = models.PositiveSmallIntegerField(default=0)
     last_error = models.TextField(blank=True, default="")
+    # Chỉ đổi chấm công: ghi đúng ô "Chấm công", không dựng lại nội dung việc.
+    attendance_only = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(blank=True, null=True)
 

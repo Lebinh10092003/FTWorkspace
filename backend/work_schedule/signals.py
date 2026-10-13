@@ -55,10 +55,12 @@ def launch_sheet_sync_worker():
         _launch_timer.start()
 
 
-def queue_group(executor_email, work_date):
+def queue_group(executor_email, work_date, attendance_only=False):
     if _queue_suppressed.get() or not executor_email or not work_date:
         return
-    WorkScheduleSheetChange.objects.create(executor_email=executor_email, work_date=work_date)
+    WorkScheduleSheetChange.objects.create(
+        executor_email=executor_email, work_date=work_date, attendance_only=attendance_only,
+    )
     transaction.on_commit(launch_sheet_sync_worker, robust=True)
 
 

@@ -1664,7 +1664,7 @@ def _known_row_hashes(current, items):
     return known
 
 
-def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=None):
+def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=None, attendance_only_groups=None):
     columns = ensure_sync_columns(service)
     if not isinstance(columns, dict):  # compatibility with isolated test/mocked callers
         columns = LEGACY_COLUMNS
@@ -1687,6 +1687,7 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
     sheet_authority_skips = []
     update_rows = []
     preserve_sheet_groups = set(preserve_sheet_groups or ())
+    attendance_only_groups = set(attendance_only_groups or ())
     name_email_map = _sheet_name_email_map()
     row_index, uid_index = _sheet_row_indexes(rows, rows_start, name_email_map)
     items_by_group = defaultdict(list)
@@ -1749,6 +1750,10 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
         if "attendance" in columns and (attendance_text or not _cell(current, ATTENDANCE_INDEX).strip()):
             column = _column_letter(columns["attendance"])
             raw_updates.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[attendance_text]]})
+        if current and (email, work_date) in attendance_only_groups:
+            # Chỉ chấm công đổi: không dựng lại nội dung, đánh giá hay đánh số
+            # lại các ô người dùng đã gõ trên Sheet.
+            continue
         live_values = (_cell(current, 4), _cell(current, 5), _cell(current, 6), _cell(current, 9))
         live_hash = _row_hash(*live_values)
         if current and not force and live_hash not in _known_row_hashes(current, items):
@@ -1936,7 +1941,10 @@ def _push_pending_changes(service, pending, force):
     ids = [row.pk for row in pending]
     try:
         ensure_sync_columns(service)
-        result = push_groups_to_sheet(service, groups, force=force)
+        content_groups = {(row.executor_email, row.work_date) for row in pending if not row.attendance_only}
+        result = push_groups_to_sheet(
+            service, groups, force=force, attendance_only_groups=groups - content_groups,
+        )
         result["attendance"] = push_attendance_safely(service, groups)
         conflict_groups = {(row["email"], datetime.fromisoformat(row["date"]).date()) for row in result["conflicts"]}
         for change in pending:
