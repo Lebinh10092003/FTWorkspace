@@ -55,9 +55,10 @@ const WorkSchedule = lazyWithRecovery(() => import('./components/WorkSchedule'))
 const CompetitionLandingManager = lazyWithRecovery(() => import('./components/examination/CompetitionLandingManager'));
 const CompetitionLandingPublic = lazyWithRecovery(() => import('./components/examination/CompetitionLandingPublic'));
 const CompetitionHub = lazyWithRecovery(() => import('./components/examination/CompetitionHub'));
+const GuestInvigilation = lazyWithRecovery(() => import('./components/examination/GuestInvigilation'));
 const PublicExamRegistration = lazyWithRecovery(() => import('./components/examination/PublicExamRegistration'));
 
-type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'public-exam-registration' | 'attendance' | 'account-management';
+type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -161,6 +162,7 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/examination/invigilation')) return 'examination-invigilation';
   if (path === '/dang-ky-du-thi' || path === '/dang-ky-du-thi/') return 'public-exam-registration';
   if (path === '/registration-forms' || path === '/registration-forms/') return 'examination';
+  if (path.startsWith('/coi-thi/')) return 'guest-invigilation';
   if (path === '/cuoc-thi' || path === '/cuoc-thi/') return 'competition-hub';
   if (path.startsWith('/cuoc-thi/')) return 'competition-landing-public';
   if (path.startsWith('/training-assessment/')) return 'training-assessment-public';
@@ -486,7 +488,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (authChecking || viewMode === 'workspace' || viewMode === 'training-assessment-public' || viewMode === 'competition-landing-public' || viewMode === 'competition-hub' || viewMode === 'public-exam-registration' || viewMode === 'qr-generator' || viewMode === 'examination-invigilation') return;
+    if (authChecking || viewMode === 'workspace' || viewMode === 'training-assessment-public' || viewMode === 'competition-landing-public' || viewMode === 'competition-hub' || viewMode === 'guest-invigilation' || viewMode === 'public-exam-registration' || viewMode === 'qr-generator' || viewMode === 'examination-invigilation') return;
     if (!canAccessView(viewMode)) {
       setViewModeState('workspace');
       window.history.replaceState(null, '', '/');
@@ -947,6 +949,15 @@ export default function App() {
     );
   }
 
+  if (viewMode === 'guest-invigilation') {
+    const guestToken = window.location.pathname.replace(/^\/coi-thi\//, '').split('/')[0];
+    return (
+      <Suspense fallback={<div className="grid min-h-dvh place-items-center bg-slate-50 text-sm font-semibold text-slate-500">Đang mở phòng thi...</div>}>
+        <GuestInvigilation token={guestToken} />
+      </Suspense>
+    );
+  }
+
   if (viewMode === 'competition-hub') {
     return (
       <Suspense fallback={<div className="grid min-h-dvh place-items-center bg-[#050c22] text-sm font-semibold text-slate-300">Đang mở danh sách cuộc thi...</div>}>
@@ -1272,7 +1283,7 @@ export default function App() {
   // landing pages and the session splash stay chrome-free too. Every other
   // screen gets the shared vertical rail so modules are one click apart.
   const content = renderContent();
-  const chromeLessViews: ViewMode[] = ['workspace', 'competition-landing-public', 'competition-hub', 'public-exam-registration', 'training-assessment-public'];
+  const chromeLessViews: ViewMode[] = ['workspace', 'competition-landing-public', 'competition-hub', 'guest-invigilation', 'public-exam-registration', 'training-assessment-public'];
   const framedContent = authChecking || chromeLessViews.includes(viewMode) ? content : (
     <WorkspaceAreaFrame
       activeAreaId={areaForView(viewMode)}
@@ -1283,6 +1294,6 @@ export default function App() {
       {content}
     </WorkspaceAreaFrame>
   );
-  const publicViews: ViewMode[] = ['competition-landing-public', 'competition-hub', 'public-exam-registration', 'training-assessment-public'];
+  const publicViews: ViewMode[] = ['competition-landing-public', 'competition-hub', 'guest-invigilation', 'public-exam-registration', 'training-assessment-public'];
   return <>{framedContent}{!authChecking && !isGuest && idToken && !publicViews.includes(viewMode) && <InvigilationReminders key={user.email} token={idToken} email={user.email} canPreview={userRole === 'ADMIN' || userRole === 'MANAGER'} />}</>;
 }

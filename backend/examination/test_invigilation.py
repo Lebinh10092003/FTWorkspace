@@ -385,3 +385,108 @@ class LiveRoomDutyTests(TestCase):
         self.client.patch(f'/api/examination/invigilation/shifts/{self.shift_id}', {
             'startsAt': (shift.starts_at + timedelta(minutes=30)).isoformat(), 'endsAt': (shift.ends_at + timedelta(minutes=30)).isoformat()}, format='json')
         self.assertEqual(notes.count(), 2)
+
+
+class RoomsFromLinksAndGuestTests(TestCase):
+    """FIEO 18/10/2026: rooms typed as Meet links in the session tab, external invigilators."""
+
+    def setUp(self):
+        from .models import CandidateParticipation, RoundResult
+        self.session = ExamSession.objects.create(id='fieo-test', code='FIEO', name='FIEO 2026-2027', rounds=[{
+            'id': 'r1', 'name': 'Vòng loại Quốc gia', 'slots': [
+                {'id': 'd1', 'label': 'Đợt 1', 'date': '2026-10-18', 'time': '9:30-10:30'},
+                {'id': 'd2', 'label': 'Đợt 2', 'date': '2026-12-13', 'time': '9:30-10:30'}]}])
+        links = ['meet.google.com/zzz-bbb-ccc', 'https://meet.google.com/aaa-bbb-ccc', 'meet.google.com/zzz-bbb-ccc/', 'meet.google.com/aaa-bbb-ccc']
+        sbds = ['150010', '130001', '150011', '130002']
+        self.results = []
+        for index, (link, sbd) in enumerate(zip(links, sbds)):
+            candidate = Candidate.objects.create(id=f'FT-L{index}', code=f'FT-L{index}', name=f'Thí sinh {index}', sort_key=str(index),
+                                                 phone=f'09000000{index}', email=f'ts{index}@example.com')
+            participation = CandidateParticipation.objects.create(candidate=candidate, session=self.session)
+            self.results.append(RoundResult.objects.create(
+                participation=participation, round_id='r1', round_name='Vòng loại Quốc gia',
+                occurrence_id='d1' if index != 3 else '',  # one row without a date on the Sheet
+                exam_date='2026-10-18' if index != 3 else '', time_slot='9:30-10:30', sbd=sbd,
+                location=link, link=f'quilgo-{index}'))
+        self.manager = UserProfile.objects.create(email='lead@example.com', name='Lead', role='ADMIN')
+        self.manager.department = Department.objects.get_or_create(name='Khảo thí')[0]
+        self.manager.save()
+        self.client = APIClient()
+        self.client.force_authenticate(self.manager)
+        self.url = f'/api/examination/sessions/{self.session.pk}/rooms-from-links'
+
+    def test_preview_groups_links_orders_rooms_by_sbd_and_writes_nothing(self):
+        from .models import ExamRoom
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200, response.data)
+        plan = response.data['plans'][0]
+        self.assertEqual((plan['occurrenceId'], plan['startsAt']), ('d1', '2026-10-18T09:30:00+07:00'))
+        self.assertEqual([(r['label'], r['candidates'], r['firstSbd']) for r in plan['rooms']],
+                         [('Phòng 1', 2, '130001'), ('Phòng 2', 2, '150010')])
+        self.assertEqual(plan['rooms'][0]['missingDate'], 1)
+        self.assertFalse(ExamRoom.objects.exists())
+
+    def test_apply_seats_candidates_creates_duties_and_keeps_every_other_field(self):
+        response = self.client.post(self.url, {'plans': [{'roundId': 'r1', 'occurrenceId': 'd1'}]}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual((response.data['roomsCreated'], response.data['seated'], response.data['shiftsCreated']), (2, 4, 2))
+        for result in self.results:
+            before = (result.location, result.link, result.exam_date, result.sbd, result.occurrence_id)
+            result.refresh_from_db()
+            self.assertIsNotNone(result.exam_room_id)
+            self.assertEqual((result.location, result.link, result.exam_date, result.sbd, result.occurrence_id), before)
+        shift = ExamInvigilationShift.objects.get(room_number='1')
+        self.assertEqual((shift.room_link, len(shift.guest_token) >= 24), ('https://meet.google.com/aaa-bbb-ccc', True))
+        # Running it again changes nothing.
+        again = self.client.post(self.url, {'plans': [{'roundId': 'r1', 'occurrenceId': 'd1'}]}, format='json')
+        self.assertEqual((again.data['roomsCreated'], again.data['seated'], again.data['shiftsCreated']), (0, 0, 0))
+
+    def _guest_room(self, email=''):
+        self.client.post(self.url, {'plans': [{'roundId': 'r1', 'occurrenceId': 'd1'}]}, format='json')
+        shift = ExamInvigilationShift.objects.get(room_number='1')
+        if email:
+            response = self.client.patch(f'/api/examination/invigilation/shifts/{shift.pk}',
+                                         {'guestName': 'Lê Thu Hà', 'guestEmail': email}, format='json')
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(response.data['guestEmail'], email)
+            shift.refresh_from_db()
+        return shift
+
+    def test_guest_link_needs_the_assigned_email_and_saves_under_that_name(self):
+        shift = self._guest_room('lethuha04102005@gmail.com')
+        guest = APIClient()
+        url = f'/api/public/invigilation/{shift.guest_token}'
+        with patch('django.utils.timezone.now', return_value=shift.starts_at):
+            self.assertEqual(guest.get(url).status_code, 401)
+            wrong = guest.get(url, HTTP_X_GUEST_EMAIL='khac@gmail.com')
+            self.assertEqual((wrong.status_code, wrong.data['needEmail']), (401, True))
+            ok = guest.get(url, HTTP_X_GUEST_EMAIL='LeThuHa04102005@gmail.com ')
+            self.assertEqual(ok.status_code, 200, ok.data)
+            entry = ok.data['shift']['roster'][0]
+            self.assertTrue(entry['phone'] and entry['email'])  # full candidate details, as decided
+            self.assertNotIn('guestUrl', ok.data['shift'])
+            saved = guest.patch(f"{url}/roster/{entry['code']}",
+                                {'attendance': 'Có mặt', 'base': {'attendance': entry['attendance']}}, format='json',
+                                HTTP_X_GUEST_EMAIL='lethuha04102005@gmail.com')
+            self.assertEqual(saved.status_code, 200, saved.data)
+            self.assertEqual(saved.data['entry']['updatedBy'], 'Lê Thu Hà (giám thị ngoài)')
+            self.assertFalse(saved.data['entry']['autoAbsent'])
+
+    def test_guest_link_only_opens_around_the_duty_and_can_be_revoked(self):
+        shift = self._guest_room()
+        guest = APIClient()
+        url = f'/api/public/invigilation/{shift.guest_token}'
+        with patch('django.utils.timezone.now', return_value=shift.starts_at - timedelta(hours=25)):
+            self.assertEqual(guest.get(url).status_code, 403)
+        with patch('django.utils.timezone.now', return_value=shift.ends_at + timedelta(hours=13)):
+            self.assertEqual(guest.get(url).status_code, 403)
+        with patch('django.utils.timezone.now', return_value=shift.starts_at):
+            self.assertEqual(guest.get(url).status_code, 200)
+            self.client.post(f'/api/examination/invigilation/shifts/{shift.pk}/guest-link', {'action': 'revoke'}, format='json')
+            self.assertEqual(guest.get(url).status_code, 404)
+        self.assertEqual(guest.get('/api/public/invigilation/short').status_code, 404)
+
+    def test_only_khao_thi_managers_create_rooms(self):
+        outsider = UserProfile.objects.create(email='nv@example.com', name='NV', access_modules=[])
+        self.client.force_authenticate(outsider)
+        self.assertEqual(self.client.get(self.url).status_code, 403)
