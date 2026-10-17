@@ -5,7 +5,7 @@ import { dutyDate, dutyTime, roomTitle } from './invigilationTiming';
 import { NotifyDialog, RoomSheetBar } from './InvigilationTools';
 
 export type Entry = { code: string; sbd?: string; name: string; school: string; grade: string; className?: string; birthDate?: string; email?: string; phone?: string; parent?: string; attendance: string; score: string; note: string; revision: string; updatedBy?: string; updatedAt?: string; autoAbsent?: boolean };
-export type Shift = Duty & { roster: Entry[]; pendingSheetCount: number; sheetError: boolean; revision: string; occurrenceId: string; sheetTab?: string; examRoomId?: string; guestUrl?: string; guestName?: string; guestEmail?: string };
+export type Shift = Duty & { roster: Entry[]; pendingSheetCount: number; sheetError: boolean; revision: string; occurrenceId: string; sheetTab?: string; examRoomId?: string; guestUrl?: string; guestName?: string; guestEmail?: string; guestOpenedAt?: string; guestSeenAt?: string };
 type Room = { id: string; label: string; roomNumber: string; roundName: string; occurrenceId: string; link: string; candidateCount: number };
 type Employee = { email: string; name: string; employeeCode: string };
 type Form = { id?: string; revision?: string; examRoomId: string; label: string; roundName: string; occurrenceId: string; roomNumber: string; startsAt: string; endsAt: string; roomLink: string; invigilatorEmails: string[]; enabled: boolean; guestName: string; guestEmail: string };
@@ -27,6 +27,7 @@ const localInput = (iso: string) => {
   return `${p('year')}-${p('month')}-${p('day')}T${p('hour')}:${p('minute')}`;
 };
 const birth = (value?: string) => { const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}/${m[2]}/${m[1]}` : value || '—'; };
+const openedTime = (iso: string) => new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }).format(new Date(iso));
 const present = (e: Entry) => e.attendance === 'Có mặt' || e.attendance === 'Đến muộn';
 
 type Field = 'attendance' | 'score' | 'note';
@@ -320,6 +321,7 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
             <div className="flex items-baseline justify-between gap-2"><strong>{roomTitle(s.roomNumber)}</strong><span className={`text-xs font-bold ${active ? 'text-white/80' : 'text-slate-500'}`}>{here}/{s.roster.length} có mặt</span></div>
             <div className={`mt-2 h-1.5 overflow-hidden rounded-full ${active ? 'bg-white/20' : 'bg-slate-200'}`}><div className={`h-full ${active ? 'bg-white' : 'bg-emerald-500'}`} style={{ width: `${s.roster.length ? (here / s.roster.length) * 100 : 0}%` }} /></div>
             <p className={`mt-2 truncate text-xs ${active ? 'text-white/80' : 'text-slate-500'}`}>{[...s.invigilators.map(u => u.name), ...(s.guestName ? [`${s.guestName} (ngoài)`] : [])].join(', ') || 'Chưa phân công giám thị'}{!s.enabled && ' · Đã tắt'}</p>
+            {s.guestUrl && s.guestEmail && <p className={`mt-1 text-xs font-bold ${active ? 'text-white/90' : s.guestOpenedAt ? 'text-emerald-700' : 'text-amber-700'}`}>{s.guestOpenedAt ? `Giám thị đã mở link ${openedTime(s.guestOpenedAt)}` : 'Giám thị chưa mở link'}</p>}
           </button>;
         })}</div>
       </section>)}
@@ -337,6 +339,7 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
             <button type="button" onClick={() => void guestAction(selected, 'rotate')} className="rounded-lg border px-3 py-1.5 font-bold">Đổi link</button>
             <button type="button" onClick={() => void guestAction(selected, 'revoke')} className="rounded-lg border border-rose-200 px-3 py-1.5 font-bold text-rose-700">Thu hồi</button>
           </> : <button type="button" onClick={() => void guestAction(selected, 'create')} className="rounded-lg border px-3 py-1.5 font-bold">Tạo link</button>}
+          {selected.guestUrl && selected.guestEmail && <span className={`w-full text-xs font-semibold ${selected.guestOpenedAt ? 'text-emerald-700' : 'text-amber-700'}`}>{selected.guestOpenedAt ? `Giám thị mở link lần đầu ${openedTime(selected.guestOpenedAt)}${selected.guestSeenAt ? `, gần nhất ${openedTime(selected.guestSeenAt)}` : ''}.` : 'Giám thị chưa mở link.'}</span>}
           {selected.guestUrl && !selected.guestEmail && <span className="w-full text-xs text-amber-700">Chưa gắn email giám thị: ai có link cũng mở được. Bấm "Lịch & giám thị" để nhập tên và email.</span>}
         </div>}
         {selected.pendingSheetCount > 0 && <p className="border-b bg-blue-50 px-4 py-2 text-sm text-blue-800">{selected.pendingSheetCount} thí sinh đã lưu trên web, đang ghi sang Sheet phân phòng.{selected.sheetError && ' Một số dòng chưa ghi được; hệ thống tự thử lại riêng các dòng đó.'}</p>}

@@ -165,7 +165,9 @@ def serialize_shift(shift, include_roster=False, include_guest=False):
         'revision': str(shift.revision),
     }
     if include_guest:
-        value.update(guestUrl=guest_url(shift), guestName=shift.guest_name, guestEmail=shift.guest_email)
+        value.update(guestUrl=guest_url(shift), guestName=shift.guest_name, guestEmail=shift.guest_email,
+                     guestOpenedAt=shift.guest_opened_at.isoformat() if shift.guest_opened_at else '',
+                     guestSeenAt=shift.guest_seen_at.isoformat() if shift.guest_seen_at else '')
     if include_roster:
         value['roster'] = roster
     return value
@@ -254,6 +256,8 @@ def configure(shift, payload):
             raise ValueError('Email giám thị ngoài không hợp lệ.')
         if email and not name:
             raise ValueError('Cần họ tên giám thị ngoài.')
+        if email != shift.guest_email:
+            shift.guest_opened_at = shift.guest_seen_at = None
         shift.guest_name, shift.guest_email = name, email
         if email and not shift.guest_token:
             shift.guest_token = new_guest_token()
@@ -338,7 +342,7 @@ def shift_detail(request, pk):
                 **{field: getattr(shift, field) for field in (
                     'label', 'room_number', 'round_name', 'occurrence_id', 'room_link',
                     'sheet_url', 'sheet_tab', 'starts_at', 'ends_at', 'enabled', 'revision', 'exam_room',
-                    'guest_name', 'guest_email', 'guest_token')},
+                    'guest_name', 'guest_email', 'guest_token', 'guest_opened_at', 'guest_seen_at')},
                 updated_at=timezone.now())
             if not changed:
                 return Response({'error': 'Phòng thi vừa thay đổi. Hãy tải lại trước khi lưu.'}, status=409)
@@ -534,5 +538,7 @@ def guest_link(request, pk):
         shift.guest_token = ''
     elif action == 'rotate' or not shift.guest_token:
         shift.guest_token = new_guest_token()
-    ExamInvigilationShift.objects.filter(pk=shift.pk).update(guest_token=shift.guest_token)
+    else:
+        return Response({'guestUrl': guest_url(shift)})
+    ExamInvigilationShift.objects.filter(pk=shift.pk).update(guest_token=shift.guest_token, guest_opened_at=None, guest_seen_at=None)
     return Response({'guestUrl': guest_url(shift)})

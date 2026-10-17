@@ -69,6 +69,10 @@ def guest_shift(request, token):
     denied = _email_check(request, shift)
     if denied:
         return denied
+    # Khảo thí sees on Coi thi that the invigilator received the link and got in.
+    now = timezone.now()
+    ExamInvigilationShift.objects.filter(pk=shift.pk).update(guest_seen_at=now)
+    ExamInvigilationShift.objects.filter(pk=shift.pk, guest_opened_at__isnull=True).update(guest_opened_at=now)
     auto_mark_absent()
     value = serialize_shift(shift, include_roster=True)
     # Staff e-mail addresses stay inside Workspace; the guest sees names only.

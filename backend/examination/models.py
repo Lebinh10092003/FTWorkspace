@@ -305,6 +305,9 @@ class ExamInvigilationShift(models.Model):
     guest_email = models.CharField(max_length=255, blank=True, default='')
     # Last time the duty details were e-mailed to its invigilators.
     notified_at = models.DateTimeField(null=True, blank=True)
+    # When the guest invigilator first and last opened their link (after the e-mail check).
+    guest_opened_at = models.DateTimeField(null=True, blank=True)
+    guest_seen_at = models.DateTimeField(null=True, blank=True)
     sheet_url = models.CharField(max_length=2000, blank=True, default='')
     sheet_tab = models.CharField(max_length=255, blank=True, default='')
     roster = models.JSONField(default=list, blank=True)

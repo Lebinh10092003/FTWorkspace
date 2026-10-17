@@ -563,3 +563,26 @@ class InvigilatorMailAndRoomSheetTests(TestCase):
         self.assertIn('tài khoản FT Workspace', staff)
         self.assertNotIn('chỉ mở được bằng địa chỉ email', staff)
 
+    def test_coi_thi_shows_when_the_invigilator_opened_the_link_and_when_it_was_sent(self):
+        guest = APIClient()
+        url = f'/api/public/invigilation/{self.shift.guest_token}'
+        detail = f'/api/examination/invigilation/shifts/{self.shift.pk}'
+        self.assertEqual(self.client.get(detail).data['guestOpenedAt'], '')
+        with patch('django.utils.timezone.now', return_value=self.shift.starts_at - timedelta(hours=2)):
+            guest.get(url)  # no e-mail typed yet: not counted as opened
+            self.assertEqual(self.client.get(detail).data['guestOpenedAt'], '')
+            guest.get(url, HTTP_X_GUEST_EMAIL='lethuha04102005@gmail.com')
+        opened = self.client.get(detail).data['guestOpenedAt']
+        self.assertTrue(opened)
+        listing = self.client.get(self.notify).data['items']
+        self.assertEqual(next(i for i in listing if i['shiftId'] == str(self.shift.pk))['guestOpenedAt'], opened)
+        # Sent by hand from Gmail: recorded and can be undone.
+        marked = self.client.post('/api/examination/invigilation/notify', {'sessionId': self.session.pk, 'shiftIds': [str(self.shift.pk)], 'markSent': True}, format='json')
+        self.assertTrue(marked.data['notifiedAt'])
+        self.client.post('/api/examination/invigilation/notify', {'sessionId': self.session.pk, 'shiftIds': [str(self.shift.pk)], 'markSent': False}, format='json')
+        self.shift.refresh_from_db()
+        self.assertIsNone(self.shift.notified_at)
+        # A new link has not been opened yet.
+        self.client.post(f'{detail}/guest-link', {'action': 'rotate'}, format='json')
+        self.assertEqual(self.client.get(detail).data['guestOpenedAt'], '')
+

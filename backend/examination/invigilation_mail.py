@@ -187,11 +187,18 @@ def notify_invigilators(request):
             preview = compose(shift, recipients(shift, origin)[0], counts.get(shift.exam_room_id, 0)) if people else None
             items.append({'shiftId': str(shift.pk), 'room': _room(shift), 'startsAt': shift.starts_at.isoformat(),
                           'enabled': shift.enabled, 'recipients': people, 'notifiedAt': shift.notified_at.isoformat() if shift.notified_at else '',
+                          'hasGuest': bool(shift.guest_email and shift.guest_token),
+                          'guestOpenedAt': shift.guest_opened_at.isoformat() if shift.guest_opened_at else '',
                           'previewHtml': preview['html'] if preview else '', 'previewSubject': preview['subject'] if preview else ''})
         return Response({'mailConfigured': mail_configured(), 'items': items})
+    wanted = {str(value) for value in (request.data.get('shiftIds') or [])}
+    if request.data.get('markSent') in (True, False):
+        # Sent by hand from a Gmail draft: Khảo thí records (or clears) it here.
+        stamp = timezone.now() if request.data['markSent'] else None
+        ExamInvigilationShift.objects.filter(pk__in=[s.pk for s in shifts if str(s.pk) in wanted]).update(notified_at=stamp)
+        return Response({'notifiedAt': stamp.isoformat() if stamp else ''})
     if not mail_configured():
         return Response({'error': 'Hệ thống chưa được cài tài khoản gửi email. Hãy dùng nút "Soạn trong Gmail".'}, status=400)
-    wanted = {str(value) for value in (request.data.get('shiftIds') or [])}
     sent, failed = [], []
     for shift in shifts:
         if str(shift.pk) not in wanted:
