@@ -543,3 +543,23 @@ class InvigilatorMailAndRoomSheetTests(TestCase):
         saved = self.client.post(url, {'url': 'https://docs.google.com/spreadsheets/d/abc123XYZ/edit'}, format='json')
         self.assertEqual(saved.status_code, 200, saved.data)
         self.assertEqual((saved.data['url'], saved.data['pending']), ('https://docs.google.com/spreadsheets/d/abc123XYZ/edit', True))
+
+    def test_invitation_follows_the_approved_template_from_session_data(self):
+        from .invigilation_mail import compose
+        from .models import Competition
+        Competition.objects.create(id='fieo-c', code='FIEO', name='FermatTech International English Olympiad', parent='FT', organizer='FermatTech', sort_key='fieo')
+        self.session.competition_id = 'fieo-c'
+        self.session.save()
+        self.shift.refresh_from_db()
+        person = {'name': 'Lê Thu Hà', 'email': 'lethuha04102005@gmail.com', 'kind': 'guest', 'url': 'https://workspace.fermat.vn/coi-thi/x'}
+        message = compose(self.shift, person, 27)
+        self.assertEqual(message['subject'], '[FermatTech] Thư mời coi thi FIEO 2026–2027 – Vòng loại Quốc gia, đợt 1 – Ngày 18/10/2026')
+        text = message['text']
+        for expected in ('Kính gửi Lê Thu Hà,', 'Kỳ thi FermatTech International English Olympiad (FIEO) năm học 2026–2027',
+                         '09:30 – 10:30, Chủ nhật, ngày 18/10/2026', 'Trực tuyến qua Google Meet', 'trước 09:00', 'Sau 09:45',
+                         'trước 20:00 ngày 17/10/2026', 'chỉ mở được bằng địa chỉ email nhận thư này'):
+            self.assertIn(expected, text)
+        staff = compose(self.shift, {**person, 'kind': 'staff'}, 27)['text']
+        self.assertIn('tài khoản FT Workspace', staff)
+        self.assertNotIn('chỉ mở được bằng địa chỉ email', staff)
+

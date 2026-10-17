@@ -7,6 +7,7 @@ is configured (EMAIL_HOST…) Khảo thí sends them in one click; otherwise the
 screen opens a pre-filled Gmail draft per invigilator.
 """
 import logging
+from datetime import timedelta
 from html import escape
 from urllib.parse import quote, urlencode
 
@@ -25,8 +26,49 @@ from .invigilation import can_manage, guest_url
 from .models import ExaminationSheet, ExamInvigilationShift, ExamSession, RoundResult
 
 logger = logging.getLogger(__name__)
-CONTACT = 'khaothi@fermat.vn · 0969 627 162'
+CONTACT_PHONE = '0969 627 162'
+CONTACT_EMAIL = 'khaothi@fermat.vn'
+ADDRESS = 'Phòng 1603, Eurowindow Multi Complex, 27 Trần Duy Hưng, phường Yên Hòa, Hà Nội'
 ABSENT_AFTER_MINUTES = 15
+ARRIVE_BEFORE_MINUTES = 30
+WEEKDAYS = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ nhật']
+
+
+def _school_year(day):
+    first = day.year if day.month >= 8 else day.year - 1
+    return f'{first}–{first + 1}'
+
+
+def _competition_title(shift):
+    """'Olympic … (FIEO)' from the competition record, or the code alone."""
+    from .models import Competition
+    code = shift.session.code
+    competition = Competition.objects.filter(pk=shift.session.competition_id).only('name').first()
+    name = ' '.join(str(competition.name if competition else '').split())
+    return f'{name} ({code})' if name and name.upper() != code.upper() else code
+
+
+def _batch(shift):
+    """'Đợt 1' etc. from the session's round configuration, if the round has batches."""
+    for round_config in shift.session.rounds or []:
+        if not isinstance(round_config, dict):
+            continue
+        for slot in round_config.get('slots') or []:
+            if isinstance(slot, dict) and str(slot.get('id') or '') == shift.occurrence_id:
+                return str(slot.get('label') or '').strip()
+    return ''
+
+
+def _mode(shift):
+    link = str(shift.room_link or '').lower()
+    if 'meet.google' in link:
+        return 'Trực tuyến qua Google Meet'
+    if 'zoom.' in link:
+        return 'Trực tuyến qua Zoom'
+    if link:
+        return 'Trực tuyến'
+    location = shift.exam_room.location if shift.exam_room_id and shift.exam_room else ''
+    return f'Trực tiếp tại {location}' if location else 'Trực tiếp'
 
 
 def mail_configured():
@@ -50,46 +92,65 @@ def recipients(shift, origin):
 
 
 def compose(shift, person, candidates):
+    """The invitation approved by Khảo thí (17/10/2026), filled from the session's own data."""
     start, end = timezone.localtime(shift.starts_at), timezone.localtime(shift.ends_at)
-    when = f'{start:%H:%M}–{end:%H:%M} ngày {start:%d/%m/%Y}'
-    room = _room(shift)
-    subject = f'[FermatTech] Lịch coi thi {shift.session.code} · {start:%H:%M %d/%m/%Y} · {room}'
-    login_note = ('Trang điểm danh mở bằng chính email này (nhập email khi được hỏi). Link chỉ dành cho bạn, vui lòng không chuyển tiếp.'
-                  if person['kind'] == 'guest' else 'Đăng nhập FT Workspace bằng tài khoản công ty để mở trang điểm danh.')
-    lines = [
-        f'Chào {person["name"]},', '',
-        f'Ban tổ chức gửi bạn thông tin ca coi thi {shift.session.code} – {shift.round_name}:',
-        f'• Thời gian: {when} (giờ Việt Nam)', f'• Phòng: {room}', f'• Số thí sinh: {candidates}', '',
-        f'Trang điểm danh: {person["url"]}',
+    code, room = shift.session.code, _room(shift)
+    year = _school_year(start.date())
+    batch = _batch(shift)
+    stage = f'{shift.round_name}, {batch.lower()}' if batch else shift.round_name
+    day = f'{WEEKDAYS[start.weekday()]}, ngày {start:%d/%m/%Y}'
+    arrive = start - timedelta(minutes=ARRIVE_BEFORE_MINUTES)
+    absent = start + timedelta(minutes=ABSENT_AFTER_MINUTES)
+    confirm_by = (start - timedelta(days=1)).replace(hour=20, minute=0)
+    online = bool(shift.room_link)
+    guest = person['kind'] == 'guest'
+    subject = f'[FermatTech] Thư mời coi thi {code} {year} – {stage} – Ngày {start:%d/%m/%Y}'
+    rows = [('Kỳ thi', f'{code} {year} – {stage}'), ('Thời gian thi', f'{start:%H:%M} – {end:%H:%M}, {day} (giờ Việt Nam)'),
+            ('Phòng thi', room), ('Số thí sinh', str(candidates)), ('Hình thức', _mode(shift))]
+    duties = [
+        f'{"Vào phòng thi" if online else "Có mặt tại phòng thi"} trước {arrive:%H:%M} để kiểm tra {"kết nối, âm thanh và hình ảnh" if online else "phòng thi và danh sách thí sinh"}.',
+        f'Điểm danh thí sinh trên trang điểm danh ngay khi thí sinh vào phòng. Sau {absent:%H:%M}, thí sinh chưa được điểm danh sẽ tự động chuyển sang "Vắng"; nếu thí sinh vào muộn, Anh/Chị chọn "Muộn" để cập nhật.',
+        f'Theo dõi thí sinh trong suốt thời gian làm bài. Ghi chú mọi sự cố ({"mất kết nối, rời phòng, tắt camera…" if online else "đến muộn, rời phòng, vi phạm quy chế…"}) ngay tại dòng của thí sinh đó.',
+        'Chỉ rời phòng sau khi thí sinh cuối cùng nộp bài hoặc hết giờ thi.',
     ]
-    if shift.room_link:
-        lines.append(f'Phòng thi trực tuyến: {shift.room_link}')
-    lines += ['', 'Lưu ý:', f'• {login_note}', '• Vào phòng thi trước giờ bắt đầu khoảng 15 phút.',
-              f'• Sau {ABSENT_AFTER_MINUTES} phút kể từ giờ thi, thí sinh chưa được điểm danh sẽ tự chuyển sang "Vắng"; em vào muộn thì bấm "Muộn" để sửa.',
-              '• Ghi chú sự cố (mất kết nối, thoát phòng…) ngay tại dòng của thí sinh.', '',
-              f'Cần hỗ trợ: {CONTACT}', '', 'Trân trọng,', 'Ban Khảo thí FermatTech']
-    text = '\n'.join(lines)
-    button = ('display:inline-block;padding:12px 20px;margin:4px 8px 4px 0;border-radius:10px;'
-              'font-weight:700;text-decoration:none;font-family:Arial,sans-serif;font-size:15px;')
-    meet = (f'<a href="{escape(shift.room_link)}" style="{button}background:#ffffff;color:#047857;border:2px solid #047857">Vào phòng thi (Google Meet)</a>'
-            if shift.room_link else '')
-    html = f"""<div style="font-family:Arial,sans-serif;color:#0f172a;max-width:560px;line-height:1.6">
-<p>Chào <b>{escape(person['name'])}</b>,</p>
-<p>Ban tổ chức gửi bạn thông tin ca coi thi <b>{escape(shift.session.code)} – {escape(shift.round_name)}</b>:</p>
-<table style="border-collapse:collapse;margin:8px 0 16px">
-<tr><td style="padding:4px 16px 4px 0;color:#64748b">Thời gian</td><td><b>{escape(when)}</b> (giờ Việt Nam)</td></tr>
-<tr><td style="padding:4px 16px 4px 0;color:#64748b">Phòng</td><td><b>{escape(room)}</b></td></tr>
-<tr><td style="padding:4px 16px 4px 0;color:#64748b">Số thí sinh</td><td><b>{candidates}</b></td></tr>
-</table>
-<p><a href="{escape(person['url'])}" style="{button}background:#001e40;color:#ffffff;border:2px solid #001e40">Mở trang điểm danh</a>{meet}</p>
-<p style="margin-top:20px"><b>Lưu ý</b></p>
-<ul style="padding-left:20px;margin:4px 0">
-<li>{escape(login_note)}</li>
-<li>Vào phòng thi trước giờ bắt đầu khoảng 15 phút.</li>
-<li>Sau {ABSENT_AFTER_MINUTES} phút kể từ giờ thi, thí sinh chưa được điểm danh sẽ tự chuyển sang “Vắng”; em vào muộn thì bấm “Muộn” để sửa.</li>
-<li>Ghi chú sự cố (mất kết nối, thoát phòng…) ngay tại dòng của thí sinh.</li>
-</ul>
-<p style="color:#64748b;font-size:13px;margin-top:20px">Cần hỗ trợ: {escape(CONTACT)}<br>Trân trọng,<br>Ban Khảo thí FermatTech</p>
+    notes = [
+        ('Trang điểm danh là link riêng của Anh/Chị và chỉ mở được bằng địa chỉ email nhận thư này. Vui lòng không chuyển tiếp thư hoặc link cho người khác.'
+         if guest else 'Trang điểm danh mở bằng tài khoản FT Workspace của Anh/Chị.'),
+        'Thông tin cá nhân của thí sinh chỉ được sử dụng cho ca coi thi này. Vui lòng không sao chép, lưu giữ hay chia sẻ ra bên ngoài.',
+    ]
+    intro = (f'Ban Tổ chức Kỳ thi {_competition_title(shift)} năm học {year} trân trọng cảm ơn Anh/Chị đã nhận lời tham gia '
+             'công tác coi thi. Ban Tổ chức xin gửi Anh/Chị thông tin ca coi thi như sau:')
+    confirm = (f'Anh/Chị vui lòng trả lời thư này để xác nhận tham gia trước {confirm_by:%H:%M} ngày {confirm_by:%d/%m/%Y}. '
+               f'Trong quá trình coi thi, nếu cần hỗ trợ, Anh/Chị liên hệ Ban Khảo thí qua số {CONTACT_PHONE} hoặc email {CONTACT_EMAIL}.')
+
+    text = '\n'.join([
+        f'Kính gửi {person["name"]},', '', intro, '',
+        *[f'• {label}: {value}' for label, value in rows], '',
+        f'Trang điểm danh: {person["url"]}', *([f'Phòng thi trực tuyến: {shift.room_link}'] if online else []), '',
+        'NHIỆM VỤ CỦA GIÁM THỊ', *[f'{index}. {item}' for index, item in enumerate(duties, 1)], '',
+        'LƯU Ý', *[f'- {item}' for item in notes], '', confirm, '',
+        'Trân trọng,', 'Ban Khảo thí FermatTech', ADDRESS,
+    ])
+
+    button = ('display:inline-block;padding:12px 22px;margin:4px 8px 4px 0;border-radius:10px;font-weight:700;'
+              'text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:15px;')
+    buttons = f'<a href="{escape(person["url"])}" style="{button}background:#001e40;color:#ffffff;border:2px solid #001e40">Mở trang điểm danh</a>'
+    if online:
+        label = 'Vào phòng thi (Google Meet)' if 'meet.google' in shift.room_link.lower() else 'Vào phòng thi'
+        buttons += f'<a href="{escape(shift.room_link)}" style="{button}background:#ffffff;color:#047857;border:2px solid #047857">{label}</a>'
+    table = ''.join(f'<tr><td style="padding:6px 18px 6px 0;color:#64748b;vertical-align:top;white-space:nowrap">{escape(label)}</td>'
+                    f'<td style="padding:6px 0"><b>{escape(value)}</b></td></tr>' for label, value in rows)
+    html = f"""<div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;max-width:600px;line-height:1.6;font-size:15px">
+<p>Kính gửi <b>{escape(person['name'])}</b>,</p>
+<p>{escape(intro)}</p>
+<table style="border-collapse:collapse;margin:8px 0 18px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0">{table}</table>
+<p style="margin:18px 0">{buttons}</p>
+<p style="margin:22px 0 6px"><b>Nhiệm vụ của giám thị</b></p>
+<ol style="padding-left:22px;margin:0">{''.join(f'<li style="margin:4px 0">{escape(item)}</li>' for item in duties)}</ol>
+<p style="margin:18px 0 6px"><b>Lưu ý</b></p>
+<ul style="padding-left:22px;margin:0">{''.join(f'<li style="margin:4px 0">{escape(item)}</li>' for item in notes)}</ul>
+<p style="margin-top:18px">{escape(confirm)}</p>
+<p style="margin-top:22px">Trân trọng,<br><b>Ban Khảo thí FermatTech</b><br><span style="color:#64748b;font-size:13px">{escape(ADDRESS)}</span></p>
 </div>"""
     gmail = 'https://mail.google.com/mail/?' + urlencode({'view': 'cm', 'fs': '1', 'to': person['email'], 'su': subject, 'body': text}, quote_via=quote)
     return {'subject': subject, 'text': text, 'html': html, 'gmailUrl': gmail}
