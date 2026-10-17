@@ -135,6 +135,16 @@ REST_FRAMEWORK = {
 }
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Outgoing mail (Coi thi: invitations to invigilators). Unset EMAIL_HOST keeps
+# sending off; the screens then offer a pre-filled Gmail draft instead.
+EMAIL_HOST = os.getenv("EMAIL_HOST", "").strip()
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587") or 587)
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip()
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "1").strip() not in ("0", "false", "False")
+EMAIL_TIMEOUT = 20
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "").strip() or (f"FermatTech Khảo thí <{EMAIL_HOST_USER}>" if EMAIL_HOST_USER else "webmaster@localhost")
 SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", not DEBUG)
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", not DEBUG)
 SECURE_CONTENT_TYPE_NOSNIFF = True

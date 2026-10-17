@@ -303,6 +303,8 @@ class ExamInvigilationShift(models.Model):
     # opens only after that address is typed, so a forwarded link is useless.
     guest_name = models.CharField(max_length=255, blank=True, default='')
     guest_email = models.CharField(max_length=255, blank=True, default='')
+    # Last time the duty details were e-mailed to its invigilators.
+    notified_at = models.DateTimeField(null=True, blank=True)
     sheet_url = models.CharField(max_length=2000, blank=True, default='')
     sheet_tab = models.CharField(max_length=255, blank=True, default='')
     roster = models.JSONField(default=list, blank=True)

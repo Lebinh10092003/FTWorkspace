@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -493,3 +493,53 @@ class RoomsFromLinksAndGuestTests(TestCase):
         outsider = UserProfile.objects.create(email='nv@example.com', name='NV', access_modules=[])
         self.client.force_authenticate(outsider)
         self.assertEqual(self.client.get(self.url).status_code, 403)
+
+
+class InvigilatorMailAndRoomSheetTests(TestCase):
+    """Duty details e-mailed to invigilators; the room output Sheet attached from Coi thi."""
+
+    def setUp(self):
+        RoomsFromLinksAndGuestTests.setUp(self)
+        self.client.post(self.url, {'plans': [{'roundId': 'r1', 'occurrenceId': 'd1'}]}, format='json')
+        self.shift = ExamInvigilationShift.objects.get(room_number='1')
+        self.client.patch(f'/api/examination/invigilation/shifts/{self.shift.pk}',
+                          {'guestName': 'Lê Thu Hà', 'guestEmail': 'lethuha04102005@gmail.com'}, format='json')
+        self.shift.refresh_from_db()
+        self.notify = f'/api/examination/invigilation/notify?sessionId={self.session.pk}'
+
+    def test_list_shows_recipients_and_a_prefilled_gmail_draft(self):
+        response = self.client.get(self.notify)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(response.data['mailConfigured'])
+        item = next(i for i in response.data['items'] if i['shiftId'] == str(self.shift.pk))
+        person = item['recipients'][0]
+        self.assertEqual((person['email'], person['kind']), ('lethuha04102005@gmail.com', 'guest'))
+        self.assertIn('mail.google.com', person['gmailUrl'])
+        self.assertIn(self.shift.guest_token, person['gmailUrl'])
+        self.assertIn('Mở trang điểm danh', item['previewHtml'])
+        # Sending without an outgoing account is refused, never half done.
+        refused = self.client.post('/api/examination/invigilation/notify', {'sessionId': self.session.pk, 'shiftIds': [str(self.shift.pk)]}, format='json')
+        self.assertEqual(refused.status_code, 400)
+
+    @override_settings(EMAIL_HOST='smtp.example.com', EMAIL_HOST_USER='khaothi@fermat.vn',
+                       EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_send_mails_buttons_to_the_attendance_page_and_the_meet_room(self):
+        from django.core import mail
+        response = self.client.post('/api/examination/invigilation/notify', {'sessionId': self.session.pk, 'shiftIds': [str(self.shift.pk)]}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ['lethuha04102005@gmail.com'])
+        html = message.alternatives[0][0]
+        self.assertIn(f'/coi-thi/{self.shift.guest_token}', html)
+        self.assertIn('https://meet.google.com/aaa-bbb-ccc', html)
+        self.shift.refresh_from_db()
+        self.assertIsNotNone(self.shift.notified_at)
+
+    def test_room_sheet_can_be_attached_from_coi_thi(self):
+        url = f'/api/examination/invigilation/room-sheet?sessionId={self.session.pk}'
+        self.assertEqual(self.client.get(url).data['url'], '')
+        self.assertEqual(self.client.post(url, {'url': 'khong-phai-link'}, format='json').status_code, 400)
+        saved = self.client.post(url, {'url': 'https://docs.google.com/spreadsheets/d/abc123XYZ/edit'}, format='json')
+        self.assertEqual(saved.status_code, 200, saved.data)
+        self.assertEqual((saved.data['url'], saved.data['pending']), ('https://docs.google.com/spreadsheets/d/abc123XYZ/edit', True))
