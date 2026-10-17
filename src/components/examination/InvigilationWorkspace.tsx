@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, BellRing, CheckCircle2, Copy, DoorOpen, ExternalLink, Link2, Loader2, Mail, Phone, Plus, RefreshCw, Search, Settings2, X } from 'lucide-react';
 import type { Duty } from './InvigilationReminders';
-import { dutyDate, dutyTime } from './invigilationTiming';
+import { dutyDate, dutyTime, roomTitle } from './invigilationTiming';
 
 export type Entry = { code: string; sbd?: string; name: string; school: string; grade: string; className?: string; birthDate?: string; email?: string; phone?: string; parent?: string; attendance: string; score: string; note: string; revision: string; updatedBy?: string; updatedAt?: string; autoAbsent?: boolean };
 export type Shift = Duty & { roster: Entry[]; pendingSheetCount: number; sheetError: boolean; revision: string; occurrenceId: string; sheetTab?: string; examRoomId?: string; guestUrl?: string; guestName?: string; guestEmail?: string };
 type Room = { id: string; label: string; roomNumber: string; roundName: string; occurrenceId: string; link: string; candidateCount: number };
 type Employee = { email: string; name: string; employeeCode: string };
 type Form = { id?: string; revision?: string; examRoomId: string; label: string; roundName: string; occurrenceId: string; roomNumber: string; startsAt: string; endsAt: string; roomLink: string; invigilatorEmails: string[]; enabled: boolean; guestName: string; guestEmail: string };
-type PlanRoom = { key: string; link: string; label: string; roomNumber: string; existingRoomId: string; candidates: number; moving: number; alreadySeated: number; missingDate: number; firstSbd: string };
+type PlanRoom = { key: string; link: string; label: string; roomNumber: string; existingRoomId: string; candidates: number; moving: number; alreadySeated: number; missingDate: number; firstSbd: string; hasShift: boolean };
+/** A batch needs work while a room is missing, a candidate is not seated there or a duty is missing. */
+const planPending = (plan: RoomPlan) => plan.rooms.some(room => !room.existingRoomId || room.alreadySeated < room.candidates || (!room.hasShift && Boolean(plan.startsAt)));
 type RoomPlan = { roundId: string; roundName: string; occurrenceId: string; occurrenceLabel: string; date: string; time: string; startsAt: string; endsAt: string; rooms: PlanRoom[]; unresolved: number };
 type SessionOption = { id: string; code: string; name: string };
 
@@ -178,15 +180,15 @@ export function RosterBoard({ shift, api, onEntrySaved, onBegin, onEnd, onBulkEn
 }
 
 /** Turns the Meet links Khảo thí typed in the session tab into rooms and duties. Preview first. */
-function RoomsFromLinksDialog({ token, sessionId, onClose, onDone }: { token: string; sessionId: string; onClose: () => void; onDone: () => void }) {
+function RoomsFromLinksDialog({ token, sessionId, onClose, onDone }: { token: string; sessionId: string; onClose: () => void; onDone: (summary: string) => void }) {
   const [plans, setPlans] = useState<RoomPlan[] | null>(null), [chosen, setChosen] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [summary, setSummary] = useState('');
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const url = `/api/examination/sessions/${encodeURIComponent(sessionId)}/rooms-from-links`;
   useEffect(() => {
     let active = true;
     fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
       .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Chưa đọc được phân phòng.'); return data; })
-      .then(data => { if (!active) return; setPlans(data.plans); setChosen(data.plans.filter((plan: RoomPlan) => plan.rooms.some(room => !room.existingRoomId || room.moving)).map((plan: RoomPlan) => `${plan.roundId}|${plan.occurrenceId}`)); })
+      .then(data => { if (!active) return; setPlans(data.plans); setChosen(data.plans.filter(planPending).map((plan: RoomPlan) => `${plan.roundId}|${plan.occurrenceId}`)); })
       .catch(e => { if (active) setError(e instanceof Error ? e.message : 'Chưa đọc được phân phòng.'); });
     return () => { active = false; };
   }, [url, token]);
@@ -196,9 +198,9 @@ function RoomsFromLinksDialog({ token, sessionId, onClose, onDone }: { token: st
       const response = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plans: chosen.map(key => { const [roundId, occurrenceId] = key.split('|'); return { roundId, occurrenceId }; }) }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Chưa tạo được phòng.');
-      setPlans(data.plans);
-      setSummary(`Đã tạo ${data.roomsCreated} phòng, xếp ${data.seated} thí sinh, mở ${data.shiftsCreated} ca coi thi.${data.backup ? ' Dữ liệu đã được sao lưu trước khi ghi.' : ''}${data.warnings?.length ? ` Lưu ý: ${data.warnings.join(' ')}` : ''}`);
-      onDone();
+      // Done: close and report on the page, so nothing invites a second click.
+      onDone(`Đã tạo ${data.roomsCreated} phòng, xếp ${data.seated} thí sinh, mở ${data.shiftsCreated} ca coi thi.${data.backup ? ' Dữ liệu đã được sao lưu trước khi ghi.' : ''}${data.warnings?.length ? ` Lưu ý: ${data.warnings.join(' ')}` : ''}`);
+      onClose();
     } catch (e) { setError(e instanceof Error ? e.message : 'Chưa tạo được phòng.'); }
     finally { setBusy(false); }
   };
@@ -208,19 +210,19 @@ function RoomsFromLinksDialog({ token, sessionId, onClose, onDone }: { token: st
       <div className="mb-2 flex justify-between gap-3"><h2 id="rooms-from-links-title" className="text-lg font-bold">Tạo phòng thi từ phân phòng trên Sheet</h2><button type="button" onClick={onClose} aria-label="Đóng"><X size={20} /></button></div>
       <p className="text-sm text-slate-600">Mỗi link phòng (cột "Địa điểm/Phòng thi") thành một phòng, đặt tên theo thứ tự SBD. Chỉ ghi việc xếp thí sinh vào phòng; ngày giờ, link, SBD và Sheet giữ nguyên. Mỗi phòng có sẵn ca coi thi và link cho giám thị ngoài.</p>
       {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
-      {summary && <p role="status" className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{summary}</p>}
+      {plans && plans.length > 0 && !plans.some(planPending) && <p role="status" className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">Các đợt dưới đây đã đủ phòng, đã xếp đủ thí sinh và đã có ca coi thi. Không cần tạo thêm.</p>}
       {!plans && !error && <p className="py-8 text-center text-sm text-slate-500">Đang đọc phân phòng…</p>}
       {plans && !plans.length && <p className="py-8 text-center text-sm text-slate-500">Chưa có thí sinh nào có link phòng trong kỳ này.</p>}
       <div className="mt-4 space-y-4">{(plans || []).map(plan => {
         const key = `${plan.roundId}|${plan.occurrenceId}`;
         return <section key={key} className="rounded-xl border border-slate-200 p-3">
-          <label className="flex items-center gap-2 font-bold text-[#001e40]"><input type="checkbox" checked={chosen.includes(key)} onChange={e => setChosen(e.target.checked ? [...chosen, key] : chosen.filter(item => item !== key))} />{plan.roundName}{plan.occurrenceLabel ? ` · ${plan.occurrenceLabel}` : ''} · {date(plan.date) || 'chưa có ngày'} · {plan.time || 'chưa có giờ'}</label>
+          <label className="flex items-center gap-2 font-bold text-[#001e40]">{planPending(plan) ? <input type="checkbox" checked={chosen.includes(key)} onChange={e => setChosen(e.target.checked ? [...chosen, key] : chosen.filter(item => item !== key))} /> : <CheckCircle2 size={16} className="text-emerald-600" />}{plan.roundName}{plan.occurrenceLabel ? ` · ${plan.occurrenceLabel}` : ''} · {date(plan.date) || 'chưa có ngày'} · {plan.time || 'chưa có giờ'}{!planPending(plan) && <span className="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">Đã xong</span>}</label>
           {!plan.startsAt && <p className="mt-1 text-xs text-amber-700">Chưa đọc được ngày giờ thi nên sẽ chưa tạo ca coi thi cho đợt này.</p>}
           {plan.unresolved > 0 && <p className="mt-1 text-xs text-amber-700">{plan.unresolved} thí sinh có link nhưng chưa rõ thuộc đợt nào: chưa xếp.</p>}
-          <table className="mt-2 w-full text-left text-sm"><thead className="text-xs uppercase text-slate-500"><tr><th className="py-1">Phòng</th><th>Link</th><th>Thí sinh</th><th>Ghi chú</th></tr></thead><tbody>{plan.rooms.map(room => <tr key={room.key} className="border-t border-slate-100"><td className="py-1.5 font-semibold">{room.label}{room.existingRoomId ? ' (đã có)' : ''}</td><td className="max-w-56 truncate text-xs text-slate-600">{room.link}</td><td>{room.candidates}</td><td className="text-xs text-slate-500">từ SBD {room.firstSbd}{room.missingDate ? ` · ${room.missingDate} em thiếu ngày thi trên Sheet` : ''}{room.moving ? ` · ${room.moving} em chuyển từ phòng khác` : ''}{room.alreadySeated === room.candidates ? ' · đã xếp đủ' : ''}</td></tr>)}</tbody></table>
+          <table className="mt-2 w-full text-left text-sm"><thead className="text-xs uppercase text-slate-500"><tr><th className="py-1">Phòng</th><th>Link</th><th>Thí sinh</th><th>Ghi chú</th></tr></thead><tbody>{plan.rooms.map(room => <tr key={room.key} className="border-t border-slate-100"><td className="py-1.5 font-semibold">{room.label}{room.existingRoomId ? ' (đã có)' : ''}</td><td className="max-w-56 truncate text-xs text-slate-600">{room.link}</td><td>{room.candidates}</td><td className="text-xs text-slate-500">từ SBD {room.firstSbd}{room.missingDate ? ` · ${room.missingDate} em thiếu ngày thi trên Sheet` : ''}{room.moving ? ` · ${room.moving} em chuyển từ phòng khác` : ''}{room.alreadySeated === room.candidates ? ' · đã xếp đủ' : ''}{room.existingRoomId && !room.hasShift ? ' · chưa có ca coi thi' : ''}</td></tr>)}</tbody></table>
         </section>;
       })}</div>
-      <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 font-bold">Đóng</button><button type="button" disabled={busy || !chosen.length} onClick={() => void apply()} className="rounded-lg bg-[#001e40] px-4 py-2 font-bold text-white disabled:opacity-50">{busy ? 'Đang tạo…' : 'Tạo phòng & ca coi thi'}</button></div>
+      <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 font-bold">Đóng</button>{(plans || []).some(planPending) && <button type="button" disabled={busy || !chosen.length} onClick={() => void apply()} className="rounded-lg bg-[#001e40] px-4 py-2 font-bold text-white disabled:opacity-50">{busy ? 'Đang tạo…' : 'Tạo phòng & ca coi thi'}</button>}</div>
     </div>
   </div>;
 }
@@ -232,7 +234,7 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
   const [canManage, setCanManage] = useState(false), [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState(initialShift);
   const [form, setForm] = useState<Form | null>(null), [configSaving, setConfigSaving] = useState(false);
-  const [roomsDialog, setRoomsDialog] = useState(false), [copied, setCopied] = useState('');
+  const [roomsDialog, setRoomsDialog] = useState(false), [copied, setCopied] = useState(''), [notice, setNotice] = useState('');
   const sequence = useRef(0), edits = useRef(0);
   const load = useCallback(async () => {
     if (edits.current) return;
@@ -302,6 +304,7 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
         </div>
       </header>
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
+      {notice && <p role="status" className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><span>{notice}</span><button type="button" onClick={() => setNotice('')} aria-label="Ẩn thông báo"><X size={16} /></button></p>}
       {loading && <p className="py-12 text-center text-slate-500">Đang tải ca thi…</p>}
       {!loading && !shifts.length && <p className="rounded-2xl border bg-white p-8 text-center text-slate-500">{canManage ? 'Chưa có ca coi thi nào trong thời gian này.' : 'Bạn chưa được phân công ca coi thi nào.'}</p>}
 
@@ -311,7 +314,7 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
           const here = s.roster.filter(present).length;
           const active = selected?.id === s.id;
           return <button key={s.id} type="button" onClick={() => setSelectedId(s.id)} className={`rounded-xl border p-3 text-left transition ${active ? 'border-[#001e40] bg-[#001e40] text-white' : 'border-slate-200 bg-slate-50 hover:border-slate-400'}`}>
-            <div className="flex items-baseline justify-between gap-2"><strong>Phòng {s.roomNumber}</strong><span className={`text-xs font-bold ${active ? 'text-white/80' : 'text-slate-500'}`}>{here}/{s.roster.length} có mặt</span></div>
+            <div className="flex items-baseline justify-between gap-2"><strong>{roomTitle(s.roomNumber)}</strong><span className={`text-xs font-bold ${active ? 'text-white/80' : 'text-slate-500'}`}>{here}/{s.roster.length} có mặt</span></div>
             <div className={`mt-2 h-1.5 overflow-hidden rounded-full ${active ? 'bg-white/20' : 'bg-slate-200'}`}><div className={`h-full ${active ? 'bg-white' : 'bg-emerald-500'}`} style={{ width: `${s.roster.length ? (here / s.roster.length) * 100 : 0}%` }} /></div>
             <p className={`mt-2 truncate text-xs ${active ? 'text-white/80' : 'text-slate-500'}`}>{[...s.invigilators.map(u => u.name), ...(s.guestName ? [`${s.guestName} (ngoài)`] : [])].join(', ') || 'Chưa phân công giám thị'}{!s.enabled && ' · Đã tắt'}</p>
           </button>;
@@ -320,7 +323,7 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
 
       {selected && <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-          <div><h2 className="text-lg font-extrabold text-[#001e40]">{selected.competitionCode} · {selected.label} · Phòng {selected.roomNumber}</h2><p className="mt-1 text-sm text-slate-500">{selected.roundName} · {dutyTime(selected.startsAt)}–{dutyTime(selected.endsAt)} {dutyDate(selected.startsAt)} · Giám thị: {[...selected.invigilators.map(u => u.name), ...(selected.guestName ? [`${selected.guestName} (giám thị ngoài)`] : [])].join(', ') || 'chưa phân công'}</p></div>
+          <div><h2 className="text-lg font-extrabold text-[#001e40]">{selected.competitionCode} · {selected.label} · {roomTitle(selected.roomNumber)}</h2><p className="mt-1 text-sm text-slate-500">{selected.roundName} · {dutyTime(selected.startsAt)}–{dutyTime(selected.endsAt)} {dutyDate(selected.startsAt)} · Giám thị: {[...selected.invigilators.map(u => u.name), ...(selected.guestName ? [`${selected.guestName} (giám thị ngoài)`] : [])].join(', ') || 'chưa phân công'}</p></div>
           <div className="flex flex-wrap gap-2">{selected.roomLink && <a href={selected.roomLink} target="_blank" rel="noreferrer" className="flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white"><ExternalLink size={15} />Vào phòng thi</a>}{canManage && <button type="button" onClick={() => edit(selected)} className="flex items-center gap-1 rounded-lg border px-3 py-2 text-sm font-bold"><Settings2 size={15} />Lịch & giám thị</button>}</div>
         </div>
         {canManage && selected.examRoomId && <div className="flex flex-wrap items-center gap-2 border-b bg-slate-50 px-4 py-3 text-sm">
@@ -338,7 +341,7 @@ export default function InvigilationWorkspace({ token, userName, onBack, embedde
       </section>}
 
       {form && <div className="fixed inset-0 z-[11000] grid place-items-center overflow-y-auto bg-slate-950/50 p-4"><form onSubmit={saveConfig} role="dialog" aria-modal="true" aria-labelledby="duty-config-title" className="my-4 w-full max-w-2xl rounded-2xl bg-white p-5 shadow-xl"><div className="mb-4 flex justify-between"><h2 id="duty-config-title" className="text-lg font-bold">Lịch ca & phân công giám thị</h2><button type="button" onClick={() => setForm(null)} aria-label="Đóng"><X size={20} /></button></div><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold sm:col-span-2">Phòng thi trong Khảo thí<select className={`${inputClass} mt-1`} value={form.examRoomId} onChange={e => { const room = rooms.find(r => r.id === e.target.value); setForm(room ? { ...form, examRoomId: room.id, roundName: room.roundName, occurrenceId: room.occurrenceId, roomNumber: room.roomNumber, roomLink: form.roomLink || room.link } : { ...form, examRoomId: '' }); }}><option value="">Không gắn phòng (nhập tay)</option>{rooms.map(r => <option key={r.id} value={r.id}>{r.roundName} · {r.label} · {r.candidateCount} thí sinh</option>)}</select><span className="mt-1 block text-xs font-normal text-slate-500">Gắn phòng thì danh sách thí sinh lấy trực tiếp từ phân phòng của Khảo thí; điểm danh và điểm ghi vào kết quả vòng thi.</span></label>{([['roundName', 'Vòng thi'], ['label', 'Tên ca'], ['occurrenceId', 'Mã ca/vòng'], ['roomNumber', 'Phòng thi']] as const).map(([key, label]) => <label key={key} className="text-sm font-semibold">{label}<input required disabled={Boolean(form.examRoomId) && key !== 'label'} className={`${inputClass} mt-1 disabled:bg-slate-100`} value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} /></label>)}<label className="text-sm font-semibold">Bắt đầu<input required type="datetime-local" className={`${inputClass} mt-1`} value={form.startsAt} onChange={e => setForm({ ...form, startsAt: e.target.value })} /></label><label className="text-sm font-semibold">Kết thúc<input required type="datetime-local" className={`${inputClass} mt-1`} value={form.endsAt} onChange={e => setForm({ ...form, endsAt: e.target.value })} /></label><label className="text-sm font-semibold sm:col-span-2">Link phòng thi<input type="url" className={`${inputClass} mt-1`} value={form.roomLink} onChange={e => setForm({ ...form, roomLink: e.target.value })} placeholder="Có thể để trống" /></label><fieldset className="sm:col-span-2"><legend className="mb-2 text-sm font-bold">Giám thị</legend><div className="grid max-h-48 gap-2 overflow-auto rounded-xl border p-3 sm:grid-cols-2">{staff.map(u => <label key={u.email} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.invigilatorEmails.includes(u.email)} onChange={e => setForm({ ...form, invigilatorEmails: e.target.checked ? [...form.invigilatorEmails, u.email] : form.invigilatorEmails.filter(email => email !== u.email) })} />{u.name}</label>)}</div></fieldset><fieldset className="grid gap-3 rounded-xl border p-3 sm:col-span-2 sm:grid-cols-2"><legend className="px-1 text-sm font-bold">Giám thị ngoài (không có tài khoản)</legend><label className="text-sm font-semibold">Họ tên<input className={`${inputClass} mt-1`} value={form.guestName} onChange={e => setForm({ ...form, guestName: e.target.value })} placeholder="Ví dụ: Lê Thu Hà" /></label><label className="text-sm font-semibold">Email<input type="email" className={`${inputClass} mt-1`} value={form.guestEmail} onChange={e => setForm({ ...form, guestEmail: e.target.value })} placeholder="email@gmail.com" /></label><span className="text-xs text-slate-500 sm:col-span-2">Có email thì hệ thống tạo link riêng cho phòng; giám thị phải nhập đúng email này mới mở được.</span></fieldset><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} />Bật ca thi và nhắc trước 15 phút</label></div>{error && <p className="mt-3 text-sm text-rose-700">{error}</p>}<button disabled={configSaving} type="submit" className="mt-5 rounded-lg bg-[#001e40] px-5 py-3 font-bold text-white">{configSaving ? 'Đang lưu…' : 'Lưu lịch & phân công'}</button></form></div>}
-      {roomsDialog && sessionId && <RoomsFromLinksDialog token={token} sessionId={sessionId} onClose={() => setRoomsDialog(false)} onDone={() => void load()} />}
+      {roomsDialog && sessionId && <RoomsFromLinksDialog token={token} sessionId={sessionId} onClose={() => setRoomsDialog(false)} onDone={summary => { setNotice(summary); void load(); }} />}
     </div>
   </div>;
 }

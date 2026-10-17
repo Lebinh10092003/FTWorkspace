@@ -142,6 +142,7 @@ def build_plan(session):
                     'alreadySeated': sum(1 for r in members if room and r.exam_room_id == room.pk),
                     'missingDate': sum(1 for r in members if not r.exam_date),
                     'firstSbd': min((r.sbd for r in members), key=_sbd_order, default=''),
+                    'hasShift': bool(room and ExamInvigilationShift.objects.filter(exam_room=room).exists()),
                     'resultIds': [r.pk for r in members],
                 })
             plans.append({

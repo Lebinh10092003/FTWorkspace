@@ -440,6 +440,9 @@ class RoomsFromLinksAndGuestTests(TestCase):
         # Running it again changes nothing.
         again = self.client.post(self.url, {'plans': [{'roundId': 'r1', 'occurrenceId': 'd1'}]}, format='json')
         self.assertEqual((again.data['roomsCreated'], again.data['seated'], again.data['shiftsCreated']), (0, 0, 0))
+        # The preview then reports every room as done, so the screen offers nothing to create.
+        rooms = self.client.get(self.url).data['plans'][0]['rooms']
+        self.assertTrue(all(r['existingRoomId'] and r['hasShift'] and r['alreadySeated'] == r['candidates'] for r in rooms))
 
     def _guest_room(self, email=''):
         self.client.post(self.url, {'plans': [{'roundId': 'r1', 'occurrenceId': 'd1'}]}, format='json')

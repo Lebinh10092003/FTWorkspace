@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ExternalLink, Loader2, LogOut, RefreshCw } from 'lucide-react';
 import { RosterBoard, type Entry, type RosterApi, type Shift } from './InvigilationWorkspace';
-import { dutyDate, dutyTime } from './invigilationTiming';
+import { dutyDate, dutyTime, roomTitle } from './invigilationTiming';
 
 const read = (key: string) => { try { return localStorage.getItem(key) || ''; } catch { return ''; } };
 const write = (key: string, value: string) => { try { if (value) localStorage.setItem(key, value); else localStorage.removeItem(key); } catch { /* private mode: ask again next time */ } };
@@ -60,7 +60,7 @@ export default function GuestInvigilation({ token }: { token: string }) {
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
         <img src="/logo.png" alt="FermatTech" className="h-9 w-auto" />
-        <div className="min-w-0"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Coi thi</p><p className="truncate text-sm font-extrabold text-[#001e40]">{shift ? `${shift.competitionCode} · Phòng ${shift.roomNumber}` : 'FermatTech'}</p></div>
+        <div className="min-w-0"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Coi thi</p><p className="truncate text-sm font-extrabold text-[#001e40]">{shift ? `${shift.competitionCode} · ${roomTitle(shift.roomNumber)}` : 'FermatTech'}</p></div>
         {(email || name) && <button type="button" onClick={signOut} className="ml-auto flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-bold text-slate-600"><LogOut size={14} />Đổi người</button>}
       </div>
     </header>
@@ -83,7 +83,7 @@ export default function GuestInvigilation({ token }: { token: string }) {
       {state === 'ready' && shift && !needsName && <>
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
           <div>
-            <h1 className="text-lg font-extrabold text-[#001e40]">{shift.competitionCode} · {shift.label} · Phòng {shift.roomNumber}</h1>
+            <h1 className="text-lg font-extrabold text-[#001e40]">{shift.competitionCode} · {shift.label} · {roomTitle(shift.roomNumber)}</h1>
             <p className="mt-1 text-sm text-slate-500">{shift.roundName} · {dutyTime(shift.startsAt)}–{dutyTime(shift.endsAt)} {dutyDate(shift.startsAt)} · Giám thị: {shift.guestName || name}</p>
           </div>
           <div className="flex flex-wrap gap-2">
