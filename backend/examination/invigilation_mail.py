@@ -9,7 +9,7 @@ screen opens a pre-filled Gmail draft per invigilator.
 import logging
 from datetime import timedelta
 from html import escape
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
@@ -132,27 +132,63 @@ def compose(shift, person, candidates):
         'Trân trọng,', 'Ban Khảo thí FermatTech', ADDRESS,
     ])
 
-    button = ('display:inline-block;padding:12px 22px;margin:4px 8px 4px 0;border-radius:10px;font-weight:700;'
-              'text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:15px;')
-    buttons = f'<a href="{escape(person["url"])}" style="{button}background:#001e40;color:#ffffff;border:2px solid #001e40">Mở trang điểm danh</a>'
+    # E-mail-safe markup: tables, inline styles, buttons drawn as table cells so
+    # they keep their colour in Outlook and when pasted into a Gmail draft.
+    parsed = urlparse(person['url'])
+    logo = f'{parsed.scheme}://{parsed.netloc}/logo.png' if parsed.netloc else ''
+    navy, green, muted, line = '#001e40', '#047857', '#64748b', '#e2e8f0'
+    font = "font-family:'Segoe UI',Arial,Helvetica,sans-serif"
+
+    def cta(href, label, background, color, border):
+        return (f'<td style="padding:6px 10px 6px 0"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+                f'<td bgcolor="{background}" style="background:{background};border:2px solid {border};border-radius:10px">'
+                f'<a href="{escape(href)}" target="_blank" style="display:inline-block;padding:13px 24px;{font};font-size:15px;'
+                f'font-weight:700;color:{color};text-decoration:none;border-radius:10px">{escape(label)}</a></td></tr></table></td>')
+
+    buttons = cta(person['url'], 'Mở trang điểm danh', navy, '#ffffff', navy)
     if online:
         label = 'Vào phòng thi (Google Meet)' if 'meet.google' in shift.room_link.lower() else 'Vào phòng thi'
-        buttons += f'<a href="{escape(shift.room_link)}" style="{button}background:#ffffff;color:#047857;border:2px solid #047857">{label}</a>'
-    table = ''.join(f'<tr><td style="padding:6px 18px 6px 0;color:#64748b;vertical-align:top;white-space:nowrap">{escape(label)}</td>'
-                    f'<td style="padding:6px 0"><b>{escape(value)}</b></td></tr>' for label, value in rows)
-    html = f"""<div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;max-width:600px;line-height:1.6;font-size:15px">
-<p>Kính gửi <b>{escape(person['name'])}</b>,</p>
-<p>{escape(intro)}</p>
-<table style="border-collapse:collapse;margin:8px 0 18px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0">{table}</table>
-<p style="margin:18px 0">{buttons}</p>
-<p style="margin:22px 0 6px"><b>Nhiệm vụ của giám thị</b></p>
-<ol style="padding-left:22px;margin:0">{''.join(f'<li style="margin:4px 0">{escape(item)}</li>' for item in duties)}</ol>
-<p style="margin:18px 0 6px"><b>Lưu ý</b></p>
-<ul style="padding-left:22px;margin:0">{''.join(f'<li style="margin:4px 0">{escape(item)}</li>' for item in notes)}</ul>
-<p style="margin-top:18px">{escape(confirm)}</p>
-<p style="margin-top:22px">Trân trọng,<br><b>Ban Khảo thí FermatTech</b><br><span style="color:#64748b;font-size:13px">{escape(ADDRESS)}</span></p>
-</div>"""
-    gmail = 'https://mail.google.com/mail/?' + urlencode({'view': 'cm', 'fs': '1', 'to': person['email'], 'su': subject, 'body': text}, quote_via=quote)
+        buttons += cta(shift.room_link, label, '#ffffff', green, green)
+    info = ''.join(
+        f'<tr><td style="padding:9px 16px;border-top:1px solid {line};{font};font-size:14px;color:{muted};white-space:nowrap;width:120px">{escape(label)}</td>'
+        f'<td style="padding:9px 16px;border-top:1px solid {line};{font};font-size:15px;color:#0f172a;font-weight:700">{escape(value)}</td></tr>'
+        for label, value in rows)
+    steps = ''.join(
+        f'<tr><td valign="top" style="padding:6px 12px 6px 0"><div style="width:26px;height:26px;line-height:26px;border-radius:13px;'
+        f'background:#e0ecff;color:{navy};{font};font-size:13px;font-weight:700;text-align:center">{index}</div></td>'
+        f'<td style="padding:7px 0;{font};font-size:14px;line-height:1.6;color:#1e293b">{escape(item)}</td></tr>'
+        for index, item in enumerate(duties, 1))
+    cautions = ''.join(f'<li style="margin:4px 0">{escape(item)}</li>' for item in notes)
+    brand = (f'<img src="{escape(logo)}" alt="FermatTech" height="34" style="display:block;height:34px;border:0;background:#ffffff;border-radius:6px;padding:4px">'
+             if logo else f'<span style="{font};font-size:20px;font-weight:800;color:#ffffff">FermatTech</span>')
+    html = f"""<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(subject)}</title></head>
+<body style="margin:0;padding:0;background:#eef2f7">
+<div style="display:none;max-height:0;overflow:hidden">{escape(f'{code} · {start:%H:%M} {day} · {room}')}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eef2f7" style="background:#eef2f7"><tr><td align="center" style="padding:24px 12px">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid {line}">
+<tr><td bgcolor="{navy}" style="background:{navy};background-image:linear-gradient(120deg,#001e40,#0055da);padding:22px 28px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td>{brand}</td>
+<td align="right" style="{font};font-size:12px;font-weight:700;letter-spacing:1.5px;color:#bcd3ff;text-transform:uppercase">Thư mời coi thi</td></tr></table>
+<p style="margin:18px 0 0;{font};font-size:24px;line-height:1.3;font-weight:800;color:#ffffff">{escape(code)} {escape(year)}</p>
+<p style="margin:4px 0 0;{font};font-size:15px;color:#d6e4ff">{escape(stage)}</p></td></tr>
+<tr><td style="padding:26px 28px 6px;{font};font-size:15px;line-height:1.65;color:#0f172a">
+<p style="margin:0 0 12px">Kính gửi <b>{escape(person['name'])}</b>,</p><p style="margin:0">{escape(intro)}</p></td></tr>
+<tr><td style="padding:14px 28px 4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid {line};border-radius:12px;border-collapse:separate;background:#f8fafc">{info}</table></td></tr>
+<tr><td style="padding:16px 28px 8px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>{buttons}</tr></table>
+<p style="margin:6px 0 0;{font};font-size:12px;color:{muted}">Nếu nút không bấm được, mở link: <a href="{escape(person['url'])}" style="color:#0055da">{escape(person['url'])}</a></p></td></tr>
+<tr><td style="padding:18px 28px 0"><p style="margin:0 0 6px;{font};font-size:16px;font-weight:800;color:{navy}">Nhiệm vụ của giám thị</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0">{steps}</table></td></tr>
+<tr><td style="padding:14px 28px 0"><div style="background:#fff8e6;border-left:4px solid #f59e0b;border-radius:8px;padding:12px 16px">
+<p style="margin:0 0 4px;{font};font-size:14px;font-weight:800;color:#92400e">Lưu ý</p>
+<ul style="margin:0;padding-left:18px;{font};font-size:14px;line-height:1.6;color:#78350f">{cautions}</ul></div></td></tr>
+<tr><td style="padding:18px 28px 6px;{font};font-size:14px;line-height:1.65;color:#1e293b">{escape(confirm)}</td></tr>
+<tr><td style="padding:16px 28px 26px;{font};font-size:14px;line-height:1.6;color:#0f172a">Trân trọng,<br><b>Ban Khảo thí FermatTech</b></td></tr>
+<tr><td bgcolor="#f1f5f9" style="background:#f1f5f9;padding:16px 28px;border-top:1px solid {line};{font};font-size:12px;line-height:1.6;color:{muted}">
+{escape(ADDRESS)}<br>Hotline {escape(CONTACT_PHONE)} · <a href="mailto:{CONTACT_EMAIL}" style="color:#0055da">{CONTACT_EMAIL}</a><br>
+Thư này gửi riêng cho giám thị được phân công. Vui lòng không chuyển tiếp.</td></tr>
+</table></td></tr></table></body></html>"""
+    # The Gmail draft gets recipient and subject; the designed body is pasted from the clipboard.
+    gmail = 'https://mail.google.com/mail/?' + urlencode({'view': 'cm', 'fs': '1', 'to': person['email'], 'su': subject}, quote_via=quote)
     return {'subject': subject, 'text': text, 'html': html, 'gmailUrl': gmail}
 
 
@@ -182,8 +218,11 @@ def notify_invigilators(request):
     if request.method == 'GET':
         items = []
         for shift in shifts:
-            people = [{**{k: v for k, v in person.items() if k != 'url'}, **{k: v for k, v in compose(shift, person, counts.get(shift.exam_room_id, 0)).items() if k in ('gmailUrl',)}}
-                      for person in recipients(shift, origin)]
+            people = []
+            for person in recipients(shift, origin):
+                message = compose(shift, person, counts.get(shift.exam_room_id, 0))
+                people.append({**{k: v for k, v in person.items() if k != 'url'}, 'gmailUrl': message['gmailUrl'],
+                               'subject': message['subject'], 'html': message['html'], 'text': message['text']})
             preview = compose(shift, recipients(shift, origin)[0], counts.get(shift.exam_room_id, 0)) if people else None
             items.append({'shiftId': str(shift.pk), 'room': _room(shift), 'startsAt': shift.starts_at.isoformat(),
                           'enabled': shift.enabled, 'recipients': people, 'notifiedAt': shift.notified_at.isoformat() if shift.notified_at else '',

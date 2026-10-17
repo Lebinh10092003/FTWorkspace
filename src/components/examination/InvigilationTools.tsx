@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Copy, ExternalLink, FileSpreadsheet, Loader2, Mail, Send, X } from 'lucide-react';
 
 type RoomSheet = { url: string; lastExportAt: string; lastError: string; pending: boolean; serviceAccount: string };
-type Recipient = { name: string; email: string; kind: 'guest' | 'staff'; gmailUrl: string };
+type Recipient = { name: string; email: string; kind: 'guest' | 'staff'; gmailUrl: string; subject: string; html: string; text: string };
 type NotifyItem = { shiftId: string; room: string; startsAt: string; enabled: boolean; recipients: Recipient[]; notifiedAt: string; hasGuest: boolean; guestOpenedAt: string; previewHtml: string; previewSubject: string };
 
 const time = (iso: string) => (iso ? new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }).format(new Date(iso)) : '');
@@ -88,13 +88,32 @@ export function NotifyDialog({ token, sessionId, onClose, onDone }: { token: str
       setItems(current => (current || []).map(row => row.shiftId === item.shiftId ? { ...row, notifiedAt: data.notifiedAt } : row));
     } catch (e) { setError(e instanceof Error ? e.message : 'Chưa lưu được.'); }
   };
+  const [copiedFor, setCopiedFor] = useState('');
+  /** Copies the designed message (HTML with buttons) and opens a Gmail draft with recipient and subject;
+   *  pasting into the body keeps the layout and the buttons. */
+  const composeInGmail = async (person: Recipient) => {
+    setError('');
+    // Copy first: the page must still have focus for the clipboard to accept it.
+    try {
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([person.html], { type: 'text/html' }), 'text/plain': new Blob([person.text], { type: 'text/plain' }) })]);
+      } else {
+        await navigator.clipboard.writeText(person.text);
+      }
+      setCopiedFor(person.email);
+    } catch {
+      setError('Trình duyệt chưa cho chép thư. Hãy bấm "Xem thư", bôi đen nội dung rồi chép.');
+    }
+    if (!window.open(person.gmailUrl, '_blank')) setError('Trình duyệt đã chặn cửa sổ Gmail. Hãy cho phép cửa sổ bật lên rồi bấm lại.');
+  };
   const missing = (items || []).filter(item => !item.recipients.length).length;
   const unopened = (items || []).filter(item => item.hasGuest && !item.guestOpenedAt).length;
   return <div className="fixed inset-0 z-[11000] grid place-items-center overflow-y-auto bg-slate-950/50 p-4">
     <div role="dialog" aria-modal="true" aria-labelledby="notify-title" className="my-4 w-full max-w-4xl rounded-2xl bg-white p-5 shadow-xl">
       <div className="mb-2 flex justify-between gap-3"><h2 id="notify-title" className="text-lg font-bold">Gửi thông tin cho giám thị</h2><button type="button" onClick={onClose} aria-label="Đóng"><X size={20} /></button></div>
       <p className="text-sm text-slate-600">Mỗi giám thị nhận giờ thi, phòng, số thí sinh, nút <b>Mở trang điểm danh</b> (link riêng của người đó) và nút <b>Vào phòng thi</b>.</p>
-      {!mailConfigured && items && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Hệ thống chưa cài tài khoản gửi email, nên chưa gửi tự động được. Bấm <b>Soạn trong Gmail</b> ở từng giám thị: Gmail mở sẵn người nhận, tiêu đề và nội dung kèm link, bạn chỉ cần bấm Gửi.</p>}
+      {!mailConfigured && items && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Hệ thống chưa cài tài khoản gửi email, nên chưa gửi tự động được. Bấm <b>Soạn trong Gmail</b> ở từng giám thị: Gmail mở sẵn người nhận và tiêu đề, thư đã được chép sẵn; bấm vào thân thư, nhấn <b>Ctrl+V</b> (Mac: ⌘+V) rồi Gửi. Nhớ chọn đúng tài khoản gửi ở ô “Từ”.</p>}
+      {copiedFor && <p role="status" className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">Đã chép thư cho <b>{copiedFor}</b>. Trong Gmail vừa mở: bấm vào thân thư → <b>Ctrl+V</b> → Gửi, rồi quay lại bấm “Đánh dấu đã gửi”.</p>}
       {items && unopened > 0 && <p className="mt-2 text-xs text-slate-600">{unopened} giám thị ngoài chưa mở link. Cột “Đã mở link” tự cập nhật khi giám thị vào trang bằng đúng email.</p>}
       {missing > 0 && <p className="mt-2 text-xs text-amber-700">{missing} phòng chưa có giám thị (hoặc giám thị ngoài chưa có email): bấm “Lịch & giám thị” ở phòng đó để phân công.</p>}
       {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
@@ -109,13 +128,13 @@ export function NotifyDialog({ token, sessionId, onClose, onDone }: { token: str
           <td className="py-2 pr-3 text-xs">{item.hasGuest ? (item.guestOpenedAt ? <span className="font-semibold text-emerald-700">{time(item.guestOpenedAt)}</span> : <span className="font-semibold text-amber-700">Chưa mở</span>) : <span className="text-slate-400">—</span>}</td>
           <td className="py-2 text-right"><div className="flex flex-wrap justify-end gap-1.5">
             {item.previewHtml && <button type="button" onClick={() => setPreview(item)} className="rounded-lg border px-2.5 py-1 text-xs font-bold">Xem thư</button>}
-            {item.recipients.map(person => <a key={person.email} href={person.gmailUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 rounded-lg border border-[#0055da] px-2.5 py-1 text-xs font-bold text-[#0055da]"><Mail size={12} />Soạn trong Gmail{item.recipients.length > 1 ? ` (${person.name})` : ''}</a>)}
+            {item.recipients.map(person => <button key={person.email} type="button" onClick={() => void composeInGmail(person)} className="flex items-center gap-1 rounded-lg border border-[#0055da] px-2.5 py-1 text-xs font-bold text-[#0055da]"><Mail size={12} />Soạn trong Gmail{item.recipients.length > 1 ? ` (${person.name})` : ''}</button>)}
           </div></td>
         </tr>)}</tbody>
       </table></div>}
       {preview && <div className="mt-4 rounded-xl border border-slate-200">
         <div className="flex items-center justify-between border-b px-3 py-2 text-sm"><b>{preview.previewSubject}</b><button type="button" onClick={() => setPreview(null)} aria-label="Đóng bản xem thư"><X size={16} /></button></div>
-        <iframe title="Bản xem thư" sandbox="" srcDoc={preview.previewHtml} className="h-80 w-full" />
+        <iframe title="Bản xem thư" sandbox="" srcDoc={preview.recipients[0]?.html || preview.previewHtml} className="h-[32rem] w-full" />
       </div>}
       <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 font-bold">Đóng</button>{mailConfigured && <button type="button" disabled={busy || !chosen.length} onClick={() => void send()} className="flex items-center gap-2 rounded-lg bg-[#001e40] px-4 py-2 font-bold text-white disabled:opacity-50"><Send size={15} />{busy ? 'Đang gửi…' : `Gửi email cho ${chosen.length} phòng`}</button>}</div>
     </div>

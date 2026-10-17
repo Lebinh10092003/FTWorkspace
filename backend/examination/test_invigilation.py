@@ -515,7 +515,10 @@ class InvigilatorMailAndRoomSheetTests(TestCase):
         person = item['recipients'][0]
         self.assertEqual((person['email'], person['kind']), ('lethuha04102005@gmail.com', 'guest'))
         self.assertIn('mail.google.com', person['gmailUrl'])
-        self.assertIn(self.shift.guest_token, person['gmailUrl'])
+        self.assertIn('lethuha04102005', person['gmailUrl'])
+        # The designed message to paste carries this invigilator's own link as a button.
+        self.assertIn(f'/coi-thi/{self.shift.guest_token}', person['html'])
+        self.assertIn('Mở trang điểm danh', person['html'])
         self.assertIn('Mở trang điểm danh', item['previewHtml'])
         # Sending without an outgoing account is refused, never half done.
         refused = self.client.post('/api/examination/invigilation/notify', {'sessionId': self.session.pk, 'shiftIds': [str(self.shift.pk)]}, format='json')
