@@ -58,10 +58,19 @@ class JobTitleAndNotificationTests(TestCase):
         self.assertFalse(before.data["notifications"][0]["read"])
         self.assertEqual(before.data["notifications"][0]["actionUrl"], "/work-schedule/personal?task=42")
 
-        self.assertEqual(self.client.post(f"/api/notifications/{notification.pk}/read").status_code, 200)
+        marked = self.client.post(f"/api/notifications/{notification.pk}/read")
+        self.assertEqual(marked.status_code, 200)
+        self.assertTrue(marked.data["read"])
+        self.assertEqual(marked.data["notificationId"], notification.pk)
         after = self.client.get("/api/notifications")
+        self.assertEqual(after["Cache-Control"], "private, no-store")
         self.assertEqual(after.data["unreadCount"], 0)
         self.assertTrue(after.data["notifications"][0]["read"])
+
+        # Reading is idempotent and remains persisted on subsequent loads.
+        self.assertEqual(self.client.post(f"/api/notifications/{notification.pk}/read").status_code, 200)
+        self.assertEqual(WorkspaceNotificationRead.objects.filter(notification=notification, user=self.admin).count(), 1)
+        self.assertTrue(self.client.get("/api/notifications").data["notifications"][0]["read"])
 
         WorkspaceNotification.objects.create(event_key="work-item:43", title="Việc khác", message="Nội dung")
         self.assertEqual(self.client.post("/api/notifications/read-all").status_code, 200)

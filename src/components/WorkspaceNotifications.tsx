@@ -34,13 +34,19 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
   const [items, setItems] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
+  const [error, setError] = useState('');
+  const [markingAll, setMarkingAll] = useState(false);
+  const [markingIds, setMarkingIds] = useState<Set<number>>(() => new Set());
   const token = suppliedToken || sessionToken();
   const unread = items.filter(item => !item.read).length;
   const visibleItems = useMemo(() => items.filter(item => filter === 'all' || (filter === 'read' ? item.read : !item.read)), [filter, items]);
 
   const load = async () => {
     if (!token) return;
-    const response = await fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } });
+    const response = await fetch('/api/notifications', {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
     if (response.ok) setItems((await response.json()).notifications || []);
   };
 
@@ -56,15 +62,43 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
   }, [token]);
 
   const markAll = async () => {
-    if (!token || unread === 0) return;
-    const response = await fetch('/api/notifications/read-all', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-    if (response.ok) setItems(current => current.map(item => ({ ...item, read: true })));
+    if (!token || unread === 0 || markingAll) return;
+    setMarkingAll(true);
+    setError('');
+    try {
+      const response = await fetch('/api/notifications/read-all', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setItems(current => current.map(item => ({ ...item, read: true })));
+    } catch {
+      setError('Chưa thể lưu trạng thái đã đọc. Vui lòng thử lại.');
+    } finally {
+      setMarkingAll(false);
+    }
   };
 
   const openItem = async (item: Notification) => {
-    setItems(current => current.map(row => row.id === item.id ? { ...row, read: true } : row));
-    if (!item.read && token) {
-      await fetch(`/api/notifications/${item.id}/read`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    if (markingIds.has(item.id)) return;
+    if (!item.read) {
+      if (!token) {
+        setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        return;
+      }
+      setError('');
+      setMarkingIds(current => new Set(current).add(item.id));
+      try {
+        const response = await fetch(`/api/notifications/${item.id}/read`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        setItems(current => current.map(row => row.id === item.id ? { ...row, read: true } : row));
+      } catch {
+        setError('Chưa thể đánh dấu thông báo là đã đọc. Vui lòng nhấn lại.');
+        return;
+      } finally {
+        setMarkingIds(current => {
+          const next = new Set(current);
+          next.delete(item.id);
+          return next;
+        });
+      }
     }
     if (item.actionUrl) {
       setOpen(false);
@@ -88,13 +122,14 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
               <button key={value} type="button" onClick={() => setFilter(value)} className={`rounded-full px-3 py-1.5 text-xs font-extrabold transition ${filter === value ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{label}</button>
             ))}
           </div>
-          <button type="button" disabled={unread === 0} onClick={() => void markAll()} className="mt-3 inline-flex items-center gap-2 text-xs font-extrabold text-blue-700 disabled:text-slate-400">
-            <CheckCheck className="h-4 w-4" />Đánh dấu tất cả là đã đọc
+          <button type="button" disabled={unread === 0 || markingAll} onClick={() => void markAll()} className="mt-3 inline-flex items-center gap-2 text-xs font-extrabold text-blue-700 disabled:text-slate-400">
+            <CheckCheck className="h-4 w-4" />{markingAll ? 'Đang lưu…' : 'Đánh dấu tất cả là đã đọc'}
           </button>
+          {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</p>}
         </header>
         <div className="flex-1 space-y-2 overflow-y-auto p-4">
           {visibleItems.length ? visibleItems.map(item => (
-            <button key={item.id} type="button" onClick={() => void openItem(item)} className={`relative w-full rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${item.read ? 'border-slate-200 bg-white' : item.severity === 'urgent' ? 'border-rose-300 bg-rose-50' : item.severity === 'warning' ? 'border-amber-200 bg-amber-50' : 'border-blue-200 bg-blue-50'}`}>
+            <button key={item.id} type="button" disabled={markingIds.has(item.id)} onClick={() => void openItem(item)} className={`relative w-full rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-wait disabled:opacity-70 ${item.read ? 'border-slate-200 bg-white' : item.severity === 'urgent' ? 'border-rose-300 bg-rose-50' : item.severity === 'warning' ? 'border-amber-200 bg-amber-50' : 'border-blue-200 bg-blue-50'}`}>
               {!item.read && <span className="absolute right-3 top-3 h-2.5 w-2.5 rounded-full bg-blue-600" aria-label="Chưa đọc" />}
               <span className="flex items-start gap-3 pr-4">
                 <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full ${item.severity === 'urgent' ? 'bg-rose-100 text-rose-700' : item.severity === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>

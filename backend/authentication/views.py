@@ -1104,7 +1104,7 @@ def workspace_notifications(request):
     ).prefetch_related("read_receipts").all()[:250]
     visible = [item for item in rows if notification_visible_to(item, profile)][:100]
     read_ids = set(WorkspaceNotificationRead.objects.filter(user=profile, notification__in=visible).values_list("notification_id", flat=True))
-    return Response({
+    response = Response({
         "unreadCount": sum(1 for item in visible if item.pk not in read_ids),
         "notifications": [{
             "id": item.pk, "title": item.title, "message": item.message,
@@ -1113,6 +1113,8 @@ def workspace_notifications(request):
             "read": item.pk in read_ids,
         } for item in visible],
     })
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @api_view(["POST"])
@@ -1121,8 +1123,8 @@ def read_workspace_notification(request, notification_id):
     notification = WorkspaceNotification.objects.filter(pk=notification_id).first()
     if not notification or not notification_visible_to(notification, request.user):
         return Response({"error": "Không tìm thấy thông báo."}, status=status.HTTP_404_NOT_FOUND)
-    WorkspaceNotificationRead.objects.get_or_create(notification=notification, user=request.user)
-    return Response({"success": True})
+    receipt, _ = WorkspaceNotificationRead.objects.get_or_create(notification=notification, user=request.user)
+    return Response({"success": True, "notificationId": notification.pk, "read": True, "readAt": receipt.read_at})
 
 
 @api_view(["POST"])
