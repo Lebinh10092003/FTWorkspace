@@ -6,6 +6,8 @@ chữ trong ô, giữ nguyên nội dung, rồi cho web đọc lại đúng dòn
 thị giống Sheet. Mặc định chỉ liệt kê; thêm --apply để ghi.
 """
 
+import json
+
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
@@ -70,6 +72,26 @@ class Command(BaseCommand):
         cell = f"'{SHEET_NAME}'!{_column_letter(columns['content'])}{row_number}"
         self.stdout.write(f"Dòng {row_number} ({cell}):\n{_cell(row, 4)}")
         self.stdout.write(f"Định dạng hiện tại: {_describe(_row_task_format_runs(service, row_number, columns))}")
+        raw = service.spreadsheets().get(
+            spreadsheetId=_spreadsheet_id(),
+            ranges=[cell],
+            includeGridData=True,
+            fields=(
+                "sheets(conditionalFormats,data.rowData.values("
+                "userEnteredFormat.textFormat,effectiveFormat.textFormat,textFormatRuns))"
+            ),
+        ).execute()
+        sheet = (raw.get("sheets") or [{}])[0]
+        values = ((sheet.get("data") or [{}])[0].get("rowData") or [{}])[0].get("values") or [{}]
+        self.stdout.write(f"Ô thô: {json.dumps(values[0], ensure_ascii=False)}")
+        for index, rule in enumerate(sheet.get("conditionalFormats") or []):
+            covers = any(
+                rng.get("startColumnIndex", 0) <= columns["content"] < rng.get("endColumnIndex", 10**6)
+                and rng.get("startRowIndex", 0) < row_number <= rng.get("endRowIndex", 10**7)
+                for rng in rule.get("ranges") or []
+            )
+            if covers:
+                self.stdout.write(f"Định dạng có điều kiện #{index} phủ ô này: {json.dumps(rule, ensure_ascii=False)}")
         if not options["apply"]:
             self.stdout.write("Chạy thử: chưa ghi gì. Thêm --apply để bỏ đậm/nghiêng.")
             return
