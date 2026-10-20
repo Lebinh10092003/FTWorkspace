@@ -470,7 +470,9 @@ class WorkScheduleSheetParserTests(TestCase):
             [True, False],
         )
 
-    def test_cell_level_emphasis_does_not_leak_to_unanchored_tasks(self):
+    def test_cell_level_emphasis_is_read_as_displayed_on_every_task(self):
+        # The web no longer formats the Sheet, so Ctrl+B on the whole cell is
+        # the editor's choice and every task in it is shown bold.
         content = "1. 17h00: Nhiệm vụ có giờ\n2. Nhiệm vụ thường\n3. Nhiệm vụ khác"
         capture = _task_format_runs_from_cell({
             "formattedValue": content,
@@ -478,10 +480,47 @@ class WorkScheduleSheetParserTests(TestCase):
             "textFormatRuns": [],
         })
 
-        self.assertEqual(capture, [None, None, None])
-        self.assertTrue(capture.cell_style_ambiguous)
+        self.assertEqual(capture, [[{"startIndex": 0, "bold": True, "italic": True}]] * 3)
+        self.assertFalse(capture.cell_style_ambiguous)
 
-    def test_ambiguous_cell_style_is_repaired_by_time_rule_without_recreating_bold_leak(self):
+    def test_runs_without_bold_keep_the_cell_style(self):
+        content = "1. Việc một\n2. Việc hai"
+        capture = _task_format_runs_from_cell({
+            "formattedValue": content,
+            "userEnteredFormat": {"textFormat": {"bold": True}},
+            "textFormatRuns": [
+                {"startIndex": 0, "format": {}},
+                {"startIndex": len("1. Việc một\n"), "format": {"bold": False}},
+            ],
+        })
+
+        self.assertEqual(capture, [[{"startIndex": 0, "bold": True, "italic": False}], []])
+
+    def test_unbolding_the_whole_cell_on_the_sheet_unbolds_the_web_tasks(self):
+        # 20/10/2026, chị Liên: bỏ đậm cả ô trên Sheet mà web vẫn giữ đậm.
+        from .sheet_sync import _ingest_row
+
+        profile = UserProfile.objects.create(
+            email="cell-unbold@example.com", name="Cell Unbold", role="EMPLOYEE", access_modules=[]
+        )
+        item = WorkItem.objects.create(
+            creator=profile, executor=profile, title="Gửi quy chế vận hành",
+            work_date=date(2026, 10, 20), daily_order=1, priority="high", sheet_emphasis=True,
+            title_format_runs=[{"startIndex": 0, "bold": True, "italic": True}],
+            source_sheet_row=5001,
+        )
+        row = ["Ba", "20/10/2026", "43", "Cell Unbold", "1. Gửi quy chế vận hành", "", "", "", "REC-CELL-UNBOLD", "", ""]
+        capture = _task_format_runs_from_cell({
+            "formattedValue": row[4],
+            "userEnteredFormat": {"textFormat": {"bold": False, "italic": False}},
+        })
+
+        _ingest_row(5001, row, date(2026, 10, 20), task_format_runs=capture)
+
+        item.refresh_from_db()
+        self.assertEqual((item.priority, item.sheet_emphasis, item.title_format_runs), ("medium", False, []))
+
+    def test_whole_cell_bold_on_the_sheet_is_taken_by_every_task(self):
         from .sheet_sync import _ingest_row
 
         profile = UserProfile.objects.create(
@@ -526,8 +565,9 @@ class WorkScheduleSheetParserTests(TestCase):
 
         first.refresh_from_db()
         second.refresh_from_db()
-        self.assertEqual((first.priority, first.sheet_emphasis, first.title_format_runs), ("high", None, None))
-        self.assertEqual((second.priority, second.sheet_emphasis, second.title_format_runs), ("medium", None, None))
+        bold = [{"startIndex": 0, "bold": True, "italic": True}]
+        self.assertEqual((first.priority, first.sheet_emphasis, first.title_format_runs), ("high", True, bold))
+        self.assertEqual((second.priority, second.sheet_emphasis, second.title_format_runs), ("high", True, bold))
 
     def test_sheet_rich_text_captures_italic_and_title_local_runs(self):
         content = "1. Nhiệm vụ đậm\n2. Nhiệm vụ nghiêng\n3. Nhiệm vụ thường"
@@ -2761,8 +2801,24 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
         for column in "EFGJK":
             self.assertNotIn(f"'Lịch công tác'!{column}{self.NEW_ROW}", writes)
 
+        WorkItem.objects.filter(pk=item.pk).update(title="Việc hôm nay (đã sửa)")
         _, writes = self.push({self.NEW_ROW: row}, {group}, columns)
         self.assertIn(f"'Lịch công tác'!E{self.NEW_ROW}", writes)
+
+    def test_push_leaves_an_unchanged_content_cell_alone_to_keep_its_sheet_formatting(self):
+        # Ghi lại một giá trị xóa định dạng chữ trong ô: 20/10/2026 chị Liên bỏ
+        # đậm trên Sheet, một lần lưu đánh giá trên web làm ô đậm lại.
+        item = self.synced_item("Việc hôm nay", self.NEW_DATE, self.NEW_ROW, 1)
+        row = self.sheet_row(self.NEW_DATE, [item], "")
+        row[10] = self.live_hash(row)
+        WorkItem.objects.filter(pk=item.pk).update(source_sync_hash=row[10])
+        WorkItem.objects.filter(pk=item.pk).update(status=WorkItem.STATUS_COMPLETED)
+
+        result, writes = self.push({self.NEW_ROW: row}, {(self.EMPLOYEE_EMAIL, self.NEW_DATE)})
+
+        self.assertEqual(result["conflicts"], [])
+        self.assertNotIn(f"'Lịch công tác'!E{self.NEW_ROW}", writes)
+        self.assertEqual(writes[f"'Lịch công tác'!F{self.NEW_ROW}"][1], "Hoàn thành")
 
     def test_attendance_only_flag_is_dropped_when_the_same_day_also_has_a_content_change(self):
         from .sheet_sync import _push_pending_changes

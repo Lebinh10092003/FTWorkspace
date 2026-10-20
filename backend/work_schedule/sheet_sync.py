@@ -1390,14 +1390,12 @@ class _TaskFormatCapture(list):
 
 
 def _task_format_runs_from_cell(cell):
-    """Read title-local bold/italic transitions for each Sheet task.
+    """Read the bold/italic each Sheet task is displayed with.
 
-    A Google Sheets cell can carry a base ``textFormat`` in addition to its
-    rich-text runs. That base style applies to the whole cell and is not a
-    task-level choice. Treating it as the initial state for every numbered
-    line is what made one bold cell turn every task bold. Only runs anchored
-    inside an individual numbered line are accepted as explicit task style;
-    time/priority rules handle tasks without such an anchor.
+    The web no longer writes formatting to the Sheet, so what the Sheet shows
+    is the editor's choice and the web takes it as is: the cell's own style
+    (Ctrl+B on the whole cell) as well as the rich-text runs inside it. A run
+    leaves bold/italic unset when it keeps the cell's style, as Sheets does.
     """
     if not isinstance(cell, dict):
         return None
@@ -1405,7 +1403,7 @@ def _task_format_runs_from_cell(cell):
     if not content:
         return _TaskFormatCapture([])
     base_format = _cell_base_text_format(cell)
-    raw_runs = []
+    raw_runs = [{"startIndex": 0, **base_format}]
     for raw_run in cell.get("textFormatRuns") or []:
         if not isinstance(raw_run, dict):
             continue
@@ -1419,63 +1417,15 @@ def _task_format_runs_from_cell(cell):
         raw_runs.append({
             "startIndex": start_index,
             **{
-                key: bool(fmt[key])
+                key: bool(fmt[key]) if isinstance(fmt.get(key), (bool, int)) else base_format[key]
                 for key in ("bold", "italic")
-                if key in fmt and isinstance(fmt[key], (bool, int))
             },
         })
     runs = normalize_format_runs(raw_runs, _sheet_text_length(content)) or []
-    task_ranges = _content_task_ranges(content)
-    task_runs = []
-    for index, task_range in enumerate(task_ranges):
-        # A run at index 0 is commonly the cell-level base style. For later
-        # numbered lines, a run at the line start can be a deliberate choice
-        # that includes the number marker, so retain it as a local anchor.
-        local_start = task_range["startIndex"]
-        if index > 0:
-            local_start = task_range["lineStartIndex"]
-        local_runs = [
-            run for run in runs
-            if local_start <= run["startIndex"] < task_range["endIndex"]
-        ]
-        if index == 0 and not local_runs:
-            # When the cell itself is normal, a run at the beginning of the
-            # first numbered line can still be an explicit whole-task choice.
-            # A bold base style is accepted for the first line only when later
-            # lines also have their own anchors; otherwise it is the legacy
-            # whole-cell leak this parser is meant to repair.
-            later_has_local_anchor = any(
-                any(
-                    task_range["lineStartIndex"] <= run["startIndex"] < task_range["endIndex"]
-                    for run in runs
-                )
-                for task_range in task_ranges[1:]
-            )
-            if (
-                not base_format["bold"]
-                and not base_format["italic"]
-            ) or later_has_local_anchor:
-                local_runs = [
-                    run for run in runs
-                    if task_range["lineStartIndex"] <= run["startIndex"] < task_range["endIndex"]
-                ]
-        if not local_runs:
-            task_runs.append(None)
-            continue
-        task_runs.append(
-            slice_format_runs(
-                local_runs,
-                task_range["startIndex"],
-                task_range["endIndex"],
-                {"bold": False, "italic": False},
-            )
-        )
-    cell_style_ambiguous = bool(
-        task_ranges
-        and (base_format["bold"] or base_format["italic"])
-        and any(runs is None for runs in task_runs)
-    )
-    return _TaskFormatCapture(task_runs, cell_style_ambiguous=cell_style_ambiguous)
+    return _TaskFormatCapture([
+        slice_format_runs(runs, task_range["startIndex"], task_range["endIndex"])
+        for task_range in _content_task_ranges(content)
+    ])
 
 
 def _row_task_format_runs_map(service, row_numbers, columns):
@@ -1844,6 +1794,10 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
             ("leader_notes", leader_notes), ("task_ids", task_ids),
             ("sync_hash", new_hash),
         ):
+            # Writing a value erases the cell's rich text, so an unchanged
+            # cell is left alone to keep the bold/italic set on the Sheet.
+            if current and _cell(current, LEGACY_COLUMNS[name]) == value:
+                continue
             column = _column_letter(columns[name])
             raw_updates.append({"range": f"'{SHEET_NAME}'!{column}{row_number}", "values": [[value]]})
         profile = profiles.get(email)
