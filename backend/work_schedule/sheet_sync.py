@@ -71,6 +71,8 @@ DRAIN_SAFETY_SECONDS = 90
 TWO_WAY_SYNC_LEASE_SECONDS = 1800
 CONFLICT_RETRY_MINUTES = 5
 CONFLICT_MAX_ATTEMPTS = 5
+HIDDEN_COLUMNS_CONFIG_KEY = "work_schedule_sheet_columns_hidden"
+HIDDEN_COLUMNS_RECHECK_HOURS = 6
 SHEET_COLUMN_ALIASES = {
     "weekday": ("thứ",),
     "date": ("ngày",),
@@ -528,15 +530,34 @@ def _parse_sheet_event_timestamp(value):
     return parsed
 
 
+def _sync_columns_hidden_recently():
+    config = SystemConfig.objects.filter(key=HIDDEN_COLUMNS_CONFIG_KEY).first()
+    data = config.data if config and isinstance(config.data, dict) else {}
+    hidden_at = parse_datetime(str(data.get("at") or ""))
+    return bool(
+        data.get("spreadsheet_id") == _spreadsheet_id()
+        and hidden_at
+        and timezone.now() - hidden_at < timedelta(hours=HIDDEN_COLUMNS_RECHECK_HOURS)
+    )
+
+
 def ensure_sync_columns(service):
     # Cột ẩn chỉ cần kiểm tra một lần cho mỗi lượt đồng bộ (một service).
     # Trước đây hàm này gửi lại lệnh ẩn cột ở mọi lần gọi, hai lần mỗi lượt.
     ready = getattr(service, "_work_schedule_sync_columns", None)
     if isinstance(ready, dict) and ready.get("spreadsheet_id") == _spreadsheet_id():
         return dict(ready["columns"])
+    columns, headers = _sheet_columns(service)
+    if all(name in columns for name in ("employee_id", "record_id", "task_ids", "sync_hash")) \
+            and _sync_columns_hidden_recently():
+        # Mỗi webhook và mỗi lượt timer từng đọc thông tin tab rồi ẩn lại các
+        # cột ẩn: tốn hạn mức đọc của Google (lỗi 429 ngày 21/10/2026), và khi
+        # tài khoản dịch vụ mất quyền sửa cấu trúc tab (403, 19-20/10/2026) thì
+        # cả việc nhập sửa đổi từ Sheet cũng hỏng theo.
+        service._work_schedule_sync_columns = {"spreadsheet_id": _spreadsheet_id(), "columns": dict(columns)}
+        return columns
     target = _sheet_properties(service)
     sheet_id = target["sheetId"]
-    columns, headers = _sheet_columns(service)
     internal_headers = {
         "employee_id": "EmployeeID",
         "record_id": "WEB_RECORD_ID",
@@ -551,14 +572,25 @@ def ensure_sync_columns(service):
             header_updates.append({"range": f"'{SHEET_NAME}'!{_column_letter(next_index)}2", "values": [[header]]})
             next_index += 1
     required_count = max(columns.values()) + 1
-    requests = []
     if target.get("gridProperties", {}).get("columnCount", 0) < required_count:
-        requests.append({"updateSheetProperties": {"properties": {"sheetId": sheet_id, "gridProperties": {"columnCount": required_count}}, "fields": "gridProperties.columnCount"}})
-    for index in sorted({columns[name] for name in internal_headers}):
-        requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": index, "endIndex": index + 1}, "properties": {"hiddenByUser": True}, "fields": "hiddenByUser"}})
-    if requests:
-        service.spreadsheets().batchUpdate(spreadsheetId=_spreadsheet_id(), body={"requests": requests}).execute()
+        service.spreadsheets().batchUpdate(spreadsheetId=_spreadsheet_id(), body={"requests": [
+            {"updateSheetProperties": {"properties": {"sheetId": sheet_id, "gridProperties": {"columnCount": required_count}}, "fields": "gridProperties.columnCount"}},
+        ]}).execute()
         service._work_schedule_properties = None
+    hide_requests = [
+        {"updateDimensionProperties": {"range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": index, "endIndex": index + 1}, "properties": {"hiddenByUser": True}, "fields": "hiddenByUser"}}
+        for index in sorted({columns[name] for name in internal_headers})
+    ]
+    try:
+        service.spreadsheets().batchUpdate(spreadsheetId=_spreadsheet_id(), body={"requests": hide_requests}).execute()
+    except Exception:
+        # Ẩn cột chỉ để Sheet gọn mắt; không được làm hỏng việc đồng bộ.
+        logger.warning("Không ẩn được các cột kỹ thuật của tab Lịch công tác.", exc_info=True)
+    else:
+        SystemConfig.objects.update_or_create(
+            key=HIDDEN_COLUMNS_CONFIG_KEY,
+            defaults={"data": {"spreadsheet_id": _spreadsheet_id(), "at": timezone.now().isoformat()}},
+        )
     if header_updates:
         service.spreadsheets().values().batchUpdate(
             spreadsheetId=_spreadsheet_id(),
@@ -601,7 +633,7 @@ def ensure_sheet_row_capacity(service, required_row):
     return current_rows + rows_to_add
 
 
-def _legacy_group_match(group_items, parsed_task, index, retained_ids):
+def _legacy_group_match(group_items, parsed_task, index, retained_ids, by_order=True):
     """Conservatively match a task that has no usable Sheet UUID.
 
     Name/date identify the row group; title identifies a task during the legacy
@@ -613,6 +645,8 @@ def _legacy_group_match(group_items, parsed_task, index, retained_ids):
     title_matches = [item for item in available if _duplicate_title_key(item.title) == title_key]
     if len(title_matches) == 1:
         return title_matches[0]
+    if not by_order:
+        return None
     order_matches = [item for item in available if item.daily_order == index]
     return order_matches[0] if len(order_matches) == 1 else None
 
@@ -630,12 +664,20 @@ def _ingest_row(
     sheet_edited_at=None,
     sheet_editor_email="",
     sheet_event_id="",
+    recover_lost_edit=False,
 ):
     """Parse one sheet row (A:K, same shape as `_rows()` yields) and upsert its WorkItems.
 
     Shared by `pull_from_sheet` (bulk, one row per iteration) and the realtime
     webhook (exactly one row, no date-range filter). Caller is responsible for
     wrapping this in `suppress_sheet_queue()`.
+
+    ``recover_lost_edit`` imports a Sheet edit whose webhook never arrived
+    (see `_recover_lost_sheet_edit`): the caller has already chosen this row as
+    the group's row, a line is matched to a Web task only by its hidden id or
+    its title, and a line whose id belongs to a task the Web now keeps on
+    another of this person's rows is a stale copy to drop, not an identity
+    conflict.
     """
     created = updated = deleted = 0
     touched = set()
@@ -680,7 +722,7 @@ def _ingest_row(
     # changes, and queue a rewrite that removes their lines and hidden ids.
     moved_away_uids = {
         item.sync_uid for item in identity_conflicts
-        if item.executor_id == email and item.source_sheet_row is None
+        if item.executor_id == email and (item.source_sheet_row is None or recover_lost_edit)
     }
     identity_conflicts = [item for item in identity_conflicts if item.sync_uid not in moved_away_uids]
     if identity_conflicts:
@@ -788,7 +830,10 @@ def _ingest_row(
         and sorted(_duplicate_title_key(task.title) for task in parsed)
         == sorted(_duplicate_title_key(item.title) for item in group_items)
     )
-    if group_items and not has_same_source_row and not has_group_uid and not same_complete_title_set:
+    if (
+        not recover_lost_edit
+        and group_items and not has_same_source_row and not has_group_uid and not same_complete_title_set
+    ):
         # A second row with the same employee/date but without this group's
         # UUIDs is a competing duplicate, not a trustworthy row move. Do not
         # let a partial legacy/copy-pasted row overwrite or delete the
@@ -811,7 +856,7 @@ def _ingest_row(
         supplied_uid = ids[source_index] if source_index < len(ids) else None
         item = existing_by_uid.get(supplied_uid) if supplied_uid else None
         if not item:
-            item = _legacy_group_match(group_items, parsed_task, index, retained_ids)
+            item = _legacy_group_match(group_items, parsed_task, index, retained_ids, by_order=not recover_lost_edit)
         sync_uid = supplied_uid or (item.sync_uid if item else uuid.uuid4())
         note = notes[index - 1] if index <= len(notes) else ""
         task_status = status_from_note(note, work_date > today)
@@ -973,7 +1018,7 @@ def _ingest_row(
         retained_ids.add(item.pk)
     if retained_by_group is not None:
         retained_by_group[(email, work_date)].update(retained_ids)
-    if moved_away_uids:
+    if moved_away_uids and not recover_lost_edit:
         WorkScheduleSheetChange.objects.create(executor_email=email, work_date=work_date)
         from .signals import launch_sheet_sync_worker
 
@@ -1648,7 +1693,45 @@ def _known_row_hashes(current, items):
     return known
 
 
-def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=None, attendance_only_groups=None):
+def _recover_lost_sheet_edit(row_number, row, email, work_date):
+    """Import a Sheet edit the Web never received, as its webhook would have.
+
+    A webhook lost to a Google error (403/429), an unreachable server, or an
+    edit that fired no trigger used to leave the row out of step for good:
+    every later Web change of that person/day was skipped as a conflict and
+    never reached the Sheet. The Sheet row wins; only tasks that never reached
+    the Sheet (e.g. just moved to this day) are kept and written after it.
+    Returns the group's tasks in their new order, or None when the row cannot
+    be imported safely (it then stays a conflict).
+    """
+    live_hash = _row_hash(_cell(row, 4), _cell(row, 5), _cell(row, 6), _cell(row, 9))
+    with transaction.atomic(), suppress_sheet_queue():
+        _, _, deleted, touched = _ingest_row(
+            row_number, row, timezone.localdate(),
+            sheet_authoritative=True, recover_lost_edit=True,
+        )
+        if (email, work_date) not in touched:
+            return None
+        items = list(WorkItem.objects.filter(executor_id=email, work_date=work_date).order_by(
+            "daily_order", "start_time", "created_at", "pk"))
+        from_sheet = [item for item in items if item.source_sheet_row == row_number and item.source_sync_hash == live_hash]
+        not_exported = [item for item in items if item not in from_sheet]
+        for order, item in enumerate(not_exported, len(from_sheet) + 1):
+            if item.daily_order != order:
+                WorkItem.objects.filter(pk=item.pk).update(daily_order=order)
+                item.daily_order = order
+    logger.warning(
+        "Imported Sheet row %s (%s, %s): an edit the Web had not received. "
+        "%d task(s) from the Sheet, %d removed, %d not yet exported kept.",
+        row_number, email, work_date.isoformat(), len(from_sheet), deleted, len(not_exported),
+    )
+    return from_sheet + not_exported
+
+
+def push_groups_to_sheet(
+    service, groups, force=False, preserve_sheet_groups=None, attendance_only_groups=None,
+    resolve_conflict_groups=None,
+):
     columns = ensure_sync_columns(service)
     if not isinstance(columns, dict):  # compatibility with isolated test/mocked callers
         columns = LEGACY_COLUMNS
@@ -1672,6 +1755,7 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
     update_rows = []
     preserve_sheet_groups = set(preserve_sheet_groups or ())
     attendance_only_groups = set(attendance_only_groups or ())
+    resolve_conflict_groups = set(resolve_conflict_groups or ())
     name_email_map = _sheet_name_email_map()
     row_index, uid_index = _sheet_row_indexes(rows, rows_start, name_email_map)
     items_by_group = defaultdict(list)
@@ -1741,12 +1825,27 @@ def push_groups_to_sheet(service, groups, force=False, preserve_sheet_groups=Non
         live_values = (_cell(current, 4), _cell(current, 5), _cell(current, 6), _cell(current, 9))
         live_hash = _row_hash(*live_values)
         if current and not force and live_hash not in _known_row_hashes(current, items):
-            logger.warning(
-                "Skipped Sheet row %s (%s, %s): its content changed outside this system.",
-                row_number, email, work_date.isoformat(),
+            # On the first try the edit's webhook may still be on its way. A
+            # conflict back for another try means it was lost: import the row.
+            recovered = (
+                _recover_lost_sheet_edit(row_number, current, email, work_date)
+                if (email, work_date) in resolve_conflict_groups else None
             )
-            conflicts.append({"email": email, "date": work_date.isoformat(), "row": row_number})
-            continue
+            if recovered is None:
+                logger.warning(
+                    "Skipped Sheet row %s (%s, %s): its content changed outside this system.",
+                    row_number, email, work_date.isoformat(),
+                )
+                conflicts.append({"email": email, "date": work_date.isoformat(), "row": row_number})
+                continue
+            items = recovered
+            if len(items) == len(parse_sheet_tasks(_cell(current, 4))) and all(
+                item.source_sheet_row == row_number for item in items
+            ):
+                # The Sheet row now is the Web's content: write only the
+                # hidden ids/hash, never a renumbered copy of the typed text.
+                # Lines dropped (moved days) or tasks added still rewrite it.
+                preserve_sheet_groups.add((email, work_date))
         content, self_notes, leader_notes, task_ids = _group_values(items) if items else ("", "", "", "")
         content = _merge_star_lines(content, current, items)
         new_hash = _row_hash(content, self_notes, leader_notes, task_ids)
@@ -1931,8 +2030,15 @@ def _push_pending_changes(service, pending, force):
     try:
         ensure_sync_columns(service)
         content_groups = {(row.executor_email, row.work_date) for row in pending if not row.attendance_only}
+        # Back for another try after a conflict: the Sheet edit behind it
+        # should have arrived by now, so the row is imported if it did not.
+        retried_conflicts = {
+            (row.executor_email, row.work_date) for row in pending
+            if row.status == WorkScheduleSheetChange.STATUS_CONFLICT
+        }
         result = push_groups_to_sheet(
             service, groups, force=force, attendance_only_groups=groups - content_groups,
+            resolve_conflict_groups=retried_conflicts,
         )
         result["attendance"] = push_attendance_safely(service, groups)
         conflict_groups = {(row["email"], datetime.fromisoformat(row["date"]).date()) for row in result["conflicts"]}
