@@ -1096,16 +1096,22 @@ def workspace_notifications(request):
             target_modules=["social-dashboard"],
             expires_at=token_notice["expiresAtValue"] + timedelta(days=7),
         )
+    # Every notice in the retention window is considered, like "read all"
+    # does: a cut at 250 rows let older, never-marked notices slide into the
+    # list as unread once newer ones had been read for seven days.
     rows = WorkspaceNotification.objects.filter(
         created_at__gt=max_notification_cutoff(),
     ).exclude(
         read_receipts__user=profile,
         read_receipts__read_at__lte=read_notification_cutoff(),
-    ).prefetch_related("read_receipts").all()[:250]
-    visible = [item for item in rows if notification_visible_to(item, profile)][:100]
-    read_ids = set(WorkspaceNotificationRead.objects.filter(user=profile, notification__in=visible).values_list("notification_id", flat=True))
+    )
+    all_visible = [item for item in rows if notification_visible_to(item, profile)]
+    read_ids = set(WorkspaceNotificationRead.objects.filter(
+        user=profile, notification__created_at__gt=max_notification_cutoff(),
+    ).values_list("notification_id", flat=True))
+    visible = all_visible[:100]
     response = Response({
-        "unreadCount": sum(1 for item in visible if item.pk not in read_ids),
+        "unreadCount": sum(1 for item in all_visible if item.pk not in read_ids),
         "notifications": [{
             "id": item.pk, "title": item.title, "message": item.message,
             "severity": item.severity, "category": item.category,
@@ -1133,7 +1139,7 @@ def read_all_workspace_notifications(request):
     rows = [
         item for item in WorkspaceNotification.objects.filter(
             created_at__gt=max_notification_cutoff()
-        )[:250]
+        )
         if notification_visible_to(item, request.user)
     ]
     WorkspaceNotificationRead.objects.bulk_create(

@@ -37,8 +37,10 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
   const [error, setError] = useState('');
   const [markingAll, setMarkingAll] = useState(false);
   const [markingIds, setMarkingIds] = useState<Set<number>>(() => new Set());
+  // Unread notices older than the 100 listed ones still count in the badge.
+  const [unlistedUnread, setUnlistedUnread] = useState(0);
   const token = suppliedToken || sessionToken();
-  const unread = items.filter(item => !item.read).length;
+  const unread = items.filter(item => !item.read).length + unlistedUnread;
   const visibleItems = useMemo(() => items.filter(item => filter === 'all' || (filter === 'read' ? item.read : !item.read)), [filter, items]);
 
   const load = async () => {
@@ -47,7 +49,11 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
     });
-    if (response.ok) setItems((await response.json()).notifications || []);
+    if (!response.ok) return;
+    const data = await response.json();
+    const listed: Notification[] = data.notifications || [];
+    setItems(listed);
+    setUnlistedUnread(Math.max(0, Number(data.unreadCount || 0) - listed.filter(item => !item.read).length));
   };
 
   useEffect(() => {
@@ -69,6 +75,7 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
       const response = await fetch('/api/notifications/read-all', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setItems(current => current.map(item => ({ ...item, read: true })));
+      setUnlistedUnread(0);
     } catch {
       setError('Chưa thể lưu trạng thái đã đọc. Vui lòng thử lại.');
     } finally {

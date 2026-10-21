@@ -76,6 +76,38 @@ class JobTitleAndNotificationTests(TestCase):
         self.assertEqual(self.client.post("/api/notifications/read-all").status_code, 200)
         self.assertEqual(self.client.get("/api/notifications").data["unreadCount"], 0)
 
+    def test_read_all_leaves_no_older_notification_to_resurface_as_unread(self):
+        # 21/10/2026: chị Phương bấm "Đánh dấu tất cả" lúc 09:08 mà vẫn còn 59
+        # thông báo chưa đọc. "Đọc tất cả" chỉ đánh dấu 250 thông báo mới nhất,
+        # còn danh sách bỏ các thông báo đã đọc quá 7 ngày rồi lấy tiếp thông
+        # báo cũ hơn, nên các thông báo cũ chưa đánh dấu trồi lên là chưa đọc.
+        old = timezone.now() - timedelta(days=10)
+        for index in range(300):
+            notification = WorkspaceNotification.objects.create(
+                event_key=f"examination:new-registration:exam:{index}", title="Thí sinh mới đăng ký", message="Nội dung",
+            )
+            WorkspaceNotification.objects.filter(pk=notification.pk).update(
+                created_at=old + timedelta(minutes=index)
+            )
+        newest = WorkspaceNotification.objects.order_by("-created_at")[:200]
+        WorkspaceNotificationRead.objects.bulk_create(
+            [WorkspaceNotificationRead(notification=item, user=self.admin) for item in newest]
+        )
+        WorkspaceNotificationRead.objects.update(read_at=old)
+
+        self.assertEqual(self.client.post("/api/notifications/read-all").status_code, 200)
+
+        response = self.client.get("/api/notifications")
+        self.assertEqual(response.data["unreadCount"], 0)
+        self.assertFalse([item for item in response.data["notifications"] if not item["read"]])
+
+    def test_unread_count_covers_notifications_beyond_the_listed_hundred(self):
+        for index in range(120):
+            WorkspaceNotification.objects.create(event_key=f"bulk:{index}", title="Thông báo", message="Nội dung")
+        response = self.client.get("/api/notifications")
+        self.assertEqual(len(response.data["notifications"]), 100)
+        self.assertEqual(response.data["unreadCount"], 120)
+
     def test_read_notification_disappears_for_that_user_after_seven_days(self):
         notification = WorkspaceNotification.objects.create(
             event_key="read-retention", title="Đã đọc", message="Nội dung",
