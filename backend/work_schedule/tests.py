@@ -2708,6 +2708,24 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
         )
         self.assertEqual(writes[f"'Lịch công tác'!E{self.OLD_ROW}"][1], "1. Việc ở lại")
 
+    def test_recovery_merges_a_copied_line_that_carries_the_id_of_a_deleted_task(self):
+        import uuid
+
+        item = self.synced_item("Nhập thu chi hàng ngày", self.OLD_DATE, self.OLD_ROW, 1)
+        row = self.sheet_row(self.OLD_DATE, [item], "")
+        row[4] = "1. Nhập thu chi hàng ngày\n2. Nhập thu chi hàng ngày\n3. In báo cáo tháng 9"
+        row[9] = f"{item.sync_uid}\n{uuid.uuid4()}\n"
+        group = (self.EMPLOYEE_EMAIL, self.OLD_DATE)
+
+        result, _ = self.push({self.OLD_ROW: row}, {group}, resolve_conflict_groups={group})
+
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(
+            list(WorkItem.objects.filter(executor=self.executor, work_date=self.OLD_DATE)
+                 .order_by("daily_order").values_list("title", flat=True)),
+            ["Nhập thu chi hàng ngày", "In báo cáo tháng 9"],
+        )
+
     def test_pending_conflicts_are_retried_with_row_recovery(self):
         from .sheet_sync import _push_pending_changes
 

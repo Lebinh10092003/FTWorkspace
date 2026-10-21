@@ -779,6 +779,22 @@ def _ingest_row(
             )
         if task_emphasis is not None:
             task_emphasis = [task_emphasis[index] if index < len(task_emphasis) else None for index in kept_raw_indices]
+    if recover_lost_edit:
+        # Chị Hà 20/10/2026: một việc chép thành hai dòng trên Sheet, dòng thứ
+        # hai mang mã của một việc web đã xóa. Mã không còn ai giữ thì bỏ đi;
+        # hai dòng cùng tên được gộp như mọi dòng trùng trong ngày.
+        titles_with_known_uid = {
+            _duplicate_title_key(parsed_task.title)
+            for raw_index, parsed_task in enumerate(raw_tasks)
+            if raw_index < len(ids) and ids[raw_index] in existing_by_uid
+        }
+        ids = [
+            None if (
+                sync_uid and sync_uid not in existing_by_uid and raw_index < len(raw_tasks)
+                and _duplicate_title_key(raw_tasks[raw_index].title) in titles_with_known_uid
+            ) else sync_uid
+            for raw_index, sync_uid in enumerate(ids)
+        ]
     duplicate_uid_keys = defaultdict(set)
     for raw_index, parsed_task in enumerate(raw_tasks):
         if raw_index < len(ids) and ids[raw_index]:

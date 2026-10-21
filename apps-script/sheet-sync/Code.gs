@@ -20,6 +20,8 @@
  *        Function: onChangeInstallable | Event source: From spreadsheet | Event type: On change
  *      (an installable trigger, not the bare `onEdit(e)` simple trigger, because UrlFetchApp
  *      needs authorization that simple triggers are not allowed to request).
+ *   4. Run installAutoRetryTrigger once: failed edits in _SYNC_OUTBOX are then resent
+ *      every 10 minutes for 24 hours (autoRetryFailedOutboxRows).
  */
 
 var SHEET_NAME = 'Lịch công tác';
@@ -363,6 +365,86 @@ function ensureOutboxSheet_() {
 // onEdit/onChange triggers now own synchronization; keep the old trigger
 // harmless until its owner removes it from the Apps Script project.
 function watchdogSheetChanges() {}
+
+var AUTO_RETRY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+var AUTO_RETRY_MIN_AGE_MS = 2 * 60 * 1000;
+var AUTO_RETRY_MAX_PER_RUN = 30;
+
+/**
+ * Run ONCE by hand (Run -> installAutoRetryTrigger) to resend failed edits
+ * every 10 minutes. A webhook lost to a server restart or a Google error
+ * (403/429, 19-21/10/2026) used to stay "error" until someone retried it.
+ */
+function installAutoRetryTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === 'autoRetryFailedOutboxRows') ScriptApp.deleteTrigger(trigger);
+  });
+  ScriptApp.newTrigger('autoRetryFailedOutboxRows').timeBased().everyMinutes(10).create();
+}
+
+/**
+ * Resends failed row edits of the last 24 hours. It does not scan the
+ * schedule for changes: it only retries edits that already failed. The row is
+ * re-read so the Web gets what the Sheet shows now, never an older snapshot;
+ * a row whose date/staff moved (rows inserted above) or that a later
+ * successful event already covered is marked "superseded".
+ */
+function autoRetryFailedOutboxRows() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return;
+  try {
+    var outbox = ensureOutboxSheet_();
+    var lastRow = outbox.getLastRow();
+    if (lastRow < 2) return;
+    var firstRow = Math.max(2, lastRow - 2000);
+    var rows = outbox.getRange(firstRow, 1, lastRow - firstRow + 1, 7).getValues();
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+    var now = Date.now();
+    var lastSentAt = {};
+    rows.forEach(function (line) {
+      if (line[4] === 'sent') {
+        var at = Date.parse(line[2]) || 0;
+        lastSentAt[line[1]] = Math.max(lastSentAt[line[1]] || 0, at);
+      }
+    });
+    var retried = 0;
+    for (var i = 0; i < rows.length && retried < AUTO_RETRY_MAX_PER_RUN; i++) {
+      var line = rows[i];
+      var status = line[4];
+      var editedAt = Date.parse(line[2]) || 0;
+      var age = now - editedAt;
+      if (status !== 'error' && status !== 'pending') continue;
+      if (age < AUTO_RETRY_MIN_AGE_MS || age > AUTO_RETRY_MAX_AGE_MS) continue;
+      var payload = JSON.parse(line[3] || '{}');
+      if (payload.event_type === 'full_sync') {
+        markOutboxResult_(firstRow + i, sendFullSyncWebhook_(line[0], payload.reason));
+        retried++;
+        continue;
+      }
+      var row = Number(line[1]);
+      if ((lastSentAt[row] || 0) > editedAt) {
+        markOutboxResult_(firstRow + i, { ok: false, summary: 'superseded: một lần sửa mới hơn của dòng đã về web' });
+        outbox.getRange(firstRow + i, 5).setValue('superseded');
+        continue;
+      }
+      var current = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+      var old = payload.values || [];
+      if (String(current[1]) !== String(old[1]) || String(current[3]) !== String(old[3])) {
+        markOutboxResult_(firstRow + i, { ok: false, summary: 'superseded: dòng đã đổi ngày/người (chèn dòng)' });
+        outbox.getRange(firstRow + i, 5).setValue('superseded');
+        continue;
+      }
+      payload.values = current;
+      payload.edited_at = new Date().toISOString();
+      var result = sendWebhook_(line[0], row, payload);
+      markOutboxResult_(firstRow + i, result);
+      if (result.ok) lastSentAt[row] = Date.parse(payload.edited_at);
+      retried++;
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 /**
  * Manual retry helper: re-sends every outbox row still marked "error" or "pending".
