@@ -173,3 +173,105 @@ def finance_create_entry(
         "message": f"Đã lập giao dịch {entry_type} số tiền {amount:,.0f} VNĐ cho '{category}'.",
         "entry_id": entry.id,
     }
+
+
+@register_tool(
+    name="finance_export_entries",
+    description="Xuất (export) sổ cái thu chi, dòng tiền Đào tạo số ra CSV (UTF-8 BOM tải vào Excel) hoặc JSON phục vụ báo cáo tài chính, thuế và kế toán. Chỉ dành cho Kế toán và Admin.",
+    module="finance-report",
+    min_role="EMPLOYEE",
+    require_finance=True,
+    parameters={
+        "type": "object",
+        "properties": {
+            "entry_type": {
+                "type": "string",
+                "enum": ["all", "income", "expense"],
+                "description": "Lọc theo loại thu chi ('all', 'income', 'expense')",
+            },
+            "date_from": {"type": "string", "description": "Từ ngày (YYYY-MM-DD)"},
+            "date_to": {"type": "string", "description": "Đến ngày (YYYY-MM-DD)"},
+            "partner_id": {"type": "integer", "description": "ID khách hàng/đối tác"},
+            "status": {
+                "type": "string",
+                "enum": ["all", "completed", "pending", "overdue", "cancelled"],
+                "description": "Trạng thái giao dịch",
+            },
+            "format": {
+                "type": "string",
+                "enum": ["csv", "json"],
+                "description": "Định dạng xuất ('csv' hoặc 'json', mặc định 'json')",
+            },
+        },
+        "additionalProperties": False,
+    },
+)
+def finance_export_entries(
+    ctx: Dict[str, Any],
+    entry_type: str = "all",
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    partner_id: Optional[int] = None,
+    status: str = "all",
+    format: str = "json",
+    **_kwargs,
+) -> Dict[str, Any]:
+    qs = TrainingFinanceEntry.objects.select_related("partner").all()
+    if entry_type in {"income", "expense"}:
+        qs = qs.filter(entry_type=entry_type)
+    if date_from:
+        qs = qs.filter(transaction_date__gte=date_from)
+    if date_to:
+        qs = qs.filter(transaction_date__lte=date_to)
+    if partner_id:
+        qs = qs.filter(partner_id=partner_id)
+    if status != "all":
+        qs = qs.filter(status=status)
+
+    items = []
+    for it in qs.order_by("transaction_date", "id")[:1000]:
+        items.append({
+            "id": it.id,
+            "date": it.transaction_date.isoformat(),
+            "type": it.entry_type,
+            "category": it.category,
+            "description": it.description,
+            "amount": float(it.amount),
+            "partner_name": it.partner.name if it.partner else "",
+            "payment_method": it.payment_method,
+            "reference_code": it.reference_code or "",
+            "status": it.status,
+            "created_by": it.created_by,
+        })
+
+    if format == "csv":
+        import csv
+        import io
+        out = io.StringIO()
+        out.write("\ufeff")  # UTF-8 BOM
+        writer = csv.writer(out)
+        writer.writerow([
+            "STT", "Mã GD", "Ngày giao dịch", "Loại", "Danh mục", "Mô tả / Diễn giải",
+            "Số tiền (VNĐ)", "Khách hàng / Đối tác", "Hình thức thanh toán", "Mã tham chiếu / Hóa đơn", "Trạng thái", "Người tạo",
+        ])
+        for idx, it in enumerate(items, 1):
+            writer.writerow([
+                idx, it["id"], it["date"], "Thu" if it["type"] == "income" else "Chi",
+                it["category"], it["description"], f"{it['amount']:,.0f}",
+                it["partner_name"], it["payment_method"], it["reference_code"],
+                it["status"], it["created_by"],
+            ])
+        return {
+            "success": True,
+            "format": "csv",
+            "count": len(items),
+            "csv_content": out.getvalue(),
+        }
+
+    return {
+        "success": True,
+        "format": "json",
+        "count": len(items),
+        "entries": items,
+    }
+

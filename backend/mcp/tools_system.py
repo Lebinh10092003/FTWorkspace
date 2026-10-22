@@ -53,7 +53,7 @@ def system_whoami(ctx: Dict[str, Any], **_kwargs) -> Dict[str, Any]:
     },
 )
 def system_list_staff(ctx: Dict[str, Any], query: str = "", department: str = "", **_kwargs) -> Dict[str, Any]:
-    qs = UserProfile.objects.select_related("department", "job_title").filter(is_active=True)
+    qs = UserProfile.objects.select_related("department", "job_title").exclude(employment_status__iexact="RESIGNED")
     if query:
         qs = qs.filter(name__icontains=query) | qs.filter(email__icontains=query)
     if department:
@@ -62,7 +62,8 @@ def system_list_staff(ctx: Dict[str, Any], query: str = "", department: str = ""
     staff_list = []
     for item in qs.order_by("department__name", "name")[:50]:
         staff_list.append({
-            "id": item.id,
+            "id": item.pk,
+            "employee_code": item.employee_code or "",
             "name": item.name,
             "email": item.email,
             "phone": item.phone or "",
@@ -206,3 +207,69 @@ def system_get_executive_dashboard(ctx: Dict[str, Any], **_kwargs) -> Dict[str, 
             "sử dụng icon trực quan (📅, ⚡, 👥, ⚠️) và phân nhóm rõ ràng."
         ),
     }
+
+
+@register_tool(
+    name="system_export_staff_directory",
+    description="Xuất (export) danh bạ toàn bộ nhân sự công ty theo phòng ban, vai trò ra CSV (UTF-8 BOM tải vào Excel) hoặc JSON. Dành cho HR, Quản lý và Admin.",
+    module="account-management",
+    min_role="EMPLOYEE",
+    parameters={
+        "type": "object",
+        "properties": {
+            "department": {"type": "string", "description": "Lọc theo tên phòng ban"},
+            "format": {
+                "type": "string",
+                "enum": ["csv", "json"],
+                "description": "Định dạng xuất ('csv' hoặc 'json', mặc định 'json')",
+            },
+        },
+        "additionalProperties": False,
+    },
+)
+def system_export_staff_directory(
+    ctx: Dict[str, Any],
+    department: str = "",
+    format: str = "json",
+    **_kwargs,
+) -> Dict[str, Any]:
+    qs = UserProfile.objects.select_related("department", "job_title").exclude(employment_status__iexact="RESIGNED")
+    if department:
+        qs = qs.filter(department__name__icontains=department.strip())
+
+    items = []
+    for it in qs.order_by("department__name", "name"):
+        items.append({
+            "id": it.pk,
+            "employee_code": it.employee_code or "",
+            "name": it.name,
+            "email": it.email,
+            "phone": it.phone or "",
+            "role": it.role,
+            "department": it.department.name if it.department else "",
+            "job_title": it.job_title.name if it.job_title else "",
+        })
+
+    if format == "csv":
+        import csv
+        import io
+        out = io.StringIO()
+        out.write("\ufeff")  # UTF-8 BOM
+        writer = csv.writer(out)
+        writer.writerow(["STT", "Mã nhân viên", "Họ và tên", "Email", "Số điện thoại", "Vai trò", "Phòng ban", "Chức danh"])
+        for idx, it in enumerate(items, 1):
+            writer.writerow([idx, it["id"], it["name"], it["email"], it["phone"], it["role"], it["department"], it["job_title"]])
+        return {
+            "success": True,
+            "format": "csv",
+            "count": len(items),
+            "csv_content": out.getvalue(),
+        }
+
+    return {
+        "success": True,
+        "format": "json",
+        "count": len(items),
+        "staff": items,
+    }
+

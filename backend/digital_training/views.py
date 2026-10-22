@@ -563,13 +563,42 @@ def renew_product_subscription(request, pk):
     return Response(TrainingProductSubscriptionSerializer(sub).data)
 
 
-@api_view(["POST"])
+@api_view(["GET", "POST"])
 @permission_classes([IsAuthenticatedOrReadOnly])
 def subscription_sheet_sync_now(request):
-    """Kích hoạt đồng bộ thủ công 2 chiều giữa Web và Google Sheet."""
-    from .subscription_sheet_sync import sync_subscriptions_safely
+    """GET: Lấy toàn bộ cấu trúc bảng và dữ liệu từ Web để Apps Script hoặc Sheet client khởi tạo bảng.
+    POST: Kích hoạt đồng bộ thủ công 2 chiều giữa Web và Google Sheet."""
+    from .subscription_sheet_sync import sync_subscriptions_safely, build_export_payload
+
+    if request.method == "GET":
+        try:
+            payload = build_export_payload()
+            return Response({"success": True, "data": payload})
+        except Exception as exc:
+            return Response({"success": False, "error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    token = (
+        request.META.get("HTTP_X_GOOGLE_OAUTH_TOKEN")
+        or getattr(request, "google_access_token", None)
+        or (request.data.get("googleAccessToken") if isinstance(request.data, dict) else None)
+    )
     try:
-        result = sync_subscriptions_safely(force=True)
+        result = sync_subscriptions_safely(force=True, google_token=token)
+        import_res = result.get("imported") or {}
+        export_res = result.get("exported") or {}
+
+        if import_res.get("status") == "error" or export_res.get("status") == "error":
+            err_msg = export_res.get("message") or import_res.get("message") or "Lỗi đồng bộ Google Sheet."
+            err_code = export_res.get("error_code") or import_res.get("error_code") or "SYNC_ERROR"
+            sa_email = export_res.get("service_account_email") or import_res.get("service_account_email")
+            return Response({
+                "success": False,
+                "error": err_msg,
+                "error_code": err_code,
+                "service_account_email": sa_email,
+                "data": result,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         return Response({"success": True, "data": result})
     except Exception as exc:
         return Response({"success": False, "error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -578,17 +607,118 @@ def subscription_sheet_sync_now(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def subscription_sheet_webhook(request):
-    """Điểm cuối nhận webhook từ Google Apps Script (onEdit / onChange)."""
-    from .subscription_sheet_sync import import_subscriptions_from_sheet
+    """Điểm cuối nhận webhook từ Google Apps Script (onEdit / onChange / bulk sync)."""
+    from .subscription_sheet_sync import import_subscriptions_from_sheet, ingest_subscription_row
     data = request.data if isinstance(request.data, dict) else {}
+
+    # Case 1: Direct row values from Apps Script onEdit
+    if "values" in data and isinstance(data.get("values"), list):
+        row_num = int(data.get("row") or 0)
+        res = ingest_subscription_row(data["values"], row_num)
+        return Response({"success": True, "result": res})
+
+    # Case 2: Batch rows from syncAllRowsToWeb()
+    if "rows" in data and isinstance(data.get("rows"), list):
+        results = []
+        for item in data["rows"]:
+            if isinstance(item, dict) and "values" in item:
+                results.append(ingest_subscription_row(item["values"], int(item.get("row") or 0)))
+        return Response({"success": True, "count": len(results), "results": results[:20]})
+
+    # Case 3: Range import trigger
     start_row = int(data.get("start_row") or 3)
     end_row = int(data.get("end_row") or 0) or None
 
     try:
         res = import_subscriptions_from_sheet(start_row=start_row, end_row=end_row)
+        if res.get("status") == "error":
+            return Response({"success": False, "error": res.get("message"), "data": res}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"success": True, "result": res})
     except Exception as exc:
         return Response({"success": False, "error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticatedOrReadOnly])
+def subscription_sheet_config_view(request):
+    """Lấy hoặc lưu cấu hình Google Sheet cho Theo dõi hạn dùng BNDC."""
+    from authentication.models import SystemConfig
+    from integrations.google_sheets import extract_spreadsheet_id, build_sheets_service
+    from .subscription_sheet_sync import (
+        SYNC_CONFIG_KEY, get_spreadsheet_id, get_sync_credentials, DEFAULT_SPREADSHEET_ID
+    )
+
+    config_obj, _ = SystemConfig.objects.get_or_create(key=SYNC_CONFIG_KEY)
+    config_data = config_obj.data or {}
+
+    if request.method == "POST":
+        spreadsheet_input = str(request.data.get("spreadsheetId") or "").strip()
+        cleaned_id = extract_spreadsheet_id(spreadsheet_input) or spreadsheet_input
+        if cleaned_id:
+            config_data["spreadsheetId"] = cleaned_id
+
+        if "googleServiceAccountJson" in request.data:
+            raw_sa = str(request.data.get("googleServiceAccountJson") or "").strip()
+            config_data["googleServiceAccountJson"] = raw_sa
+
+        if "tabTitle" in request.data:
+            config_data["tabTitle"] = str(request.data.get("tabTitle") or "").strip()
+
+        config_data["updatedAt"] = timezone.now().isoformat()
+        config_obj.data = config_data
+        config_obj.save(update_fields=["data", "updated_at"])
+
+        # Test connection immediately
+        token, final_cfg, sa_email = get_sync_credentials()
+        test_result = {"connected": False, "message": ""}
+        target_id = extract_spreadsheet_id(config_data.get("spreadsheetId") or "") or DEFAULT_SPREADSHEET_ID
+        try:
+            service = build_sheets_service(token, final_cfg)
+            meta = service.spreadsheets().get(
+                spreadsheetId=target_id,
+                fields="properties.title,sheets.properties.title"
+            ).execute()
+            sheet_title = meta.get("properties", {}).get("title", "")
+            tabs = [s.get("properties", {}).get("title") for s in meta.get("sheets", [])]
+            test_result = {
+                "connected": True,
+                "sheetTitle": sheet_title,
+                "tabs": tabs,
+                "message": f"Kết nối Google Sheet thành công: “{sheet_title}” ({len(tabs)} tabs).",
+            }
+        except Exception as exc:
+            err_msg = str(exc)
+            if "403" in err_msg or "permission" in err_msg.lower():
+                test_result["message"] = f"Tài khoản dịch vụ chưa có quyền truy cập Sheet. Vui lòng nhấn nút Share trên Sheet và thêm email: {sa_email or 'tài khoản dịch vụ'} (quyền Editor)."
+            elif "404" in err_msg or "not found" in err_msg.lower():
+                test_result["message"] = f"Không tìm thấy Google Sheet với ID '{target_id}'."
+            else:
+                test_result["message"] = f"Chưa thể kết nối: {exc}"
+
+        return Response({
+            "success": True,
+            "config": {
+                "spreadsheetId": config_data.get("spreadsheetId") or DEFAULT_SPREADSHEET_ID,
+                "spreadsheetUrl": f"https://docs.google.com/spreadsheets/d/{config_data.get('spreadsheetId') or DEFAULT_SPREADSHEET_ID}/edit",
+                "hasServiceAccount": bool(config_data.get("googleServiceAccountJson") or final_cfg.get("googleServiceAccountJson")),
+                "serviceAccountEmail": sa_email,
+                "tabTitle": config_data.get("tabTitle") or "Trang tính1",
+            },
+            "test": test_result,
+        })
+
+    # GET
+    token, final_cfg, sa_email = get_sync_credentials()
+    current_id = extract_spreadsheet_id(config_data.get("spreadsheetId") or "") or DEFAULT_SPREADSHEET_ID
+    return Response({
+        "spreadsheetId": current_id,
+        "spreadsheetUrl": f"https://docs.google.com/spreadsheets/d/{current_id}/edit",
+        "hasServiceAccount": bool(config_data.get("googleServiceAccountJson") or final_cfg.get("googleServiceAccountJson")),
+        "serviceAccountEmail": sa_email,
+        "tabTitle": config_data.get("tabTitle") or "Trang tính1",
+        "webhookUrl": "/api/digital-training/subscriptions/sheet-webhook",
+        "updatedAt": config_data.get("updatedAt"),
+    })
 
 
 @api_view(["POST"])

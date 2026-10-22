@@ -474,3 +474,102 @@ def training_get_assessment_results(
         "count": len(assessments),
         "assessments": assessments,
     }
+
+
+@register_tool(
+    name="training_export_sessions",
+    description="Xuất (export) danh sách các buổi tập huấn / đào tạo theo đối tác, giảng viên hoặc khoảng thời gian ra CSV (UTF-8 BOM tải vào Excel) hoặc JSON.",
+    module="digital-training",
+    min_role="EMPLOYEE",
+    parameters={
+        "type": "object",
+        "properties": {
+            "partner_name": {"type": "string", "description": "Lọc theo tên trường / đối tác"},
+            "date_from": {"type": "string", "description": "Từ ngày (YYYY-MM-DD)"},
+            "date_to": {"type": "string", "description": "Đến ngày (YYYY-MM-DD)"},
+            "status": {
+                "type": "string",
+                "enum": ["planned", "completed", "cancelled", "unscheduled", "all"],
+                "description": "Lọc theo trạng thái ('all', 'planned', 'completed', 'cancelled')",
+            },
+            "format": {
+                "type": "string",
+                "enum": ["csv", "json"],
+                "description": "Định dạng xuất ('csv' hoặc 'json', mặc định 'json')",
+            },
+        },
+        "additionalProperties": False,
+    },
+)
+def training_export_sessions(
+    ctx: Dict[str, Any],
+    partner_name: str = "",
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    status: str = "all",
+    format: str = "json",
+    **_kwargs,
+) -> Dict[str, Any]:
+    qs = TrainingSession.objects.select_related("partner_ref", "training_class").all()
+    if partner_name:
+        qs = qs.filter(
+            models.Q(partner_ref__name__icontains=partner_name.strip())
+            | models.Q(partner__icontains=partner_name.strip())
+        )
+    if date_from:
+        qs = qs.filter(session_date__gte=date_from)
+    if date_to:
+        qs = qs.filter(session_date__lte=date_to)
+    if status and status != "all":
+        qs = qs.filter(status=status)
+
+    items = []
+    for s in qs.order_by("-session_date", "start_time")[:500]:
+        items.append({
+            "id": s.id,
+            "title": s.title,
+            "partner_name": s.partner_ref.name if s.partner_ref else s.partner,
+            "class_name": s.training_class.name if s.training_class else "",
+            "session_number": s.session_number,
+            "session_date": s.session_date.isoformat() if s.session_date else "",
+            "start_time": str(s.start_time) if s.start_time else "",
+            "end_time": str(s.end_time) if s.end_time else "",
+            "instructor": s.instructor_name or "",
+            "support_staff": s.support_staff_name or "",
+            "status": s.status,
+            "location": s.location or "",
+            "attendees": s.attendees,
+            "notes": s.notes or "",
+        })
+
+    if format == "csv":
+        import csv
+        import io
+        out = io.StringIO()
+        out.write("\ufeff")  # UTF-8 BOM
+        writer = csv.writer(out)
+        writer.writerow([
+            "STT", "Mã buổi", "Tiêu đề", "Trường / Khách hàng", "Lớp đào tạo",
+            "Buổi số", "Ngày tập huấn", "Giờ bắt đầu", "Giờ kết thúc",
+            "Giảng viên chính", "Trợ giảng / Hỗ trợ", "Trạng thái", "Địa điểm / Link", "Số người tham gia", "Ghi chú",
+        ])
+        for idx, it in enumerate(items, 1):
+            writer.writerow([
+                idx, it["id"], it["title"], it["partner_name"], it["class_name"],
+                it["session_number"], it["session_date"], it["start_time"], it["end_time"],
+                it["instructor"], it["support_staff"], it["status"], it["location"], it["attendees"], it["notes"],
+            ])
+        return {
+            "success": True,
+            "format": "csv",
+            "count": len(items),
+            "csv_content": out.getvalue(),
+        }
+
+    return {
+        "success": True,
+        "format": "json",
+        "count": len(items),
+        "sessions": items,
+    }
+

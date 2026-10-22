@@ -181,3 +181,68 @@ def docs_generate_weekly_report(
         ),
     }
 
+
+@register_tool(
+    name="docs_export_weekly_reports",
+    description="Xuất (export) danh sách các báo cáo tuần của nhân viên / phòng ban ra CSV (UTF-8 BOM tải vào Excel) hoặc JSON.",
+    module="documents",
+    min_role="EMPLOYEE",
+    parameters={
+        "type": "object",
+        "properties": {
+            "staff_email": {"type": "string", "description": "Email nhân viên (nếu Quản lý/Admin xem người khác)"},
+            "format": {
+                "type": "string",
+                "enum": ["csv", "json"],
+                "description": "Định dạng xuất ('csv' hoặc 'json', mặc định 'json')",
+            },
+        },
+        "additionalProperties": False,
+    },
+)
+def docs_export_weekly_reports(
+    ctx: Dict[str, Any],
+    staff_email: Optional[str] = None,
+    format: str = "json",
+    **_kwargs,
+) -> Dict[str, Any]:
+    qs = WeeklyReport.objects.all()
+    if staff_email and ctx["role"] in {"ADMIN", "MANAGER"}:
+        qs = qs.filter(employee_email__iexact=staff_email.strip())
+    elif ctx["role"] not in {"ADMIN", "MANAGER"}:
+        qs = qs.filter(employee_email=ctx["email"])
+
+    items = []
+    for rep in qs.order_by("-completed_week", "-created_at")[:100]:
+        items.append({
+            "id": rep.id,
+            "employee_email": rep.employee_email,
+            "completed_week": rep.completed_week,
+            "created_at": rep.created_at.isoformat() if hasattr(rep.created_at, "isoformat") else str(rep.created_at),
+            "summary": rep.summary or "",
+        })
+
+    if format == "csv":
+        import csv
+        import io
+        out = io.StringIO()
+        out.write("\ufeff")  # UTF-8 BOM
+        writer = csv.writer(out)
+        writer.writerow(["STT", "Mã báo cáo", "Nhân viên (Email)", "Tuần số", "Ngày tạo", "Tóm tắt"])
+        for idx, it in enumerate(items, 1):
+            writer.writerow([idx, it["id"], it["employee_email"], it["completed_week"], it["created_at"], it["summary"]])
+        return {
+            "success": True,
+            "format": "csv",
+            "count": len(items),
+            "csv_content": out.getvalue(),
+        }
+
+    return {
+        "success": True,
+        "format": "json",
+        "count": len(items),
+        "reports": items,
+    }
+
+

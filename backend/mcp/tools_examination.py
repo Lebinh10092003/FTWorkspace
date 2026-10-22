@@ -191,7 +191,7 @@ def exam_get_candidate_detail(ctx: Dict[str, Any], candidate_code: str, **_kwarg
             "exam_history": candidate.exam_history or [],
             "achievement": candidate.achievement,
             "highest_round": candidate.highest_round,
-            "rooms": room_info,
+            "rounds": round_info,
         },
     }
 
@@ -305,3 +305,141 @@ def exam_get_partner_teachers(ctx: Dict[str, Any], province: str = "", school_qu
         "count": len(schools),
         "schools": schools,
     }
+
+
+@register_tool(
+    name="exam_export_candidates",
+    description="Xuất (export) danh sách thí sinh dự thi theo kỳ thi, trường học hoặc khối lớp ra định dạng CSV (UTF-8 BOM tải vào Excel) hoặc JSON để lập danh sách phòng thi hoặc kiểm toán.",
+    module="examination",
+    min_role="EMPLOYEE",
+    parameters={
+        "type": "object",
+        "properties": {
+            "session_code": {
+                "type": "string",
+                "description": "Mã kỳ thi (ví dụ: 'FIMO-2026', 'FIEO-2026')",
+            },
+            "school_query": {
+                "type": "string",
+                "description": "Lọc theo tên trường học",
+            },
+            "grade": {
+                "type": "string",
+                "description": "Lọc theo khối lớp (ví dụ: '6')",
+            },
+            "format": {
+                "type": "string",
+                "enum": ["csv", "json"],
+                "description": "Định dạng xuất dữ liệu ('csv' hoặc 'json', mặc định 'json')",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Số lượng tối đa (mặc định 200, tối đa 1000)",
+            },
+        },
+        "additionalProperties": False,
+    },
+)
+def exam_export_candidates(
+    ctx: Dict[str, Any],
+    session_code: str = "",
+    school_query: str = "",
+    grade: str = "",
+    format: str = "json",
+    limit: int = 200,
+    **_kwargs,
+) -> Dict[str, Any]:
+    qs = Candidate.objects.all()
+    if session_code:
+        session = ExamSession.objects.filter(Q(code__iexact=session_code.strip()) | Q(id=session_code.strip())).first()
+        if session:
+            qs = qs.filter(session_ids__contains=[session.id])
+    if school_query:
+        qs = qs.filter(school__icontains=school_query.strip())
+    if grade:
+        qs = qs.filter(grade=str(grade).strip())
+
+    max_items = min(max(1, limit), 1000)
+    items = []
+    for c in qs.order_by("school", "grade", "name")[:max_items]:
+        items.append({
+            "code": c.code,
+            "name": c.name,
+            "birth_date": c.birth_date or "",
+            "gender": getattr(c, "gender", ""),
+            "school": c.school or "",
+            "grade": c.grade or "",
+            "class_name": c.class_name or "",
+            "city": c.city or "",
+            "identity": c.identity or "",
+            "parent": c.parent or "",
+            "phone": c.phone or "",
+            "email": c.email or "",
+            "achievement": c.achievement or "",
+            "highest_round": c.highest_round or "",
+        })
+
+    if format == "csv":
+        import csv
+        import io
+        out = io.StringIO()
+        out.write("\ufeff")  # UTF-8 BOM
+        writer = csv.writer(out)
+        writer.writerow([
+            "STT", "Mã thí sinh", "Họ và tên", "Ngày sinh", "Giới tính",
+            "Trường học", "Khối", "Lớp", "Tỉnh/Thành phố", "CCCD/Định danh",
+            "Phụ huynh", "Số điện thoại", "Email", "Giải cao nhất", "Vòng cao nhất",
+        ])
+        for idx, it in enumerate(items, 1):
+            writer.writerow([
+                idx, it["code"], it["name"], it["birth_date"], it["gender"],
+                it["school"], it["grade"], it["class_name"], it["city"], it["identity"],
+                it["parent"], it["phone"], it["email"], it["achievement"], it["highest_round"],
+            ])
+        return {
+            "success": True,
+            "format": "csv",
+            "count": len(items),
+            "csv_content": out.getvalue(),
+        }
+
+    return {
+        "success": True,
+        "format": "json",
+        "count": len(items),
+        "candidates": items,
+    }
+
+
+@register_tool(
+    name="exam_sync_session_sheet",
+    description="Kích hoạt hàng đợi đồng bộ dữ liệu thí sinh ra Google Sheet của các kỳ thi theo đúng quy tắc AGENTS.md (không xóa dữ liệu web, không ghi đè ô đang có nội dung).",
+    module="examination",
+    min_role="EMPLOYEE",
+    audit_action="Kích hoạt đồng bộ hàng đợi Sheet kỳ thi",
+    parameters={
+        "type": "object",
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "description": "Số lượng hồ sơ tối đa xử lý trong đợt này (mặc định 100)",
+            },
+        },
+        "additionalProperties": False,
+    },
+)
+def exam_sync_session_sheet(ctx: Dict[str, Any], limit: int = 100, **_kwargs) -> Dict[str, Any]:
+    from examination.session_sheet_queue import drain_session_sheet_queue
+    try:
+        summary = drain_session_sheet_queue(limit=limit)
+        return {
+            "success": True,
+            "message": "Đã hoàn thành lượt xử lý hàng đợi đồng bộ Sheet khảo thí.",
+            "summary": summary,
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": f"Lỗi khi xử lý hàng đợi Sheet khảo thí: {exc}",
+        }
+

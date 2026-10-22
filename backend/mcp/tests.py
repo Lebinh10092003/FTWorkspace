@@ -431,5 +431,87 @@ class MCPFrameworkTests(TestCase):
         self.assertTrue(exp_body["data"]["csv_content"].startswith("\ufeff"))
         self.assertIn("BNDC", exp_body["data"]["csv_content"])
 
+    def test_all_modules_export_tools(self):
+        """Kiểm tra các công cụ xuất (export) dữ liệu CSV/JSON trên tất cả các phân hệ."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.admin_token.key}")
+
+        # 1. Khảo thí: exam_export_candidates
+        exam_res = self.client.post(
+            "/api/mcp/action/exam_export_candidates",
+            {"format": "csv"},
+            format="json",
+        )
+        self.assertEqual(exam_res.status_code, status.HTTP_200_OK)
+        exam_body = exam_res.json()
+        self.assertTrue(exam_body["success"])
+        self.assertTrue(exam_body["data"]["csv_content"].startswith("\ufeff"))
+
+        # 2. Lịch công tác: schedule_export_tasks
+        sched_res = self.client.post(
+            "/api/mcp/action/schedule_export_tasks",
+            {"format": "csv"},
+            format="json",
+        )
+        self.assertEqual(sched_res.status_code, status.HTTP_200_OK)
+        sched_body = sched_res.json()
+        self.assertTrue(sched_body["success"])
+        self.assertTrue(sched_body["data"]["csv_content"].startswith("\ufeff"))
+
+        # 3. Chấm công: attendance_export_monthly_report
+        att_res = self.client.post(
+            "/api/mcp/action/attendance_export_monthly_report",
+            {"format": "csv"},
+            format="json",
+        )
+        self.assertEqual(att_res.status_code, status.HTTP_200_OK)
+        att_body = att_res.json()
+        self.assertTrue(att_body["success"])
+        self.assertTrue(att_body["data"]["csv_content"].startswith("\ufeff"))
+
+        # 4. Tài chính: finance_export_entries
+        fin_res = self.client.post(
+            "/api/mcp/action/finance_export_entries",
+            {"format": "csv"},
+            format="json",
+        )
+        self.assertEqual(fin_res.status_code, status.HTTP_200_OK)
+        fin_body = fin_res.json()
+        self.assertTrue(fin_body["success"])
+        self.assertTrue(fin_body["data"]["csv_content"].startswith("\ufeff"))
+
+        # 5. Tập huấn: training_export_sessions
+        train_res = self.client.post(
+            "/api/mcp/action/training_export_sessions",
+            {"format": "csv"},
+            format="json",
+        )
+        self.assertEqual(train_res.status_code, status.HTTP_200_OK)
+        train_body = train_res.json()
+        self.assertTrue(train_body["success"])
+        self.assertTrue(train_body["data"]["csv_content"].startswith("\ufeff"))
+
+        # 6. Danh bạ nhân sự: system_export_staff_directory
+        staff_res = self.client.post(
+            "/api/mcp/action/system_export_staff_directory",
+            {"format": "csv"},
+            format="json",
+        )
+        self.assertEqual(staff_res.status_code, status.HTTP_200_OK)
+        staff_body = staff_res.json()
+        self.assertTrue(staff_body["success"])
+        self.assertTrue(staff_body["data"]["csv_content"].startswith("\ufeff"))
+
+        # 7. Báo cáo tuần: docs_export_weekly_reports
+        doc_res = self.client.post(
+            "/api/mcp/action/docs_export_weekly_reports",
+            {"format": "csv"},
+            format="json",
+        )
+        self.assertEqual(doc_res.status_code, status.HTTP_200_OK)
+        doc_body = doc_res.json()
+        self.assertTrue(doc_body["success"])
+        self.assertTrue(doc_body["data"]["csv_content"].startswith("\ufeff"))
+
+
 
 

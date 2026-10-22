@@ -24,6 +24,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   Sparkles,
   TrendingUp,
   User,
@@ -35,6 +36,7 @@ import { appDialog } from "../AppDialog";
 import { matchesSearch } from "../../lib/searchText";
 import { type ProductPartner, type ProductSubscription } from "./ProductManagement";
 import AiAccountsManagerModal from "./AiAccountsManagerModal";
+import SubscriptionSheetConfigModal from "./SubscriptionSheetConfigModal";
 
 type SubscriptionItem = ProductSubscription & {
   created_at?: string;
@@ -86,6 +88,7 @@ export default function CustomerSubscriptionDashboard({
   const [notice, setNotice] = useState("");
   const [detailSub, setDetailSub] = useState<SubscriptionItem | null>(null);
   const [bulkRenewing, setBulkRenewing] = useState(false);
+  const [sheetConfigModalOpen, setSheetConfigModalOpen] = useState(false);
 
   const partnerMap = useMemo(() => new Map(partners.map((p) => [p.id, p])), [partners]);
 
@@ -189,7 +192,22 @@ export default function CustomerSubscriptionDashboard({
         setLastSynced(new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
         await loadData();
       } else {
-        setNotice(data.error || "Không thể đồng bộ Google Sheet.");
+        const errMsg = data.error || "Không thể đồng bộ Google Sheet.";
+        setNotice(errMsg);
+        if (data.error_code === "NO_CREDENTIALS" || data.error_code === "SHEET_ACCESS_DENIED") {
+          const openConfig = await appDialog.confirm(
+            `${errMsg}\n\nBạn có muốn mở bảng 'Cài đặt Google Sheet' để kết nối tài khoản dịch vụ hoặc lấy mã Apps Script đồng bộ tức thì không?`,
+            {
+              title: "Cần thiết lập kết nối Sheet",
+              tone: "info",
+              confirmText: "Mở Cài đặt Sheet",
+              cancelText: "Đóng",
+            }
+          );
+          if (openConfig) {
+            setSheetConfigModalOpen(true);
+          }
+        }
       }
     } catch (err: any) {
       setNotice(err.message || "Lỗi kết nối khi đồng bộ Sheet.");
@@ -489,10 +507,22 @@ export default function CustomerSubscriptionDashboard({
             onClick={handleSyncSheet}
             disabled={syncing}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors disabled:opacity-50 cursor-pointer"
+            title="Đồng bộ thủ công 2 chiều giữa Web và Google Sheet"
           >
             <RefreshCw className={`h-3.5 w-3.5 text-blue-600 ${syncing ? "animate-spin" : ""}`} />
             <span>{syncing ? "Đang đồng bộ..." : "Đồng bộ Sheet"}</span>
             {lastSynced && <span className="text-[10px] text-slate-400 font-normal">({lastSynced})</span>}
+          </button>
+
+          {/* Cài đặt Sheet & Apps Script */}
+          <button
+            type="button"
+            onClick={() => setSheetConfigModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-blue-600 transition-colors cursor-pointer"
+            title="Cài đặt kết nối Google Sheet & Lấy mã Apps Script"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
+            <span>Cài đặt Sheet</span>
           </button>
 
           {/* Quản lý TK AI Dùng chung */}
@@ -1555,6 +1585,16 @@ export default function CustomerSubscriptionDashboard({
         isGuest={isGuest}
         onAccountCountChange={() => {
           void loadAiTotal();
+          void loadData();
+        }}
+      />
+
+      {/* Google Sheet Configuration Modal */}
+      <SubscriptionSheetConfigModal
+        isOpen={sheetConfigModalOpen}
+        onClose={() => setSheetConfigModalOpen(false)}
+        idToken={idToken}
+        onConfigSaved={() => {
           void loadData();
         }}
       />

@@ -26,6 +26,7 @@ urlpatterns = [
     path("digital-training/ai-accounts/<int:pk>", views.training_partner_ai_account_detail, name="training_partner_ai_account_detail"),
     path("digital-training/ai-accounts/bulk", views.training_partner_ai_accounts_bulk, name="training_partner_ai_accounts_bulk"),
     path("digital-training/subscriptions/sheet-sync", views.subscription_sheet_sync_now, name="subscription_sheet_sync_now"),
+    path("digital-training/subscriptions/sheet-config", views.subscription_sheet_config_view, name="subscription_sheet_config_view"),
     path("digital-training/subscriptions/sheet-webhook", views.subscription_sheet_webhook, name="subscription_sheet_webhook"),
     path("digital-training/sessions/sheet-sync", views.training_sessions_sheet_sync_now, name="training_sessions_sheet_sync_now"),
     path("digital-training/sessions/sheet-webhook", views.training_sessions_sheet_webhook, name="training_sessions_sheet_webhook"),

@@ -257,3 +257,117 @@ def schedule_review_task(
         "task_id": item.id,
         "status": item.status,
     }
+
+
+@register_tool(
+    name="schedule_export_tasks",
+    description="Xuất (export) danh sách công việc trong Lịch công tác theo khoảng thời gian, nhân sự hoặc phòng ban ra định dạng CSV (UTF-8 BOM tải vào Excel) hoặc JSON.",
+    module="work-schedule",
+    min_role="EMPLOYEE",
+    parameters={
+        "type": "object",
+        "properties": {
+            "date_from": {
+                "type": "string",
+                "description": "Từ ngày (YYYY-MM-DD)",
+            },
+            "date_to": {
+                "type": "string",
+                "description": "Đến ngày (YYYY-MM-DD)",
+            },
+            "staff_email": {
+                "type": "string",
+                "description": "Lọc theo email nhân sự thực hiện (nếu Quản lý/Admin xem người khác)",
+            },
+            "status": {
+                "type": "string",
+                "enum": ["all", "todo", "doing", "completed", "reviewed"],
+                "description": "Lọc theo trạng thái ('all', 'todo', 'doing', 'completed', 'reviewed')",
+            },
+            "format": {
+                "type": "string",
+                "enum": ["csv", "json"],
+                "description": "Định dạng xuất ('csv' hoặc 'json', mặc định 'json')",
+            },
+        },
+        "additionalProperties": False,
+    },
+)
+def schedule_export_tasks(
+    ctx: Dict[str, Any],
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    staff_email: Optional[str] = None,
+    status: str = "all",
+    format: str = "json",
+    **_kwargs,
+) -> Dict[str, Any]:
+    today_str = timezone.localdate().isoformat()
+    start_d = date_from or today_str
+    end_d = date_to or today_str
+
+    qs = WorkItem.objects.select_related("creator", "executor", "reviewed_by").filter(
+        work_date__gte=start_d,
+        work_date__lte=end_d,
+    )
+    if staff_email:
+        if ctx["role"] in {"ADMIN", "MANAGER"}:
+            qs = qs.filter(executor__email__iexact=staff_email.strip())
+        else:
+            qs = qs.filter(executor__email=ctx["email"])
+    elif ctx["role"] not in {"ADMIN", "MANAGER"}:
+        qs = qs.filter(executor__email=ctx["email"])
+
+    if status != "all":
+        qs = qs.filter(status=status)
+
+    items = []
+    for it in qs.order_by("work_date", "daily_order", "created_at")[:500]:
+        items.append({
+            "id": it.id,
+            "work_date": it.work_date.isoformat() if hasattr(it.work_date, "isoformat") else str(it.work_date),
+            "title": it.title,
+            "executor_name": it.executor.name if it.executor else "",
+            "executor_email": it.executor.email if it.executor else "",
+            "start_time": str(it.start_time) if it.start_time else "",
+            "end_time": str(it.end_time) if it.end_time else "",
+            "priority": it.priority,
+            "status": it.status,
+            "progress_note": it.progress_note or "",
+            "review_percent": it.review_percent,
+            "review_note": it.review_note or "",
+            "reviewed_by": it.reviewed_by.name if it.reviewed_by else "",
+        })
+
+    if format == "csv":
+        import csv
+        import io
+        out = io.StringIO()
+        out.write("\ufeff")  # UTF-8 BOM
+        writer = csv.writer(out)
+        writer.writerow([
+            "STT", "Mã công việc", "Ngày thực hiện", "Nội dung công việc", "Nhân sự thực hiện",
+            "Giờ bắt đầu", "Giờ kết thúc", "Ưu tiên", "Trạng thái", "Tiến độ / Kết quả",
+            "Đánh giá (%)", "Nhận xét quản lý", "Người đánh giá",
+        ])
+        for idx, it in enumerate(items, 1):
+            writer.writerow([
+                idx, it["id"], it["work_date"], it["title"], it["executor_name"],
+                it["start_time"], it["end_time"], it["priority"], it["status"],
+                it["progress_note"], it["review_percent"] if it["review_percent"] is not None else "",
+                it["review_note"], it["reviewed_by"],
+            ])
+        return {
+            "success": True,
+            "format": "csv",
+            "count": len(items),
+            "csv_content": out.getvalue(),
+        }
+
+    return {
+        "success": True,
+        "format": "json",
+        "count": len(items),
+        "tasks": items,
+    }
+
