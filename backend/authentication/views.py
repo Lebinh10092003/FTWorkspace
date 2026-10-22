@@ -1096,28 +1096,20 @@ def workspace_notifications(request):
             target_modules=["social-dashboard"],
             expires_at=token_notice["expiresAtValue"] + timedelta(days=7),
         )
+    # Every notice in the retention window is considered, like "read all"
+    # does: a cut at 250 rows let older, never-marked notices slide into the
+    # list as unread once newer ones had been read for seven days.
     rows = WorkspaceNotification.objects.filter(
         created_at__gt=max_notification_cutoff(),
     ).exclude(
         read_receipts__user=profile,
         read_receipts__read_at__lte=read_notification_cutoff(),
-    ).prefetch_related("read_receipts").distinct().all()[:250]
-
-    visible_candidates = [item for item in rows if notification_visible_to(item, profile)]
-    seen_content = set()
-    visible = []
-    for item in visible_candidates:
-        content_key = (item.category, item.title, item.message.strip())
-        if content_key in seen_content:
-            continue
-        seen_content.add(content_key)
-        visible.append(item)
-        if len(visible) >= 100:
-            break
+    ).distinct().order_by("-created_at")
+    all_visible = [item for item in rows if notification_visible_to(item, profile)]
 
     read_receipts_qs = WorkspaceNotificationRead.objects.filter(
         user=profile,
-        notification__in=visible_candidates,
+        notification__created_at__gt=max_notification_cutoff(),
     ).select_related("notification")
     read_ids = {receipt.notification_id for receipt in read_receipts_qs}
     read_content_keys = {
@@ -1126,10 +1118,10 @@ def workspace_notifications(request):
         if receipt.notification
     }
 
-    # Auto-reconcile read receipts for duplicate/recreated items with identical content
+    # Auto-reconcile read receipts for items with identical content to an already-read notification
     missing_receipts = []
     resolved_read_ids = set(read_ids)
-    for item in visible:
+    for item in all_visible:
         content_key = (item.category, item.title, item.message.strip())
         if item.pk not in resolved_read_ids and content_key in read_content_keys:
             resolved_read_ids.add(item.pk)
@@ -1137,8 +1129,9 @@ def workspace_notifications(request):
     if missing_receipts:
         WorkspaceNotificationRead.objects.bulk_create(missing_receipts, ignore_conflicts=True)
 
-    return Response({
-        "unreadCount": sum(1 for item in visible if item.pk not in resolved_read_ids),
+    visible = all_visible[:100]
+    response = Response({
+        "unreadCount": sum(1 for item in all_visible if item.pk not in resolved_read_ids),
         "notifications": [{
             "id": item.pk, "title": item.title, "message": item.message,
             "severity": item.severity, "category": item.category,
@@ -1146,6 +1139,8 @@ def workspace_notifications(request):
             "read": item.pk in resolved_read_ids,
         } for item in visible],
     })
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @api_view(["POST"])
@@ -1154,22 +1149,8 @@ def read_workspace_notification(request, notification_id):
     notification = WorkspaceNotification.objects.filter(pk=notification_id).first()
     if not notification or not notification_visible_to(notification, request.user):
         return Response({"error": "Không tìm thấy thông báo."}, status=status.HTTP_404_NOT_FOUND)
-    WorkspaceNotificationRead.objects.get_or_create(notification=notification, user=request.user)
-    # Also mark all other notifications with identical content as read
-    duplicates = WorkspaceNotification.objects.filter(
-        category=notification.category,
-        title=notification.title,
-        message=notification.message,
-    ).exclude(pk=notification.pk)
-    if duplicates.exists():
-        new_receipts = [
-            WorkspaceNotificationRead(notification=dup, user=request.user)
-            for dup in duplicates
-            if notification_visible_to(dup, request.user)
-        ]
-        if new_receipts:
-            WorkspaceNotificationRead.objects.bulk_create(new_receipts, ignore_conflicts=True)
-    return Response({"success": True})
+    receipt, _ = WorkspaceNotificationRead.objects.get_or_create(notification=notification, user=request.user)
+    return Response({"success": True, "notificationId": notification.pk, "read": True, "readAt": receipt.read_at})
 
 
 @api_view(["POST"])
@@ -1183,7 +1164,7 @@ def read_all_workspace_notifications(request):
     visible_candidates = [
         item for item in WorkspaceNotification.objects.filter(
             created_at__gt=max_notification_cutoff()
-        ).order_by("-created_at")[:1000]
+        )
         if notification_visible_to(item, profile)
     ]
 

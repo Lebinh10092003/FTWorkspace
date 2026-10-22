@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BellRing, ChevronDown, Clock3, ExternalLink, X } from 'lucide-react';
-import { cardVisible, dutyDate, dutyTime, reminderDue, reminderKey, ServerClock } from './invigilationTiming';
+import { cardVisible, dutyDate, dutyTime, reminderDue, reminderKey, roomTitle, ServerClock } from './invigilationTiming';
 
 export type Duty = {
   id: string; sessionId: string; sessionName: string; competitionCode: string; roundName: string;
@@ -138,18 +138,18 @@ export default function InvigilationReminders({ token, email, canPreview = false
       {collapsed ? <button type="button" onClick={() => setCollapsed(false)} aria-label="Mở nhắc ca thi" className="flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-3 text-sm font-bold text-white shadow-xl"><BellRing size={18} />Ca coi thi{relevant.length > 1 ? ` (${relevant.length})` : ''}</button>
         : <div className="w-80 rounded-2xl border border-emerald-200 bg-white p-4 text-slate-900 shadow-2xl">
           <div className="flex items-center justify-between"><p className="flex items-center gap-2 text-sm font-bold text-emerald-700"><Clock3 size={17} />{now! >= Date.parse(next.startsAt) ? 'Ca thi đang diễn ra' : 'Ca coi thi tiếp theo'}</p><button type="button" onClick={() => setCollapsed(true)} aria-label="Thu gọn nhắc ca thi" className="rounded-lg p-1 hover:bg-slate-100"><ChevronDown size={19} /></button></div>
-          <p className="mt-2 font-bold">{next.competitionCode} · {next.label} · Phòng {next.roomNumber}</p>
+          <p className="mt-2 font-bold">{next.competitionCode} · {next.label} · {roomTitle(next.roomNumber)}</p>
           <p className="mt-1 text-sm text-slate-600">{dutyDate(next.startsAt)} · {dutyTime(next.startsAt)}–{dutyTime(next.endsAt)}</p>
           {minutes > 0 && minutes <= 60 && <p className="mt-1 text-sm text-amber-700">Còn {minutes} phút</p>}
           {offline && <p className="mt-1 text-xs text-amber-700">Đang dùng lịch đã tải; chờ kết nối để cập nhật.</p>}
           <button type="button" onClick={() => open(next)} className="mt-3 w-full rounded-xl bg-emerald-700 px-3 py-2 text-sm font-bold text-white">Mở phòng thi / Điểm danh</button>
-          {upcoming[upcoming.indexOf(next) + 1] && (() => { const after = upcoming[upcoming.indexOf(next) + 1]; return <p className="mt-2 text-xs text-slate-500">Ca tiếp: {after.label} · {dutyTime(after.startsAt)} · Phòng {after.roomNumber}</p>; })()}
+          {upcoming[upcoming.indexOf(next) + 1] && (() => { const after = upcoming[upcoming.indexOf(next) + 1]; return <p className="mt-2 text-xs text-slate-500">Ca tiếp: {after.label} · {dutyTime(after.startsAt)} · {roomTitle(after.roomNumber)}</p>; })()}
         </div>}
     </aside>}
     {active && <div className="fixed inset-0 z-[12000] grid place-items-center bg-slate-950/60 p-4 font-sans backdrop-blur-sm">
       <div ref={dialog} role="alertdialog" aria-modal="true" aria-labelledby="exam-reminder-title" data-exam-reminder className="w-full max-w-lg overflow-hidden rounded-3xl border border-emerald-200 bg-white text-slate-900 shadow-2xl">
         <div className="flex items-start gap-3 border-b border-emerald-100 bg-emerald-50 p-6"><BellRing className="mt-1 shrink-0 text-emerald-700" size={28} /><div className="flex-1"><h2 id="exam-reminder-title" className="text-xl font-extrabold">{popup?.preview ? 'Xem thử nhắc ca thi' : now! >= Date.parse(active.startsAt) ? 'Đã đến ca coi thi của bạn' : 'Sắp đến ca coi thi của bạn'}</h2><p className="mt-1 text-sm text-emerald-800">{active.sessionName}</p></div><button ref={closeButton} type="button" onClick={dismiss} aria-label="Đóng popup nhắc ca thi" className="rounded-lg p-1 hover:bg-emerald-100"><X size={20} /></button></div>
-        <div className="space-y-3 p-6"><p className="text-lg font-bold">{active.roundName} · {active.label} · Phòng {active.roomNumber}</p><p>{dutyDate(active.startsAt)} · <strong>{dutyTime(active.startsAt)}–{dutyTime(active.endsAt)}</strong> (giờ Việt Nam)</p><p className="text-sm text-slate-600">{active.candidateCount} thí sinh · Giám thị: {active.invigilators.map(u => u.name).join(', ') || active.invigilatorLabel}</p>
+        <div className="space-y-3 p-6"><p className="text-lg font-bold">{active.roundName} · {active.label} · {roomTitle(active.roomNumber)}</p><p>{dutyDate(active.startsAt)} · <strong>{dutyTime(active.startsAt)}–{dutyTime(active.endsAt)}</strong> (giờ Việt Nam)</p><p className="text-sm text-slate-600">{active.candidateCount} thí sinh · Giám thị: {active.invigilators.map(u => u.name).join(', ') || active.invigilatorLabel}</p>
           {active.demo && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Danh sách thí sinh hiện là dữ liệu demo.</p>}
           {popup?.preview && <p className="text-sm text-slate-500">Chế độ xem thử; giờ nhắc và lịch thi thật không thay đổi.</p>}
           <div className="grid gap-3 pt-2 sm:grid-cols-2"><button type="button" onClick={() => open(active)} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white"><ExternalLink size={18} />Mở phòng thi</button><button type="button" onClick={dismiss} className="rounded-xl bg-slate-100 px-4 py-3 font-bold text-slate-700">Thu gọn, xem sau</button></div>

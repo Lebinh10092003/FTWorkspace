@@ -1,5 +1,7 @@
+import re
 import uuid
 import math
+import secrets
 from datetime import timedelta
 from urllib.parse import urlparse
 
@@ -63,8 +65,10 @@ def live_entry(result, audit=None):
         'note': result.note, 'revision': result.updated_at.isoformat(), 'resultId': str(result.pk),
     }
     if audit:
-        entry.update(updatedBy=audit.actor.email if audit.actor else 'Hệ thống', updatedAt=audit.created_at.isoformat(),
-                     autoAbsent=audit.actor_id is None and entry['attendance'] == 'Vắng')
+        automatic = audit.actor_id is None and not audit.actor_label
+        entry.update(updatedBy=audit.actor.email if audit.actor else (audit.actor_label or 'Hệ thống'),
+                     updatedAt=audit.created_at.isoformat(),
+                     autoAbsent=automatic and entry['attendance'] == 'Vắng')
     return entry
 
 
@@ -122,7 +126,7 @@ def field_conflicts(result, shift, code, changes, base):
             continue
         if key == 'attendance' and current == 'Vắng':
             last = ExamInvigilationAudit.objects.filter(shift=shift, candidate_code=code).order_by('-created_at').first()
-            if last and last.actor_id is None:
+            if last and last.actor_id is None and not last.actor_label:
                 continue
         conflicts.append(key)
     return conflicts
@@ -140,7 +144,11 @@ def shift_roster(shift):
     return [live_entry(result, audits.get(result.participation.candidate.code)) for result in room_results(shift)]
 
 
-def serialize_shift(shift, include_roster=False):
+def guest_url(shift):
+    return f'/coi-thi/{shift.guest_token}' if shift.guest_token else ''
+
+
+def serialize_shift(shift, include_roster=False, include_guest=False):
     roster = shift_roster(shift) if include_roster or shift.exam_room_id else shift.roster
     value = {
         'id': str(shift.pk), 'sessionId': shift.session_id, 'sessionName': shift.session.name,
@@ -156,6 +164,10 @@ def serialize_shift(shift, include_roster=False):
         'actionUrl': f'/examination/invigilation/{shift.session_id}?shift={shift.pk}',
         'revision': str(shift.revision),
     }
+    if include_guest:
+        value.update(guestUrl=guest_url(shift), guestName=shift.guest_name, guestEmail=shift.guest_email,
+                     guestOpenedAt=shift.guest_opened_at.isoformat() if shift.guest_opened_at else '',
+                     guestSeenAt=shift.guest_seen_at.isoformat() if shift.guest_seen_at else '')
     if include_roster:
         value['roster'] = roster
     return value
@@ -237,6 +249,18 @@ def configure(shift, payload):
         raise ValueError('Giờ kết thúc phải sau giờ bắt đầu.')
     if not all((shift.label, shift.room_number, shift.round_name, shift.occurrence_id)):
         raise ValueError('Cần tên vòng, mã ca, tên ca và phòng thi.')
+    if 'guestName' in payload or 'guestEmail' in payload:
+        name = ' '.join(str(payload.get('guestName', shift.guest_name) or '').split())[:255]
+        email = str(payload.get('guestEmail', shift.guest_email) or '').strip().lower()
+        if email and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+            raise ValueError('Email giám thị ngoài không hợp lệ.')
+        if email and not name:
+            raise ValueError('Cần họ tên giám thị ngoài.')
+        if email != shift.guest_email:
+            shift.guest_opened_at = shift.guest_seen_at = None
+        shift.guest_name, shift.guest_email = name, email
+        if email and not shift.guest_token:
+            shift.guest_token = new_guest_token()
     if 'enabled' in payload:
         if not isinstance(payload['enabled'], bool):
             raise ValueError('Trạng thái ca thi không hợp lệ.')
@@ -292,7 +316,8 @@ def shifts(request):
                       'candidateCount': room.candidate_count}
                      for room in ExamRoom.objects.filter(session_id=session_id).annotate(candidate_count=Count('assignments'))]
     return Response({'serverNow': timezone.now().isoformat(), 'canManage': can_manage(request),
-                     'staff': staff, 'rooms': rooms, 'shifts': [serialize_shift(s, True) for s in qs]})
+                     'staff': staff, 'rooms': rooms,
+                     'shifts': [serialize_shift(s, True, include_guest=can_manage(request)) for s in qs]})
 
 
 @api_view(['GET', 'PATCH'])
@@ -300,7 +325,7 @@ def shifts(request):
 def shift_detail(request, pk):
     shift = get_object_or_404(visible_shifts(request), pk=pk)
     if request.method == 'GET':
-        return Response(serialize_shift(shift, True))
+        return Response(serialize_shift(shift, True, include_guest=can_manage(request)))
     if not can_manage(request):
         return Response({'error': 'Chỉ quản lý khảo thí được sửa lịch và phân công.'}, status=403)
     before_revision = shift.revision
@@ -316,7 +341,8 @@ def shift_detail(request, pk):
             changed = ExamInvigilationShift.objects.filter(pk=pk, revision=before_revision).update(
                 **{field: getattr(shift, field) for field in (
                     'label', 'room_number', 'round_name', 'occurrence_id', 'room_link',
-                    'sheet_url', 'sheet_tab', 'starts_at', 'ends_at', 'enabled', 'revision', 'exam_room')},
+                    'sheet_url', 'sheet_tab', 'starts_at', 'ends_at', 'enabled', 'revision', 'exam_room',
+                    'guest_name', 'guest_email', 'guest_token', 'guest_opened_at', 'guest_seen_at')},
                 updated_at=timezone.now())
             if not changed:
                 return Response({'error': 'Phòng thi vừa thay đổi. Hãy tải lại trước khi lưu.'}, status=409)
@@ -327,7 +353,7 @@ def shift_detail(request, pk):
             transaction.on_commit(lambda session_id=shift.session_id: refresh_room_sheet_safely(session_id))
     except ValueError as exc:
         return Response({'error': str(exc)}, status=400)
-    return Response(serialize_shift(shift, True))
+    return Response(serialize_shift(shift, True, include_guest=can_manage(request)))
 
 
 def sheet_service():
@@ -415,21 +441,18 @@ def roster_changes(data):
     return changes
 
 
-@api_view(['PATCH'])
-@permission_classes([IsWorkspaceAuthenticated])
-def roster_update(request, pk, code):
-    """Save one candidate and answer immediately; Sheet writes run in the background.
+def apply_roster_change(shift, code, data, actor=None, actor_label=''):
+    """Save one candidate of a duty; shared by staff and guest invigilators.
 
     Each candidate is versioned on its own, so invigilators of different rooms
     (or two in one room) never wait for or block each other.
     """
-    shift = get_object_or_404(visible_shifts(request), pk=pk)
     try:
-        changes = roster_changes(request.data)
+        changes = roster_changes({key: value for key, value in data.items() if key != 'guestName'})
     except ValueError as exc:
         return Response({'error': str(exc)}, status=400)
-    base = request.data.get('base') if isinstance(request.data.get('base'), dict) else None
-    if not request.data.get('revision') and base is None:
+    base = data.get('base') if isinstance(data.get('base'), dict) else None
+    if not data.get('revision') and base is None:
         return Response({'error': 'Thiếu phiên bản hồ sơ. Hãy tải lại.'}, status=409)
     stale = Response({'error': 'Hồ sơ vừa được người khác cập nhật. Hãy tải lại trước khi lưu.'}, status=409)
 
@@ -441,7 +464,7 @@ def roster_update(request, pk, code):
             if base is not None:
                 conflicts = field_conflicts(result, shift, code, changes, base)
             else:  # an older open page still sends the whole-row revision
-                conflicts = [] if request.data['revision'] == result.updated_at.isoformat() else list(changes)
+                conflicts = [] if data['revision'] == result.updated_at.isoformat() else list(changes)
             if conflicts:
                 return Response({
                     'error': 'Giám thị khác vừa cập nhật thí sinh này. Đã hiện giá trị mới, hãy kiểm tra rồi bấm lại nếu cần.',
@@ -453,12 +476,14 @@ def roster_update(request, pk, code):
             # Score and note still reach the session tab; attendance alone goes to the room Sheet only.
             result._room_sheet_only = set(changes) <= {'attendance'}
             result.save(update_fields=[*changes, 'updated_at'])
-            audit = ExamInvigilationAudit.objects.create(shift=shift, candidate_code=code, actor=request.user,
-                                                         before=before, after=live_entry(result))
+            audit = ExamInvigilationAudit.objects.create(shift=shift, candidate_code=code, actor=actor,
+                                                         actor_label=actor_label, before=before, after=live_entry(result))
             if set(changes) & {'attendance', 'note'}:
                 _queue_room_sheet(shift.session_id)
         return Response({'entry': live_entry(result, audit), 'pendingSheet': False})
 
+    if actor is None:
+        return Response({'error': 'Phòng thi này chưa gắn với phân phòng của Khảo thí.'}, status=400)
     # Demo rooms keep a stored roster. Re-read and merge so edits to other
     # candidates of the same room never turn into a conflict.
     for _ in range(5):
@@ -466,20 +491,54 @@ def roster_update(request, pk, code):
         entry = next((e for e in shift.roster if e.get('code') == code), None)
         if not entry:
             return Response({'error': 'Thí sinh không thuộc phòng thi này.'}, status=404)
-        if request.data['revision'] != entry.get('revision'):
+        if data['revision'] != entry.get('revision'):
             return stale
-        after = {**entry, **changes, 'revision': str(uuid.uuid4()), 'updatedBy': request.user.email,
+        after = {**entry, **changes, 'revision': str(uuid.uuid4()), 'updatedBy': actor.email,
                  'updatedAt': timezone.now().isoformat()}
         roster = [after if e.get('code') == code else e for e in shift.roster]
         pending = {**shift.pending_sheet_rows, code: after['revision']} if shift.sheet_url else dict(shift.pending_sheet_rows)
         with transaction.atomic():
-            changed = ExamInvigilationShift.objects.filter(pk=pk, revision=shift.revision).update(
+            changed = ExamInvigilationShift.objects.filter(pk=shift.pk, revision=shift.revision).update(
                 roster=roster, pending_sheet_rows=pending, revision=uuid.uuid4(), updated_at=timezone.now())
             if not changed:
                 continue
-            ExamInvigilationAudit.objects.create(shift=shift, candidate_code=code, actor=request.user,
+            ExamInvigilationAudit.objects.create(shift=shift, candidate_code=code, actor=actor,
                                                 before=entry, after=after)
             if code in pending:
                 transaction.on_commit(launch_candidate_sheet_worker)
         return Response({'entry': after, 'pendingSheet': code in pending})
     return Response({'error': 'Phòng thi đang được cập nhật liên tục. Hãy thử lại.'}, status=409)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsWorkspaceAuthenticated])
+def roster_update(request, pk, code):
+    """Save one candidate and answer immediately; Sheet writes run in the background."""
+    shift = get_object_or_404(visible_shifts(request), pk=pk)
+    return apply_roster_change(shift, code, request.data, actor=request.user)
+
+
+def new_guest_token():
+    return secrets.token_urlsafe(24)
+
+
+@api_view(['POST'])
+@permission_classes([IsWorkspaceAuthenticated])
+def guest_link(request, pk):
+    """Create, rotate or revoke the secret link for invigilators without an account."""
+    if not can_manage(request):
+        return Response({'error': 'Chỉ quản lý khảo thí được tạo link cho giám thị.'}, status=403)
+    shift = get_object_or_404(ExamInvigilationShift, pk=pk)
+    action = str(request.data.get('action') or 'create')
+    if action not in ('create', 'rotate', 'revoke'):
+        return Response({'error': 'Thao tác không hợp lệ.'}, status=400)
+    if action != 'revoke' and not shift.exam_room_id:
+        return Response({'error': 'Chỉ tạo link cho ca đã gắn phòng thi trong Khảo thí.'}, status=400)
+    if action == 'revoke':
+        shift.guest_token = ''
+    elif action == 'rotate' or not shift.guest_token:
+        shift.guest_token = new_guest_token()
+    else:
+        return Response({'guestUrl': guest_url(shift)})
+    ExamInvigilationShift.objects.filter(pk=shift.pk).update(guest_token=shift.guest_token, guest_opened_at=None, guest_seen_at=None)
+    return Response({'guestUrl': guest_url(shift)})

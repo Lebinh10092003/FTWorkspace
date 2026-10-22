@@ -87,10 +87,14 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
   const [items, setItems] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
+  const [error, setError] = useState('');
   const [markingAll, setMarkingAll] = useState(false);
+  const [markingIds, setMarkingIds] = useState<Set<number>>(() => new Set());
+  // Unread notices older than the 100 listed ones still count in the badge.
+  const [unlistedUnread, setUnlistedUnread] = useState(0);
   const token = suppliedToken || sessionToken();
 
-  const unreadCount = useMemo(() => items.filter(item => !item.read).length, [items]);
+  const unreadCount = useMemo(() => items.filter(item => !item.read).length + unlistedUnread, [items, unlistedUnread]);
   const readCount = useMemo(() => items.filter(item => item.read).length, [items]);
 
   const visibleItems = useMemo(() => {
@@ -114,9 +118,8 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
       const storedReads = getStoredReadIds();
       const storedContentKeys = getStoredReadContentKeys();
 
-      // Deduplicate by ID and content signature (category + title + message)
+      // Deduplicate by ID and apply stored read markers
       const seenIds = new Set<number>();
-      const seenContent = new Set<string>();
       const deduped: Notification[] = [];
 
       for (const item of rawList) {
@@ -124,9 +127,6 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
         seenIds.add(item.id);
 
         const contentSignature = `${item.category || ''}:${(item.title || '').trim()}:${(item.message || '').trim()}`;
-        if (seenContent.has(contentSignature)) continue;
-        seenContent.add(contentSignature);
-
         const isRead = Boolean(item.read || storedReads.has(item.id) || storedContentKeys.has(contentSignature));
         deduped.push({
           ...item,
@@ -135,6 +135,8 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
       }
 
       setItems(deduped);
+      const unreadInList = deduped.filter(item => !item.read).length;
+      setUnlistedUnread(Math.max(0, Number(data.unreadCount || 0) - unreadInList));
     } catch {}
   }, [token]);
 
@@ -161,17 +163,19 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
   const markAll = async () => {
     if (!token || unreadCount === 0 || markingAll) return;
     setMarkingAll(true);
+    setError('');
     const allIds = items.map(item => item.id);
     const allContentKeys = items.map(item => `${item.category || ''}:${(item.title || '').trim()}:${(item.message || '').trim()}`);
 
     // 1. Instantly mark read locally & save to localStorage so reloads/navigation never revert
     addStoredReadRecords(allIds, allContentKeys);
     setItems(current => current.map(item => ({ ...item, read: true })));
+    setUnlistedUnread(0);
     window.dispatchEvent(new CustomEvent('ft:notifications_read', { detail: { all: true } }));
 
     // 2. Persist to backend
     try {
-      await fetch('/api/notifications/read-all', {
+      const response = await fetch('/api/notifications/read-all', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -179,13 +183,18 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
         },
         body: JSON.stringify({ ids: allIds }),
       });
-    } catch {} finally {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch {
+      setError('Chưa thể lưu trạng thái đã đọc. Vui lòng thử lại.');
+    } finally {
       setMarkingAll(false);
     }
   };
 
   const openItem = async (item: Notification) => {
+    if (markingIds.has(item.id)) return;
     const contentKey = `${item.category || ''}:${(item.title || '').trim()}:${(item.message || '').trim()}`;
+
     // 1. Mark item as read immediately in storage and state
     addStoredReadRecords([item.id], [contentKey]);
     setItems(current => current.map(row => (row.id === item.id || (row.category === item.category && row.title === item.title && row.message === item.message)) ? { ...row, read: true } : row));
@@ -193,12 +202,21 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
 
     // 2. Synchronize with backend
     if (!item.read && token) {
+      setMarkingIds(current => new Set(current).add(item.id));
       try {
         await fetch(`/api/notifications/${item.id}/read`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
         });
-      } catch {}
+      } catch {
+        setError('Chưa thể đánh dấu thông báo là đã đọc. Vui lòng nhấn lại.');
+      } finally {
+        setMarkingIds(current => {
+          const next = new Set(current);
+          next.delete(item.id);
+          return next;
+        });
+      }
     }
 
     // 3. Navigate if actionUrl is present
@@ -280,6 +298,12 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
             </button>
           </div>
 
+          {error && (
+            <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+              {error}
+            </p>
+          )}
+
           {/* Filter Pills */}
           <div className="mt-4 flex items-center gap-1.5">
             <button
@@ -350,8 +374,9 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
                 <button
                   key={item.id}
                   type="button"
+                  disabled={markingIds.has(item.id)}
                   onClick={() => void openItem(item)}
-                  className={`group relative w-full rounded-xl border p-3.5 text-left transition-all duration-150 cursor-pointer ${getSeverityStyle(item.severity, item.read)}`}
+                  className={`group relative w-full rounded-xl border p-3.5 text-left transition-all duration-150 cursor-pointer disabled:cursor-wait disabled:opacity-70 ${getSeverityStyle(item.severity, item.read)}`}
                 >
                   {!item.read && (
                     <span className="absolute right-3 top-3.5 h-2 w-2 rounded-full bg-blue-600 ring-4 ring-blue-100 animate-pulse" aria-label="Chưa đọc" />
@@ -425,4 +450,3 @@ export default function WorkspaceNotifications({ token: suppliedToken }: { token
     </>
   );
 }
-

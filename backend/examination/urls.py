@@ -1,7 +1,7 @@
 from django.urls import path
 from . import views, paper_views, blueprint_views, landing_views, landing_site_views, sheet_webhook, billing_views, form_registration, public_registration
 from .registration_page import registration_page
-from . import invigilation
+from . import invigilation, invigilation_guest, invigilation_mail, rooms_from_links
 from .school_import import school_import
 
 urlpatterns = [
@@ -9,6 +9,12 @@ urlpatterns = [
     path('examination/invigilation/shifts', invigilation.shifts),
     path('examination/invigilation/shifts/<uuid:pk>', invigilation.shift_detail),
     path('examination/invigilation/shifts/<uuid:pk>/roster/<str:code>', invigilation.roster_update),
+    path('examination/invigilation/shifts/<uuid:pk>/guest-link', invigilation.guest_link),
+    path('examination/invigilation/notify', invigilation_mail.notify_invigilators),
+    path('examination/invigilation/room-sheet', invigilation_mail.room_sheet),
+    path('public/invigilation/<str:token>', invigilation_guest.guest_shift),
+    path('public/invigilation/<str:token>/roster/<str:code>', invigilation_guest.guest_roster_update),
+    path('examination/sessions/<str:session_id>/rooms-from-links', rooms_from_links.rooms_from_links),
     path('examination/registration-page', registration_page),
     path('public/examination/registration', public_registration.public_registration),
     path('examination/form-registration/workspace-pending', public_registration.workspace_pending),

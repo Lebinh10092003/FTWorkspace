@@ -18,10 +18,12 @@ on:
           - audit-candidate-queue
           - audit-training-calendars
           - restore-detached-work-items
+          - clear-schedule-cell-format
+          - recover-schedule-edits
         required: true
         default: sync-work-schedule
       only:
-        description: 'rename-sco: chỉ đổi các mã này, cách nhau bằng dấu phẩy. Bỏ trống là tất cả.'
+        description: 'rename-sco: chỉ đổi các mã này, cách nhau bằng dấu phẩy. Bỏ trống là tất cả. clear-schedule-cell-format: email nhân viên.'
         required: false
         default: ''
       backup:
@@ -41,7 +43,7 @@ on:
         required: false
         default: '1'
       date:
-        description: 'set-round-date: ngày mới, YYYY-MM-DD'
+        description: 'set-round-date: ngày mới, YYYY-MM-DD. clear-schedule-cell-format: ngày của dòng Lịch công tác.'
         required: false
         default: ''
       apply:
@@ -112,6 +114,12 @@ jobs:
             restore-session-sheet-history)
               [[ "$ONLY" =~ ^[a-zA-Z0-9_-]+(,[a-zA-Z0-9_-]+)*$ ]]
               CMD="restore_session_sheet_history --sessions '$ONLY' $FLAG" ;;
+            clear-schedule-cell-format)
+              [[ "$ONLY" =~ ^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$ ]]
+              [[ "$DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+              CMD="clear_schedule_cell_format --email '$ONLY' --date '$DATE' $FLAG" ;;
+            recover-schedule-edits)
+              CMD="recover_lost_schedule_edits $FLAG" ;;
             sync-work-schedule)
               CMD="sync_examination_work_schedule $FLAG" ;;
             rename-sco-competitions)

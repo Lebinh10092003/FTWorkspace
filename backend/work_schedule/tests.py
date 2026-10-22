@@ -470,7 +470,9 @@ class WorkScheduleSheetParserTests(TestCase):
             [True, False],
         )
 
-    def test_cell_level_emphasis_does_not_leak_to_unanchored_tasks(self):
+    def test_cell_level_emphasis_is_read_as_displayed_on_every_task(self):
+        # The web no longer formats the Sheet, so Ctrl+B on the whole cell is
+        # the editor's choice and every task in it is shown bold.
         content = "1. 17h00: Nhiệm vụ có giờ\n2. Nhiệm vụ thường\n3. Nhiệm vụ khác"
         capture = _task_format_runs_from_cell({
             "formattedValue": content,
@@ -478,10 +480,47 @@ class WorkScheduleSheetParserTests(TestCase):
             "textFormatRuns": [],
         })
 
-        self.assertEqual(capture, [None, None, None])
-        self.assertTrue(capture.cell_style_ambiguous)
+        self.assertEqual(capture, [[{"startIndex": 0, "bold": True, "italic": True}]] * 3)
+        self.assertFalse(capture.cell_style_ambiguous)
 
-    def test_ambiguous_cell_style_is_repaired_by_time_rule_without_recreating_bold_leak(self):
+    def test_runs_without_bold_keep_the_cell_style(self):
+        content = "1. Việc một\n2. Việc hai"
+        capture = _task_format_runs_from_cell({
+            "formattedValue": content,
+            "userEnteredFormat": {"textFormat": {"bold": True}},
+            "textFormatRuns": [
+                {"startIndex": 0, "format": {}},
+                {"startIndex": len("1. Việc một\n"), "format": {"bold": False}},
+            ],
+        })
+
+        self.assertEqual(capture, [[{"startIndex": 0, "bold": True, "italic": False}], []])
+
+    def test_unbolding_the_whole_cell_on_the_sheet_unbolds_the_web_tasks(self):
+        # 20/10/2026, chị Liên: bỏ đậm cả ô trên Sheet mà web vẫn giữ đậm.
+        from .sheet_sync import _ingest_row
+
+        profile = UserProfile.objects.create(
+            email="cell-unbold@example.com", name="Cell Unbold", role="EMPLOYEE", access_modules=[]
+        )
+        item = WorkItem.objects.create(
+            creator=profile, executor=profile, title="Gửi quy chế vận hành",
+            work_date=date(2026, 10, 20), daily_order=1, priority="high", sheet_emphasis=True,
+            title_format_runs=[{"startIndex": 0, "bold": True, "italic": True}],
+            source_sheet_row=5001,
+        )
+        row = ["Ba", "20/10/2026", "43", "Cell Unbold", "1. Gửi quy chế vận hành", "", "", "", "REC-CELL-UNBOLD", "", ""]
+        capture = _task_format_runs_from_cell({
+            "formattedValue": row[4],
+            "userEnteredFormat": {"textFormat": {"bold": False, "italic": False}},
+        })
+
+        _ingest_row(5001, row, date(2026, 10, 20), task_format_runs=capture)
+
+        item.refresh_from_db()
+        self.assertEqual((item.priority, item.sheet_emphasis, item.title_format_runs), ("medium", False, []))
+
+    def test_whole_cell_bold_on_the_sheet_is_taken_by_every_task(self):
         from .sheet_sync import _ingest_row
 
         profile = UserProfile.objects.create(
@@ -526,8 +565,9 @@ class WorkScheduleSheetParserTests(TestCase):
 
         first.refresh_from_db()
         second.refresh_from_db()
-        self.assertEqual((first.priority, first.sheet_emphasis, first.title_format_runs), ("high", None, None))
-        self.assertEqual((second.priority, second.sheet_emphasis, second.title_format_runs), ("medium", None, None))
+        bold = [{"startIndex": 0, "bold": True, "italic": True}]
+        self.assertEqual((first.priority, first.sheet_emphasis, first.title_format_runs), ("high", True, bold))
+        self.assertEqual((second.priority, second.sheet_emphasis, second.title_format_runs), ("high", True, bold))
 
     def test_sheet_rich_text_captures_italic_and_title_local_runs(self):
         content = "1. Nhiệm vụ đậm\n2. Nhiệm vụ nghiêng\n3. Nhiệm vụ thường"
@@ -2509,7 +2549,7 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
             daily_order=order, status=status, source_sheet_row=row, source_task_index=order,
         )
 
-    def push(self, rows_by_number, groups, columns=None, attendance_only_groups=None):
+    def push(self, rows_by_number, groups, columns=None, attendance_only_groups=None, resolve_conflict_groups=None):
         from .sheet_sync import push_groups_to_sheet
 
         first = min(rows_by_number)
@@ -2528,7 +2568,10 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
              mock.patch("work_schedule.sheet_sync._formula_content_rows", return_value=set()), \
              mock.patch("work_schedule.sheet_sync._sheet_properties", return_value={"sheetId": 1}), \
              mock.patch("work_schedule.sheet_sync.retained_from", return_value=date(2026, 1, 1)):
-            result = push_groups_to_sheet(service, groups, attendance_only_groups=attendance_only_groups)
+            result = push_groups_to_sheet(
+                service, groups, attendance_only_groups=attendance_only_groups,
+                resolve_conflict_groups=resolve_conflict_groups,
+            )
         writes = {}
         for call in service.spreadsheets.return_value.values.return_value.batchUpdate.call_args_list:
             body = call.kwargs["body"]
@@ -2580,6 +2623,122 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
 
         self.assertEqual(len(result["conflicts"]), 1)
         self.assertNotIn(f"'Lịch công tác'!E{self.OLD_ROW}", writes)
+
+    def test_retried_conflict_imports_the_sheet_edit_whose_webhook_was_lost(self):
+        # 20-21/10/2026: webhook lỗi 403/429 nên sửa trên Sheet không về web,
+        # rồi mọi thay đổi trên web của người–ngày đó bị bỏ qua là xung đột.
+        kept = self.synced_item("Việc giữ lại", self.OLD_DATE, self.OLD_ROW, 1)
+        removed = self.synced_item("Việc đã xóa trên Sheet", self.OLD_DATE, self.OLD_ROW, 2)
+        row = self.sheet_row(self.OLD_DATE, [kept, removed], "")
+        row[10] = self.live_hash(row)
+        WorkItem.objects.filter(pk__in=[kept.pk, removed.pk]).update(source_sync_hash=row[10])
+        kept_uid = str(WorkItem.objects.get(pk=kept.pk).sync_uid)
+        # The lost Sheet edit: line 2 deleted, a new line typed.
+        row[4] = "1. Việc giữ lại\n2. Việc gõ trên Sheet"
+        row[5] = "1. Hoàn thành"
+        row[9] = kept_uid
+        moved_in = WorkItem.objects.create(
+            creator=self.executor, executor=self.executor, title="Việc vừa chuyển sang",
+            work_date=self.OLD_DATE, daily_order=1, source_sheet_row=None,
+        )
+        group = (self.EMPLOYEE_EMAIL, self.OLD_DATE)
+
+        result, writes = self.push({self.OLD_ROW: row}, {group}, resolve_conflict_groups={group})
+
+        self.assertEqual(result["conflicts"], [])
+        titles = list(
+            WorkItem.objects.filter(executor=self.executor, work_date=self.OLD_DATE)
+            .order_by("daily_order").values_list("title", flat=True)
+        )
+        self.assertEqual(titles, ["Việc giữ lại", "Việc gõ trên Sheet", "Việc vừa chuyển sang"])
+        self.assertFalse(WorkItem.objects.filter(pk=removed.pk).exists())
+        self.assertTrue(WorkItem.objects.filter(pk=moved_in.pk).exists())
+        self.assertEqual(WorkItem.objects.get(pk=kept.pk).status, WorkItem.STATUS_COMPLETED)
+        self.assertEqual(
+            writes[f"'Lịch công tác'!E{self.OLD_ROW}"][1],
+            "1. Việc giữ lại\n2. Việc gõ trên Sheet\n3. Việc vừa chuyển sang",
+        )
+
+    def test_recovered_sheet_row_is_not_rewritten_when_the_web_has_nothing_to_add(self):
+        item = self.synced_item("Việc cũ", self.OLD_DATE, self.OLD_ROW, 1)
+        row = self.sheet_row(self.OLD_DATE, [item], "")
+        row[10] = self.live_hash(row)
+        WorkItem.objects.filter(pk=item.pk).update(source_sync_hash=row[10])
+        row[4] = "1. Việc cũ\n2. Việc gõ trên Sheet"
+        group = (self.EMPLOYEE_EMAIL, self.OLD_DATE)
+
+        result, writes = self.push({self.OLD_ROW: row}, {group}, resolve_conflict_groups={group})
+
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(
+            WorkItem.objects.filter(executor=self.executor, work_date=self.OLD_DATE).count(), 2
+        )
+        self.assertNotIn(f"'Lịch công tác'!E{self.OLD_ROW}", writes)
+        self.assertIn(f"'Lịch công tác'!K{self.OLD_ROW}", writes)
+        row[9] = writes[f"'Lịch công tác'!J{self.OLD_ROW}"][1]
+        row[10] = writes[f"'Lịch công tác'!K{self.OLD_ROW}"][1]
+        # The next Web change of this day is no longer a conflict.
+        WorkItem.objects.filter(executor=self.executor, work_date=self.OLD_DATE, daily_order=1).update(
+            status=WorkItem.STATUS_COMPLETED
+        )
+        result, writes = self.push({self.OLD_ROW: row}, {group})
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(writes[f"'Lịch công tác'!F{self.OLD_ROW}"][1], "1. Hoàn thành")
+
+    def test_recovery_drops_stale_lines_of_tasks_moved_to_another_synced_day(self):
+        # Chị Hà 20/10/2026: việc đã chuyển sang 21/10 và đã lên dòng 21/10,
+        # nhưng dòng 20/10 vẫn còn mã ẩn của chúng nên cả dòng bị bỏ qua.
+        stays = self.synced_item("Việc ở lại", self.OLD_DATE, self.OLD_ROW, 1)
+        moved = self.synced_item("Việc đã chuyển", self.OLD_DATE, self.OLD_ROW, 2)
+        old_row = self.sheet_row(self.OLD_DATE, [stays, moved], "")
+        old_row[5] = "1. Đang thực hiện"
+        WorkItem.objects.filter(pk=moved.pk).update(
+            work_date=self.NEW_DATE, source_sheet_row=self.NEW_ROW, daily_order=1
+        )
+        group = (self.EMPLOYEE_EMAIL, self.OLD_DATE)
+
+        result, writes = self.push({self.OLD_ROW: old_row}, {group}, resolve_conflict_groups={group})
+
+        self.assertEqual(result["conflicts"], [])
+        moved.refresh_from_db()
+        self.assertEqual(moved.work_date, self.NEW_DATE)
+        self.assertEqual(
+            list(WorkItem.objects.filter(executor=self.executor, work_date=self.OLD_DATE).values_list("title", flat=True)),
+            ["Việc ở lại"],
+        )
+        self.assertEqual(writes[f"'Lịch công tác'!E{self.OLD_ROW}"][1], "1. Việc ở lại")
+
+    def test_recovery_merges_a_copied_line_that_carries_the_id_of_a_deleted_task(self):
+        import uuid
+
+        item = self.synced_item("Nhập thu chi hàng ngày", self.OLD_DATE, self.OLD_ROW, 1)
+        row = self.sheet_row(self.OLD_DATE, [item], "")
+        row[4] = "1. Nhập thu chi hàng ngày\n2. Nhập thu chi hàng ngày\n3. In báo cáo tháng 9"
+        row[9] = f"{item.sync_uid}\n{uuid.uuid4()}\n"
+        group = (self.EMPLOYEE_EMAIL, self.OLD_DATE)
+
+        result, _ = self.push({self.OLD_ROW: row}, {group}, resolve_conflict_groups={group})
+
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(
+            list(WorkItem.objects.filter(executor=self.executor, work_date=self.OLD_DATE)
+                 .order_by("daily_order").values_list("title", flat=True)),
+            ["Nhập thu chi hàng ngày", "In báo cáo tháng 9"],
+        )
+
+    def test_pending_conflicts_are_retried_with_row_recovery(self):
+        from .sheet_sync import _push_pending_changes
+
+        fresh = WorkScheduleSheetChange.objects.create(executor_email=self.EMPLOYEE_EMAIL, work_date=self.NEW_DATE)
+        retried = WorkScheduleSheetChange.objects.create(
+            executor_email=self.EMPLOYEE_EMAIL, work_date=self.OLD_DATE,
+            status=WorkScheduleSheetChange.STATUS_CONFLICT, attempts=1,
+        )
+        with mock.patch("work_schedule.sheet_sync.ensure_sync_columns"), \
+             mock.patch("work_schedule.sheet_sync.push_groups_to_sheet", return_value={"conflicts": []}) as pushed, \
+             mock.patch("work_schedule.sheet_sync.push_attendance_safely", return_value={}):
+            _push_pending_changes(mock.MagicMock(), [fresh, retried], False)
+        self.assertEqual(pushed.call_args.kwargs["resolve_conflict_groups"], {(self.EMPLOYEE_EMAIL, self.OLD_DATE)})
 
     def test_batch_move_detaches_tasks_until_they_are_written_to_the_new_row(self):
         user = get_user_model().objects.create_user(
@@ -2761,8 +2920,24 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
         for column in "EFGJK":
             self.assertNotIn(f"'Lịch công tác'!{column}{self.NEW_ROW}", writes)
 
+        WorkItem.objects.filter(pk=item.pk).update(title="Việc hôm nay (đã sửa)")
         _, writes = self.push({self.NEW_ROW: row}, {group}, columns)
         self.assertIn(f"'Lịch công tác'!E{self.NEW_ROW}", writes)
+
+    def test_push_leaves_an_unchanged_content_cell_alone_to_keep_its_sheet_formatting(self):
+        # Ghi lại một giá trị xóa định dạng chữ trong ô: 20/10/2026 chị Liên bỏ
+        # đậm trên Sheet, một lần lưu đánh giá trên web làm ô đậm lại.
+        item = self.synced_item("Việc hôm nay", self.NEW_DATE, self.NEW_ROW, 1)
+        row = self.sheet_row(self.NEW_DATE, [item], "")
+        row[10] = self.live_hash(row)
+        WorkItem.objects.filter(pk=item.pk).update(source_sync_hash=row[10])
+        WorkItem.objects.filter(pk=item.pk).update(status=WorkItem.STATUS_COMPLETED)
+
+        result, writes = self.push({self.NEW_ROW: row}, {(self.EMPLOYEE_EMAIL, self.NEW_DATE)})
+
+        self.assertEqual(result["conflicts"], [])
+        self.assertNotIn(f"'Lịch công tác'!E{self.NEW_ROW}", writes)
+        self.assertEqual(writes[f"'Lịch công tác'!F{self.NEW_ROW}"][1], "Hoàn thành")
 
     def test_attendance_only_flag_is_dropped_when_the_same_day_also_has_a_content_change(self):
         from .sheet_sync import _push_pending_changes
@@ -2782,7 +2957,7 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
         WorkScheduleSheetChange.objects.create(executor_email=self.EMPLOYEE_EMAIL, work_date=self.OLD_DATE)
         calls = []
 
-        def push(service, groups, force=False, attendance_only_groups=None):
+        def push(service, groups, force=False, attendance_only_groups=None, resolve_conflict_groups=None):
             calls.append(set(groups))
             if len(calls) == 1:
                 WorkScheduleSheetChange.objects.create(executor_email=self.EMPLOYEE_EMAIL, work_date=self.NEW_DATE)
@@ -2817,6 +2992,41 @@ class WorkScheduleMoveToTodaySyncTests(TestCase):
         self.assertEqual(ensure_sync_columns(service), first)
         self.assertEqual(spreadsheets.batchUpdate.call_count, writes)
         self.assertEqual(spreadsheets.get.call_count + spreadsheets.values.return_value.get.call_count, reads)
+
+    def test_sync_columns_are_hidden_rarely_and_a_refusal_does_not_stop_the_sync(self):
+        # 19-20/10/2026: Google trả 403 cho lệnh ẩn cột, mọi webhook hỏng theo.
+        # 21/10/2026: mỗi webhook đọc lại thông tin tab, vượt hạn mức đọc (429).
+        from authentication.models import SystemConfig
+        from .sheet_sync import HIDDEN_COLUMNS_CONFIG_KEY, ensure_sync_columns
+
+        SystemConfig.objects.filter(key=HIDDEN_COLUMNS_CONFIG_KEY).delete()
+
+        def service_mock(hide_error=None):
+            service = mock.MagicMock()
+            spreadsheets = service.spreadsheets.return_value
+            spreadsheets.get.return_value.execute.return_value = {
+                "sheets": [{"properties": {"title": "Lịch công tác", "sheetId": 7, "gridProperties": {"columnCount": 20}}}],
+            }
+            spreadsheets.values.return_value.get.return_value.execute.return_value = {"values": [[
+                "Thứ", "Ngày", "Tuần", "Chủ trì", "Nội dung công việc", "Tự đánh giá", "LĐ đánh giá",
+                "EmployeeID", "WEB_RECORD_ID", "WEB_TASK_IDS", "WEB_SYNC_HASH",
+            ]]}
+            if hide_error:
+                spreadsheets.batchUpdate.return_value.execute.side_effect = hide_error
+            return service, spreadsheets
+
+        refused, spreadsheets = service_mock(hide_error=RuntimeError("403 The caller does not have permission"))
+        self.assertEqual(ensure_sync_columns(refused)["sync_hash"], 10)
+        self.assertEqual(spreadsheets.batchUpdate.call_count, 1)
+
+        first, spreadsheets = service_mock()
+        ensure_sync_columns(first)
+        self.assertEqual(spreadsheets.batchUpdate.call_count, 1)
+
+        later, spreadsheets = service_mock()
+        self.assertEqual(ensure_sync_columns(later)["task_ids"], 9)
+        self.assertEqual(spreadsheets.batchUpdate.call_count, 0)
+        self.assertEqual(spreadsheets.get.call_count, 0)
 
     def test_conflicts_are_retried_instead_of_being_dropped_forever(self):
         from .sheet_sync import sync_to_sheet

@@ -296,6 +296,18 @@ class ExamInvigilationShift(models.Model):
     ends_at = models.DateTimeField()
     invigilators = models.ManyToManyField('authentication.UserProfile', related_name='exam_duties', blank=True)
     invigilator_label = models.CharField(max_length=255, blank=True, default='')
+    # Secret link for invigilators without a Workspace account (/coi-thi/<token>);
+    # blank means no guest access. Rotating or clearing it revokes the old link.
+    guest_token = models.CharField(max_length=64, blank=True, default='', db_index=True)
+    # The external invigilator this link belongs to. With an e-mail set, the link
+    # opens only after that address is typed, so a forwarded link is useless.
+    guest_name = models.CharField(max_length=255, blank=True, default='')
+    guest_email = models.CharField(max_length=255, blank=True, default='')
+    # Last time the duty details were e-mailed to its invigilators.
+    notified_at = models.DateTimeField(null=True, blank=True)
+    # When the guest invigilator first and last opened their link (after the e-mail check).
+    guest_opened_at = models.DateTimeField(null=True, blank=True)
+    guest_seen_at = models.DateTimeField(null=True, blank=True)
     sheet_url = models.CharField(max_length=2000, blank=True, default='')
     sheet_tab = models.CharField(max_length=255, blank=True, default='')
     roster = models.JSONField(default=list, blank=True)
@@ -318,6 +330,8 @@ class ExamInvigilationAudit(models.Model):
     shift = models.ForeignKey(ExamInvigilationShift, on_delete=models.CASCADE, related_name='audit')
     candidate_code = models.CharField(max_length=255)
     actor = models.ForeignKey('authentication.UserProfile', null=True, on_delete=models.SET_NULL)
+    # Name typed by a guest invigilator (no account). Blank with no actor = the system.
+    actor_label = models.CharField(max_length=255, blank=True, default='')
     before = models.JSONField(default=dict)
     after = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)

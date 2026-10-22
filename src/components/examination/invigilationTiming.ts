@@ -38,3 +38,6 @@ export const dutyTime = (iso: string) => new Intl.DateTimeFormat('vi-VN', {
 export const dutyDate = (iso: string) => new Intl.DateTimeFormat('vi-VN', {
   timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric',
 }).format(new Date(iso));
+
+/** "7" reads as "Phòng 7"; a full name such as "[FIEO-2026] Exam Room 07" is shown as it is. */
+export const roomTitle = (roomNumber: string) => (/^\d+[A-Za-z]?$/.test(String(roomNumber || '').trim()) ? `Phòng ${roomNumber}` : roomNumber);
