@@ -1,21 +1,37 @@
-﻿from rest_framework import status
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from authentication.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import AllowAny, BasePermission
+import calendar
+import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import uuid
 import unicodedata
 from django.conf import settings
 from django.utils import timezone
 
+from django.db.models import Q
 from authentication.permissions import IsAuthenticated, IsManagerOrAdmin
 from authentication.models import UserProfile
 from examination.models import LogNote
 from .completion_service import complete_past_training_schedules
 from .product_service import sync_partner_product_subscriptions
-from .models import TrainingClass, TrainingCustomerMeeting, TrainingFinanceEntry, TrainingLead, TrainingMaterial, TrainingPartner, TrainingProduct, TrainingProductOpportunity, TrainingProductSubscription, TrainingSession, TrainingSurvey
-from .serializers import TrainingClassSerializer, TrainingCustomerMeetingSerializer, TrainingFinanceEntrySerializer, TrainingLeadSerializer, TrainingMaterialSerializer, TrainingPartnerSerializer, TrainingProductOpportunitySerializer, TrainingProductSerializer, TrainingProductSubscriptionSerializer, TrainingSessionSerializer, TrainingSurveySerializer
+from .models import (
+    TrainingClass, TrainingCustomerMeeting, TrainingFinanceEntry, TrainingLead,
+    TrainingMaterial, TrainingPartner, TrainingPartnerAiAccount, TrainingProduct,
+    TrainingProductOpportunity, TrainingProductSubscription, TrainingSession, TrainingSurvey,
+)
+from .serializers import (
+    TrainingClassSerializer, TrainingCustomerMeetingSerializer, TrainingFinanceEntrySerializer,
+    TrainingLeadSerializer, TrainingMaterialSerializer, TrainingPartnerSerializer,
+    TrainingPartnerAiAccountSerializer, TrainingProductOpportunitySerializer,
+    TrainingProductSerializer, TrainingProductSubscriptionSerializer,
+    TrainingSessionSerializer, TrainingSurveySerializer,
+)
 from .session_notifications import notify_training_session_created, notify_training_session_deleted, notify_training_session_updated
 
 
@@ -146,6 +162,17 @@ def _crud_collection(request, queryset, serializer_class, kind):
     _sync_session_to_work_schedule(item, kind, request)
     if isinstance(item, TrainingSession):
         notify_training_session_created(_snapshot(serializer_class, item, request))
+        try:
+            from .training_sheet_sync import export_training_sessions_to_sheet
+            export_training_sessions_to_sheet(force=True)
+        except Exception as exc:
+            logger.warning(f"Lỗi tự động xuất sheet sau khi tạo buổi tập huấn: {exc}")
+    elif kind == "đăng ký sản phẩm":
+        try:
+            from .subscription_sheet_sync import export_subscriptions_to_sheet
+            export_subscriptions_to_sheet(force=True)
+        except Exception as exc:
+            logger.warning(f"Lỗi tự động xuất sheet sau khi tạo đăng ký sản phẩm: {exc}")
     _audit_item(item, kind, f"Tạo {kind}", None, request, serializer_class)
     return Response(serializer_class(item, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
@@ -165,6 +192,18 @@ def _crud_detail(request, queryset, serializer_class, pk, kind):
         _audit_item(item, kind, f"Xóa {kind}", before, request, serializer_class)
         _delete_session_from_work_schedule(item, kind)
         item.delete()
+        if kind == "buổi tập huấn":
+            try:
+                from .training_sheet_sync import export_training_sessions_to_sheet
+                export_training_sessions_to_sheet(force=True)
+            except Exception as exc:
+                logger.warning(f"Lỗi xuất sheet sau khi xóa buổi tập huấn: {exc}")
+        elif kind == "đăng ký sản phẩm":
+            try:
+                from .subscription_sheet_sync import export_subscriptions_to_sheet
+                export_subscriptions_to_sheet(force=True)
+            except Exception as exc:
+                logger.warning(f"Lỗi xuất sheet sau khi xóa đăng ký sản phẩm: {exc}")
         return Response(status=status.HTTP_204_NO_CONTENT)
     before = _snapshot(serializer_class, item, request)
     serializer = serializer_class(item, data=request.data, partial=True, context={"request": request})
@@ -173,6 +212,17 @@ def _crud_detail(request, queryset, serializer_class, pk, kind):
     _sync_session_to_work_schedule(updated, kind, request)
     if isinstance(updated, TrainingSession):
         notify_training_session_updated(before, _snapshot(serializer_class, updated, request))
+        try:
+            from .training_sheet_sync import export_training_sessions_to_sheet
+            export_training_sessions_to_sheet(force=True)
+        except Exception as exc:
+            logger.warning(f"Lỗi xuất sheet sau khi cập nhật buổi tập huấn: {exc}")
+    elif kind == "đăng ký sản phẩm":
+        try:
+            from .subscription_sheet_sync import export_subscriptions_to_sheet
+            export_subscriptions_to_sheet(force=True)
+        except Exception as exc:
+            logger.warning(f"Lỗi xuất sheet sau khi cập nhật đăng ký sản phẩm: {exc}")
     _audit_item(updated, kind, f"Cập nhật {kind}", before, request, serializer_class)
     return Response(serializer_class(updated, context={"request": request}).data)
 
@@ -454,3 +504,211 @@ def training_surveys(request):
 @permission_classes([IsAuthenticatedOrReadOnly])
 def training_survey_detail(request, pk):
     return _crud_detail(request, TrainingSurvey.objects.select_related("session", "partner").all(), TrainingSurveySerializer, pk, "phiếu khảo sát")
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticatedOrReadOnly])
+def renew_product_subscription(request, pk):
+    """Gia hạn nhanh dịch vụ khách hàng: cộng thêm tháng hoặc đặt ngày hết hạn mới."""
+    sub = TrainingProductSubscription.objects.select_related("partner", "product").filter(pk=pk).first()
+    if not sub:
+        return Response({"error": "Không tìm thấy gói đăng ký dịch vụ."}, status=status.HTTP_404_NOT_FOUND)
+
+    months = request.data.get("months")
+    new_expiry_date = request.data.get("new_expiry_date")
+    notes = str(request.data.get("notes") or "").strip()
+
+    today = timezone.localdate()
+    target_date = None
+
+    if new_expiry_date:
+        try:
+            target_date = datetime.date.fromisoformat(str(new_expiry_date).strip())
+        except ValueError:
+            return Response({"error": "Định dạng ngày hết hạn mới không hợp lệ (YYYY-MM-DD)."}, status=status.HTTP_400_BAD_REQUEST)
+    elif months is not None:
+        try:
+            m = int(months)
+            if m <= 0:
+                raise ValueError()
+        except ValueError:
+            return Response({"error": "Số tháng gia hạn phải là số nguyên dương."}, status=status.HTTP_400_BAD_REQUEST)
+
+        base_date = sub.expires_at if (sub.expires_at and sub.expires_at > today) else today
+        month_idx = base_date.month - 1 + m
+        year = base_date.year + month_idx // 12
+        month = month_idx % 12 + 1
+        day = min(base_date.day, calendar.monthrange(year, month)[1])
+        target_date = datetime.date(year, month, day)
+    else:
+        return Response({"error": "Cần cung cấp số tháng gia hạn (months) hoặc ngày hết hạn mới (new_expiry_date)."}, status=status.HTTP_400_BAD_REQUEST)
+
+    sub.expires_at = target_date
+    sub.status = "active"
+    sub.expiry_notice_stage = 0  # Reset cờ cảnh báo
+
+    if notes:
+        log_entry = f"[{today.strftime('%d/%m/%Y')}] Gia hạn đến {target_date.strftime('%d/%m/%Y')}: {notes}"
+        sub.notes = f"{sub.notes}\n{log_entry}".strip() if sub.notes else log_entry
+
+    sub.save(update_fields=["expires_at", "status", "expiry_notice_stage", "notes", "updated_at"])
+
+    # Tự động trigger đồng bộ Sheet
+    try:
+        from .subscription_sheet_sync import export_subscriptions_to_sheet
+        export_subscriptions_to_sheet(force=True)
+    except Exception as exc:
+        logger.warning(f"Lỗi đồng bộ Sheet sau khi gia hạn: {exc}")
+
+    return Response(TrainingProductSubscriptionSerializer(sub).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticatedOrReadOnly])
+def subscription_sheet_sync_now(request):
+    """Kích hoạt đồng bộ thủ công 2 chiều giữa Web và Google Sheet."""
+    from .subscription_sheet_sync import sync_subscriptions_safely
+    try:
+        result = sync_subscriptions_safely(force=True)
+        return Response({"success": True, "data": result})
+    except Exception as exc:
+        return Response({"success": False, "error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def subscription_sheet_webhook(request):
+    """Điểm cuối nhận webhook từ Google Apps Script (onEdit / onChange)."""
+    from .subscription_sheet_sync import import_subscriptions_from_sheet
+    data = request.data if isinstance(request.data, dict) else {}
+    start_row = int(data.get("start_row") or 3)
+    end_row = int(data.get("end_row") or 0) or None
+
+    try:
+        res = import_subscriptions_from_sheet(start_row=start_row, end_row=end_row)
+        return Response({"success": True, "result": res})
+    except Exception as exc:
+        return Response({"success": False, "error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticatedOrReadOnly])
+def training_sessions_sheet_sync_now(request):
+    """Kích hoạt đồng bộ thủ công 2 chiều Tab Nhật ký tập huấn giữa Web và Google Sheet."""
+    from .training_sheet_sync import sync_training_sessions_safely
+    try:
+        result = sync_training_sessions_safely(force=True)
+        return Response({"success": True, "data": result})
+    except Exception as exc:
+        return Response({"success": False, "error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def training_sessions_sheet_webhook(request):
+    """Điểm cuối nhận webhook cho Tab Nhật ký tập huấn từ Apps Script."""
+    from .training_sheet_sync import import_training_sessions_from_sheet
+    data = request.data if isinstance(request.data, dict) else {}
+    start_row = int(data.get("start_row") or 3)
+    end_row = int(data.get("end_row") or 0) or None
+
+    try:
+        res = import_training_sessions_from_sheet(start_row=start_row, end_row=end_row)
+        return Response({"success": True, "result": res})
+    except Exception as exc:
+        return Response({"success": False, "error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticatedOrReadOnly])
+def training_partner_ai_accounts(request):
+    """Lấy danh sách hoặc tạo mới tài khoản AI dùng chung cho khách hàng."""
+    queryset = TrainingPartnerAiAccount.objects.select_related("partner", "subscription").all()
+    partner_id = request.query_params.get("partner")
+    status_param = request.query_params.get("status")
+    platform = request.query_params.get("platform")
+    search = str(request.query_params.get("search") or "").strip()
+
+    if partner_id and str(partner_id).isdigit():
+        queryset = queryset.filter(partner_id=int(partner_id))
+    if status_param and status_param != "all":
+        queryset = queryset.filter(status=status_param)
+    if platform and platform != "all":
+        queryset = queryset.filter(platform=platform)
+    if search:
+        queryset = queryset.filter(
+            Q(account_username__icontains=search)
+            | Q(assigned_to__icontains=search)
+            | Q(partner__name__icontains=search)
+            | Q(notes__icontains=search)
+        )
+
+    if request.method == "GET":
+        return Response(TrainingPartnerAiAccountSerializer(queryset, many=True).data)
+
+    serializer = TrainingPartnerAiAccountSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    item = serializer.save()
+    item.partner.ai_account_count = item.partner.ai_accounts.filter(status="active").count()
+    item.partner.save(update_fields=["ai_account_count"])
+    return Response(TrainingPartnerAiAccountSerializer(item).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET", "PATCH", "PUT", "DELETE"])
+@permission_classes([IsAuthenticatedOrReadOnly])
+def training_partner_ai_account_detail(request, pk):
+    """Xem, cập nhật (đổi mật khẩu, ngày hết hạn, trạng thái) hoặc xóa tài khoản AI."""
+    item = TrainingPartnerAiAccount.objects.select_related("partner", "subscription").filter(pk=pk).first()
+    if not item:
+        return Response({"error": "Không tìm thấy tài khoản AI."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        return Response(TrainingPartnerAiAccountSerializer(item).data)
+
+    if request.method in ("PATCH", "PUT"):
+        serializer = TrainingPartnerAiAccountSerializer(item, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated = serializer.save()
+        updated.partner.ai_account_count = updated.partner.ai_accounts.filter(status="active").count()
+        updated.partner.save(update_fields=["ai_account_count"])
+        return Response(TrainingPartnerAiAccountSerializer(updated).data)
+
+    # DELETE
+    partner = item.partner
+    item.delete()
+    partner.ai_account_count = partner.ai_accounts.filter(status="active").count()
+    partner.save(update_fields=["ai_account_count"])
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticatedOrReadOnly])
+def training_partner_ai_accounts_bulk(request):
+    """Tạo nhiều tài khoản AI cùng lúc cho một hoặc nhiều khách hàng."""
+    accounts_data = request.data.get("accounts", [])
+    if not isinstance(accounts_data, list) or not accounts_data:
+        return Response({"error": "Danh sách tài khoản 'accounts' không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
+
+    created_items = []
+    touched_partners = set()
+    for acc in accounts_data:
+        serializer = TrainingPartnerAiAccountSerializer(data=acc)
+        if serializer.is_valid():
+            saved = serializer.save()
+            created_items.append(saved)
+            touched_partners.add(saved.partner)
+
+    for p in touched_partners:
+        p.ai_account_count = p.ai_accounts.filter(status="active").count()
+        p.save(update_fields=["ai_account_count"])
+
+    return Response(
+        {
+            "success": True,
+            "created_count": len(created_items),
+            "accounts": TrainingPartnerAiAccountSerializer(created_items, many=True).data,
+        },
+        status=status.HTTP_201_CREATED,
+    )
+
+

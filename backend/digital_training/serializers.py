@@ -18,6 +18,7 @@ from .models import (
     TrainingCustomerMeeting,
     TrainingMaterial,
     TrainingPartner,
+    TrainingPartnerAiAccount,
     TrainingProduct,
     TrainingProductOpportunity,
     TrainingProductSubscription,
@@ -730,3 +731,44 @@ class TrainingAssessmentAttemptSerializer(serializers.ModelSerializer):
                 "url": request.build_absolute_uri(url) if request and url.startswith("/") else url,
             })
         return result
+
+
+class TrainingPartnerAiAccountSerializer(serializers.ModelSerializer):
+    partner_name = serializers.CharField(source="partner.name", read_only=True)
+    platform_display = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    days_remaining = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TrainingPartnerAiAccount
+        fields = [
+            "id", "partner", "partner_name", "subscription", "platform", "platform_display",
+            "account_username", "account_password", "assigned_to", "starts_at", "expires_at",
+            "days_remaining", "status", "status_display", "notes", "created_at", "updated_at",
+        ]
+
+    def get_platform_display(self, obj):
+        disp = obj.get_platform_display()
+        if disp and disp != obj.platform:
+            return disp
+        mapping = {
+            "chatgpt": "ChatGPT Plus / Team",
+            "chatgpt_plus": "ChatGPT Plus",
+            "chatgpt_team": "ChatGPT Team",
+            "claude": "Claude Pro",
+            "claude_pro": "Claude Pro",
+            "gemini": "Gemini Advanced",
+            "gemini_advanced": "Gemini Advanced",
+            "canva": "Canva Pro",
+            "canva_pro": "Canva Pro",
+            "midjourney": "Midjourney",
+            "copilot": "Microsoft Copilot",
+            "shared_ai": "AI Dùng chung FT",
+            "other": "Khác",
+        }
+        return mapping.get(obj.platform, obj.platform or "Khác")
+
+    def get_days_remaining(self, obj):
+        if not obj.expires_at:
+            return None
+        return (obj.expires_at - timezone.localdate()).days

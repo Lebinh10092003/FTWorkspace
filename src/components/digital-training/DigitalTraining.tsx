@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   BadgeDollarSign,
@@ -15,6 +15,7 @@ import {
   GraduationCap,
   Handshake,
   LayoutDashboard,
+  Package,
   PackageSearch,
   Pencil,
   Plus,
@@ -39,7 +40,9 @@ import Time24Input from "../Time24Input";
 import ModuleShellHeader from "../layout/ModuleShellHeader";
 import { DIGITAL_TRAINING_NAV, filterModuleNav } from "../../config/workspaceNavigation";
 
-const BndcWorkspace = React.lazy(() => import("./bndc/BndcWorkspace"));
+import CustomerSubscriptionDashboard from "./CustomerSubscriptionDashboard";
+import TrainingSessionDashboard from "./TrainingSessionDashboard";
+
 
 type Tab =
   | "overview"
@@ -50,6 +53,7 @@ type Tab =
   | "partners"
   | "leads"
   | "products"
+  | "subscriptions"
   | "finance"
   | "survey"
   | "materials";
@@ -402,6 +406,7 @@ const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "calendar", label: "Lịch", icon: CalendarDays },
   { id: "sessions", label: "Báo cáo lịch công tác", icon: ClipboardList },
   { id: "partners", label: "Danh sách khách hàng", icon: Handshake },
+  { id: "subscriptions", label: "Theo dõi dịch vụ & Hạn dùng", icon: Package },
   { id: "partner-sessions", label: "Theo dõi tập huấn", icon: ClipboardList },
   { id: "products", label: "Sản phẩm & dịch vụ", icon: PackageSearch },
   { id: "finance", label: "Báo cáo thu chi", icon: BadgeDollarSign },
@@ -499,6 +504,7 @@ const menuOpenState = (tab: Tab, productView: ProductView) => ({
   customer:
     tab === "partners" ||
     tab === "leads" ||
+    tab === "subscriptions" ||
     tab === "partner-sessions" ||
     (tab === "products" && productView === "allocation"),
   products: tab === "products" && productView !== "allocation",
@@ -1764,7 +1770,7 @@ export default function DigitalTraining({
     [surveys, setSurveys] = useState<Survey[]>(cachedSnapshot?.surveys || []),
     [mode, setMode] = useState<Mode>("week"),
     [modal, setModal] = useState<Modal>(null),
-    [notice, setNotice] = useState(""),
+    [notice, _setNotice] = useState(""),
     [loading, setLoading] = useState(!cachedSnapshot),
     [query, setQuery] = useState(""),
     [filter, setFilter] = useState(""),
@@ -1813,6 +1819,10 @@ export default function DigitalTraining({
     [surveyPartnerTypeFilter, setSurveyPartnerTypeFilter] = useState(""),
     [surveyPartnerFilter, setSurveyPartnerFilter] = useState(""),
     [file, setFile] = useState<File | null>(null);
+
+  const setNotice = (msg: string) => {
+    if (msg) void appDialog.alert(msg, { title: "Thông báo" });
+  };
   const applyMenuState = (nextTab: Tab, nextProductView: ProductView) => {
     const menu = menuOpenState(nextTab, nextProductView);
     setScheduleOpen(menu.schedule);
@@ -4048,18 +4058,7 @@ export default function DigitalTraining({
       />
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
-          {/* BNDC loads its own data, so it does not wait for the module fetch. */}
-          {tab === "quanlybndc" ? (
-            <React.Suspense
-              fallback={
-                <p className="py-16 text-center text-sm font-semibold text-slate-500">
-                  Đang nạp Quản lý BNDC...
-                </p>
-              }
-            >
-              <BndcWorkspace userRole={userRole} idToken={idToken} />
-            </React.Suspense>
-          ) : loading ? (
+          {loading ? (
             <div className="py-20 text-center text-sm text-slate-500">
               Đang tải dữ liệu...
             </div>
@@ -4592,6 +4591,16 @@ export default function DigitalTraining({
                   </article>
                 </section>
               )}
+              {(tab === "subscriptions" || tab === "quanlybndc") && (
+                <CustomerSubscriptionDashboard
+                  partners={partners}
+                  idToken={idToken}
+                  isGuest={isGuest}
+                  onOpenPartnerDetail={(partnerId) => { openPartnerDetail("partners", partnerId); void load(); }}
+                  onScheduleMeeting={(partnerId, productId) => { const partner = partners.find((item) => item.id === partnerId); if (partner) schedulePartnerMeeting(partner, productId); }}
+                  onCreatePartner={() => { setEditingPartner(null); setPd(newPartnerDraft()); setModal("partner"); }}
+                />
+              )}
               {tab === "products" && (
                 <ProductManagement
                   partners={partners}
@@ -4652,530 +4661,302 @@ export default function DigitalTraining({
                 </section>
               )}
               {tab === "partners" && !partner && (
-                <section className="mt-6 overflow-hidden rounded-2xl border bg-white shadow-sm">
-                  <div className="flex flex-wrap justify-between gap-3 p-5">
-                    <div>
-                      <h2 className="text-xl font-extrabold">Khách hàng hiện tại</h2>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Quản lý thông tin liên hệ, sản phẩm đăng ký và tình
-                        trạng hợp đồng.
-                      </p>
+                <section className="space-y-6">
+                  {/* Header */}
+                  <header className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-2xs">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-600/20 mb-2">
+                          <Users className="h-3.5 w-3.5" />
+                          <span>HỒ SƠ ĐỐI TÁC TRƯỜNG HỌC</span>
+                        </div>
+                        <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                          Khách hàng hiện tại
+                        </h1>
+                        <p className="mt-1 text-xs text-slate-500 sm:text-sm">
+                          Quản lý danh sách đối tác trường học, thông tin liên hệ, sản phẩm đăng ký và tình trạng hợp đồng.
+                        </p>
+                      </div>
+                      {!isGuest && (
+                        <button
+                          onClick={() => {
+                            setEditingPartner(null);
+                            setPd(newPartnerDraft());
+                            setModal("partner");
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 transition-colors cursor-pointer"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>Thêm khách hàng hiện tại</span>
+                        </button>
+                      )}
                     </div>
-                    {!isGuest && (
-                      <button
-                        onClick={() => {
-                          setEditingPartner(null);
-                          setPd(newPartnerDraft());
-                          setModal("partner");
-                        }}
-                        className="ft-primary"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Thêm khách hàng hiện tại
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid gap-3 border-y p-4 md:grid-cols-2 xl:grid-cols-8">
-                    <label className="relative w-full xl:col-span-2">
-                      <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                      <input
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Tìm khách hàng, địa chỉ, đại diện, số điện thoại, email..."
-                        className="w-full rounded-lg border py-2 pl-9 pr-3 text-sm"
-                      />
-                    </label>
-                    <select
-                      value={partnerManagementTypeFilter}
-                      onChange={(e) => {
-                        setPartnerManagementTypeFilter(e.target.value);
-                        setPartnerManagementSubtypeFilter("");
-                        setPartnerManagementFilter("");
-                      }}
-                      className="rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <option value="">Tất cả loại khách hàng</option>
-                      {partnerTypeOptions.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </select>
-                    {partnerManagementSubtypeOptions.length > 0 && (
+                  </header>
+
+                  {/* Filter Toolbar + Data Table */}
+                  <article className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs">
+                    <div className="p-4 border-b border-slate-100 grid gap-3 md:grid-cols-2 xl:grid-cols-8">
+                      <label className="relative w-full xl:col-span-2">
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                        <input
+                          value={query}
+                          onChange={(e) => setQuery(e.target.value)}
+                          placeholder="Tìm khách hàng, địa chỉ, đại diện, SĐT..."
+                          className="w-full rounded-lg border border-slate-200/90 bg-white py-2 pl-9 pr-3 text-xs font-medium text-slate-700 shadow-2xs placeholder:text-slate-400 hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                        />
+                      </label>
                       <select
-                        value={partnerManagementSubtypeFilter}
+                        value={partnerManagementTypeFilter}
                         onChange={(e) => {
-                          setPartnerManagementSubtypeFilter(e.target.value);
+                          setPartnerManagementTypeFilter(e.target.value);
+                          setPartnerManagementSubtypeFilter("");
                           setPartnerManagementFilter("");
                         }}
-                        className="rounded-lg border px-3 py-2 text-sm"
+                        className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
                       >
-                        <option value="">Tất cả phân loại</option>
-                        {partnerManagementSubtypeOptions.map((subtype) => (
-                          <option key={subtype} value={subtype}>
-                            {subtype}
+                        <option value="">Tất cả loại khách hàng</option>
+                        {partnerTypeOptions.map((type) => (
+                          <option key={type} value={type}>
+                            {type}
                           </option>
                         ))}
                       </select>
-                    )}
-                    <select
-                      value={partnerProvinceFilter}
-                      onChange={(e) => {
-                        setPartnerProvinceFilter(e.target.value);
-                        setPartnerWardFilter("");
-                        setPartnerManagementFilter("");
-                      }}
-                      className="rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <option value="">Tất cả tỉnh/thành phố</option>
-                      {vietnamProvinces.map((province) => (
-                        <option key={province} value={province}>
-                          {province}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={partnerWardFilter}
-                      onChange={(e) => {
-                        setPartnerWardFilter(e.target.value);
-                        setPartnerManagementFilter("");
-                      }}
-                      className="rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <option value="">Tất cả xã/phường</option>
-                      {partnerWardOptions.map((ward) => (
-                        <option key={ward} value={ward}>
-                          {ward}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={partnerManagementFilter}
-                      onChange={(e) =>
-                        setPartnerManagementFilter(e.target.value)
-                      }
-                      className="rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <option value="">Tất cả khách hàng</option>
-                      {partners
-                        .filter(
-                          (item) =>
-                            (!partnerManagementTypeFilter ||
-                              item.partner_type ===
-                                partnerManagementTypeFilter) &&
-                            (!partnerManagementSubtypeFilter ||
-                              item.partner_subtype ===
-                                partnerManagementSubtypeFilter) &&
-                            (!partnerProvinceFilter ||
-                              item.province === partnerProvinceFilter) &&
-                            (!partnerWardFilter ||
-                              item.ward === partnerWardFilter),
-                        )
-                        .map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name}
+                      {partnerManagementSubtypeOptions.length > 0 && (
+                        <select
+                          value={partnerManagementSubtypeFilter}
+                          onChange={(e) => {
+                            setPartnerManagementSubtypeFilter(e.target.value);
+                            setPartnerManagementFilter("");
+                          }}
+                          className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+                        >
+                          <option value="">Tất cả phân loại</option>
+                          {partnerManagementSubtypeOptions.map((subtype) => (
+                            <option key={subtype} value={subtype}>
+                              {subtype}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <select
+                        value={partnerProvinceFilter}
+                        onChange={(e) => {
+                          setPartnerProvinceFilter(e.target.value);
+                          setPartnerWardFilter("");
+                          setPartnerManagementFilter("");
+                        }}
+                        className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+                      >
+                        <option value="">Tất cả tỉnh/thành phố</option>
+                        {vietnamProvinces.map((province) => (
+                          <option key={province} value={province}>
+                            {province}
                           </option>
                         ))}
-                    </select>
-                    <select
-                      value={partnerStatusFilter}
-                      onChange={(e) => setPartnerStatusFilter(e.target.value)}
-                      className="rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <option value="">Tất cả tình trạng hợp đồng</option>
-                      <option value="not_signed">Chưa ký</option>
-                      <option value="signed">Đã ký</option>
-                      <option value="paid">Đã thanh toán</option>
-                      <option value="negotiating">Đang thương thảo</option>
-                      <option value="expiring">Sắp hết hạn</option>
-                      <option value="expired">Hết hạn</option>
-                    </select>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="ft-table dt-partner-management">
-                      <thead>
-                        <tr>
-                          <th>STT</th>
-                          <th>Khách hàng</th>
-                          <th>Địa chỉ</th>
-                          <th>Đại diện</th>
-                          <th>SĐT</th>
-                          <th>Email</th>
-                          <th>Sản phẩm đăng ký</th>
-                          <th>Tình trạng hợp đồng</th>
-                          <th>Ghi chú</th>
-                          <th aria-label="Xóa"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {managementPartners.length ? (
-                          managementPartners.map((item, index) => (
-                            <tr
-                              key={item.id}
-                              onClickCapture={(event) => {
-                                if (
-                                  (event.target as HTMLElement).closest(
-                                    "button,a,input,select,textarea,label",
+                      </select>
+                      <select
+                        value={partnerWardFilter}
+                        onChange={(e) => {
+                          setPartnerWardFilter(e.target.value);
+                          setPartnerManagementFilter("");
+                        }}
+                        className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+                      >
+                        <option value="">Tất cả xã/phường</option>
+                        {partnerWardOptions.map((ward) => (
+                          <option key={ward} value={ward}>
+                            {ward}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={partnerManagementFilter}
+                        onChange={(e) =>
+                          setPartnerManagementFilter(e.target.value)
+                        }
+                        className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+                      >
+                        <option value="">Tất cả khách hàng</option>
+                        {partners
+                          .filter(
+                            (item) =>
+                              (!partnerManagementTypeFilter ||
+                                item.partner_type ===
+                                  partnerManagementTypeFilter) &&
+                              (!partnerManagementSubtypeFilter ||
+                                item.partner_subtype ===
+                                  partnerManagementSubtypeFilter) &&
+                              (!partnerProvinceFilter ||
+                                item.province === partnerProvinceFilter) &&
+                              (!partnerWardFilter ||
+                                item.ward === partnerWardFilter),
+                          )
+                          .map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                      </select>
+                      <select
+                        value={partnerStatusFilter}
+                        onChange={(e) => setPartnerStatusFilter(e.target.value)}
+                        className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+                      >
+                        <option value="">Tất cả tình trạng HĐ</option>
+                        <option value="not_signed">Chưa ký</option>
+                        <option value="signed">Đã ký</option>
+                        <option value="paid">Đã thanh toán</option>
+                        <option value="negotiating">Đang thương thảo</option>
+                        <option value="expiring">Sắp hết hạn</option>
+                        <option value="expired">Hết hạn</option>
+                      </select>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm border-collapse min-w-[1100px]">
+                        <thead>
+                          <tr className="border-b border-slate-200/80 bg-slate-50/75 text-2xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap">
+                            <th className="py-3 px-4 w-16 min-w-16 text-center">STT</th>
+                            <th className="py-3 px-4">Khách hàng</th>
+                            <th className="py-3 px-4">Địa chỉ</th>
+                            <th className="py-3 px-4">Đại diện</th>
+                            <th className="py-3 px-4">SĐT</th>
+                            <th className="py-3 px-4">Email</th>
+                            <th className="py-3 px-4">Sản phẩm đăng ký</th>
+                            <th className="py-3 px-4">Tình trạng hợp đồng</th>
+                            <th className="py-3 px-4">Ghi chú</th>
+                            <th className="py-3 px-4 text-center w-12" aria-label="Xóa"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {managementPartners.length ? (
+                            managementPartners.map((item, index) => (
+                              <tr
+                                key={item.id}
+                                onClickCapture={(event) => {
+                                  if (
+                                    (event.target as HTMLElement).closest(
+                                      "button,a,input,select,textarea,label",
+                                    )
                                   )
-                                )
-                                  return;
-                                openPartnerDetail("partners", item.id);
-                              }}
-                              onKeyDown={(event) => {
-                                if (
-                                  event.key === "Enter" ||
-                                  event.key === " "
-                                ) {
-                                  event.preventDefault();
+                                    return;
                                   openPartnerDetail("partners", item.id);
-                                }
-                              }}
-                              role="link"
-                              tabIndex={0}
-                              className="cursor-pointer hover:bg-cyan-50 focus-within:bg-cyan-50"
-                            >
-                              <td>{index + 1}</td>
-                              <td>
-                                <b>{item.name}</b>
-                                <span className="block text-xs text-slate-500">
-                                  {item.partner_type || "—"}
-                                </span>
-                              </td>
-                              <td>
-                                <b>
-                                  {[item.ward, item.province]
-                                    .filter(Boolean)
-                                    .join(", ") ||
-                                    item.address ||
-                                    "—"}
-                                </b>
-                                <span className="block text-xs text-slate-500">
-                                  {item.partner_subtype || "—"}
-                                </span>
-                              </td>
-                              <td>
-                                <b>{item.contact_person || "—"}</b>
-                                <span className="block text-xs text-slate-500">
-                                  {item.contact_position || "—"}
-                                </span>
-                              </td>
-                              <td>{item.phone || "—"}</td>
-                              <td className="break-all">{item.email || "—"}</td>
-                              <td>
-                                {item.products?.length ? (
-                                  <div className="flex flex-wrap gap-1">
-                                    {item.products.map((product) => (
-                                      <span
-                                        key={product}
-                                        className="rounded bg-sky-50 px-2 py-1 text-xs text-sky-800"
-                                      >
-                                        {product}
-                                      </span>
-                                    ))}
+                                }}
+                                onKeyDown={(event) => {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
+                                    event.preventDefault();
+                                    openPartnerDetail("partners", item.id);
+                                  }
+                                }}
+                                role="link"
+                                tabIndex={0}
+                                className="group cursor-pointer hover:bg-slate-50/70 transition-colors"
+                              >
+                                <td className="py-3.5 px-4 text-center text-xs font-medium text-slate-400">{index + 1}</td>
+                                <td className="py-3.5 px-4">
+                                  <div className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">{item.name}</div>
+                                  <span className="block text-[11px] text-slate-500 mt-0.5">
+                                    {item.partner_type || "—"}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4 text-xs">
+                                  <div className="font-medium text-slate-800">
+                                    {[item.ward, item.province]
+                                      .filter(Boolean)
+                                      .join(", ") ||
+                                      item.address ||
+                                      "—"}
                                   </div>
-                                ) : (
-                                  "—"
-                                )}
-                              </td>
-                              <td>
-                                <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${contractStatusClass[effectiveContractStatus(item)] || "border-slate-200 bg-slate-100 text-slate-600"}`}>
-                                  {contractStatusLabel(
-                                    effectiveContractStatus(item),
+                                  <span className="block text-[11px] text-slate-500 mt-0.5">
+                                    {item.partner_subtype || "—"}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4 text-xs">
+                                  <div className="font-medium text-slate-800">{item.contact_person || "—"}</div>
+                                  <span className="block text-[11px] text-slate-500 mt-0.5">
+                                    {item.contact_position || "—"}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4 text-xs text-slate-600">{item.phone || "—"}</td>
+                                <td className="py-3.5 px-4 text-xs text-slate-500 break-all">{item.email || "—"}</td>
+                                <td className="py-3.5 px-4">
+                                  {item.products?.length ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {item.products.map((product) => (
+                                        <span
+                                          key={product}
+                                          className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-600/20"
+                                        >
+                                          {product}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">—</span>
                                   )}
-                                </span>
-                              </td>
-                              <td className="whitespace-normal text-xs">
-                                {item.notes || "—"}
-                              </td>
-                              <td>
-                                {!isGuest && (
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      setDeletePartner(item);
-                                    }}
-                                    className="grid h-8 w-8 place-items-center rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50"
-                                    title="Xóa khách hàng"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                )}
+                                </td>
+                                <td className="py-3.5 px-4">
+                                  <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${contractStatusClass[effectiveContractStatus(item)] || "border-slate-200 bg-slate-100 text-slate-600"}`}>
+                                    {contractStatusLabel(
+                                      effectiveContractStatus(item),
+                                    )}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4 whitespace-normal text-xs text-slate-500 max-w-xs">
+                                  {item.notes || "—"}
+                                </td>
+                                <td className="py-3.5 px-4 text-center">
+                                  {!isGuest && (
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setDeletePartner(item);
+                                      }}
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/90 text-slate-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
+                                      title="Xóa khách hàng"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td
+                                colSpan={10}
+                                className="py-12 text-center text-xs text-slate-500"
+                              >
+                                Chưa có khách hàng phù hợp bộ lọc.
                               </td>
                             </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td
-                              colSpan={10}
-                              className="py-10 text-center text-slate-500"
-                            >
-                              Chưa có khách hàng phù hợp.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </article>
                 </section>
               )}
               {tab === "partner-sessions" && !partner && (
-                <section className="mt-6 overflow-hidden rounded-2xl border bg-white shadow-sm">
-                  <div className="flex flex-wrap justify-between gap-3 p-5">
-                    <div>
-                      <h2 className="text-xl font-extrabold">
-                        Theo dõi tập huấn
-                      </h2>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Theo dõi từng lớp/phân nhóm, số buổi và tiến độ thực
-                        hiện.
-                      </p>
-                    </div>
-                    {!isGuest && (
-                      <button
-                        onClick={() => {
-                          setEditingPartner(null);
-                          setPd(newPartnerDraft());
-                          setModal("partner");
-                        }}
-                        className="ft-primary"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Thêm khách hàng mới
-                      </button>
-                    )}
-                  </div>
-                  <div className="border-y p-4">
-                    <label className="relative block w-full">
-                      <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                      <input
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Tìm khách hàng hoặc nội dung tập huấn..."
-                        className="w-full rounded-lg border py-2 pl-9 pr-3 text-sm"
-                      />
-                    </label>
-                  </div>
-                  <div className="grid gap-3 border-x border-b p-4 md:grid-cols-2 xl:grid-cols-5">
-                    <select
-                      value={trackingPartnerTypeFilter}
-                      onChange={(e) => {
-                        setTrackingPartnerTypeFilter(e.target.value);
-                        setTrackingPartnerFilter("");
-                      }}
-                      className="rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <option value="">Tất cả loại khách hàng</option>
-                      {partnerTypeOptions.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={trackingPartnerFilter}
-                      onChange={(e) => setTrackingPartnerFilter(e.target.value)}
-                      className="rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <option value="">Tất cả khách hàng</option>
-                      {partners
-                        .filter(
-                          (item) =>
-                            !trackingPartnerTypeFilter ||
-                            item.partner_type === trackingPartnerTypeFilter,
-                        )
-                        .map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name}
-                          </option>
-                        ))}
-                    </select>
-                    <select
-                      value={trackingContentFilter}
-                      onChange={(e) => setTrackingContentFilter(e.target.value)}
-                      className="rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <option value="">Tất cả nội dung tập huấn</option>
-                      {trainingContentOptions.map((content) => (
-                        <option key={content} value={content}>
-                          {content}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={partnerProgress}
-                      onChange={(e) => setPartnerProgress(e.target.value)}
-                      className="rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <option value="">Tất cả tiến độ</option>
-                      <option value="active">Đang triển khai</option>
-                      <option value="completed">Đã hoàn thành</option>
-                    </select>
-                    <select
-                      value={partnerContract}
-                      onChange={(e) => setPartnerContract(e.target.value)}
-                      className="rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <option value="">Tất cả tình trạng hợp đồng</option>
-                      <option value="not_signed">Chưa ký</option>
-                      <option value="signed">Đã ký</option>
-                      <option value="paid">Đã thanh toán</option>
-                      <option value="negotiating">Đang thương thảo</option>
-                      <option value="expiring">Sắp hết hạn</option>
-                      <option value="expired">Hết hạn</option>
-                    </select>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="ft-table dt-partner-table">
-                      <thead>
-                        <tr>
-                          <th>STT</th>
-                          <th>Khách hàng</th>
-                          <th>Lớp/Phân nhóm</th>
-                          <th>Tình trạng hợp đồng</th>
-                          <th>Nội dung đào tạo</th>
-                          <th>Số buổi đăng ký</th>
-                          <th>Đã thực hiện</th>
-                          {Array.from({ length: maxSessionColumns }, (_, i) => (
-                            <th key={i}>Buổi {i + 1}</th>
-                          ))}
-                          <th>Ghi chú</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {displayedPartners.length ? (
-                          displayedPartners
-                            .flatMap((item, partnerIndex) =>
-                              groupsFor(item.id).map((group) => ({
-                                item,
-                                partnerIndex,
-                                group,
-                              })),
-                            )
-                            .map(({ item, group }, rowIndex) => {
-                              const trainingContents =
-                                trainingContentsForGroup(group);
-                              return (
-                                <tr
-                                  key={`${item.id}-${group.id || group.name}`}
-                                  onClickCapture={(event) => {
-                                    if (
-                                      (event.target as HTMLElement).closest(
-                                        "button,a,input,select,textarea,label",
-                                      )
-                                    )
-                                      return;
-                                    openPartnerDetail(
-                                      "partner-sessions",
-                                      item.id,
-                                    );
-                                  }}
-                                  onKeyDown={(event) => {
-                                    if (
-                                      event.key === "Enter" ||
-                                      event.key === " "
-                                    ) {
-                                      event.preventDefault();
-                                      openPartnerDetail(
-                                        "partner-sessions",
-                                        item.id,
-                                      );
-                                    }
-                                  }}
-                                  role="link"
-                                  tabIndex={0}
-                                  className="cursor-pointer hover:bg-cyan-50 focus-within:bg-cyan-50"
-                                >
-                                  <td>{rowIndex + 1}</td>
-                                  <td>
-                                    <b>{item.name}</b>
-                                    <span className="block text-xs text-slate-500">
-                                      {item.contact_person ||
-                                        "Chưa có đại diện"}
-                                    </span>
-                                  </td>
-                                  <td>
-                                    {showClassName(group) && (
-                                      <>
-                                        <b>{group.name}</b>
-                                        {group.members && (
-                                          <span className="block text-xs text-slate-500">
-                                            {group.members}
-                                          </span>
-                                        )}
-                                      </>
-                                    )}
-                                  </td>
-                                  <td>
-                                    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${contractStatusClass[effectiveContractStatus(item)] || "border-slate-200 bg-slate-100 text-slate-600"}`}>
-                                      {contractStatusLabel(
-                                        effectiveContractStatus(item),
-                                      )}
-                                    </span>
-                                  </td>
-                                  <td className="whitespace-normal">
-                                    {trainingContents.length ? (
-                                      <div className="flex flex-wrap gap-1">
-                                        {trainingContents.map((content) => (
-                                          <span
-                                            key={content}
-                                            className="rounded bg-sky-50 px-2 py-1 text-xs text-sky-800"
-                                          >
-                                            {content}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      "—"
-                                    )}
-                                  </td>
-                                  <td>{group.planned_sessions}</td>
-                                  <td>
-                                    {
-                                      groupSessions(group, item.id).filter(
-                                        (x) => x.status === "completed",
-                                      ).length
-                                    }
-                                  </td>
-                                  {Array.from(
-                                    { length: maxSessionColumns },
-                                    (_, slot) => (
-                                      <td
-                                        key={slot}
-                                        className="min-w-32 text-xs"
-                                      >
-                                        <span
-                                          className={`dt-session-${sessionCellType(group, item.id, slot + 1)}`}
-                                        >
-                                          {sessionCell(
-                                            group,
-                                            item.id,
-                                            slot + 1,
-                                          )}
-                                        </span>
-                                      </td>
-                                    ),
-                                  )}
-                                  <td className="whitespace-normal text-xs">
-                                    {group.notes || item.notes || "—"}
-                                  </td>
-                                </tr>
-                              );
-                            })
-                        ) : (
-                          <tr>
-                            <td
-                              colSpan={8 + maxSessionColumns}
-                              className="py-10 text-center text-slate-500"
-                            >
-                              Chưa có khách hàng phù hợp.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
+                <div className="mt-6">
+                  <TrainingSessionDashboard
+                    partners={partners}
+                    idToken={idToken}
+                    isGuest={isGuest}
+                    onOpenPartnerDetail={(partnerId) => {
+                      openPartnerDetail("partner-sessions", partnerId);
+                      void load();
+                    }}
+                    onAddPartner={() => {
+                      setEditingPartner(null);
+                      setPd(newPartnerDraft());
+                      setModal("partner");
+                    }}
+                  />
+                </div>
               )}
               {(tab === "partner-sessions" || tab === "partners") &&
                 partner && (
@@ -7617,17 +7398,7 @@ export default function DigitalTraining({
             message={`Xác nhận ${convertLead?.name || ""} đã ký hợp đồng? Hệ thống sẽ tạo khách hàng hiện tại, giữ nguyên hồ sơ khách hàng mới và toàn bộ lịch gặp liên kết.`}
             confirmText="Chuyển thành khách hàng"
             type="info"
-          />          {notice && (
-            <div className="fixed bottom-5 right-5 z-[60] flex max-w-md gap-3 rounded-xl border border-cyan-200 bg-white p-4 shadow-xl">
-              <p className="text-sm font-semibold">{notice}</p>
-              <button
-                onClick={() => setNotice("")}
-                className="text-sm font-bold text-slate-500"
-              >
-                Đóng
-              </button>
-            </div>
-          )}
+          />
         </div>
       </main>
     </div>

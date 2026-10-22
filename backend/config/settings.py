@@ -122,7 +122,13 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000", "http://127.0.0.1:3000",
     "http://localhost:5173", "http://127.0.0.1:5173",
 ]
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.openai\.com$",
+    r"^https://.*\.chatgpt\.com$",
+    r"^https://.*\.claude\.ai$",
+]
 CORS_ALLOW_CREDENTIALS = True
+USE_X_FORWARDED_HOST = True
 CSRF_TRUSTED_ORIGINS = env_list(
     "CSRF_TRUSTED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173",

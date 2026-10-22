@@ -919,7 +919,7 @@ def manage_users(request):
         if error_response:
             return error_response
         notify_workspace(
-            event_key=f"employee:{profile.email}:created:{int(timezone.now().timestamp())}",
+            event_key=f"employee:{profile.email}:created",
             title="Đã thêm nhân sự", message=f"{_actor_name(request)} đã thêm {profile.name or profile.email} vào FT Workspace.",
             category="personnel", target_roles=["ADMIN", "MANAGER"], action_url="/account-management",
         )
@@ -962,7 +962,7 @@ def manage_single_user(request, email):
             django_user.delete()
         profile.delete()
         notify_workspace(
-            event_key=f"employee:{clean_email}:deleted:{int(timezone.now().timestamp())}",
+            event_key=f"employee:{clean_email}:deleted",
             title="Đã xóa nhân sự", message=f"{_actor_name(request)} đã xóa {profile.name or clean_email} khỏi FT Workspace.",
             severity="warning", category="personnel", target_roles=["ADMIN", "MANAGER"], action_url="/account-management",
         )
@@ -976,7 +976,7 @@ def manage_single_user(request, email):
     if error_response:
         return error_response
     notify_workspace(
-        event_key=f"employee:{updated.email}:updated:{int(timezone.now().timestamp())}",
+        event_key=f"employee:{updated.email}:updated",
         title="Hồ sơ nhân sự thay đổi", message=f"{_actor_name(request)} đã cập nhật hồ sơ của {updated.name or updated.email}.",
         category="personnel", target_roles=["ADMIN", "MANAGER"], action_url="/account-management",
     )
@@ -1052,7 +1052,7 @@ def _category_detail(request, model, item_id, label):
         item.is_active = False
         item.save(update_fields=["is_active", "updated_at"])
         notify_workspace(
-            event_key=f"catalogue:{model._meta.model_name}:{item.pk}:disabled:{int(item.updated_at.timestamp())}",
+            event_key=f"catalogue:{model._meta.model_name}:{item.pk}:disabled",
             title=f"Đã ngừng sử dụng {label}", message=f"{_actor_name(request)} đã ngừng sử dụng {label} “{item.name}”.",
             severity="warning", category="personnel", target_roles=["ADMIN", "MANAGER"], action_url="/account-management",
         )
@@ -1066,7 +1066,7 @@ def _category_detail(request, model, item_id, label):
         item.code = str(request.data.get("code", item.code) or "").strip()
     item.save()
     notify_workspace(
-        event_key=f"catalogue:{model._meta.model_name}:{item.pk}:updated:{int(item.updated_at.timestamp())}",
+        event_key=f"catalogue:{model._meta.model_name}:{item.pk}:updated",
         title=f"Đã cập nhật {label}", message=f"{_actor_name(request)} đã cập nhật {label} “{item.name}”.",
         category="personnel", target_roles=["ADMIN", "MANAGER"], action_url="/account-management",
     )
@@ -1084,7 +1084,7 @@ def workspace_notifications(request):
     profile = request.user
     for token_notice in _token_notification_payloads():
         token_identity = token_notice["id"] or hashlib.sha1(
-            f"{token_notice['platform']}|{token_notice['label']}|{'|'.join(token_notice['affectedPages'])}".encode("utf-8")
+            f"{token_notice['platform']}|{token_notice['label']}|{'|'.join(sorted(token_notice['affectedPages']))}".encode("utf-8")
         ).hexdigest()[:16]
         notify_workspace(
             event_key=f"social-token:{token_identity}:{token_notice['expiresAt']}",
@@ -1101,16 +1101,49 @@ def workspace_notifications(request):
     ).exclude(
         read_receipts__user=profile,
         read_receipts__read_at__lte=read_notification_cutoff(),
-    ).prefetch_related("read_receipts").all()[:250]
-    visible = [item for item in rows if notification_visible_to(item, profile)][:100]
-    read_ids = set(WorkspaceNotificationRead.objects.filter(user=profile, notification__in=visible).values_list("notification_id", flat=True))
+    ).prefetch_related("read_receipts").distinct().all()[:250]
+
+    visible_candidates = [item for item in rows if notification_visible_to(item, profile)]
+    seen_content = set()
+    visible = []
+    for item in visible_candidates:
+        content_key = (item.category, item.title, item.message.strip())
+        if content_key in seen_content:
+            continue
+        seen_content.add(content_key)
+        visible.append(item)
+        if len(visible) >= 100:
+            break
+
+    read_receipts_qs = WorkspaceNotificationRead.objects.filter(
+        user=profile,
+        notification__in=visible_candidates,
+    ).select_related("notification")
+    read_ids = {receipt.notification_id for receipt in read_receipts_qs}
+    read_content_keys = {
+        (receipt.notification.category, receipt.notification.title, receipt.notification.message.strip())
+        for receipt in read_receipts_qs
+        if receipt.notification
+    }
+
+    # Auto-reconcile read receipts for duplicate/recreated items with identical content
+    missing_receipts = []
+    resolved_read_ids = set(read_ids)
+    for item in visible:
+        content_key = (item.category, item.title, item.message.strip())
+        if item.pk not in resolved_read_ids and content_key in read_content_keys:
+            resolved_read_ids.add(item.pk)
+            missing_receipts.append(WorkspaceNotificationRead(notification=item, user=profile))
+    if missing_receipts:
+        WorkspaceNotificationRead.objects.bulk_create(missing_receipts, ignore_conflicts=True)
+
     return Response({
-        "unreadCount": sum(1 for item in visible if item.pk not in read_ids),
+        "unreadCount": sum(1 for item in visible if item.pk not in resolved_read_ids),
         "notifications": [{
             "id": item.pk, "title": item.title, "message": item.message,
             "severity": item.severity, "category": item.category,
             "actionUrl": item.action_url, "createdAt": item.created_at,
-            "read": item.pk in read_ids,
+            "read": item.pk in resolved_read_ids,
         } for item in visible],
     })
 
@@ -1122,23 +1155,64 @@ def read_workspace_notification(request, notification_id):
     if not notification or not notification_visible_to(notification, request.user):
         return Response({"error": "Không tìm thấy thông báo."}, status=status.HTTP_404_NOT_FOUND)
     WorkspaceNotificationRead.objects.get_or_create(notification=notification, user=request.user)
+    # Also mark all other notifications with identical content as read
+    duplicates = WorkspaceNotification.objects.filter(
+        category=notification.category,
+        title=notification.title,
+        message=notification.message,
+    ).exclude(pk=notification.pk)
+    if duplicates.exists():
+        new_receipts = [
+            WorkspaceNotificationRead(notification=dup, user=request.user)
+            for dup in duplicates
+            if notification_visible_to(dup, request.user)
+        ]
+        if new_receipts:
+            WorkspaceNotificationRead.objects.bulk_create(new_receipts, ignore_conflicts=True)
     return Response({"success": True})
 
 
 @api_view(["POST"])
 @permission_classes([IsWorkspaceAuthenticated])
 def read_all_workspace_notifications(request):
-    rows = [
+    profile = request.user
+    requested_ids = None
+    if isinstance(request.data, dict) and "ids" in request.data:
+        requested_ids = request.data.get("ids")
+
+    visible_candidates = [
         item for item in WorkspaceNotification.objects.filter(
             created_at__gt=max_notification_cutoff()
-        )[:250]
-        if notification_visible_to(item, request.user)
+        ).order_by("-created_at")[:1000]
+        if notification_visible_to(item, profile)
     ]
-    WorkspaceNotificationRead.objects.bulk_create(
-        [WorkspaceNotificationRead(notification=item, user=request.user) for item in rows],
-        ignore_conflicts=True,
+
+    visible_map = {item.pk: item for item in visible_candidates}
+    if requested_ids and isinstance(requested_ids, (list, tuple)):
+        clean_ids = [int(i) for i in requested_ids if str(i).isdigit()]
+        if clean_ids:
+            for extra in WorkspaceNotification.objects.filter(pk__in=clean_ids):
+                if notification_visible_to(extra, profile):
+                    visible_map[extra.pk] = extra
+
+    items_to_read = list(visible_map.values())
+    already_read_ids = set(
+        WorkspaceNotificationRead.objects.filter(
+            user=profile,
+            notification__in=items_to_read,
+        ).values_list("notification_id", flat=True)
     )
-    return Response({"success": True})
+
+    new_receipts = [
+        WorkspaceNotificationRead(notification=item, user=profile)
+        for item in items_to_read
+        if item.pk not in already_read_ids
+    ]
+    if new_receipts:
+        WorkspaceNotificationRead.objects.bulk_create(new_receipts, ignore_conflicts=True)
+
+    return Response({"success": True, "readCount": len(new_receipts)})
+
 
 
 @api_view(["GET", "POST"])

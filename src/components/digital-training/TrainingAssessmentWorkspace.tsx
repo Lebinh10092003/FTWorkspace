@@ -6,6 +6,7 @@ import ModuleShellHeader from "../layout/ModuleShellHeader";
 import { filterModuleNav, TRAINING_ASSESSMENT_NAV } from "../../config/workspaceNavigation";
 import TrainingAssessmentsAdmin from "./TrainingAssessmentsAdmin";
 import QuestionBankSettings from "./QuestionBankSettings";
+import { appDialog } from "../AppDialog";
 
 export default function TrainingAssessmentWorkspace({
   onBackToWorkspace,
@@ -30,7 +31,6 @@ export default function TrainingAssessmentWorkspace({
   const [classes, setClasses] = useState<any[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState("");
   const [activeTab, setActiveTab] = useState<"assessments" | "bank-settings">("assessments");
   const canManageQuestionBank = userRole === "ADMIN" || userRole === "MANAGER";
 
@@ -57,7 +57,7 @@ export default function TrainingAssessmentWorkspace({
           setPartners(partnerData);
         }
       })
-      .catch((error) => active && setNotice(String(error?.message || error)))
+      .catch((error) => active && void appDialog.alert(String(error?.message || error), { title: "Lỗi tải dữ liệu", tone: "danger" }))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
@@ -90,11 +90,6 @@ export default function TrainingAssessmentWorkspace({
       />
       <main className="min-w-0 flex-1">
         <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-          {notice && (
-            <p className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-              {notice}
-            </p>
-          )}
           {loading ? (
             <div className="grid min-h-[50vh] place-items-center text-slate-500">
               <Loader2 className="h-8 w-8 animate-spin text-blue-600" />

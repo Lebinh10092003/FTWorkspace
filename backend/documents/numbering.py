@@ -43,6 +43,7 @@ DOCUMENT_TYPES = [
     {"label": "Kế hoạch", "code": "KH"},
     {"label": "Biên bản", "code": "BB"},
     {"label": "Hợp đồng", "code": "HĐ"},
+    {"label": "Báo giá", "code": "BG"},
     {"label": "Nghị quyết", "code": "NQ"},
     {"label": "Nghị định", "code": "NĐ"},
     {"label": "Quy chế", "code": "QC"},

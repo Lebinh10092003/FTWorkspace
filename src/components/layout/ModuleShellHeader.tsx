@@ -1,6 +1,8 @@
 import React from 'react';
+import { ChevronsUpDown } from 'lucide-react';
 import ModuleTopNav from './ModuleTopNav';
 import { ModuleNavItem } from '../../config/workspaceNavigation';
+import WorkspaceNotifications from '../WorkspaceNotifications';
 
 export type ModuleShellHeaderProps = {
   /** Module name, shown at the far left. The logo lives in the shared rail. */
@@ -16,11 +18,6 @@ export type ModuleShellHeaderProps = {
   account?: React.ReactNode;
 };
 
-/**
- * The single bar every module screen starts with: module name on the left, its
- * horizontal menu immediately to the right, then module actions and the account
- * menu. One frame, one logo (in the rail), so modules stop repeating chrome.
- */
 export default function ModuleShellHeader({
   title,
   eyebrow,
@@ -32,16 +29,37 @@ export default function ModuleShellHeader({
   account,
 }: ModuleShellHeaderProps) {
   return (
-    <header className="ft-module-bar">
-      <div className="ft-module-bar-title">
-        {eyebrow && <p className="ft-module-bar-eyebrow">{eyebrow}</p>}
-        <h1>{title}</h1>
+    <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between border-b border-slate-200/90 bg-white/95 px-4 sm:px-6 backdrop-blur-md">
+      {/* Left: Department Switcher & Breadcrumbs */}
+      <div className="flex items-center gap-3 min-w-0 shrink-0">
+        <div className="hidden sm:flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-slate-50/70 px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs">
+          <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+          <span className="truncate max-w-[130px]">{eyebrow || 'FermatTech'}</span>
+          <ChevronsUpDown className="h-3 w-3 text-slate-400" />
+        </div>
+        <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-slate-500 font-medium min-w-0">
+          <span className="hover:text-slate-900 transition-colors cursor-pointer hidden md:inline">Workspace</span>
+          <span className="text-slate-300 hidden md:inline">/</span>
+          <span className="text-slate-900 font-bold truncate max-w-[160px]">{title}</span>
+        </nav>
       </div>
-      <div className="ft-module-bar-nav">
+
+      {/* Center: Module Sub-navigation tabs */}
+      <div className="flex flex-1 items-center justify-center px-1 sm:px-3 min-w-0 overflow-hidden">
         <ModuleTopNav items={items} activeId={activeId} onSelect={onSelect} ariaLabel={ariaLabel || `Điều hướng ${title}`} />
       </div>
-      {actions && <div className="ft-module-bar-actions">{actions}</div>}
-      {account && <div className="ft-module-bar-account">{account}</div>}
+
+      {/* Right: Actions & User Avatar */}
+      <div className="flex items-center gap-2 shrink-0">
+        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {account && (
+          <div className="flex items-center gap-2 pl-1">
+            <WorkspaceNotifications />
+            {account}
+          </div>
+        )}
+      </div>
     </header>
   );
 }

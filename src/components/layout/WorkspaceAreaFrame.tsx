@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import WorkspaceAppRail from './WorkspaceAppRail';
+import CommandPalette from './CommandPalette';
 import { WorkspaceArea, WorkspaceAreaId } from '../../config/workspaceNavigation';
 import type { DepartmentLayout } from '../../config/departmentLayout';
 
@@ -8,6 +9,8 @@ export type WorkspaceAreaFrameProps = {
   canAccess: (area: WorkspaceArea) => boolean;
   onSelect: (area: WorkspaceArea) => void;
   layout?: DepartmentLayout | null;
+  userName?: string;
+  userRole?: string;
   children: React.ReactNode;
 };
 
@@ -17,11 +20,39 @@ export type WorkspaceAreaFrameProps = {
  * fixed; the frame reserves its width through CSS, which keeps every existing
  * module layout (sticky and fixed sidebars alike) working unchanged.
  */
-export default function WorkspaceAreaFrame({ activeAreaId, canAccess, onSelect, layout = null, children }: WorkspaceAreaFrameProps) {
+export default function WorkspaceAreaFrame({
+  activeAreaId,
+  canAccess,
+  onSelect,
+  layout = null,
+  userName,
+  userRole,
+  children,
+}: WorkspaceAreaFrameProps) {
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const handleToggle = () => setCommandPaletteOpen((prev) => !prev);
+    window.addEventListener('toggle-command-palette', handleToggle);
+    return () => window.removeEventListener('toggle-command-palette', handleToggle);
+  }, []);
+
   return (
     <div className="ft-workspace-frame">
-      <WorkspaceAppRail activeAreaId={activeAreaId} canAccess={canAccess} onSelect={onSelect} layout={layout} />
+      <WorkspaceAppRail
+        activeAreaId={activeAreaId}
+        canAccess={canAccess}
+        onSelect={onSelect}
+        layout={layout}
+        userName={userName}
+        userRole={userRole}
+        onOpenSearch={() => setCommandPaletteOpen(true)}
+      />
       <div className="ft-workspace-frame-body">{children}</div>
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+      />
     </div>
   );
 }

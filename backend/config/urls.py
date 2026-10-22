@@ -20,6 +20,7 @@ urlpatterns = [
     path("api/", include("attendance.urls")),
     path("api/", include("work_schedule.urls")),
     path("api/", include("documents.urls")),
+    path("api/", include("mcp.urls")),
 ]
 
 if settings.DEBUG:

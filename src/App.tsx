@@ -1,6 +1,6 @@
 import React, { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { appDialog } from './components/AppDialog';
-import { ArrowLeft, BadgeDollarSign, CalendarCheck, CalendarDays, CalendarRange, ChartColumnBig, ClipboardList, ContactRound, FileCheck2, FileSignature, ReceiptText, GraduationCap, Mail, Megaphone, Moon, QrCode, Presentation, ShieldUser, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, BadgeDollarSign, CalendarCheck, CalendarDays, CalendarRange, ChartColumnBig, ClipboardList, ContactRound, FileCheck2, FileSignature, ReceiptText, GraduationCap, Mail, Megaphone, Moon, QrCode, Presentation, Search, ShieldUser, Sparkles, TriangleAlert } from 'lucide-react';
 
 import { Channel, UserRole } from './types';
 import LoginModal from './components/LoginModal';
@@ -12,6 +12,7 @@ import ModuleMobileNav from './components/ModuleMobileNav';
 import { readWorkspaceAppearance, WorkspaceAppearance } from './components/AppearanceSettings';
 import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
 import ModuleShellHeader from './components/layout/ModuleShellHeader';
+import CommandPalette from './components/layout/CommandPalette';
 import { groupByDepartment, resolveDepartmentLayout } from './config/departmentLayout';
 import { ACCOUNT_MANAGEMENT_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
 
@@ -256,6 +257,13 @@ export default function App() {
   const [yesterdayWarning, setYesterdayWarning] = useState<{ show: boolean; date: string }>({ show: false, date: '' });
   const [dismissPermanent, setDismissPermanent] = useState(false);
   const [attendanceEditDate, setAttendanceEditDate] = useState('');
+  const [globalCommandOpen, setGlobalCommandOpen] = useState(false);
+
+  useEffect(() => {
+    const handleToggle = () => setGlobalCommandOpen((prev) => !prev);
+    window.addEventListener('toggle-command-palette', handleToggle);
+    return () => window.removeEventListener('toggle-command-palette', handleToggle);
+  }, []);
 
   const isGuest = !idToken || user.email === GUEST_USER.email;
   const normalisedEmployeeIdentity = [user.jobTitle?.name || '', ...(user.departments || []).map(item => item.name)]
@@ -733,35 +741,72 @@ export default function App() {
     const visibleApps = apps.filter(app => canAccessView(app.mode));
     return (
       <div className={`workspace-theme workspace-theme-${appearance.theme} min-h-dvh liquid-bg flex flex-col font-sans relative overflow-x-hidden`} style={workspaceAppearanceStyle(appearance)}>
-        <header className="sticky top-0 z-30 w-full glass-panel border-b border-white/50">
-          <div className="workspace-header-inner relative mx-auto max-w-[1600px] px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex min-w-0 shrink-0 items-center">
-              <img src="/logo.png" alt="FermatTech Logo" className="workspace-brand-logo" />
+        <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between border-b border-slate-200/90 bg-white/95 px-4 sm:px-8 backdrop-blur-md">
+          <div className="flex items-center gap-3 min-w-0">
+            <img src="/logo.png" alt="FermatTech Logo" className="h-7 w-auto object-contain" />
+            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-900 tracking-tight">FermatTech Workspace OS</span>
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 border border-blue-200/60">
+                v2.5
+              </span>
             </div>
-            <div className="workspace-title-block">
-              <p className="workspace-title-eyebrow">Không gian làm việc</p>
-              <h1 className="workspace-title text-sm font-extrabold tracking-tight sm:text-lg lg:text-2xl">
-                <span className="workspace-title-prefix">Không gian làm việc </span>
-                <span className="ft-gradient-text">FermatTech Workspace</span>
-              </h1>
-            </div>
-            <div className="workspace-header-actions">
-              {!isGuest && <WorkspaceNotifications token={idToken} />}
-              <AccountMenu
-                userName={user.displayName}
-                userRole={userRole}
-                photoURL={user.photoURL}
-                isGuest={isGuest}
-                onAccountClick={openAccount}
-                onLogin={() => { setAuthError(''); setShowLoginModal(true); }}
-                onLogout={handleLogout}
-                variant="header"
-              />
-            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => setGlobalCommandOpen(true)}
+              className="hidden sm:flex items-center gap-2 rounded-lg border border-slate-200/80 bg-slate-50 px-3 py-1.5 text-xs text-slate-500 hover:border-slate-300 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <Search className="h-3.5 w-3.5 text-slate-400" />
+              <span>Tìm kiếm nhanh...</span>
+              <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-400 shadow-2xs">⌘K</kbd>
+            </button>
+            {!isGuest && <WorkspaceNotifications token={idToken} />}
+            <AccountMenu
+              userName={user.displayName}
+              userRole={userRole}
+              photoURL={user.photoURL}
+              isGuest={isGuest}
+              onAccountClick={openAccount}
+              onLogin={() => { setAuthError(''); setShowLoginModal(true); }}
+              onLogout={handleLogout}
+              variant="header"
+            />
           </div>
         </header>
 
         <main className="z-10 mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+          {/* Welcome Hero Banner */}
+          <div className="mb-6 rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                    Xin chào, {user.displayName} 👋
+                  </h1>
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200/60 flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Hệ thống sẵn sàng
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500 sm:text-sm">
+                  Chào mừng bạn đến với trung tâm điều hành FermatTech Workspace. Chọn phân hệ nghiệp vụ bên dưới hoặc nhấn <kbd className="font-mono font-semibold text-slate-700 bg-slate-100 px-1 py-0.2 rounded border border-slate-200">⌘K</kbd> để tìm kiếm nhanh.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setGlobalCommandOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  <span>Tìm kiếm nhanh (⌘K)</span>
+                </button>
+              </div>
+            </div>
+          </div>
           {yesterdayWarning.show && (
             <div className="fixed inset-0 z-[11000] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm">
               <div role="alertdialog" aria-modal="true" aria-labelledby="timesheet-warning-title" className="w-full max-w-xl overflow-hidden rounded-3xl border border-amber-200 bg-white shadow-2xl">
@@ -804,14 +849,19 @@ export default function App() {
                   key={app.mode}
                   type="button"
                   onClick={() => openProtectedView(app.mode, app.mode === 'social-dashboard' ? 'dashboard' : undefined)}
-                  className="glass-card p-7 rounded-3xl text-left group min-h-[210px] flex flex-col justify-between"
+                  className="rounded-2xl border border-slate-200/90 bg-white p-6 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md group min-h-[200px] flex flex-col justify-between cursor-pointer"
                 >
                   <div>
-                    <div className={`grid w-14 h-14 place-items-center rounded-2xl bg-gradient-to-tr ${app.gradient} shadow-lg mb-5`}><AppIcon className="h-7 w-7 text-white" /></div>
-                    <h3 className="ft-heading ft-heading-sm">{app.title}</h3>
-                    <p className="workspace-muted ft-body-sm mt-2 leading-relaxed">{app.description}</p>
+                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600 transition-colors duration-200 group-hover:bg-blue-600 group-hover:text-white shadow-xs">
+                      <AppIcon className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{app.title}</h3>
+                    <p className="mt-1.5 text-xs leading-relaxed text-slate-500 line-clamp-2">{app.description}</p>
                   </div>
-                  <span className="workspace-accent pt-5 text-sm font-semibold">{'Truy cập ứng dụng →'}</span>
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-xs font-semibold text-blue-600">
+                    <span>Truy cập ứng dụng</span>
+                    <span className="transition-transform group-hover:translate-x-1">→</span>
+                  </div>
                 </button>
               );
             };
@@ -838,6 +888,19 @@ export default function App() {
           })()}
         </main>
         {loginModal}{profileModal}
+        <CommandPalette
+          isOpen={globalCommandOpen}
+          onClose={() => setGlobalCommandOpen(false)}
+          onNavigate={(path) => {
+            setGlobalCommandOpen(false);
+            if (path.startsWith('/digital-training')) openProtectedView('digital-training');
+            else if (path.startsWith('/examination')) openProtectedView('examination');
+            else if (path.startsWith('/work-schedule')) openProtectedView('work-schedule');
+            else if (path.startsWith('/finance-report')) openProtectedView('finance-report');
+            else if (path.startsWith('/account-management')) openProtectedView('account-management');
+            else window.location.href = path;
+          }}
+        />
       </div>
     );
   }
@@ -1279,6 +1342,8 @@ export default function App() {
       canAccess={canAccessArea}
       onSelect={openArea}
       layout={departmentLayout}
+      userName={user.displayName}
+      userRole={userRole}
     >
       {content}
     </WorkspaceAreaFrame>

@@ -102,7 +102,7 @@ def _send(payload, event, title, message, emails, action_url=None, severity="inf
     if not emails:
         return
     notify_workspace(
-        event_key=f"training-session:{payload.get('id')}:{_event_stamp(payload)}:{event}",
+        event_key=f"training-session:{payload.get('id')}:{event}",
         title=title,
         message=message,
         severity=severity,

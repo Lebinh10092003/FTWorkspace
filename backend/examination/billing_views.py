@@ -316,7 +316,7 @@ def resolve_unmatched(request, pk):
         item.save()
         item.proofs.filter(drive_file_id='').update(session=participation.session if participation else None)
     notify_workspace(
-        event_key=f'examination:unmatched-resolved:{item.pk}:{item.updated_at.timestamp()}',
+        event_key=f'examination:unmatched-resolved:{item.pk}',
         title='Khảo thí đã phản hồi khoản thu',
         message=f'{int(item.amount):,}đ · {note[:120]}',
         category='examination', action_url='/finance-report/examination-billing',

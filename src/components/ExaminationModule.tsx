@@ -2138,10 +2138,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         onSelect={(nextPage) => go(nextPage as Page)}
         ariaLabel="Điều hướng Khảo thí"
         actions={
-          <>
-            <Bell className="hidden h-5 w-5 text-slate-500 sm:block" />
-            <CircleHelp className="hidden h-5 w-5 text-slate-500 sm:block" />
-          </>
+          <CircleHelp className="hidden h-5 w-5 text-slate-500 sm:block cursor-pointer hover:text-slate-800 transition-colors" title="Trợ giúp Khảo thí" />
         }
         account={<AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar" />}
       />

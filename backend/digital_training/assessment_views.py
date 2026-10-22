@@ -533,7 +533,7 @@ def assessment_detail(request, pk):
         item.delete()
         wake_assessment_closer()
         notify_workspace(
-            event_key=f"assessment:{pk}:deleted:{int(timezone.now().timestamp())}",
+            event_key=f"assessment:{pk}:deleted",
             title="Đã xóa bài kiểm tra cuối khóa", message=f"{_actor(request)} đã xóa “{item.title}” cùng dữ liệu bài làm trên web.",
             severity="warning", category="digital-training", target_modules=["digital-training"],
             action_url="/training-assessments",
@@ -564,7 +564,7 @@ def assessment_detail(request, pk):
         start_retention_counter(updated, timezone.now())
         refresh_and_backup_assessment(updated)
         notify_workspace(
-            event_key=f"assessment:{updated.pk}:closed:{int(updated.retention_started_at.timestamp())}",
+            event_key=f"assessment:{updated.pk}:closed",
             title="Bài kiểm tra đã đóng", message=f"“{updated.title}” đã đóng và sẵn sàng để chấm.",
             category="digital-training", target_modules=["digital-training"],
             action_url=f"/training-assessments/{updated.pk}",
@@ -988,7 +988,7 @@ def assessment_result_answers(request, pk, attempt_pk):
             ])
         attempt.save(update_fields=update_fields)
         notify_workspace(
-            event_key=f"assessment-attempt:{attempt.pk}:answers-edited:{secrets.token_hex(8)}",
+            event_key=f"assessment-attempt:{attempt.pk}:answers-edited",
             title="Quản trị viên đã sửa bài làm",
             message=(f"{_actor(request)} đã sửa {len(changed_ids)} câu trả lời trong lượt "
                      f"{attempt.access_token} của {attempt.respondent_name}."),
@@ -1230,7 +1230,7 @@ def assessment_result_reopen(request, pk, attempt_pk):
                 )
         _reopen_attempt_for_continuation(attempt, extra_minutes)
         notify_workspace(
-            event_key=f"assessment-attempt:{attempt.pk}:reopened:{int(now.timestamp())}",
+            event_key=f"assessment-attempt:{attempt.pk}:reopened",
             title="Đã mở lại lượt làm bài",
             message=(f"{_actor(request)} đã cho {attempt.respondent_name} làm tiếp lượt {attempt.access_token} "
                      f"trong bài “{attempt.assessment.title}” (trước đó: {previous_status}; "

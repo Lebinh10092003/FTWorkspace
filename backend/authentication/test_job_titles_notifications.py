@@ -157,3 +157,80 @@ class JobTitleAndNotificationTests(TestCase):
         self.client.force_authenticate(unrelated)
         hidden = self.client.get("/api/notifications")
         self.assertEqual(hidden.data["notifications"], [])
+
+    def test_duplicate_notifications_are_prevented_and_deduplicated(self):
+        from .notifications import notify_workspace
+        # 1. notify_workspace with same key updates rather than duplicates
+        n1, created1 = notify_workspace(
+            event_key="duplicate-test-1",
+            title="Thông báo quan trọng",
+            message="Nội dung thông báo cần lưu ý",
+            category="workspace",
+        )
+        self.assertTrue(created1)
+
+        n2, created2 = notify_workspace(
+            event_key="duplicate-test-1",
+            title="Thông báo quan trọng (Đã cập nhật)",
+            message="Nội dung thông báo cần lưu ý",
+            category="workspace",
+        )
+        self.assertFalse(created2)
+        self.assertEqual(n1.pk, n2.pk)
+        self.assertEqual(WorkspaceNotification.objects.filter(event_key="duplicate-test-1").count(), 1)
+
+        # 2. notify_workspace with same content (category + title + message) is deduplicated
+        n3, created3 = notify_workspace(
+            event_key="duplicate-test-2",
+            title="Thông báo quan trọng (Đã cập nhật)",
+            message="Nội dung thông báo cần lưu ý",
+            category="workspace",
+        )
+        self.assertFalse(created3)
+        self.assertEqual(WorkspaceNotification.objects.filter(title="Thông báo quan trọng (Đã cập nhật)").count(), 1)
+
+        # 3. GET /api/notifications returns deduplicated list
+        response = self.client.get("/api/notifications")
+        self.assertEqual(response.status_code, 200)
+        titles = [n["title"] for n in response.data["notifications"]]
+        self.assertEqual(titles.count("Thông báo quan trọng (Đã cập nhật)"), 1)
+
+    def test_read_all_marks_visible_and_persists_across_reloads(self):
+        from .notifications import notify_workspace
+        notify_workspace(event_key="read-persist-1", title="Tin 1", message="Nội dung 1")
+        notify_workspace(event_key="read-persist-2", title="Tin 2", message="Nội dung 2")
+
+        before = self.client.get("/api/notifications")
+        self.assertEqual(before.data["unreadCount"], 2)
+
+        # Call read-all with explicit IDs
+        ids = [item["id"] for item in before.data["notifications"]]
+        read_all_res = self.client.post("/api/notifications/read-all", {"ids": ids}, format="json")
+        self.assertEqual(read_all_res.status_code, 200)
+
+        # Re-fetch (simulate reload / coming back to page)
+        after_reload = self.client.get("/api/notifications")
+        self.assertEqual(after_reload.data["unreadCount"], 0)
+        self.assertTrue(all(item["read"] for item in after_reload.data["notifications"]))
+
+    def test_read_receipt_reconciles_duplicate_content_across_events(self):
+        from .notifications import notify_workspace
+        # Create an event and mark it as read
+        n1, _ = notify_workspace(event_key="unique-event-alpha", title="Cảnh báo hệ thống", message="Vui lòng kiểm tra dữ liệu")
+        self.client.post(f"/api/notifications/{n1.pk}/read")
+
+        # Manually create another notification with identical content but different event_key (simulating legacy data)
+        WorkspaceNotification.objects.create(
+            event_key="unique-event-beta",
+            title="Cảnh báo hệ thống",
+            message="Vui lòng kiểm tra dữ liệu",
+            category="workspace",
+        )
+
+        # GET /api/notifications should recognize the content was already read and report 0 unread
+        res = self.client.get("/api/notifications")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["unreadCount"], 0)
+        self.assertTrue(all(item["read"] for item in res.data["notifications"]))
+
+

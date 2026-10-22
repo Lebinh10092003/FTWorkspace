@@ -432,7 +432,7 @@ def sync_reports_from_google_doc(*, google_token=None):
         else:
             updated += 1
         notify_workspace(
-            event_key=f"weekly-report-{report.report_key}-{content_fingerprint}"[:255],
+            event_key=f"weekly-report-{report.report_key}"[:255],
             title="Báo cáo tuần mới đã sẵn sàng",
             message=f"Đã đồng bộ báo cáo tuần {report.completed_week} và kế hoạch tuần {report.planned_week} của {report.employee_name}.",
             severity="success",

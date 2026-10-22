@@ -1,16 +1,23 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { appDialog } from "../AppDialog";
 import { matchesSearch } from "../../lib/searchText";
 import {
+  AlertTriangle,
   BarChart3,
   Boxes,
+  CheckCircle2,
   Clock3,
+  Layers,
+  Mail,
+  Package,
   PackagePlus,
   Pencil,
+  Phone,
   Plus,
-  SlidersHorizontal,
   RefreshCw,
   Search,
+  SlidersHorizontal,
+  Tag,
   Trash2,
   Users,
   X,
@@ -31,6 +38,7 @@ export type ProductPartner = {
   province?: string;
   ward?: string;
   notes?: string;
+  ai_account_count?: number;
 };
 
 type Product = {
@@ -138,7 +146,9 @@ export default function ProductManagement({
   const [products, setProducts] = useState<Product[]>([]);
   const [subscriptions, setSubscriptions] = useState<ProductSubscription[]>([]);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
+  const setNotice = (msg: string) => {
+    if (msg) void appDialog.alert(msg, { title: "Thông báo", tone: "danger" });
+  };
   const [filters, setFilters] = useState({
     query: "",
     product: "",
@@ -396,54 +406,1035 @@ export default function ProductManagement({
   }).sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name, "vi"));
 
   return (
-    <section className="mt-1 space-y-5">
-      <header className="rounded-2xl border bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div><p className="text-xs font-bold uppercase tracking-wide text-blue-600">{view === "allocation" ? "Khách hàng và sản phẩm đang dùng" : "Danh mục và mức sử dụng"}</p><h1 className="mt-1 text-2xl font-extrabold">{view === "allocation" ? "Khách hàng hiện tại" : "Sản phẩm & dịch vụ"}</h1><p className="mt-2 text-sm text-slate-500">{view === "allocation" ? "Theo dõi đầu mối, số lượng và hạn sử dụng của từng sản phẩm theo khách hàng." : "Quản lý danh mục và theo dõi mức sử dụng sản phẩm, dịch vụ."}</p></div>
-          <div className="flex flex-wrap gap-2"><button onClick={() => void load()} className="ft-btn ft-btn-secondary"><RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />Làm mới</button>{!isGuest && view === "allocation" && <button onClick={() => onCreatePartner?.()} className="ft-primary"><Users className="h-4 w-4" />Thêm khách hàng</button>}</div>
+    <section className="space-y-6">
+      {/* 1. Module Header */}
+      <header className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-2xs">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-600/20 mb-2">
+              <Package className="h-3.5 w-3.5" />
+              <span>{view === "allocation" ? "PHÂN BỔ SẢN PHẨM" : view === "catalog" ? "DANH MỤC SẢN PHẨM" : "THỐNG KÊ SỬ DỤNG"}</span>
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              {view === "allocation" ? "Khách hàng & Sản phẩm đang dùng" : view === "catalog" ? "Danh mục Sản phẩm & Dịch vụ" : "Thống kê Khai thác Dịch vụ"}
+            </h1>
+            <p className="mt-1 text-xs text-slate-500 sm:text-sm">
+              {view === "allocation"
+                ? "Theo dõi đầu mối, số lượng license và hạn dùng từng dịch vụ theo từng cơ sở trường học/đối tác."
+                : view === "catalog"
+                ? "Quản lý danh mục sản phẩm, phần mềm, dịch vụ tập huấn và cấu hình kinh doanh."
+                : "Báo cáo tổng hợp số lượng đăng ký, tỷ lệ hoạt động và cơ cấu khách hàng theo phân khúc."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 text-blue-600 ${busy ? "animate-spin" : ""}`} />
+              <span>Làm mới</span>
+            </button>
+            {!isGuest && view === "catalog" && (
+              <button
+                type="button"
+                onClick={() => openProduct()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Thêm sản phẩm</span>
+              </button>
+            )}
+            {!isGuest && view === "allocation" && (
+              <button
+                type="button"
+                onClick={() => onCreatePartner?.()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <Users className="h-3.5 w-3.5" />
+                <span>Thêm khách hàng</span>
+              </button>
+            )}
+          </div>
         </div>
-
       </header>
 
-      {view !== "catalog" && <div className="grid gap-3 rounded-2xl border bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-7">
-        <label className="relative xl:col-span-2"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={filters.query} onChange={(event) => setFilters({ ...filters, query: event.target.value })} className="w-full rounded-lg border py-2 pl-9 pr-3 text-sm" placeholder="Tìm khách hàng, nhóm, địa bàn..." /></label>
-        <select value={filters.product} onChange={(event) => setFilters({ ...filters, product: event.target.value })} className="rounded-lg border px-3 py-2 text-sm"><option value="">Tất cả sản phẩm</option>{productList.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-        <select value={filters.group} onChange={(event) => setFilters({ ...filters, group: event.target.value, subtype: "" })} className="rounded-lg border px-3 py-2 text-sm"><option value="">Tất cả nhóm khách hàng</option>{optionValues("partner_type").map((item) => <option key={item}>{item}</option>)}</select>
-        <select value={filters.subtype} onChange={(event) => setFilters({ ...filters, subtype: event.target.value })} className="rounded-lg border px-3 py-2 text-sm"><option value="">Tất cả loại khách hàng</option>{optionValues("partner_subtype").map((item) => <option key={item}>{item}</option>)}</select>
-        <select value={filters.province} onChange={(event) => setFilters({ ...filters, province: event.target.value, ward: "" })} className="rounded-lg border px-3 py-2 text-sm"><option value="">Tất cả tỉnh/thành</option>{optionValues("province").map((item) => <option key={item}>{item}</option>)}</select>
-        <select value={filters.ward} onChange={(event) => setFilters({ ...filters, ward: event.target.value })} className="rounded-lg border px-3 py-2 text-sm"><option value="">Tất cả xã/phường</option>{optionValues("ward").map((item) => <option key={item}>{item}</option>)}</select>
-        <select value={filters.usage} onChange={(event) => setFilters({ ...filters, usage: event.target.value })} className="rounded-lg border px-3 py-2 text-sm xl:col-start-6 xl:col-span-2"><option value="">Tất cả trạng thái sử dụng</option>{["registered", "unregistered", "active", "expiring", "expired", "paused", "cancelled"].map((item) => <option key={item} value={item}>{statusNames[item]}</option>)}</select>
-      </div>}
-
-      {notice && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{notice}</p>}
-
-      {view === "catalog" ? <article className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 p-5"><div><h2 className="font-extrabold">Danh mục sản phẩm & dịch vụ</h2><p className="mt-1 text-xs text-slate-500">Quản lý tên, loại, mô tả và trạng thái kinh doanh.</p></div>{!isGuest && <button onClick={() => openProduct()} className="ft-primary"><PackagePlus className="h-4 w-4" />Thêm mới</button>}</div>
-        <div className="overflow-x-auto border-t"><table className="ft-table min-w-[900px]"><thead><tr><th>STT</th><th>Tên sản phẩm / dịch vụ</th><th>Loại</th><th>Mô tả</th><th>Khách hàng</th><th>Tổng số lượng</th><th>Trạng thái</th><th></th></tr></thead><tbody>{[...products].sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name, "vi")).map((item, index) => <tr key={item.id}><td>{index + 1}</td><td><b>{item.name}</b><span className="block text-xs text-slate-400">{item.code}</span></td><td><span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">{item.product_type === "service" ? "Dịch vụ" : "Sản phẩm"}</span></td><td className="max-w-md whitespace-normal text-sm text-slate-600">{item.description || "—"}</td><td>{item.customer_count}</td><td><b>{item.total_quantity}</b></td><td><span className={`rounded-full px-2 py-1 text-xs font-bold ${item.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{item.active ? "Đang kinh doanh" : "Ngừng kinh doanh"}</span></td><td>{!isGuest && <button type="button" onClick={() => openProduct(item)} className="ft-btn ft-btn-secondary"><Pencil className="h-4 w-4" />Sửa</button>}</td></tr>)}{!products.length && <tr><td colSpan={8} className="py-10 text-center text-slate-500">Chưa có sản phẩm hoặc dịch vụ.</td></tr>}</tbody></table></div>
-      </article> : view === "allocation" ? <article className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4"><div><h2 className="font-extrabold">{"S\u1ea3n ph\u1ea9m \u0111ang s\u1eed d\u1ee5ng theo kh\u00e1ch h\u00e0ng"}</h2><p className="text-xs text-slate-500">{filteredPartners.length} {"kh\u00e1ch h\u00e0ng /"} {activeSubscriptions.length} {"\u0111\u0103ng k\u00fd \u0111ang s\u1eed d\u1ee5ng / t\u1ed5ng s\u1ed1 l\u01b0\u1ee3ng"} {totalQuantity}</p></div><button type="button" onClick={() => setColumnPickerOpen(true)} className="ft-btn ft-btn-secondary"><SlidersHorizontal className="h-4 w-4" />{"Ch\u1ecdn c\u1ed9t s\u1ea3n ph\u1ea9m"} ({productColumns.length})</button></div>
-        <div className="overflow-x-auto"><table className="ft-table min-w-[1120px]"><thead><tr><th className="sticky left-0 z-30 w-12 min-w-12 bg-slate-100">STT</th><th className="sticky z-30 min-w-56 bg-slate-100" style={{ left: "3rem" }}>{"T\u00ean kh\u00e1ch h\u00e0ng"}</th><th className="sticky z-30 min-w-52 bg-slate-100" style={{ left: "17rem" }}>{"\u0110\u1ea1i di\u1ec7n"}</th>{productColumns.map((product) => <th key={product.id} className="min-w-48">{product.name}<span className="block text-[10px] font-normal text-slate-400">{product.description}</span></th>)}<th className="min-w-40">{"S\u1ea3n ph\u1ea9m kh\u00e1c"}</th><th className="min-w-64">{"Ghi ch\u00fa"}</th></tr></thead><tbody>{filteredPartners.length ? filteredPartners.map((partner, index) => { const otherItems = otherProductsByPartner.get(partner.id) || []; const area = [partner.ward, partner.province].filter(Boolean).join(" - "); const contact = [partner.contact_person, partner.contact_position].filter(Boolean).join(" - "); return <tr key={partner.id} onClick={() => onOpenPartnerDetail?.(partner.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpenPartnerDetail?.(partner.id); } }} role="link" tabIndex={0} className="cursor-pointer hover:bg-cyan-50 focus-within:bg-cyan-50"><td className="sticky left-0 z-10 bg-white">{index + 1}</td><td className="sticky z-10 bg-white" style={{ left: "3rem" }}><b>{partner.name}</b>{area && <span className="block text-xs text-slate-500">{area}</span>}</td><td className="sticky z-10 bg-white text-sm" style={{ left: "17rem" }}>{contact && <b className="block">{contact}</b>}{partner.phone && <span className="block text-xs text-slate-600">{partner.phone}</span>}{partner.email && <span className="block break-all text-xs text-slate-600">{partner.email}</span>}</td>{productColumns.map((product) => { const item = subscriptionsByCell.get(String(partner.id) + ":" + String(product.id)); const trainingSessions = Number(partner.planned_sessions || 0); const hasTrainingSessions = product.code === "tap-huan" && trainingSessions > 0; return <td key={product.id}>{hasTrainingSessions ? <span className="block rounded-xl border border-cyan-200 bg-cyan-50 p-2 text-sm font-bold text-cyan-800">{trainingSessions} {"bu\u1ed5i"}</span> : item ? <button type="button" onClick={(event) => { event.stopPropagation(); if (!isGuest) openSubscription(partner.id, product.id, item); }} className={`w-full rounded-xl border p-2 text-left ${item.effective_status === "expired" ? "border-rose-400 bg-rose-50 text-rose-800 hover:bg-rose-100" : item.effective_status === "expiring" ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100" : "border-slate-200 hover:border-blue-300 hover:bg-blue-50"}`}><span className="flex items-center justify-between gap-2"><b className="text-sm">{"SL: "}{item.quantity}{" - "}{statusNames[item.effective_status]}</b>{!isGuest && <Pencil className="h-3.5 w-3.5 text-blue-600" />}</span><span className="mt-1 block text-xs text-slate-500">{"H\u1ea1n s\u1eed d\u1ee5ng: "}{showDate(item.expires_at)}</span></button> : !product.active ? <span className="text-xs font-semibold text-slate-400">{"Ng\u1eebng kinh doanh"}</span> : !isGuest ? <button type="button" onClick={(event) => { event.stopPropagation(); openSubscription(partner.id, product.id); }} className="flex min-h-20 w-full items-center justify-center rounded-lg border border-dashed px-2 py-3 text-base font-bold text-slate-500 hover:border-blue-300 hover:text-blue-600">{"Kh\u00f4ng \u0111\u0103ng k\u00fd"}</button> : <span className="flex min-h-20 items-center justify-center text-base font-bold text-slate-400">{"Kh\u00f4ng \u0111\u0103ng k\u00fd"}</span>}</td>; })}<td>{otherItems.length ? <button type="button" onClick={(event) => { event.stopPropagation(); setOtherProductsPartnerId(partner.id); }} className="w-full rounded-lg border border-dashed border-violet-300 bg-violet-50 px-2 py-3 text-xs font-bold text-violet-700 hover:bg-violet-100">+ {otherItems.length} {"s\u1ea3n ph\u1ea9m kh\u00e1c"}</button> : null}</td><td className="min-w-64"></td></tr>; }) : <tr><td colSpan={5 + productColumns.length} className="py-12 text-center text-slate-500">{"Kh\u00f4ng c\u00f3 kh\u00e1ch h\u00e0ng ph\u00f9 h\u1ee3p b\u1ed9 l\u1ecdc."}</td></tr>}</tbody></table></div>
-      </article> : <div className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><div className="rounded-2xl border bg-white p-5"><Users className="h-5 w-5 text-blue-600" /><b className="mt-3 block text-3xl">{filteredPartners.length}</b><span className="text-sm text-slate-500">Khách hàng</span></div><div className="rounded-2xl border bg-white p-5"><Boxes className="h-5 w-5 text-violet-600" /><b className="mt-3 block text-3xl">{productList.length}</b><span className="text-sm text-slate-500">Sản phẩm</span></div><div className="rounded-2xl border bg-white p-5"><PackagePlus className="h-5 w-5 text-emerald-600" /><b className="mt-3 block text-3xl">{totalQuantity}</b><span className="text-sm text-slate-500">Tổng số lượng đang dùng</span></div><button type="button" onClick={() => setStatusDrilldown("expiring")} className="rounded-2xl border bg-white p-5 text-left transition hover:border-amber-400 hover:bg-amber-50"><Clock3 className="h-5 w-5 text-amber-600" /><b className="mt-3 block text-3xl">{visibleSubscriptions.filter((item) => item.effective_status === "expiring").length}</b><span className="text-sm text-slate-500">Sắp hết hạn · Xem danh sách</span></button><button type="button" onClick={() => setStatusDrilldown("expired")} className="rounded-2xl border border-rose-300 bg-rose-50 p-5 text-left transition hover:border-rose-500 hover:bg-rose-100"><BarChart3 className="h-5 w-5 text-rose-600" /><b className="mt-3 block text-3xl text-rose-700">{visibleSubscriptions.filter((item) => item.effective_status === "expired").length}</b><span className="text-sm font-bold text-rose-700">Đã hết hạn · Xem danh sách</span></button></div>
-        <div className="grid gap-5 xl:grid-cols-2"><article className="overflow-hidden rounded-2xl border bg-white shadow-sm"><div className="p-5"><h2 className="font-extrabold">Thống kê theo sản phẩm</h2></div><div className="overflow-x-auto"><table className="ft-table"><thead><tr><th>Sản phẩm</th><th>Khách hàng</th><th>Đang dùng</th><th>Sắp hết hạn</th><th>Hết hạn</th><th>Số lượng</th></tr></thead><tbody>{productStatistics.map((item) => <tr key={item.product.id}><td><b>{item.product.name}</b></td><td>{item.customers}</td><td className="text-emerald-700">{item.active}</td><td className="text-amber-700">{item.expiring}</td><td className="text-rose-700">{item.expired}</td><td><b>{item.quantity}</b></td></tr>)}</tbody></table></div></article><article className="overflow-hidden rounded-2xl border bg-white shadow-sm"><div className="p-5"><h2 className="font-extrabold">Thống kê theo nhóm khách hàng</h2></div><div className="overflow-x-auto"><table className="ft-table"><thead><tr><th>Nhóm / loại</th><th>Khách hàng</th><th>Có sản phẩm</th><th>Số lượng đang dùng</th></tr></thead><tbody>{groupStatistics.map((item) => <tr key={item.name}><td><b>{item.name}</b></td><td>{item.customers}</td><td>{item.registered}</td><td><b>{item.quantity}</b></td></tr>)}</tbody></table></div></article></div>
-      </div>}
-
-      {statusDrilldown && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div className="max-h-[calc(100vh-2rem)] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl"><div className={`flex items-start justify-between gap-3 border-b p-5 ${statusDrilldown === "expired" ? "bg-rose-50" : "bg-amber-50"}`}><div><h2 className="text-xl font-extrabold">{statusDrilldown === "expired" ? "Sản phẩm đã hết hạn" : "Sản phẩm sắp hết hạn"}</h2><p className="mt-1 text-sm text-slate-600">{statusSubscriptions.length} đăng ký cần theo dõi.</p></div><button type="button" onClick={() => setStatusDrilldown(null)}><X className="h-5 w-5" /></button></div><div className="overflow-x-auto"><table className="ft-table"><thead><tr><th>Khách hàng</th><th>Sản phẩm</th><th>Hạn sử dụng</th><th>Còn lại</th><th /></tr></thead><tbody>{statusSubscriptions.map((item) => <tr key={item.id} className={item.effective_status === "expired" ? "bg-rose-50/70" : "bg-amber-50/60"}><td><b>{item.partner_name}</b></td><td>{item.product_name}</td><td className={item.effective_status === "expired" ? "font-bold text-rose-700" : "font-bold text-amber-700"}>{showDate(item.expires_at)}</td><td>{item.days_remaining == null ? "—" : item.days_remaining < 0 ? `Quá hạn ${Math.abs(item.days_remaining)} ngày` : `Còn ${item.days_remaining} ngày`}</td><td><div className="flex gap-2"><button type="button" onClick={() => { setStatusDrilldown(null); onOpenPartnerDetail?.(item.partner); }} className="ft-btn ft-btn-secondary">Mở khách hàng</button>{!isGuest && <button type="button" onClick={() => { setStatusDrilldown(null); openSubscription(item.partner, item.product, item); }} className="ft-primary"><Pencil className="h-4 w-4" />Sửa hạn</button>}</div></td></tr>)}{!statusSubscriptions.length && <tr><td colSpan={5} className="py-10 text-center text-slate-500">Không có đăng ký ở trạng thái này.</td></tr>}</tbody></table></div></div></div>}
-      {columnPickerOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-extrabold">{"Ch\u1ecdn c\u1ed9t s\u1ea3n ph\u1ea9m"}</h2><p className="mt-1 text-sm text-slate-500">{"Ch\u1ec9 c\u1ed9t \u0111\u00e3 ch\u1ecdn m\u1edbi hi\u1ec7n tr\u00ean b\u1ea3ng. L\u1ef1a ch\u1ecdn \u0111\u01b0\u1ee3c ghi nh\u1edb cho t\u00e0i kho\u1ea3n n\u00e0y."}</p></div><button type="button" onClick={() => setColumnPickerOpen(false)}><X className="h-5 w-5" /></button></div><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => persistColumnIds(candidateProducts.map((product) => product.id))} className="ft-btn ft-btn-secondary">{"Hi\u1ec7n t\u1ea5t c\u1ea3"}</button><button type="button" onClick={resetRecommendedColumns} className="ft-btn ft-btn-secondary">{"Ch\u1ecdn theo \u0111\u1ec1 xu\u1ea5t"}</button></div><div className="mt-4 grid gap-2 sm:grid-cols-2">{candidateProducts.map((product) => { const checked = productColumns.some((item) => item.id === product.id); return <label key={product.id} className="flex cursor-pointer items-center gap-3 rounded-xl border p-3 hover:border-blue-300"><input type="checkbox" checked={checked} onChange={() => { const base = savedColumnIds === null ? productColumns.map((item) => item.id) : savedColumnIds; persistColumnIds(checked ? base.filter((id) => id !== product.id) : [...base, product.id]); }} /><span><b className="block text-sm">{product.name}</b><span className="text-xs text-slate-500">{product.description || ""}</span></span></label>; })}{!candidateProducts.length && <p className="py-6 text-sm text-slate-500">{"Ch\u01b0a c\u00f3 s\u1ea3n ph\u1ea9m \u0111\u1ec3 ch\u1ecdn."}</p>}</div><div className="mt-6 flex justify-end"><button type="button" onClick={() => setColumnPickerOpen(false)} className="ft-primary">{"\u0110\u00f3ng"}</button></div></div></div>}
-      {otherProductsPartner && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-extrabold">{"S\u1ea3n ph\u1ea9m kh\u00e1c"}</h2><p className="mt-1 text-sm text-slate-500">{otherProductsPartner.name}</p></div><button type="button" onClick={() => setOtherProductsPartnerId(null)}><X className="h-5 w-5" /></button></div><div className="mt-5 space-y-3">{(otherProductsByPartner.get(otherProductsPartner.id) || []).map(({ product, subscription, trainingSessions }) => <div key={product.id} className="rounded-xl border p-4"><div className="flex items-start justify-between gap-3"><div><b>{product.name}</b><p className="mt-1 text-xs text-slate-500">{product.description}</p></div>{!isGuest && subscription && <button type="button" onClick={() => openSubscription(otherProductsPartner.id, product.id, subscription)} className="ft-btn ft-btn-secondary"><Pencil className="h-4 w-4" />{"S\u1eeda"}</button>}</div><p className="mt-3 text-sm font-semibold">{trainingSessions > 0 ? String(trainingSessions) + " bu\u1ed5i" : "SL: " + String(subscription?.quantity || 0)}</p>{subscription && <p className="mt-1 text-xs text-slate-500">{"Tr\u1ea1ng th\u00e1i:"} {statusNames[subscription.effective_status]} {"\u00b7 H\u1ea1n:"} {showDate(subscription.expires_at)}</p>}</div>)}</div><div className="mt-6 flex justify-end"><button type="button" onClick={() => setOtherProductsPartnerId(null)} className="ft-primary">{"\u0110\u00f3ng"}</button></div></div></div>}
-            {subscriptionOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><form onSubmit={saveSubscription} className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-extrabold">{subscriptionDraft.id ? "Cập nhật đăng ký" : "Đăng ký sản phẩm"}</h2><p className="mt-1 text-sm text-slate-500">Thiết lập số lượng, thời hạn và trạng thái sử dụng.</p></div><button type="button" onClick={() => setSubscriptionOpen(false)}><X className="h-5 w-5" /></button></div><div className="mt-5 grid gap-4 sm:grid-cols-2"><label><span className="mb-1 block text-sm font-bold">Khách hàng *</span><select required disabled={!!subscriptionDraft.id} value={subscriptionDraft.partner} onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, partner: event.target.value })} className="ft-input disabled:bg-slate-100"><option value="">Chọn khách hàng</option>{partners.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label><span className="mb-1 block text-sm font-bold">Sản phẩm *</span><select required disabled={!!subscriptionDraft.id} value={subscriptionDraft.product} onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, product: event.target.value })} className="ft-input disabled:bg-slate-100"><option value="">Chọn sản phẩm</option>{productList.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label><span className="mb-1 block text-sm font-bold">Số lượng *</span><input required type="number" min="1" className="ft-input" value={subscriptionDraft.quantity} onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, quantity: event.target.value })} /></label><label><span className="mb-1 block text-sm font-bold">Trạng thái</span><select className="ft-input" value={subscriptionDraft.status} onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, status: event.target.value })}><option value="active">Đang sử dụng</option><option value="negotiating">Đang thương thảo</option><option value="paused">Tạm dừng</option><option value="cancelled">Đã hủy</option></select></label>{subscriptionDraft.status === "negotiating" && <label className="sm:col-span-2 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900"><input type="checkbox" checked={subscriptionDraft.add_meeting} onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, add_meeting: event.target.checked })} className="h-4 w-4" />Thêm lịch hẹn sau khi lưu</label>}<label><span className="mb-1 block text-sm font-bold">Ngày bắt đầu</span><input type="date" className="ft-input" value={subscriptionDraft.starts_at} onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, starts_at: event.target.value })} /></label><label><span className="mb-1 block text-sm font-bold">Hạn sử dụng</span>{selectedSubscriptionProduct?.code === "tap-huan" ? <div className="ft-input bg-slate-100 font-semibold text-slate-600">Không giới hạn</div> : <input type="date" className="ft-input" value={subscriptionDraft.expires_at} onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, expires_at: event.target.value })} />}</label><label className="sm:col-span-2"><span className="mb-1 block text-sm font-bold">Ghi chú</span><textarea className="ft-input min-h-24" value={subscriptionDraft.notes} onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, notes: event.target.value })} /></label></div>{notice && <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{notice}</p>}<div className="mt-6 flex justify-between gap-3">{subscriptionDraft.id && <button type="button" onClick={() => void deleteSubscription()} className="ft-btn border-rose-200 text-rose-700"><Trash2 className="h-4 w-4" />Xóa đăng ký</button>}<div className="ml-auto flex gap-2"><button type="button" onClick={() => setSubscriptionOpen(false)} className="ft-btn ft-btn-secondary">Hủy</button><button disabled={busy} className="ft-primary">Lưu đăng ký</button></div></div></form></div>}
-      {productOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
-        <form onSubmit={saveProduct} className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-          <div className="flex items-start justify-between"><div><h2 className="text-xl font-extrabold">{productDraft.id ? "Cập nhật danh mục" : "Thêm sản phẩm hoặc dịch vụ"}</h2><p className="mt-1 text-sm text-slate-500">Thông tin danh mục được dùng chung cho phân bổ và thống kê.</p></div><button type="button" onClick={() => setProductOpen(false)}><X className="h-5 w-5" /></button></div>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <label className="sm:col-span-2"><span className="mb-1 block text-sm font-bold">Tên sản phẩm / dịch vụ *</span><input required className="ft-input" value={productDraft.name} onChange={(event) => setProductDraft({ ...productDraft, name: event.target.value })} /></label>
-            <label className="sm:col-span-2"><span className="mb-1 block text-sm font-bold">Loại *</span><select className="ft-input" value={productDraft.product_type} onChange={(event) => setProductDraft({ ...productDraft, product_type: event.target.value })}><option value="product">Sản phẩm</option><option value="service">Dịch vụ</option></select></label>
-            <label className="sm:col-span-2"><span className="mb-1 block text-sm font-bold">Mô tả</span><textarea className="ft-input min-h-24" value={productDraft.description} onChange={(event) => setProductDraft({ ...productDraft, description: event.target.value })} /></label>
-            <label className="sm:col-span-2 flex items-center gap-2 rounded-xl border bg-slate-50 p-3"><input type="checkbox" checked={productDraft.active} onChange={(event) => setProductDraft({ ...productDraft, active: event.target.checked })} /><span className="text-sm font-bold">Đang kinh doanh và cho phép phân bổ mới</span></label>
+      {/* 2. Filter Bar (for allocation and statistics views) */}
+      {view !== "catalog" && (
+        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+            <div className="relative xl:col-span-2">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                value={filters.query}
+                onChange={(event) => setFilters({ ...filters, query: event.target.value })}
+                className="w-full rounded-lg border border-slate-200/90 bg-white py-2 pl-9 pr-8 text-xs font-medium text-slate-700 shadow-2xs placeholder:text-slate-400 hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                placeholder="Tìm trường, nhóm, địa bàn..."
+              />
+              {filters.query && (
+                <button
+                  type="button"
+                  onClick={() => setFilters({ ...filters, query: "" })}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <select
+              value={filters.product}
+              onChange={(event) => setFilters({ ...filters, product: event.target.value })}
+              className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+            >
+              <option value="">Tất cả sản phẩm</option>
+              {productList.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={filters.group}
+              onChange={(event) => setFilters({ ...filters, group: event.target.value, subtype: "" })}
+              className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+            >
+              <option value="">Tất cả nhóm</option>
+              {optionValues("partner_type").map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+            <select
+              value={filters.subtype}
+              onChange={(event) => setFilters({ ...filters, subtype: event.target.value })}
+              className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+            >
+              <option value="">Tất cả loại hình</option>
+              {optionValues("partner_subtype").map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+            <select
+              value={filters.province}
+              onChange={(event) => setFilters({ ...filters, province: event.target.value, ward: "" })}
+              className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+            >
+              <option value="">Tất cả tỉnh/thành</option>
+              {optionValues("province").map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+            <select
+              value={filters.usage}
+              onChange={(event) => setFilters({ ...filters, usage: event.target.value })}
+              className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+            >
+              <option value="">Tất cả trạng thái</option>
+              {["registered", "unregistered", "active", "expiring", "expired", "paused", "cancelled"].map((item) => (
+                <option key={item} value={item}>
+                  {statusNames[item]}
+                </option>
+              ))}
+            </select>
           </div>
-          {notice && <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{notice}</p>}
-          <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setProductOpen(false)} className="ft-btn ft-btn-secondary">Hủy</button><button disabled={busy} className="ft-primary">{productDraft.id ? "Lưu thay đổi" : "Thêm mới"}</button></div>
-        </form>
-      </div>}    </section>
+        </div>
+      )}
+
+
+      {/* 3. View Switcher */}
+      {view === "catalog" ? (
+        /* CATALOG VIEW */
+        <article className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Danh mục sản phẩm & dịch vụ</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Hiển thị {products.length} danh mục với tổng số lượng khách hàng và trạng thái kinh doanh.
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm border-collapse min-w-[900px]">
+              <thead>
+                <tr className="border-b border-slate-200/80 bg-slate-50/75 text-2xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap">
+                  <th className="py-3 px-4 w-16 min-w-16 text-center">STT</th>
+                  <th className="py-3 px-4">Tên sản phẩm / Dịch vụ</th>
+                  <th className="py-3 px-4">Loại hình</th>
+                  <th className="py-3 px-4">Mô tả</th>
+                  <th className="py-3 px-4 text-center">Khách hàng</th>
+                  <th className="py-3 px-4 text-center">Tổng SL</th>
+                  <th className="py-3 px-4">Trạng thái</th>
+                  <th className="py-3 px-4 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {[...products]
+                  .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name, "vi"))
+                  .map((item, index) => (
+                    <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3.5 px-4 text-center text-xs font-medium text-slate-400">{index + 1}</td>
+                      <td className="py-3.5 px-4">
+                        <div className="font-semibold text-slate-900">{item.name}</div>
+                        <span className="inline-block mt-0.5 rounded-sm bg-slate-100 px-1.5 py-0.2 font-mono text-[10px] text-slate-500">
+                          {item.code}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            item.product_type === "service"
+                              ? "bg-blue-50 text-blue-700 ring-1 ring-blue-600/20"
+                              : "bg-purple-50 text-purple-700 ring-1 ring-purple-600/20"
+                          }`}
+                        >
+                          <Tag className="h-3 w-3" />
+                          <span>{item.product_type === "service" ? "Dịch vụ" : "Sản phẩm"}</span>
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 max-w-md whitespace-normal text-xs text-slate-600">
+                        {item.description || "—"}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <span className="inline-flex items-center justify-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                          {item.customer_count}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <b className="text-slate-900">{item.total_quantity}</b>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            item.active
+                              ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20"
+                              : "bg-slate-100 text-slate-600 ring-1 ring-slate-200"
+                          }`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${item.active ? "bg-emerald-600" : "bg-slate-400"}`} />
+                          <span>{item.active ? "Đang kinh doanh" : "Ngừng kinh doanh"}</span>
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        {!isGuest && (
+                          <button
+                            type="button"
+                            onClick={() => openProduct(item)}
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-blue-600 transition-colors cursor-pointer"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            <span>Sửa</span>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                {!products.length && (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-xs text-slate-500">
+                      Chưa có sản phẩm hoặc dịch vụ nào trong danh mục.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      ) : view === "allocation" ? (
+        /* ALLOCATION MATRIX VIEW */
+        <article className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4 sm:p-5">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Sản phẩm đang sử dụng theo khách hàng</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {filteredPartners.length} khách hàng · {activeSubscriptions.length} gói dịch vụ đang hoạt động · Tổng số lượng: {totalQuantity}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setColumnPickerOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
+              <span>Chọn cột hiển thị ({productColumns.length})</span>
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm border-collapse min-w-[1120px]">
+              <thead>
+                <tr className="border-b border-slate-200/80 bg-slate-50/80 text-2xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap">
+                  <th className="sticky left-0 z-30 w-16 min-w-16 bg-slate-50/95 py-3 px-3 text-center border-r border-slate-200/60 whitespace-nowrap">STT</th>
+                  <th className="sticky z-30 min-w-56 bg-slate-50/95 py-3 px-4 border-r border-slate-200/60" style={{ left: "3rem" }}>
+                    Tên khách hàng
+                  </th>
+                  <th className="sticky z-30 min-w-52 bg-slate-50/95 py-3 px-4 border-r border-slate-200/60" style={{ left: "17rem" }}>
+                    Đại diện & Liên hệ
+                  </th>
+                  {productColumns.map((product) => (
+                    <th key={product.id} className="min-w-48 py-3 px-4 border-r border-slate-100">
+                      <div className="font-bold text-slate-900">{product.name}</div>
+                      <span className="block text-[10px] font-normal text-slate-400 truncate max-w-44">
+                        {product.description || "Gói bản quyền"}
+                      </span>
+                    </th>
+                  ))}
+                  <th className="min-w-36 py-3 px-4">Dịch vụ khác</th>
+                  <th className="min-w-40 py-3 px-4">Ghi chú</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredPartners.length ? (
+                  filteredPartners.map((partner, index) => {
+                    const otherItems = otherProductsByPartner.get(partner.id) || [];
+                    const area = [partner.ward, partner.province].filter(Boolean).join(" - ");
+                    const contact = [partner.contact_person, partner.contact_position].filter(Boolean).join(" - ");
+                    return (
+                      <tr
+                        key={partner.id}
+                        onClick={() => onOpenPartnerDetail?.(partner.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onOpenPartnerDetail?.(partner.id);
+                          }
+                        }}
+                        role="link"
+                        tabIndex={0}
+                        className="group cursor-pointer hover:bg-slate-50/70 transition-colors"
+                      >
+                        <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50/70 py-3 px-3 text-center text-xs font-medium text-slate-400 border-r border-slate-200/60">
+                          {index + 1}
+                        </td>
+                        <td
+                          className="sticky z-10 bg-white group-hover:bg-slate-50/70 py-3 px-4 border-r border-slate-200/60"
+                          style={{ left: "3rem" }}
+                        >
+                          <div className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
+                            {partner.name}
+                          </div>
+                          {area && <span className="block text-[11px] text-slate-500 mt-0.5">{area}</span>}
+                        </td>
+                        <td
+                          className="sticky z-10 bg-white group-hover:bg-slate-50/70 py-3 px-4 border-r border-slate-200/60 text-xs"
+                          style={{ left: "17rem" }}
+                        >
+                          {contact && <div className="font-medium text-slate-800">{contact}</div>}
+                          {partner.phone && (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+                              <Phone className="h-3 w-3 text-slate-400" />
+                              {partner.phone}
+                            </span>
+                          )}
+                          {partner.email && (
+                            <span className="block text-[11px] text-slate-400 truncate max-w-44">
+                              {partner.email}
+                            </span>
+                          )}
+                        </td>
+                        {productColumns.map((product) => {
+                          const item = subscriptionsByCell.get(String(partner.id) + ":" + String(product.id));
+                          const trainingSessions = Number(partner.planned_sessions || 0);
+                          const hasTrainingSessions = product.code === "tap-huan" && trainingSessions > 0;
+                          return (
+                            <td key={product.id} className="py-2.5 px-3 border-r border-slate-100">
+                              {hasTrainingSessions ? (
+                                <span className="block rounded-xl border border-cyan-200 bg-cyan-50/80 p-2.5 text-center text-xs font-bold text-cyan-800 shadow-2xs">
+                                  {trainingSessions} buổi tập huấn
+                                </span>
+                              ) : item ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    if (!isGuest) openSubscription(partner.id, product.id, item);
+                                  }}
+                                  className={`w-full rounded-xl border p-2.5 text-left transition-all shadow-2xs ${
+                                    item.effective_status === "expired"
+                                      ? "border-rose-300 bg-rose-50/80 text-rose-900 hover:bg-rose-100"
+                                      : item.effective_status === "expiring"
+                                      ? "border-amber-300 bg-amber-50/80 text-amber-900 hover:bg-amber-100"
+                                      : "border-slate-200 bg-white hover:border-blue-400 hover:bg-blue-50/40"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="text-xs font-bold">
+                                      SL: {item.quantity} · {statusNames[item.effective_status]}
+                                    </span>
+                                    {!isGuest && <Pencil className="h-3 w-3 text-slate-400 hover:text-blue-600" />}
+                                  </div>
+                                  <div className="mt-1 text-[11px] text-slate-500 font-medium">
+                                    Hạn: {showDate(item.expires_at)}
+                                  </div>
+                                </button>
+                              ) : !product.active ? (
+                                <span className="text-xs font-medium text-slate-400 italic">Ngừng kinh doanh</span>
+                              ) : !isGuest ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openSubscription(partner.id, product.id);
+                                  }}
+                                  className="flex min-h-[4rem] w-full items-center justify-center rounded-xl border border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 text-xs font-medium text-slate-400 hover:text-blue-600 transition-all cursor-pointer"
+                                >
+                                  + Đăng ký
+                                </button>
+                              ) : (
+                                <span className="flex min-h-[4rem] items-center justify-center text-xs font-medium text-slate-300">
+                                  —
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="py-2.5 px-3">
+                          {otherItems.length ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setOtherProductsPartnerId(partner.id);
+                              }}
+                              className="w-full rounded-lg border border-dashed border-violet-300 bg-violet-50 px-2.5 py-2 text-xs font-bold text-violet-700 hover:bg-violet-100 transition-colors shadow-2xs"
+                            >
+                              + {otherItems.length} sản phẩm khác
+                            </button>
+                          ) : null}
+                        </td>
+                        <td className="py-2.5 px-3 min-w-40 text-xs text-slate-500">
+                          {partner.notes || "—"}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={5 + productColumns.length} className="py-12 text-center text-xs text-slate-500">
+                      Không có khách hàng phù hợp bộ lọc.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      ) : (
+        /* STATISTICS VIEW */
+        <div className="space-y-6">
+          {/* 5 Bento Metric Cards */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">Khách hàng phù hợp</span>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                  <Users className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold tracking-tight text-slate-900">{filteredPartners.length}</div>
+                <div className="mt-1 text-xs text-slate-500">Đối tác trong phân hệ</div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">Sản phẩm & Dịch vụ</span>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-50 text-purple-600">
+                  <Boxes className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold tracking-tight text-slate-900">{productList.length}</div>
+                <div className="mt-1 text-xs text-slate-500">Danh mục cung ứng</div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">Tổng license đang dùng</span>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                  <PackagePlus className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold tracking-tight text-slate-900">{totalQuantity}</div>
+                <div className="mt-1 text-xs text-emerald-600 font-medium">Hoạt động ổn định</div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setStatusDrilldown("expiring")}
+              className="rounded-xl border border-amber-200 bg-amber-50/40 p-5 shadow-2xs flex flex-col justify-between text-left hover:border-amber-400 hover:bg-amber-50 transition-all cursor-pointer"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-amber-700">Sắp hết hạn (30 ngày)</span>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                  <Clock3 className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold tracking-tight text-amber-900">
+                  {visibleSubscriptions.filter((item) => item.effective_status === "expiring").length}
+                </div>
+                <div className="mt-1 text-xs text-amber-700 font-medium">Bấm xem chi tiết →</div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusDrilldown("expired")}
+              className="rounded-xl border border-rose-200 bg-rose-50/40 p-5 shadow-2xs flex flex-col justify-between text-left hover:border-rose-400 hover:bg-rose-50 transition-all cursor-pointer"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-rose-700">Đã quá hạn sử dụng</span>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-100 text-rose-700">
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-2xl font-bold tracking-tight text-rose-900">
+                  {visibleSubscriptions.filter((item) => item.effective_status === "expired").length}
+                </div>
+                <div className="mt-1 text-xs text-rose-700 font-medium">Cần liên hệ tái ký →</div>
+              </div>
+            </button>
+          </div>
+
+          {/* 2 Side-by-side Bento Tables */}
+          <div className="grid gap-6 xl:grid-cols-2">
+            <article className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs">
+              <div className="p-5 border-b border-slate-100">
+                <h2 className="text-base font-bold text-slate-900">Thống kê theo sản phẩm</h2>
+                <p className="mt-0.5 text-xs text-slate-500">Mức độ phân bổ và tình trạng license theo từng đầu sản phẩm.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200/80 bg-slate-50/75 text-2xs font-semibold uppercase tracking-wider text-slate-500">
+                      <th className="py-3 px-4">Sản phẩm</th>
+                      <th className="py-3 px-3 text-center">Khách hàng</th>
+                      <th className="py-3 px-3 text-center">Đang dùng</th>
+                      <th className="py-3 px-3 text-center">Sắp hết</th>
+                      <th className="py-3 px-3 text-center">Quá hạn</th>
+                      <th className="py-3 px-4 text-center">Số lượng</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {productStatistics.map((item) => (
+                      <tr key={item.product.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-4 font-semibold text-slate-900">{item.product.name}</td>
+                        <td className="py-3 px-3 text-center text-slate-600">{item.customers}</td>
+                        <td className="py-3 px-3 text-center font-bold text-emerald-600">{item.active}</td>
+                        <td className="py-3 px-3 text-center font-bold text-amber-600">{item.expiring}</td>
+                        <td className="py-3 px-3 text-center font-bold text-rose-600">{item.expired}</td>
+                        <td className="py-3 px-4 text-center font-bold text-slate-900">{item.quantity}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs">
+              <div className="p-5 border-b border-slate-100">
+                <h2 className="text-base font-bold text-slate-900">Thống kê theo nhóm khách hàng</h2>
+                <p className="mt-0.5 text-xs text-slate-500">Cơ cấu khách hàng và số lượng license đang khai thác.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200/80 bg-slate-50/75 text-2xs font-semibold uppercase tracking-wider text-slate-500">
+                      <th className="py-3 px-4">Nhóm / Loại hình</th>
+                      <th className="py-3 px-4 text-center">Tổng khách hàng</th>
+                      <th className="py-3 px-4 text-center">Đang dùng DV</th>
+                      <th className="py-3 px-4 text-center">Số lượng license</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {groupStatistics.map((item) => (
+                      <tr key={item.name} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-4 font-semibold text-slate-900">{item.name}</td>
+                        <td className="py-3 px-4 text-center text-slate-600">{item.customers}</td>
+                        <td className="py-3 px-4 text-center font-bold text-blue-600">{item.registered}</td>
+                        <td className="py-3 px-4 text-center font-bold text-slate-900">{item.quantity}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Modals and Dialogs */}
+      {/* Drilldown Modal */}
+      {statusDrilldown && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
+          <div className="max-h-[calc(100vh-2rem)] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200/90 flex flex-col">
+            <div className={`flex items-start justify-between gap-3 border-b p-5 ${statusDrilldown === "expired" ? "bg-rose-50/70" : "bg-amber-50/70"}`}>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {statusDrilldown === "expired" ? "Sản phẩm đã quá hạn" : "Sản phẩm sắp hết hạn (trong 30 ngày)"}
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  Có {statusSubscriptions.length} gói dịch vụ cần theo dõi và hỗ trợ gia hạn.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStatusDrilldown(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[60vh]">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200/80 bg-slate-50/75 text-2xs font-semibold uppercase tracking-wider text-slate-500">
+                    <th className="py-3 px-4">Khách hàng</th>
+                    <th className="py-3 px-4">Sản phẩm</th>
+                    <th className="py-3 px-4">Hạn sử dụng</th>
+                    <th className="py-3 px-4">Thời gian còn lại</th>
+                    <th className="py-3 px-4 text-right">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {statusSubscriptions.map((item) => (
+                    <tr key={item.id} className="hover:bg-slate-50/70">
+                      <td className="py-3 px-4 font-semibold text-slate-900">{item.partner_name}</td>
+                      <td className="py-3 px-4 text-slate-700">{item.product_name}</td>
+                      <td className={`py-3 px-4 font-bold ${item.effective_status === "expired" ? "text-rose-700" : "text-amber-700"}`}>
+                        {showDate(item.expires_at)}
+                      </td>
+                      <td className="py-3 px-4 text-slate-600">
+                        {item.days_remaining == null
+                          ? "—"
+                          : item.days_remaining < 0
+                          ? `Quá hạn ${Math.abs(item.days_remaining)} ngày`
+                          : `Còn ${item.days_remaining} ngày`}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="inline-flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStatusDrilldown(null);
+                              onOpenPartnerDetail?.(item.partner);
+                            }}
+                            className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            Hồ sơ
+                          </button>
+                          {!isGuest && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStatusDrilldown(null);
+                                openSubscription(item.partner, item.product, item);
+                              }}
+                              className="rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                            >
+                              Gia hạn
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!statusSubscriptions.length && (
+                    <tr>
+                      <td colSpan={5} className="py-10 text-center text-xs text-slate-500">
+                        Không có gói đăng ký nào ở trạng thái này.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Column Picker Modal */}
+      {columnPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
+          <div className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200/90">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Chọn cột sản phẩm hiển thị</h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Tùy chỉnh các cột dịch vụ xuất hiện trên bảng ma trận. Cấu hình được ghi nhớ riêng cho tài khoản của bạn.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setColumnPickerOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => persistColumnIds(candidateProducts.map((product) => product.id))}
+                className="rounded-lg border border-slate-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 cursor-pointer"
+              >
+                Hiện tất cả ({candidateProducts.length})
+              </button>
+              <button
+                type="button"
+                onClick={resetRecommendedColumns}
+                className="rounded-lg border border-slate-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 cursor-pointer"
+              >
+                Khôi phục mặc định
+              </button>
+            </div>
+            <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+              {candidateProducts.map((product) => {
+                const checked = productColumns.some((item) => item.id === product.id);
+                return (
+                  <label
+                    key={product.id}
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-colors ${
+                      checked ? "border-blue-300 bg-blue-50/40" : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        const base = savedColumnIds === null ? productColumns.map((item) => item.id) : savedColumnIds;
+                        persistColumnIds(checked ? base.filter((id) => id !== product.id) : [...base, product.id]);
+                      }}
+                      className="h-4 w-4 rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="min-w-0">
+                      <b className="block text-xs text-slate-900 truncate">{product.name}</b>
+                      <span className="text-[11px] text-slate-500 truncate block">{product.description || "Gói dịch vụ"}</span>
+                    </div>
+                  </label>
+                );
+              })}
+              {!candidateProducts.length && (
+                <p className="py-6 text-xs text-slate-500 col-span-2 text-center">Chưa có sản phẩm nào để chọn.</p>
+              )}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setColumnPickerOpen(false)}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Other Products Modal */}
+      {otherProductsPartner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
+          <div className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200/90">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Sản phẩm & Dịch vụ khác</h2>
+                <p className="mt-0.5 text-xs text-slate-500">{otherProductsPartner.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOtherProductsPartnerId(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {(otherProductsByPartner.get(otherProductsPartner.id) || []).map(
+                ({ product, subscription, trainingSessions }) => (
+                  <div key={product.id} className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <b className="text-xs font-bold text-slate-900">{product.name}</b>
+                        <p className="mt-0.5 text-[11px] text-slate-500">{product.description}</p>
+                      </div>
+                      {!isGuest && subscription && (
+                        <button
+                          type="button"
+                          onClick={() => openSubscription(otherProductsPartner.id, product.id, subscription)}
+                          className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Sửa
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs font-semibold text-slate-800">
+                      {trainingSessions > 0 ? `${trainingSessions} buổi` : `Số lượng: ${subscription?.quantity || 0}`}
+                    </p>
+                    {subscription && (
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        Trạng thái: {statusNames[subscription.effective_status]} · Hạn: {showDate(subscription.expires_at)}
+                      </p>
+                    )}
+                  </div>
+                ),
+              )}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setOtherProductsPartnerId(null)}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subscription Edit / Create Modal */}
+      {subscriptionOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
+          <form
+            onSubmit={saveSubscription}
+            className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200/90"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {subscriptionDraft.id ? "Cập nhật đăng ký dịch vụ" : "Đăng ký dịch vụ mới"}
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">Thiết lập số lượng license, thời hạn và trạng thái khai thác.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubscriptionOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 text-xs">
+              <label>
+                <span className="mb-1 block font-bold text-slate-700">Khách hàng *</span>
+                <select
+                  required
+                  disabled={!!subscriptionDraft.id}
+                  value={subscriptionDraft.partner}
+                  onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, partner: event.target.value })}
+                  className="w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs disabled:bg-slate-100"
+                >
+                  <option value="">Chọn khách hàng</option>
+                  {partners.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block font-bold text-slate-700">Sản phẩm *</span>
+                <select
+                  required
+                  disabled={!!subscriptionDraft.id}
+                  value={subscriptionDraft.product}
+                  onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, product: event.target.value })}
+                  className="w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs disabled:bg-slate-100"
+                >
+                  <option value="">Chọn sản phẩm</option>
+                  {productList.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block font-bold text-slate-700">Số lượng license *</span>
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  className="w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs"
+                  value={subscriptionDraft.quantity}
+                  onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, quantity: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="mb-1 block font-bold text-slate-700">Trạng thái</span>
+                <select
+                  className="w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs"
+                  value={subscriptionDraft.status}
+                  onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, status: event.target.value as any })}
+                >
+                  <option value="active">Đang sử dụng</option>
+                  <option value="negotiating">Đang thương thảo</option>
+                  <option value="paused">Tạm dừng</option>
+                  <option value="cancelled">Đã hủy</option>
+                </select>
+              </label>
+              {subscriptionDraft.status === "negotiating" && (
+                <label className="sm:col-span-2 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">
+                  <input
+                    type="checkbox"
+                    checked={subscriptionDraft.add_meeting}
+                    onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, add_meeting: event.target.checked })}
+                    className="h-4 w-4"
+                  />
+                  Thêm lịch hẹn sau khi lưu
+                </label>
+              )}
+              <label>
+                <span className="mb-1 block font-bold text-slate-700">Ngày bắt đầu</span>
+                <input
+                  type="date"
+                  className="w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs"
+                  value={subscriptionDraft.starts_at}
+                  onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, starts_at: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="mb-1 block font-bold text-slate-700">Hạn sử dụng</span>
+                {selectedSubscriptionProduct?.code === "tap-huan" ? (
+                  <div className="w-full rounded-lg border border-slate-200/90 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                    Không giới hạn
+                  </div>
+                ) : (
+                  <input
+                    type="date"
+                    className="w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs"
+                    value={subscriptionDraft.expires_at}
+                    onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, expires_at: event.target.value })}
+                  />
+                )}
+              </label>
+              <label className="sm:col-span-2">
+                <span className="mb-1 block font-bold text-slate-700">Ghi chú</span>
+                <textarea
+                  className="w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs min-h-20"
+                  value={subscriptionDraft.notes}
+                  onChange={(event) => setSubscriptionDraft({ ...subscriptionDraft, notes: event.target.value })}
+                />
+              </label>
+            </div>
+            <div className="mt-6 flex items-center justify-between gap-3">
+              {subscriptionDraft.id ? (
+                <button
+                  type="button"
+                  onClick={() => void deleteSubscription()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Xóa đăng ký</span>
+                </button>
+              ) : (
+                <div />
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSubscriptionOpen(false)}
+                  className="rounded-lg border border-slate-200/90 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  disabled={busy}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
+                >
+                  Lưu đăng ký
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Product Edit / Create Modal */}
+      {productOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
+          <form
+            onSubmit={saveProduct}
+            className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200/90"
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {productDraft.id ? "Cập nhật sản phẩm / dịch vụ" : "Thêm sản phẩm hoặc dịch vụ"}
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">Thông tin danh mục được dùng chung cho phân bổ và báo cáo.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProductOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 text-xs">
+              <label className="sm:col-span-2">
+                <span className="mb-1 block font-bold text-slate-700">Tên sản phẩm / dịch vụ *</span>
+                <input
+                  required
+                  className="w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs"
+                  value={productDraft.name}
+                  onChange={(event) => setProductDraft({ ...productDraft, name: event.target.value })}
+                />
+              </label>
+              <label className="sm:col-span-2">
+                <span className="mb-1 block font-bold text-slate-700">Loại hình *</span>
+                <select
+                  className="w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs"
+                  value={productDraft.product_type}
+                  onChange={(event) => setProductDraft({ ...productDraft, product_type: event.target.value as any })}
+                >
+                  <option value="product">Sản phẩm / Phần mềm</option>
+                  <option value="service">Dịch vụ / Đào tạo</option>
+                </select>
+              </label>
+              <label className="sm:col-span-2">
+                <span className="mb-1 block font-bold text-slate-700">Mô tả</span>
+                <textarea
+                  className="w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-2xs min-h-20"
+                  value={productDraft.description}
+                  onChange={(event) => setProductDraft({ ...productDraft, description: event.target.value })}
+                />
+              </label>
+              <label className="sm:col-span-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <input
+                  type="checkbox"
+                  checked={productDraft.active}
+                  onChange={(event) => setProductDraft({ ...productDraft, active: event.target.checked })}
+                  className="h-4 w-4 rounded-sm text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-xs font-semibold text-slate-800">
+                  Đang kinh doanh và cho phép phân bổ license mới
+                </span>
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setProductOpen(false)}
+                className="rounded-lg border border-slate-200/90 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                disabled={busy}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
+              >
+                {productDraft.id ? "Lưu thay đổi" : "Thêm mới"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </section>
   );
 }

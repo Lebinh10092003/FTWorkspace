@@ -441,3 +441,44 @@ class TrainingAssessmentUpload(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+
+
+class TrainingPartnerAiAccount(models.Model):
+    STATUS_CHOICES = [
+        ("active", "Đang dùng"),
+        ("expired", "Hết hạn"),
+        ("locked", "Tạm khóa"),
+        ("revoked", "Đã thu hồi"),
+    ]
+    PLATFORM_CHOICES = [
+        ("chatgpt_plus", "ChatGPT Plus"),
+        ("chatgpt_team", "ChatGPT Team"),
+        ("claude_pro", "Claude Pro"),
+        ("gemini_advanced", "Gemini Advanced"),
+        ("canva_pro", "Canva Pro"),
+        ("midjourney", "Midjourney"),
+        ("copilot", "Microsoft Copilot"),
+        ("shared_ai", "AI Dùng chung FT"),
+        ("other", "Khác"),
+    ]
+    partner = models.ForeignKey(TrainingPartner, on_delete=models.CASCADE, related_name="ai_accounts")
+    subscription = models.ForeignKey(
+        TrainingProductSubscription,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="ai_accounts",
+    )
+    platform = models.CharField(max_length=50, choices=PLATFORM_CHOICES, default="chatgpt_plus")
+    account_username = models.CharField(max_length=255)
+    account_password = models.CharField(max_length=255)
+    assigned_to = models.CharField(max_length=255, blank=True)
+    starts_at = models.DateField(null=True, blank=True)
+    expires_at = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["partner__name", "account_username"]

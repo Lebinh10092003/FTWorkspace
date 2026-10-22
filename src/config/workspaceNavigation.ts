@@ -24,6 +24,7 @@ import {
   Link2,
   Mail,
   Megaphone,
+  Package,
   PackageSearch,
   Presentation,
   QrCode,
@@ -201,7 +202,7 @@ export const DIGITAL_TRAINING_NAV: ModuleNavItem[] = [
   { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
   {
     id: 'schedule',
-    label: 'Lịch gặp khách hàng',
+    label: 'Lịch gặp',
     icon: CalendarDays,
     children: [
       { id: 'calendar', label: 'Lịch', icon: CalendarDays },
@@ -213,14 +214,15 @@ export const DIGITAL_TRAINING_NAV: ModuleNavItem[] = [
     label: 'Khách hàng',
     icon: Handshake,
     children: [
+      { id: 'subscriptions', label: 'Theo dõi dịch vụ & Hạn dùng', icon: Package },
       { id: 'products-allocation', label: 'Khách hàng hiện tại', icon: Handshake },
       { id: 'leads', label: 'Khách hàng mới', icon: Users },
     ],
   },
-  { id: 'quanlybndc', label: 'Quản lý BNDC', icon: FolderTree },
+  { id: 'quanlybndc', label: 'Quản lý BNDC', icon: CalendarCheck },
   {
     id: 'training',
-    label: 'Đào tạo & tập huấn',
+    label: 'Tập huấn',
     icon: GraduationCap,
     children: [
       { id: 'partner-sessions', label: 'Theo dõi tập huấn', icon: ClipboardList },
@@ -229,7 +231,7 @@ export const DIGITAL_TRAINING_NAV: ModuleNavItem[] = [
   },
   {
     id: 'products',
-    label: 'Sản phẩm & dịch vụ',
+    label: 'Sản phẩm',
     icon: PackageSearch,
     children: [
       { id: 'products-catalog', label: 'Danh mục', icon: PackageSearch },

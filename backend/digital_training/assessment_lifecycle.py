@@ -191,9 +191,8 @@ def auto_backup_graded_assessment(assessment):
         return True
     assessment.backup_retry_at = timezone.now() + BACKUP_RETRY_DELAY
     assessment.save(update_fields=["sync_status", "sync_error", "backup_retry_at", "updated_at"])
-    graded_stamp = int((assessment.graded_at or timezone.now()).timestamp())
     notify_workspace(
-        event_key=f"assessment:{assessment.pk}:auto-backup-failed:{graded_stamp}",
+        event_key=f"assessment:{assessment.pk}:auto-backup-failed",
         title="Sao lưu bài kiểm tra chưa thành công",
         message=(
             f"Bài “{assessment.title}” đã chấm xong nhưng chưa thể hoàn tất sao lưu Google Sheet/Drive. "
@@ -307,7 +306,7 @@ def close_due_assessments(now=None, assessment_id=None):
                 attempt.sync_error = str(error)[:2000]
             attempt.save(update_fields=["sync_status", "sync_error", "synced_at", "updated_at"])
         notify_workspace(
-            event_key=f"assessment:{assessment.pk}:closed:{int(assessment.closes_at.timestamp())}",
+            event_key=f"assessment:{assessment.pk}:closed",
             title="Bài kiểm tra đã đóng",
             message=f"“{assessment.title}” đã đóng theo lịch và sẵn sàng để chấm.",
             category="digital-training", target_modules=["digital-training"],
@@ -371,7 +370,7 @@ def run_assessment_lifecycle(now=None):
         if not ok:
             result["failedBackup"] += 1
             notify_workspace(
-                event_key=f"assessment:{assessment.pk}:backup-failed:{int(anchor.timestamp())}:{now.date().isoformat()}",
+                event_key=f"assessment:{assessment.pk}:backup-failed:{now.date().isoformat()}",
                 title="Khẩn cấp: sao lưu lỗi trước khi xóa",
                 message=(
                     f"Bài “{assessment.title}” của đơn vị "

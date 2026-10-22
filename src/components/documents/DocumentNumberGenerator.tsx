@@ -44,6 +44,7 @@ const FALLBACK_TYPES: DocumentType[] = [
   { label: 'Kế hoạch', code: 'KH' },
   { label: 'Biên bản', code: 'BB' },
   { label: 'Hợp đồng', code: 'HĐ' },
+  { label: 'Báo giá', code: 'BG' },
   { label: 'Nghị quyết', code: 'NQ' },
   { label: 'Nghị định', code: 'NĐ' },
   { label: 'Quy chế', code: 'QC' },
@@ -206,7 +207,7 @@ export default function DocumentNumberGenerator({
                 <label className="block md:col-span-2">
                   <span className={label}>Nội dung công việc</span>
                   <textarea value={subject} onChange={event => setSubject(event.target.value)} rows={3}
-                    placeholder="V/v tổ chức các cuộc thi SCO Cycle 1 năm học 2026–2027" className={field} />
+                    placeholder={effectiveType === 'Báo giá' ? 'V/v báo giá phần mềm và dịch vụ đào tạo số cho Trường...' : 'V/v tổ chức các cuộc thi SCO Cycle 1 năm học 2026–2027'} className={field} />
                 </label>
 
                 <label className="block">

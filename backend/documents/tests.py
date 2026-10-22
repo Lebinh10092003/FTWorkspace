@@ -85,6 +85,7 @@ class DocumentNumberFormatTests(TestCase):
         self.assertEqual(format_number(46, "Báo cáo"), "46/BC-FT")
         self.assertEqual(format_number(46, "Thông báo"), "46/TB-FT")
         self.assertEqual(format_number(46, "Nghị định"), "46/NĐ-FT")
+        self.assertEqual(format_number(46, "Báo giá"), "46/BG-FT")
 
     def test_single_digit_numbers_are_padded_like_the_register(self):
         self.assertEqual(format_number(9, "Công văn"), "09/FT")

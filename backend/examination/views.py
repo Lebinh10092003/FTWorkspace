@@ -1354,7 +1354,7 @@ def competition_detail(request, pk):
         append_audit(f'competition-{comp.id}', 'Cập nhật cuộc thi: ' + (change_text or 'Không có thay đổi dữ liệu.'), request)
         if change_text:
             notify_examination_staff(
-                event_key=f'examination-competition-updated:{comp.id}:{uuid.uuid4().hex}',
+                event_key=f'examination-competition-updated:{comp.id}',
                 title=f'Đã cập nhật cuộc thi {comp.code}',
                 message=f'{audit_actor(request)} đã cập nhật: {change_text}',
                 action_url=f'/examination/competitions/{comp.id}',
@@ -1696,7 +1696,7 @@ def session_detail(request, pk):
         important_fields = {'name', 'phase', 'national', 'nationalDate', 'international', 'internationalDate', 'competitionId', 'rounds'}
         if any(before.get(field) != after.get(field) for field in important_fields):
             notify_examination_staff(
-                event_key=f'examination-session-updated:{sess.id}:{uuid.uuid4().hex}',
+                event_key=f'examination-session-updated:{sess.id}',
                 title=f'Đã cập nhật kỳ tổ chức {sess.code}',
                 message=f'{audit_actor(request)} đã cập nhật: {change_text}',
                 action_url=f'/examination/sessions/{sess.id}',
