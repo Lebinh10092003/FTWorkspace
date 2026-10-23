@@ -52,6 +52,7 @@ import {
  */
 
 export type WorkspaceAreaId =
+  | 'workspace'
   | 'work-schedule'
   | 'examination'
   | 'digital-training'
@@ -75,6 +76,14 @@ export type WorkspaceArea = {
 };
 
 export const WORKSPACE_AREAS: WorkspaceArea[] = [
+  {
+    id: 'workspace',
+    label: 'Trang chủ',
+    shortLabel: 'Trang chủ',
+    description: 'Danh sách ứng dụng của FT Workspace.',
+    icon: LayoutGrid,
+    path: '/',
+  },
   {
     id: 'work-schedule',
     label: 'Lịch làm việc',
