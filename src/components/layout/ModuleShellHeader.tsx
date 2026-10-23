@@ -1,5 +1,4 @@
 import React from 'react';
-import { ChevronsUpDown } from 'lucide-react';
 import ModuleTopNav from './ModuleTopNav';
 import { ModuleNavItem } from '../../config/workspaceNavigation';
 import WorkspaceNotifications from '../WorkspaceNotifications';
@@ -30,18 +29,24 @@ export default function ModuleShellHeader({
 }: ModuleShellHeaderProps) {
   return (
     <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between border-b border-slate-200/90 bg-white/95 px-4 sm:px-6 backdrop-blur-md">
-      {/* Left: Department Switcher & Breadcrumbs */}
-      <div className="flex items-center gap-3 min-w-0 shrink-0">
+      {/* Left: System Badge & Breadcrumbs */}
+      <div className="flex items-center gap-2.5 min-w-0 shrink-0">
         <div className="hidden sm:flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-slate-50/70 px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs">
-          <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-          <span className="truncate max-w-[130px]">{eyebrow || 'FermatTech'}</span>
-          <ChevronsUpDown className="h-3 w-3 text-slate-400" />
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="truncate max-w-[120px]">FermatTech</span>
         </div>
         <div className="h-4 w-px bg-slate-200 hidden sm:block" />
         <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-slate-500 font-medium min-w-0">
-          <span className="hover:text-slate-900 transition-colors cursor-pointer hidden md:inline">Workspace</span>
-          <span className="text-slate-300 hidden md:inline">/</span>
-          <span className="text-slate-900 font-bold truncate max-w-[160px]">{title}</span>
+          <span className="text-slate-600 hidden md:inline">{title}</span>
+          {eyebrow && eyebrow !== title && (
+            <>
+              <span className="text-slate-300 hidden md:inline">/</span>
+              <span className="text-slate-900 font-bold truncate max-w-[160px]">{eyebrow}</span>
+            </>
+          )}
+          {(!eyebrow || eyebrow === title) && (
+            <span className="text-slate-900 font-bold truncate max-w-[160px] md:hidden">{title}</span>
+          )}
         </nav>
       </div>
 

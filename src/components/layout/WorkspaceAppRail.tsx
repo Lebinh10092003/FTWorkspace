@@ -108,18 +108,16 @@ export default function WorkspaceAppRail({
     );
   };
 
-  const home = visibleAreas.filter(area => area.id === 'workspace');
   const mainAreas = visibleAreas.filter(area =>
-    area.id !== 'workspace' &&
-    ['digital-training', 'examination', 'finance-report', 'attendance'].includes(area.id)
+    ['work-schedule', 'examination', 'digital-training', 'finance-report', 'attendance'].includes(area.id)
   );
   const toolAreas = visibleAreas.filter(area =>
-    !['workspace', 'digital-training', 'examination', 'finance-report', 'attendance'].includes(area.id)
+    !['work-schedule', 'examination', 'digital-training', 'finance-report', 'attendance'].includes(area.id)
   );
 
   return (
     <nav
-      className={`fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200/90 bg-white transition-[width] duration-200 ease-in-out ${
+      className={`ft-app-rail ${compact ? 'is-compact' : ''} fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200/90 bg-white transition-[width] duration-200 ease-in-out ${
         compact ? 'w-[4.5rem] p-2' : 'w-64 p-3'
       }`}
       aria-label="Điều hướng chính FermatTech Workspace"
@@ -163,11 +161,6 @@ export default function WorkspaceAppRail({
 
       {/* 3. Navigation Items */}
       <div className="flex-1 overflow-y-auto space-y-4 pt-2 overscroll-contain pr-0.5 scrollbar-thin">
-        {/* Home */}
-        <div className="space-y-1">
-          {home.map(renderItem)}
-        </div>
-
         {/* Dashboards Section */}
         {mainAreas.length > 0 && (
           <div className="space-y-1">
@@ -185,7 +178,7 @@ export default function WorkspaceAppRail({
           <div className="space-y-1">
             {!compact && (
               <p className="px-2 pt-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                Công cụ & Tiện ích
+                Công cụ & Quản trị
               </p>
             )}
             {toolAreas.map(renderItem)}

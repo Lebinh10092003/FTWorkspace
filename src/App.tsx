@@ -190,7 +190,7 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/qr-generator')) return 'qr-generator';
   if (path.startsWith('/attendance')) return 'attendance';
   if (path.startsWith('/account-management')) return 'account-management';
-  return 'workspace';
+  return 'work-schedule';
 }
 
 class ExaminationErrorBoundary extends Component<
@@ -255,9 +255,6 @@ export default function App() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Yesterday timesheet warning
-  const [yesterdayWarning, setYesterdayWarning] = useState<{ show: boolean; date: string }>({ show: false, date: '' });
-  const [dismissPermanent, setDismissPermanent] = useState(false);
   const [attendanceEditDate, setAttendanceEditDate] = useState('');
   const [globalCommandOpen, setGlobalCommandOpen] = useState(false);
 
@@ -326,7 +323,7 @@ export default function App() {
         setIdToken(null);
         setUser(GUEST_USER);
         setUserRole('EMPLOYEE');
-        setViewModeState('workspace');
+        setViewModeState('work-schedule');
       } finally {
         if (active) setAuthChecking(false);
       }
@@ -348,9 +345,11 @@ export default function App() {
   }, []);
 
   const setViewMode = (mode: ViewMode) => {
-    setViewModeState(mode);
+    const targetMode = mode === 'workspace' ? 'work-schedule' : mode;
+    setViewModeState(targetMode);
     const paths: Partial<Record<ViewMode, string>> = {
-      workspace: '/',
+      workspace: '/work-schedule',
+      'work-schedule': '/work-schedule',
       'examination-invigilation': '/examination/invigilation',
       'communication-tools': '/communication-tools',
       'email-builder': '/communication-tools/email',
@@ -361,7 +360,7 @@ export default function App() {
       'weekly-report': '/communication-tools/weekly-report',
       'competition-landing': '/communication-tools/competition-landing',
     };
-    const path = paths[mode] || `/${mode}`;
+    const path = paths[targetMode] || `/${targetMode}`;
     if (window.location.pathname !== path) window.history.pushState(null, '', path);
   };
 
@@ -409,17 +408,29 @@ export default function App() {
       if (!ignoreDismissed && sessionStorage.getItem('timesheet_dismiss_yesterday')) return;
       fetch('/api/attendance/timesheet/prefill', { headers: { Authorization: `Bearer ${idToken}` } })
         .then(r => r.json())
-        .then((pf: any) => {
+        .then(async (pf: any) => {
           if (!active) return;
-          setYesterdayWarning(pf.yesterdayWarning
-            ? { show: true, date: pf.yesterdayDate }
-            : { show: false, date: pf.yesterdayDate || '' });
+          if (pf?.yesterdayWarning && pf?.yesterdayDate) {
+            const confirmed = await appDialog.confirm(
+              `Bạn chưa cập nhật công ca cho ngày ${fmtDDMMYYYY(pf.yesterdayDate)}.\nVui lòng cập nhật công ca để đảm bảo dữ liệu chấm công chính xác.`,
+              {
+                title: 'Nhắc nhở cập nhật công ca',
+                confirmText: 'Cập nhật ngay',
+                cancelText: 'Để sau',
+                tone: 'warning',
+              }
+            );
+            if (confirmed) {
+              setAttendanceEditDate(pf.yesterdayDate);
+              setViewMode('attendance');
+            } else {
+              sessionStorage.setItem('timesheet_dismiss_yesterday', '1');
+            }
+          }
         })
         .catch(() => {});
     };
-    const onTimesheetSaved = (event: Event) => {
-      const savedDate = (event as CustomEvent<{ date?: string }>).detail?.date;
-      setYesterdayWarning(previous => savedDate && savedDate === previous.date ? { ...previous, show: false } : previous);
+    const onTimesheetSaved = () => {
       refreshWarning(true);
     };
     refreshWarning();
@@ -432,35 +443,12 @@ export default function App() {
 
   const fmtDDMMYYYY = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
 
-  const dismissYesterdayWarning = () => {
-    setYesterdayWarning(prev => ({ ...prev, show: false }));
-    if (dismissPermanent) sessionStorage.setItem('timesheet_dismiss_yesterday', '1');
-  };
-
-  const markYesterdayDayOff = async () => {
-    dismissYesterdayWarning();
-    try {
-      await fetch('/api/attendance/timesheet/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ workDate: yesterdayWarning.date, isDayOff: true }),
-      });
-    } catch { /* ignore */ }
-  };
-
-  const editYesterdayTimesheet = () => {
-    const targetDate = yesterdayWarning.date;
-    dismissYesterdayWarning();
-    setAttendanceEditDate(targetDate);
-    setViewMode('attendance');
-  };
-
 
   useEffect(() => {
     const updateAppearance = (event: Event) => setAppearance((event as CustomEvent<WorkspaceAppearance>).detail || readWorkspaceAppearance());
     const returnHomeFromLogo = (event: MouseEvent) => {
       const target = event.target as Element | null;
-      if (target?.closest('img[src="/logo.png"], img[src$="/logo.png"]')) setViewMode('workspace');
+      if (target?.closest('img[src="/logo.png"], img[src$="/logo.png"]')) setViewMode('work-schedule');
     };
     window.addEventListener('ft-appearance-change', updateAppearance);
     document.addEventListener('click', returnHomeFromLogo, true);
@@ -496,10 +484,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (authChecking || viewMode === 'workspace' || viewMode === 'training-assessment-public' || viewMode === 'competition-landing-public' || viewMode === 'competition-hub' || viewMode === 'guest-invigilation' || viewMode === 'public-exam-registration' || viewMode === 'qr-generator' || viewMode === 'examination-invigilation') return;
+    if (authChecking || viewMode === 'training-assessment-public' || viewMode === 'competition-landing-public' || viewMode === 'competition-hub' || viewMode === 'guest-invigilation' || viewMode === 'public-exam-registration' || viewMode === 'qr-generator' || viewMode === 'examination-invigilation') return;
     if (!canAccessView(viewMode)) {
-      setViewModeState('workspace');
-      window.history.replaceState(null, '', '/');
+      setViewModeState('work-schedule');
+      window.history.replaceState(null, '', '/work-schedule');
       if (isGuest) {
         setAuthError('Vui lòng đăng nhập để truy cập mô-đun.');
         setShowLoginModal(true);
@@ -516,9 +504,8 @@ export default function App() {
 
   // The rail lists business domains; the Workspace launcher is always reachable.
   const departmentLayout = isGuest ? null : resolveDepartmentLayout((user.departments || []).map(item => item.name), user.jobTitle?.name || '');
-  const canAccessArea = (area: WorkspaceArea) => area.id === 'workspace' || canAccessView(area.id as ViewMode);
+  const canAccessArea = (area: WorkspaceArea) => canAccessView(area.id as ViewMode);
   const openArea = (area: WorkspaceArea) => {
-    if (area.id === 'workspace') { setViewMode('workspace'); return; }
     openProtectedView(area.id as ViewMode, area.id === 'social-dashboard' ? 'dashboard' : undefined);
   };
 
@@ -573,7 +560,7 @@ export default function App() {
     setUser(GUEST_USER);
     setUserRole('EMPLOYEE');
     setChannels([]);
-    setViewMode('workspace');
+    setViewMode('work-schedule');
     if (token) {
       fetch('/api/auth/logout', {
         method: 'POST',
@@ -660,251 +647,14 @@ export default function App() {
   if (viewMode === 'examination-invigilation' && (isGuest || !canAccessView('examination'))) {
     return <>
       {isGuest ? <div className="grid min-h-screen place-items-center bg-slate-50"><div className="text-center"><h1 className="text-xl font-bold">Ca coi thi của tôi</h1><p className="my-4 text-slate-600">Đăng nhập bằng tài khoản nhân viên để mở phòng được phân công.</p><button type="button" onClick={() => setShowLoginModal(true)} className="rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white">Đăng nhập Workspace</button></div></div>
-        : <Suspense fallback={<div className="p-12 text-center">Đang mở ca thi…</div>}><InvigilationWorkspace token={idToken || ''} userName={user.displayName} onBack={() => setViewMode('workspace')} /></Suspense>}
+        : <Suspense fallback={<div className="p-12 text-center">Đang mở ca thi…</div>}><InvigilationWorkspace token={idToken || ''} userName={user.displayName} onBack={() => setViewMode('work-schedule')} /></Suspense>}
       {loginModal}{profileModal}
     </>;
   }
 
   if (viewMode === 'workspace') {
-    const apps: Array<{ mode: ViewMode; title: string; description: string; gradient: string; icon: React.ElementType }> = [
-      {
-        mode: 'work-schedule',
-        title: 'Lịch làm việc',
-        description: 'Lập lịch cá nhân, quản lý nhiệm vụ và theo dõi công việc của đội nhóm.',
-        gradient: 'from-[#0055DA] to-[#00A6E8]',
-        icon: CalendarRange,
-      },
-      {
-        mode: 'examination',
-        title: 'Khảo thí',
-        description: 'Quản lý cuộc thi, kỳ tổ chức, thí sinh và nguồn dữ liệu Google Sheets.',
-        gradient: 'from-[#00C68D] to-[#008f68]',
-        icon: ClipboardList,
-      },
-      {
-        mode: 'digital-training',
-        title: 'Công nghệ & đào tạo số',
-        description: 'Quản lý lịch gặp khách hàng, nội dung đào tạo chuyển đổi số và ứng dụng AI.',
-        gradient: 'from-[#0055DA] to-[#00C68D]',
-        icon: GraduationCap,
-      },
-      {
-        mode: 'social-dashboard',
-        title: 'Truyền thông',
-        description: 'Theo dõi Facebook, Zalo OA, báo cáo tương tác và đồng bộ dữ liệu.',
-        gradient: 'from-[#0055DA] to-[#0042AD]',
-        icon: ChartColumnBig,
-      },
-      {
-        mode: 'communication-tools',
-        title: 'Bộ công cụ FermatTech',
-        description: 'Thiết kế Email, tạo chữ ký và mã QR trong một không gian công cụ chung.',
-        gradient: 'from-[#FF0052] via-[#8B5CF6] to-[#0055DA]',
-        icon: Megaphone,
-      },
-      {
-        mode: 'training-assessments',
-        title: 'Bài kiểm tra cuối khóa tập huấn',
-        description: 'Chia mã đề cân bằng, đặt thời gian, chấm điểm và theo dõi kết quả tập huấn.',
-        gradient: 'from-[#001E40] to-[#0055DA]',
-        icon: FileCheck2,
-      },
-    ];
-    if (userRole === 'ADMIN') {
-      apps.push({
-        mode: 'account-management',
-        title: 'Quản lý nhân viên',
-        description: 'Tạo, phân quyền và quản lý thành viên Workspace.',
-        gradient: 'from-[#101114] to-[#0055DA]',
-        icon: ShieldUser,
-      });
-    }
-
-    if (canViewFinance) {
-      apps.push({
-        mode: 'finance-report',
-        title: 'Báo cáo thu chi',
-        description: 'Theo dõi tổng thu, tổng chi, công nợ, chứng từ và tình trạng xử lý tài chính.',
-        gradient: 'from-[#0F766E] to-[#0055DA]',
-        icon: BadgeDollarSign,
-      });
-    }
-
-    apps.push({
-      mode: 'attendance',
-      title: 'Công ca',
-      description: 'Ghi nhận giờ vào, giờ ra và theo dõi dữ liệu công ca theo tháng.',
-      gradient: 'from-[#173F30] to-[#4E9B73]',
-      icon: CalendarCheck,
-    });
-
-    // Invigilators outside Khảo thí reach their rooms here (Khảo thí staff use the module menu).
-    if (upcomingDuties && !canAccessView('examination')) apps.push({ mode: 'examination-invigilation', title: 'Ca coi thi của tôi', description: `Bạn có ${upcomingDuties} ca coi thi sắp tới: mở phòng, điểm danh và xem thông tin thí sinh.`, gradient: 'from-emerald-600 to-teal-500', icon: CalendarCheck });
-    const visibleApps = apps.filter(app => canAccessView(app.mode));
-    return (
-      <div className={`workspace-theme workspace-theme-${appearance.theme} min-h-dvh liquid-bg flex flex-col font-sans relative overflow-x-hidden`} style={workspaceAppearanceStyle(appearance)}>
-        <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between border-b border-slate-200/90 bg-white/95 px-4 sm:px-8 backdrop-blur-md">
-          <div className="flex items-center gap-3 min-w-0">
-            <img src="/logo.png" alt="FermatTech Logo" className="h-7 w-auto object-contain" />
-            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-            <div className="hidden sm:flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-900 tracking-tight">FermatTech Workspace OS</span>
-              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 border border-blue-200/60">
-                v2.5
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={() => setGlobalCommandOpen(true)}
-              className="hidden sm:flex items-center gap-2 rounded-lg border border-slate-200/80 bg-slate-50 px-3 py-1.5 text-xs text-slate-500 hover:border-slate-300 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <Search className="h-3.5 w-3.5 text-slate-400" />
-              <span>Tìm kiếm nhanh...</span>
-              <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-400 shadow-2xs">⌘K</kbd>
-            </button>
-            {!isGuest && <WorkspaceNotifications token={idToken} />}
-            <AccountMenu
-              userName={user.displayName}
-              userRole={userRole}
-              photoURL={user.photoURL}
-              isGuest={isGuest}
-              onAccountClick={openAccount}
-              onLogin={() => { setAuthError(''); setShowLoginModal(true); }}
-              onLogout={handleLogout}
-              variant="header"
-            />
-          </div>
-        </header>
-
-        <main className="z-10 mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-          {/* Welcome Hero Banner */}
-          <div className="mb-6 rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-2xs">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-                    Xin chào, {user.displayName} 👋
-                  </h1>
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200/60 flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Hệ thống sẵn sàng
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-slate-500 sm:text-sm">
-                  Chào mừng bạn đến với trung tâm điều hành FermatTech Workspace. Chọn phân hệ nghiệp vụ bên dưới hoặc nhấn <kbd className="font-mono font-semibold text-slate-700 bg-slate-100 px-1 py-0.2 rounded border border-slate-200">⌘K</kbd> để tìm kiếm nhanh.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setGlobalCommandOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
-                >
-                  <Search className="h-3.5 w-3.5" />
-                  <span>Tìm kiếm nhanh (⌘K)</span>
-                </button>
-              </div>
-            </div>
-          </div>
-          {yesterdayWarning.show && (
-            <div className="fixed inset-0 z-[11000] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm">
-              <div role="alertdialog" aria-modal="true" aria-labelledby="timesheet-warning-title" className="w-full max-w-xl overflow-hidden rounded-3xl border border-amber-200 bg-white shadow-2xl">
-                <div className="flex items-start gap-4 border-b border-amber-100 bg-amber-50 px-6 py-5">
-                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-100 text-amber-700">
-                    <TriangleAlert className="h-6 w-6" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 id="timesheet-warning-title" className="text-lg font-extrabold text-amber-950">Bạn chưa cập nhật công ca cho ngày {fmtDDMMYYYY(yesterdayWarning.date)}</h3>
-                    <p className="mt-1 text-sm leading-6 text-amber-800">Vui lòng cập nhật công ca để đảm bảo dữ liệu chấm công chính xác. Bạn cần chọn một thao tác bên dưới để tiếp tục.</p>
-                  </div>
-                </div>
-                <div className="px-6 py-5">
-                  <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
-                    <input type="checkbox" checked={dismissPermanent} onChange={e => setDismissPermanent(e.target.checked)} className="h-3.5 w-3.5 rounded border-amber-400" />
-                    Không nhắc lại cảnh báo này
-                  </label>
-                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                    <button type="button" autoFocus onClick={editYesterdayTimesheet} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow transition hover:bg-blue-700">
-                      <CalendarDays className="h-5 w-5" /><span>Cập nhật ngay</span>
-                    </button>
-                    <button type="button" onClick={() => void markYesterdayDayOff()} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow transition hover:bg-emerald-700">
-                      <Moon className="h-5 w-5" /><span>Hôm qua tôi nghỉ</span>
-                    </button>
-                    <button type="button" onClick={dismissYesterdayWarning} className="flex items-center justify-center gap-2 rounded-xl bg-slate-600 px-4 py-3 text-sm font-bold text-white shadow transition hover:bg-slate-700">
-                      <TriangleAlert className="h-5 w-5" /><span>Bỏ qua</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {accessNotice && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{accessNotice}</div>}
-          {(() => {
-            const renderApp = (app: typeof visibleApps[number]) => {
-              const AppIcon = app.icon;
-              return (
-                <button
-                  key={app.mode}
-                  type="button"
-                  onClick={() => openProtectedView(app.mode, app.mode === 'social-dashboard' ? 'dashboard' : undefined)}
-                  className="rounded-2xl border border-slate-200/90 bg-white p-6 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md group min-h-[200px] flex flex-col justify-between cursor-pointer"
-                >
-                  <div>
-                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600 transition-colors duration-200 group-hover:bg-blue-600 group-hover:text-white shadow-xs">
-                      <AppIcon className="h-6 w-6" />
-                    </div>
-                    <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{app.title}</h3>
-                    <p className="mt-1.5 text-xs leading-relaxed text-slate-500 line-clamp-2">{app.description}</p>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-xs font-semibold text-blue-600">
-                    <span>Truy cập ứng dụng</span>
-                    <span className="transition-transform group-hover:translate-x-1">→</span>
-                  </div>
-                </button>
-              );
-            };
-            const grid = 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3';
-            if (!departmentLayout) return <div className={grid}>{visibleApps.map(renderApp)}</div>;
-            // Same apps, same access: only grouped by the person's department.
-            const groups = groupByDepartment(visibleApps, app => app.mode, departmentLayout);
-            const heading = (title: string, note?: string) => <div className="mb-3 flex flex-wrap items-baseline gap-x-3"><h2 className="ft-heading ft-heading-sm">{title}</h2>{note && <span className="workspace-muted text-sm">{note}</span>}</div>;
-            return (
-              <div className="space-y-9">
-                {groups.primary.length > 0 && <section>{heading(departmentLayout.label, 'Bộ phận của bạn')}<div className={grid}>{groups.primary.map(renderApp)}</div></section>}
-                {groups.personal.length > 0 && <section>{heading('Việc của tôi')}<div className={grid}>{groups.personal.map(renderApp)}</div></section>}
-                {groups.others.length > 0 && (
-                  <details className="group/others" open={workspaceOthersOpen} onToggle={event => setWorkspaceOthersOpen((event.currentTarget as HTMLDetailsElement).open)}>
-                    <summary className="mb-3 flex cursor-pointer list-none items-center gap-2 text-sm font-bold workspace-muted">
-                      <span className="inline-block transition-transform group-open/others:rotate-90">›</span>
-                      Ứng dụng khác bạn có quyền ({groups.others.length})
-                    </summary>
-                    <div className={grid}>{groups.others.map(renderApp)}</div>
-                  </details>
-                )}
-              </div>
-            );
-          })()}
-        </main>
-        {loginModal}{profileModal}
-        <CommandPalette
-          isOpen={globalCommandOpen}
-          onClose={() => setGlobalCommandOpen(false)}
-          onNavigate={(path) => {
-            setGlobalCommandOpen(false);
-            if (path.startsWith('/digital-training')) openProtectedView('digital-training');
-            else if (path.startsWith('/examination')) openProtectedView('examination');
-            else if (path.startsWith('/work-schedule')) openProtectedView('work-schedule');
-            else if (path.startsWith('/finance-report')) openProtectedView('finance-report');
-            else if (path.startsWith('/account-management')) openProtectedView('account-management');
-            else window.location.href = path;
-          }}
-        />
-      </div>
-    );
+    setViewMode('work-schedule');
+    return null;
   }
 
   if (viewMode === 'communication-tools' && !canAccessView('communication-tools')) return null;
@@ -955,7 +705,7 @@ export default function App() {
         <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Lịch làm việc...</div>}>
           <WorkSchedule
             idToken={idToken || ''}
-            onBackToWorkspace={() => setViewMode('workspace')}
+            onBackToWorkspace={() => setViewMode('work-schedule')}
             onAccountClick={openAccount}
             onLogout={handleLogout}
             userName={user.displayName}
@@ -974,7 +724,7 @@ export default function App() {
       <>
         <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Báo cáo thu chi...</div>}>
           <FinanceWorkspace
-            onBackToWorkspace={() => setViewMode('workspace')}
+            onBackToWorkspace={() => setViewMode('work-schedule')}
             onAccountClick={openAccount}
             onLogout={handleLogout}
             userName={user.displayName}
@@ -1059,7 +809,7 @@ export default function App() {
           <p className="mt-2 text-sm text-slate-600">
             {authChecking ? 'Đang kiểm tra quyền truy cập…' : isGuest ? 'Vui lòng đăng nhập để truy cập mô-đun này.' : 'Tài khoản của bạn chưa được cấp quyền Đào tạo số.'}
           </p>
-          <button onClick={() => setViewMode('workspace')} className="mt-5 ft-btn ft-btn-secondary">Quay lại Workspace</button>
+          <button onClick={() => setViewMode('work-schedule')} className="mt-5 ft-btn ft-btn-secondary">Quay lại Lịch làm việc</button>
         </div>
         {loginModal}{profileModal}
       </div>
@@ -1071,7 +821,7 @@ export default function App() {
       <>
         <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50">Đang mở Bài kiểm tra cuối khóa tập huấn...</div>}>
           <TrainingAssessmentWorkspace
-            onBackToWorkspace={() => setViewMode('workspace')}
+            onBackToWorkspace={() => setViewMode('work-schedule')}
             onOpenDigitalTraining={() => setViewMode('digital-training')}
             onAccountClick={openAccount}
             onLogout={handleLogout}
@@ -1243,7 +993,7 @@ export default function App() {
       <>
         <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp mô-đun Công nghệ & đào tạo số...</div>}>
           <DigitalTraining
-            onBackToWorkspace={() => setViewMode('workspace')}
+            onBackToWorkspace={() => setViewMode('work-schedule')}
             onOpenTrainingAssessment={() => setViewMode('training-assessments')}
             onAccountClick={openAccount}
             onLogout={handleLogout}
@@ -1270,7 +1020,7 @@ export default function App() {
         <ExaminationErrorBoundary>
           <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp mô-đun Khảo thí...</div>}>
             <ExaminationModule
-              onBackToWorkspace={() => setViewMode('workspace')}
+              onBackToWorkspace={() => setViewMode('work-schedule')}
               userName={user.displayName}
               userEmail={user.email}
               photoURL={user.photoURL}
@@ -1346,7 +1096,7 @@ export default function App() {
   // landing pages and the session splash stay chrome-free too. Every other
   // screen gets the shared vertical rail so modules are one click apart.
   const content = renderContent();
-  const chromeLessViews: ViewMode[] = ['workspace', 'competition-landing-public', 'competition-hub', 'guest-invigilation', 'public-exam-registration', 'training-assessment-public'];
+  const chromeLessViews: ViewMode[] = ['competition-landing-public', 'competition-hub', 'guest-invigilation', 'public-exam-registration', 'training-assessment-public'];
   const framedContent = authChecking || chromeLessViews.includes(viewMode) ? content : (
     <WorkspaceAreaFrame
       activeAreaId={areaForView(viewMode)}

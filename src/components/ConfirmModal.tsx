@@ -57,18 +57,18 @@ export default function ConfirmModal({
     switch (type) {
       case 'danger':
         return {
-          iconBg: 'bg-red-50 border border-red-100',
-          confirmBtn: 'bg-red-600 hover:bg-red-700 text-white focus:ring-red-500'
+          iconBg: 'bg-rose-50 border border-rose-100',
+          confirmBtn: 'ft-btn ft-btn-danger'
         };
       case 'warning':
         return {
           iconBg: 'bg-amber-50 border border-amber-100',
-          confirmBtn: 'bg-amber-600 hover:bg-amber-700 text-white focus:ring-amber-500'
+          confirmBtn: 'ft-btn bg-amber-600 text-white hover:bg-amber-700'
         };
       default:
         return {
           iconBg: 'bg-blue-50 border border-blue-100',
-          confirmBtn: 'bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500'
+          confirmBtn: 'ft-btn ft-btn-primary'
         };
     }
   };
@@ -122,7 +122,15 @@ export default function ConfirmModal({
         </div>
 
         {/* Action buttons */}
-        <div className="mt-5 sm:mt-6 sm:flex sm:flex-row-reverse gap-3">
+        <div className="mt-5 sm:mt-6 flex flex-wrap justify-end gap-2.5">
+          <button
+            type="button"
+            disabled={confirming}
+            onClick={close}
+            className="ft-btn ft-btn-secondary"
+          >
+            {cancelText}
+          </button>
           <button
             type="button"
             disabled={confirming}
@@ -136,17 +144,9 @@ export default function ConfirmModal({
                 setConfirming(false);
               }
             }}
-            className={`inline-flex w-full justify-center rounded-xl px-4 py-2.5 text-xs font-semibold shadow-xs transition-all focus:outline-none cursor-pointer sm:ml-3 sm:w-auto ${colors.confirmBtn}`}
+            className={colors.confirmBtn}
           >
             {confirming ? 'Đang xử lý…' : confirmText}
-          </button>
-          <button
-            type="button"
-            disabled={confirming}
-            onClick={close}
-            className="mt-3 inline-flex w-full justify-center rounded-xl bg-white border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-all focus:outline-none cursor-pointer sm:mt-0 sm:w-auto"
-          >
-            {cancelText}
           </button>
         </div>
       </div>
