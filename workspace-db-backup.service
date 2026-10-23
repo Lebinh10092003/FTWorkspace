@@ -10,4 +10,4 @@ WorkingDirectory=/var/www/ft-workspace/backend
 EnvironmentFile=/var/www/ft-workspace/backend/.env
 Environment=PYTHONUNBUFFERED=1
 Environment=DJANGO_DB_PATH=/home/workspace/ft-workspace-data/workspace.sqlite3
-ExecStart=/var/www/ft-workspace/.venv/bin/python manage.py backup_workspace_db --destination /home/workspace/ft-workspace-data/backups --keep 60
+ExecStart=/var/www/ft-workspace/.venv/bin/python manage.py backup_workspace_db --destination /home/workspace/ft-workspace-data/backups --keep 14
