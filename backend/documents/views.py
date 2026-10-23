@@ -139,6 +139,12 @@ def _numbered_funding_proposal(request, payload):
             assign_funding_number(record)
         except ValueError as exc:
             return None, Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        record.file_title = str(payload.get("fileTitle") or "")
+        record.proposer = proposer
+        record.project = project
+        record.purpose = str(payload.get("purpose") or "")
+        record.payload = payload
+        record.save(update_fields=["file_title", "proposer", "project", "purpose", "payload", "updated_at"])
     payload["documentNumber"] = record.document_number
     return record, None
 

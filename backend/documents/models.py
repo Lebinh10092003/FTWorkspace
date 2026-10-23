@@ -10,6 +10,12 @@ class FundingProposalRecord(models.Model):
     sequence_number = models.PositiveIntegerField(blank=True, null=True)
     drive_file_id = models.CharField(max_length=180, blank=True, default="")
     drive_url = models.URLField(max_length=500, blank=True, default="")
+    file_title = models.CharField(max_length=255, blank=True, default="")
+    proposer = models.CharField(max_length=255, blank=True, default="")
+    project = models.CharField(max_length=255, blank=True, default="")
+    purpose = models.TextField(blank=True, default="")
+    total_amount = models.CharField(max_length=64, blank=True, default="")
+    payload = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

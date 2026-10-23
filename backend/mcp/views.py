@@ -25,6 +25,7 @@ from . import (  # noqa: F401
     tools_auth,
     tools_crm,
     tools_documents,
+    tools_email,
     tools_examination,
     tools_finance,
     tools_schedule,

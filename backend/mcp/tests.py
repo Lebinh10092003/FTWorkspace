@@ -512,6 +512,172 @@ class MCPFrameworkTests(TestCase):
         self.assertTrue(doc_body["success"])
         self.assertTrue(doc_body["data"]["csv_content"].startswith("\ufeff"))
 
+    def test_funding_proposal_lifecycle_mcp(self):
+        """Kiểm tra toàn bộ chu trình MCP cho Phiếu đề xuất kinh phí (Funding Proposal)."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.admin_token.key}")
+
+        # 1. Tính toán trước dự toán
+        calc_res = self.client.post(
+            "/api/mcp/action/docs_calculate_funding_totals",
+            {
+                "items": [
+                    {"description": "Thuê hội trường", "unit": "ngày", "quantity": 2, "unit_price": 2500000},
+                    {"description": "In tài liệu", "unit": "bộ", "quantity": 50, "unit_price": 40000},
+                ],
+                "vat_rate": 10,
+                "other_cost": 300000,
+            },
+            format="json",
+        )
+        self.assertEqual(calc_res.status_code, status.HTTP_200_OK)
+        calc_data = calc_res.json()["data"]
+        self.assertEqual(calc_data["subtotal"], 7000000)
+        self.assertEqual(calc_data["vat_amount"], 700000)
+        self.assertEqual(calc_data["other_cost"], 300000)
+        self.assertEqual(calc_data["grand_total"], 8000000)
+        self.assertIn("Tám triệu đồng chẵn", calc_data["in_words"])
+
+        # 2. Tạo phiếu đề xuất kinh phí hoàn chỉnh
+        create_res = self.client.post(
+            "/api/mcp/action/docs_create_funding_proposal",
+            {
+                "project": "Tập huấn giáo viên Robothon hè 2026",
+                "purpose": "Đào tạo phương pháp giảng dạy Robotics cho 50 trường tiểu học",
+                "proposer": "Lê Bình",
+                "department": "Khối Công nghệ & Đào tạo số",
+                "approval_deadline": "2026-11-15",
+                "items": [
+                    {"description": "Thuê hội trường", "unit": "ngày", "quantity": 2, "unit_price": 2500000},
+                    {"description": "In tài liệu", "unit": "bộ", "quantity": 50, "unit_price": 40000},
+                ],
+                "vat_rate": 10,
+                "other_cost": 300000,
+                "supplier": "Trung tâm Hội nghị Quốc tế",
+                "payment_method": "transfer",
+                "return_base64": True,
+            },
+            format="json",
+        )
+        self.assertEqual(create_res.status_code, status.HTTP_200_OK)
+        create_data = create_res.json()["data"]
+        self.assertTrue(create_data["success"])
+        self.assertIn("/PĐXKP-FT", create_data["document_number"])
+        draft_id = create_data["draft_id"]
+        doc_number = create_data["document_number"]
+        self.assertIn("docx_base64", create_data)
+
+        # 3. Tra cứu chi tiết phiếu đề xuất bằng draft_id
+        get_res1 = self.client.post(
+            "/api/mcp/action/docs_get_funding_proposal",
+            {"proposal_id": draft_id},
+            format="json",
+        )
+        self.assertEqual(get_res1.status_code, status.HTTP_200_OK)
+        get_data1 = get_res1.json()["data"]
+        self.assertEqual(get_data1["document_number"], doc_number)
+        self.assertEqual(get_data1["project"], "Tập huấn giáo viên Robothon hè 2026")
+        self.assertEqual(len(get_data1["items"]), 2)
+
+        # 4. Tra cứu chi tiết phiếu đề xuất bằng document_number
+        get_res2 = self.client.post(
+            "/api/mcp/action/docs_get_funding_proposal",
+            {"proposal_id": doc_number},
+            format="json",
+        )
+        self.assertEqual(get_res2.status_code, status.HTTP_200_OK)
+        self.assertEqual(get_res2.json()["data"]["draft_id"], draft_id)
+
+        # 5. Xem danh sách và tìm kiếm phiếu đề xuất
+        list_res = self.client.post(
+            "/api/mcp/action/docs_list_funding_proposals",
+            {"query": "Robothon"},
+            format="json",
+        )
+        self.assertEqual(list_res.status_code, status.HTTP_200_OK)
+        list_data = list_res.json()["data"]
+        self.assertGreaterEqual(list_data["count"], 1)
+        self.assertEqual(list_data["proposals"][0]["document_number"], doc_number)
+
+    def test_email_builder_and_signature_mcp(self):
+        """Kiểm tra toàn bộ chu trình MCP cho Email Builder & Signature Builder."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.admin_token.key}")
+
+        # 1. Tạo mẫu email mới
+        create_res = self.client.post(
+            "/api/mcp/action/email_create_template",
+            {
+                "name": "Thư mời tham dự kỳ thi Toán Quốc tế FIMO 2026",
+                "subject": "[FermatTech] Thư mời tham gia kỳ thi FIMO 2026",
+                "blocks": [
+                    {"type": "heading", "content": "KỲ THI TOÁN QUỐC TẾ FIMO 2026"},
+                    {"type": "text", "content": "Kính gửi Ban Giám hiệu và các Thầy Cô giáo..."},
+                    {"type": "button", "text": "Đăng ký ngay", "url": "https://fimo.fermat.vn"},
+                ],
+                "is_published": True,
+            },
+            format="json",
+        )
+        self.assertEqual(create_res.status_code, status.HTTP_200_OK)
+        template_id = create_res.json()["data"]["id"]
+        self.assertTrue(create_res.json()["data"]["is_published"])
+
+        # 2. Xem danh sách mẫu email
+        list_res = self.client.post(
+            "/api/mcp/action/email_list_templates",
+            {"query": "FIMO"},
+            format="json",
+        )
+        self.assertEqual(list_res.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(list_res.json()["data"]["count"], 1)
+
+        # 3. Lấy chi tiết mẫu email
+        get_res = self.client.post(
+            "/api/mcp/action/email_get_template",
+            {"template_id": template_id},
+            format="json",
+        )
+        self.assertEqual(get_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(get_res.json()["data"]["blocks"]), 3)
+
+        # 4. Sửa mẫu email
+        update_res = self.client.post(
+            "/api/mcp/action/email_update_template",
+            {
+                "template_id": template_id,
+                "name": "Thư mời tham dự kỳ thi FIMO 2026 (Đã cập nhật)",
+            },
+            format="json",
+        )
+        self.assertEqual(update_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(update_res.json()["data"]["name"], "Thư mời tham dự kỳ thi FIMO 2026 (Đã cập nhật)")
+
+        # 5. Xóa mẫu email
+        del_res = self.client.post(
+            "/api/mcp/action/email_delete_template",
+            {"template_id": template_id},
+            format="json",
+        )
+        self.assertEqual(del_res.status_code, status.HTTP_200_OK)
+
+        # 6. Sinh chữ ký email HTML
+        sig_res = self.client.post(
+            "/api/mcp/action/signature_generate_html",
+            {
+                "full_name": "Nguyễn Văn Tuấn",
+                "job_title": "Chuyên viên Khảo thí",
+                "department": "Ban Khảo thí & Cuộc thi",
+                "phone": "0987654321",
+                "email": "tuan.nv@fermat.edu.vn",
+            },
+            format="json",
+        )
+        self.assertEqual(sig_res.status_code, status.HTTP_200_OK)
+        sig_data = sig_res.json()["data"]
+        self.assertIn("Nguyễn Văn Tuấn", sig_data["signature_html"])
+        self.assertIn("0987654321", sig_data["signature_html"])
+        self.assertIn("FERMATTECH", sig_data["signature_html"])
+
+
 
 
 
