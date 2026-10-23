@@ -151,7 +151,7 @@ class TrainingProductSubscriptionSerializer(serializers.ModelSerializer):
             "id", "partner", "partner_name", "partner_group", "partner_subtype",
             "partner_province", "partner_ward", "product", "product_name",
             "product_code", "quantity", "starts_at", "expires_at", "status",
-            "effective_status", "days_remaining", "notes", "expiry_notice_stage", "created_at", "updated_at",
+            "effective_status", "days_remaining", "account_manager", "notes", "expiry_notice_stage", "created_at", "updated_at",
         ]
         read_only_fields = ["expiry_notice_stage"]
 

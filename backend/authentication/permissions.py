@@ -23,7 +23,7 @@ def requested_module(request):
 
 def request_role(request) -> str:
     user = getattr(request, "user", None)
-    return str(getattr(request, "user_role", "") or getattr(user, "role", "EMPLOYEE") or "EMPLOYEE")
+    return str(getattr(request, "user_role", "") or getattr(user, "role", "EMPLOYEE") or "EMPLOYEE").upper()
 
 
 def request_modules(request) -> set[str]:

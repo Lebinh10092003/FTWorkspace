@@ -1320,20 +1320,12 @@ def public_assessment_start(request, slug):
         missing_fields = []
         if not name:
             missing_fields.append("họ và tên")
-        if not email:
-            missing_fields.append("email")
-        if not phone:
-            missing_fields.append("số điện thoại")
-        if not organization:
-            missing_fields.append("đơn vị công tác")
+        if not email and not phone and not participant_code:
+            missing_fields.append("email hoặc số điện thoại")
         if assessment.participants and not participant_code:
             missing_fields.append("mã người tham gia")
         if missing_fields:
             return _assessment_error(f"Vui lòng nhập đầy đủ: {', '.join(missing_fields)}.")
-        if not name:
-            return _assessment_error("Vui lòng nhập họ và tên.")
-        if not email and not phone and not participant_code:
-            return _assessment_error("Vui lòng nhập email hoặc số điện thoại.")
         phone = _identity_phone(phone)
         if participant_code:
             contact_attempts = assessment.attempts.filter(participant_code__iexact=participant_code)
@@ -1361,6 +1353,22 @@ def public_assessment_start(request, slug):
         if active_attempt:
             active_attempt = _expire_if_needed(active_attempt)
         if active_attempt and active_attempt.status == "in_progress":
+            if request.data.get("reset"):
+                for upload in active_attempt.uploads.all():
+                    if upload.file:
+                        upload.file.delete(save=False)
+                active_attempt.uploads.all().delete()
+                active_attempt.answers = {}
+                active_attempt.progress = {}
+                active_attempt.expires_at = min(
+                    timezone.now() + timedelta(minutes=assessment.duration_minutes),
+                    assessment.closes_at or timezone.now() + timedelta(days=36500),
+                )
+                active_attempt.save(update_fields=["answers", "progress", "expires_at", "updated_at"])
+                payload = _attempt_payload(active_attempt, request)
+                payload["resumed"] = False
+                payload["reset_performed"] = True
+                return Response(payload)
             active_token = str(request.data.get("previous_attempt_token") or "").strip()
             if request.data.get("start_new"):
                 if active_token != str(active_attempt.access_token):
@@ -1372,8 +1380,6 @@ def public_assessment_start(request, slug):
                     "error": "Bạn có một lượt làm chưa hoàn thành. Hãy chọn tiếp tục lượt cũ hoặc tạo lượt mới.",
                     "attempt": _attempt_payload(active_attempt, request),
                 }, status=status.HTTP_409_CONFLICT)
-        if not position:
-            return _assessment_error("Vui lòng nhập đầy đủ: chức vụ.")
         previous_token = str(request.data.get("previous_attempt_token") or "").strip()
         retry_attempt = next(
             (item for item in previous if str(item.access_token) == previous_token), None,

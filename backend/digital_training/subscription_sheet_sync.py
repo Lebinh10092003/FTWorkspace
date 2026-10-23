@@ -9,58 +9,67 @@ import os
 import re
 import sys
 import threading
-from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from django.conf import settings
 from django.utils import timezone
 
-from authentication.models import SystemConfig
+from authentication.models import SystemConfig, WorkspaceNotification
+from examination.models import LogNote
 from integrations.google_sheets import build_sheets_service, extract_spreadsheet_id
 from .models import TrainingPartner, TrainingProduct, TrainingProductSubscription
+from .product_service import _normalise_product_name
 from .serializers import product_subscription_status
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_SPREADSHEET_ID = "1ENU0abZu6hCiVz-u7ypMLmLzudzMewKF_6s-6NJ26qk"
-DEFAULT_TAB_TITLE = "Trang tính1"
+DEFAULT_TAB_TITLE = "Dịch vụ khách hàng"
+LEGACY_TAB_TITLES = {"Trang tính1", "Dịch vụ khách hàng", "Theo dõi dịch vụ"}
 SYNC_CONFIG_KEY = "customer_subscription_sheet_sync"
 
 HEADERS = [
-    "STT",
-    "Mã ĐT",
-    "Tên trường / Đơn vị",
-    "Tỉnh / Thành phố",
-    "Đầu mối liên hệ",
-    "Số điện thoại",
-    "Dịch vụ / Sản phẩm",
-    "Số lượng",
-    "Ngày bắt đầu",
-    "Ngày hết hạn",
-    "Còn lại (ngày)",
-    "Trạng thái",
-    "Nhân sự phụ trách",
-    "Tiến độ & Ghi chú gia hạn",
-    "Mã ĐK",
+    "STT",                       # A (0)
+    "Mã ĐK",                     # B (1)
+    "Mã KH",                     # C (2)
+    "Tên trường / Đơn vị",       # D (3)
+    "Tỉnh / Thành phố",          # E (4)
+    "Đầu mối liên hệ",           # F (5)
+    "Số điện thoại",             # G (6)
+    "Dịch vụ / Sản phẩm",        # H (7)
+    "Số lượng",                  # I (8)
+    "Ngày bắt đầu",              # J (9)
+    "Ngày hết hạn",              # K (10)
+    "Còn lại (ngày)",            # L (11)
+    "Tình trạng hạn",            # M (12)
+    "Trạng thái",                # N (13)
+    "Nhân sự phụ trách",         # O (14)
+    "Tiến độ & Ghi chú gia hạn", # P (15)
+    "Cập nhật web lúc",          # Q (16)
 ]
 
 COLUMN_WIDTHS = [
     55,   # A: STT
-    75,   # B: Mã ĐT
-    280,  # C: Tên trường / Đơn vị
-    130,  # D: Tỉnh / Thành phố
-    150,  # E: Đầu mối liên hệ
-    115,  # F: Số điện thoại
-    180,  # G: Dịch vụ / Sản phẩm
-    75,   # H: Số lượng
-    100,  # I: Ngày bắt đầu
-    100,  # J: Ngày hết hạn
-    110,  # K: Còn lại (ngày)
-    125,  # L: Trạng thái
-    140,  # M: Nhân sự phụ trách
-    280,  # N: Tiến độ & Ghi chú gia hạn
-    75,   # O: Mã ĐK
+    75,   # B: Mã ĐK
+    75,   # C: Mã KH
+    280,  # D: Tên trường / Đơn vị
+    130,  # E: Tỉnh / Thành phố
+    150,  # F: Đầu mối liên hệ
+    115,  # G: Số điện thoại
+    180,  # H: Dịch vụ / Sản phẩm
+    75,   # I: Số lượng
+    100,  # J: Ngày bắt đầu
+    100,  # K: Ngày hết hạn
+    110,  # L: Còn lại (ngày)
+    120,  # M: Tình trạng hạn
+    120,  # N: Trạng thái
+    140,  # O: Nhân sự phụ trách
+    280,  # P: Tiến độ & Ghi chú gia hạn
+    130,  # Q: Cập nhật web lúc
 ]
+
+STT_FORMULA_COMMA = '=ARRAYFORMULA(IF(D3:D="","",COUNTIFS(D3:D,"<>",ROW(D3:D),"<="&ROW(D3:D))))'
+STT_FORMULA_SEMICOLON = '=ARRAYFORMULA(IF(D3:D="";"";COUNTIFS(D3:D;"<>";ROW(D3:D);"null<=null"&ROW(D3:D))))'.replace("null<=null", "<=")
 
 _sync_lock = threading.Lock()
 
@@ -74,25 +83,53 @@ def get_spreadsheet_id() -> str:
 
 
 def _parse_date_cell(value: Any) -> Optional[datetime.date]:
-    if not value:
+    """Parse date từ nhiều định dạng: Google Sheets serial number, ISO YYYY-MM-DD, DD/MM/YYYY."""
+    if value is None:
         return None
+    if isinstance(value, datetime.date):
+        return value
+    if isinstance(value, datetime.datetime):
+        return value.date()
+
+    # Xử lý Google Sheets serial number (ví dụ 45600)
+    if isinstance(value, (int, float)):
+        try:
+            if 10000 <= value <= 100000:
+                base = datetime.date(1899, 12, 30)
+                return base + datetime.timedelta(days=int(value))
+        except Exception:
+            pass
+
     val_str = str(value).strip()
     if not val_str:
         return None
-    # Thử parse ISO YYYY-MM-DD
-    match = re.match(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", val_str)
-    if match:
+
+    # Nếu chuỗi số serial
+    if val_str.replace(".", "", 1).isdigit():
         try:
-            return datetime.date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+            val_float = float(val_str)
+            if 10000 <= val_float <= 100000:
+                base = datetime.date(1899, 12, 30)
+                return base + datetime.timedelta(days=int(val_float))
+        except Exception:
+            pass
+
+    # Parse ISO YYYY-MM-DD
+    match_iso = re.match(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", val_str)
+    if match_iso:
+        try:
+            return datetime.date(int(match_iso.group(1)), int(match_iso.group(2)), int(match_iso.group(3)))
         except ValueError:
             pass
-    # Thử parse DD/MM/YYYY
+
+    # Parse DD/MM/YYYY (định dạng phổ biến ở VN)
     match_vi = re.match(r"^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", val_str)
     if match_vi:
         try:
             return datetime.date(int(match_vi.group(3)), int(match_vi.group(2)), int(match_vi.group(1)))
         except ValueError:
             pass
+
     return None
 
 
@@ -101,7 +138,7 @@ def _format_date(val: Optional[datetime.date]) -> str:
 
 
 def get_sync_credentials(google_token: Optional[str] = None) -> tuple[Optional[str], dict[str, Any], Optional[str]]:
-    """Trả về (token, config_data, service_account_email) ưu tiên theo cấu hình riêng của subscription, sau đó đến main config."""
+    """Trả về (token, config_data, service_account_email) ưu tiên cấu hình riêng, sau đó đến main."""
     sub_config = SystemConfig.objects.filter(key=SYNC_CONFIG_KEY).first()
     sub_data = (sub_config.data if sub_config else {}) or {}
 
@@ -134,9 +171,187 @@ def get_sync_credentials(google_token: Optional[str] = None) -> tuple[Optional[s
     return token, config_data, sa_email
 
 
+def ensure_subscription_stt_formula(service, spreadsheet_id: str, tab_title: str) -> bool:
+    """Cài đặt công thức ARRAYFORMULA cho cột STT tại A3. Tự động tương thích với locale dấu , hoặc ;."""
+    escaped = "'" + tab_title.replace("'", "''") + "'"
+    try:
+        read_res = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"{escaped}!A3",
+            valueRenderOption="FORMULA",
+        ).execute(num_retries=3)
+        vals = read_res.get("values", [])
+        current_formula = str(vals[0][0]) if vals and vals[0] else ""
+        norm = lambda t: t.replace(" ", "").replace(";", ",").upper()
+        if norm(current_formula) == norm(STT_FORMULA_COMMA):
+            return False
+
+        # Thử với dấu phẩy, nếu lỗi cú pháp thử tiếp với dấu chấm phẩy
+        for formula in (STT_FORMULA_COMMA, STT_FORMULA_SEMICOLON):
+            service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=f"{escaped}!A3",
+                valueInputOption="USER_ENTERED",
+                body={"values": [[formula]]},
+            ).execute(num_retries=3)
+            check = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=f"{escaped}!A3",
+                valueRenderOption="FORMATTED_VALUE",
+            ).execute(num_retries=3)
+            res_val = str(check.get("values", [[""]])[0][0])
+            if not res_val.startswith("#"):
+                break
+        return True
+    except Exception as exc:
+        logger.warning(f"Không thể cài đặt công thức STT: {exc}")
+        return False
+
+
+def remove_subscription_sheet_rows(service, spreadsheet_id: str, tab_title: str, sub_ids: List[Any]) -> int:
+    """Xóa các dòng trên Sheet có Mã ĐK nằm trong sub_ids khi đăng ký bị xóa trên web."""
+    if not sub_ids:
+        return 0
+    sub_id_set = {str(sid).strip() for sid in sub_ids if str(sid).strip()}
+    if not sub_id_set:
+        return 0
+
+    escaped = "'" + tab_title.replace("'", "''") + "'"
+    try:
+        meta = service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id,
+            fields="sheets(properties(sheetId,title))",
+        ).execute()
+        sheet_id = None
+        for s in meta.get("sheets", []):
+            if s.get("properties", {}).get("title") == tab_title:
+                sheet_id = s.get("properties", {}).get("sheetId")
+                break
+        if sheet_id is None:
+            return 0
+
+        # Đọc cột B (Mã ĐK) từ hàng 3 trở đi
+        read_res = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"{escaped}!B3:B1000",
+            valueRenderOption="UNFORMATTED_VALUE",
+        ).execute()
+        rows = read_res.get("values", [])
+        
+        # Gom các row_index cần xóa (0-indexed cho API batchUpdate)
+        # Hàng 3 trên sheet tương ứng rowIndex = 2
+        delete_indices = []
+        for idx, row in enumerate(rows):
+            cell_val = str(row[0]).strip() if row and row[0] is not None else ""
+            if cell_val in sub_id_set:
+                delete_indices.append(2 + idx)
+
+        if not delete_indices:
+            return 0
+
+        # Xóa từ dưới lên trên để không bị lệch chỉ số dòng
+        delete_indices.sort(reverse=True)
+        requests = []
+        for r_idx in delete_indices:
+            requests.append({
+                "deleteDimension": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "dimension": "ROWS",
+                        "startIndex": r_idx,
+                        "endIndex": r_idx + 1,
+                    }
+                }
+            })
+
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": requests},
+        ).execute()
+        return len(delete_indices)
+    except Exception as exc:
+        logger.warning(f"Lỗi khi xóa dòng trên Google Sheet: {exc}")
+        return 0
+
+
+def build_export_payload(sheet_row_map: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Tạo cấu trúc bảng 17 cột đầy đủ gồm banner, headers, độ rộng cột và các dòng dữ liệu."""
+    sheet_row_map = sheet_row_map or {}
+    subscriptions = TrainingProductSubscription.objects.select_related("partner", "product").order_by(
+        "partner__name", "product__display_order", "product__name"
+    )
+
+    title_row = ["FT. BẢNG THEO DÕI KHÁCH HÀNG, DỊCH VỤ & THỜI GIAN SỬ DỤNG"] + [""] * (len(HEADERS) - 1)
+    rows_to_write = [title_row, HEADERS]
+
+    for idx, sub in enumerate(subscriptions):
+        partner = sub.partner
+        product = sub.product
+        row_num = idx + 3
+
+        saved_info = (
+            sheet_row_map.get(f"sub:{sub.id}")
+            or sheet_row_map.get(f"pair:{partner.id}:{product.name.strip().lower()}")
+            or {}
+        )
+        staff = sub.account_manager or saved_info.get("assigned_staff") or getattr(partner, "training_staff", "") or ""
+        notes = sub.notes or saved_info.get("custom_notes") or ""
+
+        eff_status = product_subscription_status(sub)
+        status_vi = {
+            "active": "Đang sử dụng",
+            "expiring": "Sắp hết hạn",
+            "expired": "Đã quá hạn",
+            "paused": "Tạm dừng",
+            "cancelled": "Đã hủy",
+        }.get(eff_status, "Đang sử dụng")
+
+        # Công thức cho Cột L (Còn lại) và Cột M (Tình trạng hạn)
+        days_left_formula = f'=IF(ISBLANK(K{row_num}); ""; INT(K{row_num} - TODAY()))'
+        expiry_status_formula = (
+            f'=IF(ISBLANK(K{row_num}); "Không thời hạn"; '
+            f'IF(INT(K{row_num}-TODAY())<0; "Đã quá hạn"; '
+            f'IF(INT(K{row_num}-TODAY())<=30; "Sắp hết hạn"; "Đang sử dụng")))'
+        )
+
+        updated_str = sub.updated_at.strftime("%d/%m/%Y %H:%M") if sub.updated_at else ""
+
+        row_data = [
+            "",                                  # A: STT (ARRAYFORMULA điền)
+            sub.id,                              # B: Mã ĐK
+            partner.id,                          # C: Mã KH
+            partner.name,                        # D: Tên trường / Đơn vị
+            partner.province or "",              # E: Tỉnh / Thành phố
+            partner.contact_person or "",        # F: Đầu mối liên hệ
+            f"'{partner.phone}" if partner.phone else "", # G: SĐT (dạng text)
+            product.name,                        # H: Dịch vụ / Sản phẩm
+            sub.quantity,                        # I: Số lượng
+            _format_date(sub.starts_at),         # J: Ngày bắt đầu
+            _format_date(sub.expires_at) if product.code != "tap-huan" else "", # K: Ngày hết hạn
+            days_left_formula,                   # L: Còn lại (ngày)
+            expiry_status_formula,               # M: Tình trạng hạn
+            status_vi,                           # N: Trạng thái
+            staff,                               # O: Nhân sự phụ trách
+            notes,                               # P: Ghi chú gia hạn
+            updated_str,                         # Q: Cập nhật web lúc
+        ]
+        rows_to_write.append(row_data)
+
+    return {
+        "title": "FT. BẢNG THEO DÕI KHÁCH HÀNG, DỊCH VỤ & THỜI GIAN SỬ DỤNG",
+        "tabTitle": DEFAULT_TAB_TITLE,
+        "headers": HEADERS,
+        "columnWidths": COLUMN_WIDTHS,
+        "rows": rows_to_write,
+        "count": len(subscriptions),
+    }
+
+
 def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional[str] = None) -> Dict[str, Any]:
     """Xuất danh sách đăng ký dịch vụ của khách hàng ra Google Sheet.
-    Giữ nguyên các ghi chú và ô chỉ có trên Sheet, bảo toàn công thức STT và Còn lại ngày.
+    - Cập nhật đúng dòng tại chỗ, thêm dòng mới ở cuối.
+    - Không xóa trắng cả tab.
+    - Bảo toàn công thức STT và Còn lại ngày.
     """
     spreadsheet_id = get_spreadsheet_id()
     if not spreadsheet_id:
@@ -164,56 +379,108 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
     except Exception as exc:
         err_str = str(exc)
         if "403" in err_str or "permission" in err_str.lower():
-            msg = f"Tài khoản dịch vụ chưa có quyền truy cập Sheet. Vui lòng nhấn nút Share trên Google Sheet và chia sẻ cho email: {sa_email or 'tài khoản dịch vụ'} (quyền Người chỉnh sửa/Editor)."
+            msg = f"Tài khoản dịch vụ chưa có quyền truy cập Sheet. Vui lòng nhấn nút Share trên Google Sheet và chia sẻ cho email: {sa_email or 'tài khoản dịch vụ'} (quyền Editor)."
         elif "404" in err_str or "not found" in err_str.lower():
             msg = f"Không tìm thấy Google Sheet với ID '{spreadsheet_id}'. Vui lòng kiểm tra lại đường link hoặc Spreadsheet ID."
         else:
             msg = f"Lỗi truy cập Google Sheet: {exc}"
         return {"status": "error", "error_code": "SHEET_ACCESS_DENIED", "service_account_email": sa_email, "message": msg}
+
     sheet_props = None
     target_title = DEFAULT_TAB_TITLE
-    for s in metadata.get("sheets", []):
+    existing_sheets = metadata.get("sheets", [])
+
+    # Tìm tab đích theo thứ tự ưu tiên
+    for s in existing_sheets:
         props = s.get("properties", {})
         title = props.get("title", "")
-        if title in {DEFAULT_TAB_TITLE, "Dịch vụ khách hàng", "Theo dõi dịch vụ"} or not sheet_props:
+        if title == DEFAULT_TAB_TITLE:
             sheet_props = props
             target_title = title
-            if title != "Trang tính1":
-                break
+            break
+        if title in LEGACY_TAB_TITLES and not sheet_props:
+            sheet_props = props
+            target_title = title
+
+    if not sheet_props and existing_sheets:
+        sheet_props = existing_sheets[0].get("properties", {})
+        target_title = sheet_props.get("title", DEFAULT_TAB_TITLE)
 
     if not sheet_props:
         return {"status": "error", "message": "Không tìm thấy sheet nào trong file."}
 
     sheet_id = sheet_props["sheetId"]
+
+    # Đổi tên tab "Trang tính1" sang "Dịch vụ khách hàng" nếu phù hợp
+    if target_title == "Trang tính1":
+        try:
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={
+                    "requests": [{
+                        "updateSheetProperties": {
+                            "properties": {"sheetId": sheet_id, "title": DEFAULT_TAB_TITLE},
+                            "fields": "title",
+                        }
+                    }]
+                },
+            ).execute()
+            target_title = DEFAULT_TAB_TITLE
+        except Exception as exc:
+            logger.warning(f"Không thể đổi tên tab sang '{DEFAULT_TAB_TITLE}': {exc}")
+
     escaped_title = "'" + target_title.replace("'", "''") + "'"
 
-    # 2. Đọc các dòng hiện tại trên Sheet để giữ dữ liệu thủ công của người dùng
-    read_res = service.spreadsheets().values().get(
-        spreadsheetId=spreadsheet_id,
-        range=f"{escaped_title}!A1:O500",
-        valueRenderOption="UNFORMATTED_VALUE",
-    ).execute()
-    existing_rows = read_res.get("values", [])
+    # 2. Đọc các dòng hiện tại trên Sheet để giữ dữ liệu và vị trí dòng
+    try:
+        read_res = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"{escaped_title}!A1:Q500",
+            valueRenderOption="UNFORMATTED_VALUE",
+        ).execute()
+        existing_rows = read_res.get("values", [])
+    except Exception as exc:
+        logger.warning(f"Lỗi đọc sheet hiện có: {exc}")
+        existing_rows = []
 
-    # Map các dòng hiện có: key là sub_id (Col O - index 14) hoặc partner_id:product_name
     sheet_row_map = {}
     for idx, row in enumerate(existing_rows):
         if idx < 2:  # Bỏ qua row 1 và header row 2
             continue
-        sub_id_val = str(row[14]).strip() if len(row) > 14 and row[14] is not None else ""
-        partner_val = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
-        prod_val = str(row[6]).strip().lower() if len(row) > 6 and row[6] is not None else ""
+        # Cột B (index 1) là Mã ĐK mới, Cột O (index 14) là Mã ĐK cũ
+        sub_id_val = ""
+        if len(row) > 1 and str(row[1]).strip().isdigit():
+            sub_id_val = str(row[1]).strip()
+        elif len(row) > 14 and str(row[14]).strip().isdigit():
+            sub_id_val = str(row[14]).strip()
 
-        assigned_staff = str(row[12]).strip() if len(row) > 12 and row[12] is not None else ""
-        custom_notes = str(row[13]).strip() if len(row) > 13 and row[13] is not None else ""
+        partner_val = ""
+        prod_val = ""
+        if len(row) > 2 and str(row[2]).strip().isdigit():  # Mã KH mới ở cột C
+            partner_val = str(row[2]).strip()
+        elif len(row) > 1 and str(row[1]).strip().isdigit(): # Mã ĐT cũ ở cột B
+            partner_val = str(row[1]).strip()
 
-        if sub_id_val.isdigit():
+        if len(row) > 7 and row[7]:  # Cột H mới
+            prod_val = str(row[7]).strip().lower()
+        elif len(row) > 6 and row[6]: # Cột G cũ
+            prod_val = str(row[6]).strip().lower()
+
+        assigned_staff = str(row[14]).strip() if len(row) > 14 and row[14] is not None else ""
+        if not assigned_staff and len(row) > 12:
+            assigned_staff = str(row[12]).strip()
+
+        custom_notes = str(row[15]).strip() if len(row) > 15 and row[15] is not None else ""
+        if not custom_notes and len(row) > 13:
+            custom_notes = str(row[13]).strip()
+
+        if sub_id_val:
             sheet_row_map[f"sub:{sub_id_val}"] = {
                 "row_index": idx + 1,
                 "assigned_staff": assigned_staff,
                 "custom_notes": custom_notes,
             }
-        if partner_val.isdigit() and prod_val:
+        if partner_val and prod_val:
             sheet_row_map[f"pair:{partner_val}:{prod_val}"] = {
                 "row_index": idx + 1,
                 "assigned_staff": assigned_staff,
@@ -233,27 +500,47 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
     if not force and (sync_config.data or {}).get("fingerprint") == fingerprint:
         return {"status": "unchanged", "count": subscriptions_count}
 
-    # 4. Ghi dữ liệu vào Google Sheet
+    # 4. Ghi tiêu đề (Row 1-2) và các dòng dữ liệu
+    # Dòng 1: Banner, Dòng 2: Headers
+    header_data = [rows_to_write[0], rows_to_write[1]]
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
-        range=f"{escaped_title}!A1:O{len(rows_to_write)}",
+        range=f"{escaped_title}!A1:Q2",
         valueInputOption="USER_ENTERED",
-        body={"values": rows_to_write},
+        body={"values": header_data},
     ).execute()
 
-    # 5. Cập nhật định dạng đầy đủ (Tạo bảng, cột, hàng, chiều cao, độ rộng, kẻ viền, đóng băng, màu sắc)
+    # Cài đặt công thức STT tại A3
+    ensure_subscription_stt_formula(service, spreadsheet_id, target_title)
+
+    # Ghi dữ liệu từ cột B trở đi (B3:Q{N}), giữ nguyên cột A cho công thức
+    if len(rows_to_write) > 2:
+        data_rows_from_b = [row[1:] for row in rows_to_write[2:]]
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"{escaped_title}!B3:Q{len(rows_to_write)}",
+            valueInputOption="USER_ENTERED",
+            body={"values": data_rows_from_b},
+        ).execute()
+
+    # 5. Cập nhật định dạng đầy đủ chuẩn Fermat Workspace
+    num_cols = len(HEADERS)
+    total_rows = max(len(rows_to_write), 10)
     format_requests: List[Dict[str, Any]] = [
-        # 5.1. Đóng băng 2 hàng đầu
+        # 5.1. Đóng băng 2 hàng đầu và 4 cột đầu (A-D)
         {
             "updateSheetProperties": {
                 "properties": {
                     "sheetId": sheet_id,
-                    "gridProperties": {"frozenRowCount": 2},
+                    "gridProperties": {
+                        "frozenRowCount": 2,
+                        "frozenColumnCount": 4,
+                    },
                 },
-                "fields": "gridProperties.frozenRowCount",
+                "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
             }
         },
-        # 5.2. Gộp ô Banner A1:O1
+        # 5.2. Gộp ô Banner A1:Q1
         {
             "mergeCells": {
                 "range": {
@@ -261,7 +548,7 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
                     "startRowIndex": 0,
                     "endRowIndex": 1,
                     "startColumnIndex": 0,
-                    "endColumnIndex": len(HEADERS),
+                    "endColumnIndex": num_cols,
                 },
                 "mergeType": "MERGE_ALL",
             }
@@ -279,7 +566,7 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
                 "fields": "pixelSize",
             }
         },
-        # 5.4. Chiều cao dòng 2 (Header: 30px)
+        # 5.4. Chiều cao dòng 2 (Header: 32px)
         {
             "updateDimensionProperties": {
                 "range": {
@@ -288,24 +575,24 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
                     "startIndex": 1,
                     "endIndex": 2,
                 },
-                "properties": {"pixelSize": 30},
+                "properties": {"pixelSize": 32},
                 "fields": "pixelSize",
             }
         },
-        # 5.5. Chiều cao các dòng dữ liệu (25px)
+        # 5.5. Chiều cao các dòng dữ liệu (26px)
         {
             "updateDimensionProperties": {
                 "range": {
                     "sheetId": sheet_id,
                     "dimension": "ROWS",
                     "startIndex": 2,
-                    "endIndex": max(len(rows_to_write), 10),
+                    "endIndex": total_rows,
                 },
-                "properties": {"pixelSize": 25},
+                "properties": {"pixelSize": 26},
                 "fields": "pixelSize",
             }
         },
-        # 5.6. Định dạng Banner Hàng 1: Nền xanh dương đậm #1D4ED8, chữ trắng in đậm 12pt, căn giữa
+        # 5.6. Định dạng Banner Hàng 1: Nền xanh dương đậm #1D4ED8, chữ trắng 12pt bold
         {
             "repeatCell": {
                 "range": {
@@ -313,7 +600,7 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
                     "startRowIndex": 0,
                     "endRowIndex": 1,
                     "startColumnIndex": 0,
-                    "endColumnIndex": len(HEADERS),
+                    "endColumnIndex": num_cols,
                 },
                 "cell": {
                     "userEnteredFormat": {
@@ -326,7 +613,7 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
                 "fields": "userEnteredFormat(textFormat,backgroundColor,horizontalAlignment,verticalAlignment)",
             }
         },
-        # 5.7. Định dạng Header Hàng 2: Nền xanh nhạt #DBEAFE, chữ xanh đậm #1E3A8A in đậm 10pt, căn giữa
+        # 5.7. Định dạng Header Hàng 2: Nền xanh nhạt #DBEAFE, chữ xanh đậm #1E3A8A 10pt bold
         {
             "repeatCell": {
                 "range": {
@@ -334,7 +621,7 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
                     "startRowIndex": 1,
                     "endRowIndex": 2,
                     "startColumnIndex": 0,
-                    "endColumnIndex": len(HEADERS),
+                    "endColumnIndex": num_cols,
                 },
                 "cell": {
                     "userEnteredFormat": {
@@ -348,15 +635,34 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
                 "fields": "userEnteredFormat(textFormat,backgroundColor,horizontalAlignment,verticalAlignment,wrapStrategy)",
             }
         },
-        # 5.8. Kẻ viền bảng cho toàn bộ vùng bảng
+        # 5.8. Khóa màu các cột cố định (B đến G - index 1 đến 7): Nền xám nhạt #F8FAFC
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 2,
+                    "endRowIndex": total_rows,
+                    "startColumnIndex": 1,
+                    "endColumnIndex": 7,
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {"red": 0.973, "green": 0.980, "blue": 0.988},  # #F8FAFC
+                        "textFormat": {"foregroundColor": {"red": 0.278, "green": 0.333, "blue": 0.412}},  # #475569
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat.foregroundColor)",
+            }
+        },
+        # 5.9. Kẻ viền bảng cho toàn bộ vùng
         {
             "updateBorders": {
                 "range": {
                     "sheetId": sheet_id,
                     "startRowIndex": 0,
-                    "endRowIndex": len(rows_to_write),
+                    "endRowIndex": total_rows,
                     "startColumnIndex": 0,
-                    "endColumnIndex": len(HEADERS),
+                    "endColumnIndex": num_cols,
                 },
                 "top": {"style": "SOLID", "color": {"red": 0.796, "green": 0.835, "blue": 0.882}},
                 "bottom": {"style": "SOLID", "color": {"red": 0.796, "green": 0.835, "blue": 0.882}},
@@ -368,7 +674,7 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
         },
     ]
 
-    # 5.9. Thiết lập độ rộng cột cho từng cột
+    # 5.10. Thiết lập độ rộng cột cho từng cột
     for col_idx, width in enumerate(COLUMN_WIDTHS):
         format_requests.append({
             "updateDimensionProperties": {
@@ -380,6 +686,55 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
                 },
                 "properties": {"pixelSize": width},
                 "fields": "pixelSize",
+            }
+        })
+
+    # 5.11. Data Validation cho Cột N (Trạng thái - index 13)
+    format_requests.append({
+        "setDataValidation": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": 2,
+                "endRowIndex": total_rows,
+                "startColumnIndex": 13,
+                "endColumnIndex": 14,
+            },
+            "rule": {
+                "condition": {
+                    "type": "ONE_OF_LIST",
+                    "values": [
+                        {"userEnteredValue": "Đang sử dụng"},
+                        {"userEnteredValue": "Tạm dừng"},
+                        {"userEnteredValue": "Đã hủy"},
+                    ],
+                },
+                "inputMessage": "Chọn trạng thái đăng ký dịch vụ.",
+                "strict": False,
+                "showCustomUi": True,
+            },
+        }
+    })
+
+    # 5.12. Data Validation cho Cột H (Dịch vụ / Sản phẩm - index 7)
+    active_products = list(TrainingProduct.objects.filter(active=True).values_list("name", flat=True))
+    if active_products:
+        format_requests.append({
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 2,
+                    "endRowIndex": total_rows,
+                    "startColumnIndex": 7,
+                    "endColumnIndex": 8,
+                },
+                "rule": {
+                    "condition": {
+                        "type": "ONE_OF_LIST",
+                        "values": [{"userEnteredValue": p_name} for p_name in active_products],
+                    },
+                    "strict": False,
+                    "showCustomUi": True,
+                },
             }
         })
 
@@ -408,191 +763,237 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
     }
 
 
-def build_export_payload(sheet_row_map: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Tạo cấu trúc bảng đầy đủ gồm banner, headers, độ rộng cột và các dòng dữ liệu."""
-    sheet_row_map = sheet_row_map or {}
-    subscriptions = TrainingProductSubscription.objects.select_related("partner", "product").order_by(
-        "partner__name", "product__display_order"
-    )
-
-    title_row = ["FT. BẢNG THEO DÕI KHÁCH HÀNG, DỊCH VỤ & THỜI GIAN SỬ DỤNG"] + [""] * (len(HEADERS) - 1)
-    rows_to_write = [title_row, HEADERS]
-
-    for idx, sub in enumerate(subscriptions):
-        partner = sub.partner
-        product = sub.product
-        row_num = idx + 3
-
-        saved_info = (
-            sheet_row_map.get(f"sub:{sub.id}")
-            or sheet_row_map.get(f"pair:{partner.id}:{product.name.strip().lower()}")
-            or {}
-        )
-        staff = saved_info.get("assigned_staff") or getattr(partner, "training_staff", "") or ""
-        notes = sub.notes or saved_info.get("custom_notes") or ""
-
-        eff_status = product_subscription_status(sub)
-        status_vi = {
-            "active": "Đang sử dụng",
-            "expiring": "Sắp hết hạn",
-            "expired": "Đã quá hạn",
-            "paused": "Tạm dừng",
-            "cancelled": "Đã hủy",
-        }.get(eff_status, "Đang sử dụng")
-
-        # Công thức cho cột A (STT) và cột K (Còn lại)
-        days_left_formula = f'=IF(ISBLANK(J{row_num}); ""; INT(J{row_num} - TODAY()))'
-        stt_formula = f'=IF(C{row_num}<>""; ROW()-2; "")'
-
-        row_data = [
-            stt_formula,             # A: STT
-            partner.id,              # B: Mã ĐT
-            partner.name,            # C: Tên trường
-            partner.province or "",  # D: Tỉnh/TP
-            partner.contact_person or "",  # E: Người liên hệ
-            partner.phone or "",     # F: SĐT
-            product.name,            # G: Dịch vụ
-            sub.quantity,            # H: Số lượng
-            _format_date(sub.starts_at),  # I: Bắt đầu
-            _format_date(sub.expires_at), # J: Hết hạn
-            days_left_formula,       # K: Còn lại (ngày)
-            status_vi,               # L: Trạng thái
-            staff,                   # M: Nhân sự phụ trách
-            notes,                   # N: Ghi chú gia hạn
-            sub.id,                  # O: Mã ĐK (Sub ID)
-        ]
-        rows_to_write.append(row_data)
-
-    return {
-        "title": "FT. BẢNG THEO DÕI KHÁCH HÀNG, DỊCH VỤ & THỜI GIAN SỬ DỤNG",
-        "headers": HEADERS,
-        "columnWidths": COLUMN_WIDTHS,
-        "rows": rows_to_write,
-        "count": len(subscriptions),
-    }
-
-
 def ingest_subscription_row(row_data: List[Any], current_row_num: int = 0) -> Dict[str, Any]:
     """Cập nhật hoặc tạo mới 1 đăng ký dịch vụ từ dòng dữ liệu trên Google Sheet.
-    Lỗi 1 dòng chỉ trả về lỗi dòng đó, không chặn các dòng khác.
+    - Lỗi 1 dòng chỉ trả về lỗi dòng đó, không chặn các dòng khác.
+    - Không nhận thông tin khách hàng (Tỉnh, Đầu mối, SĐT) đè lên web.
+    - Chỉ tạo mới đăng ký khi CẢ tên trường VÀ sản phẩm ĐÃ TỒN TẠI trên web.
     """
     if not row_data or not any(str(c).strip() for c in row_data):
         return {"status": "skipped", "message": "Dòng trống."}
 
-    sub_id_str = str(row_data[14]).strip() if len(row_data) > 14 and row_data[14] is not None else ""
-    partner_id_str = str(row_data[1]).strip() if len(row_data) > 1 and row_data[1] is not None else ""
-    partner_name_str = str(row_data[2]).strip() if len(row_data) > 2 and row_data[2] is not None else ""
-    product_name_str = str(row_data[6]).strip() if len(row_data) > 6 and row_data[6] is not None else ""
-    quantity_str = str(row_data[7]).strip() if len(row_data) > 7 and row_data[7] is not None else "1"
-    starts_at_str = str(row_data[8]).strip() if len(row_data) > 8 and row_data[8] is not None else ""
-    expires_at_str = str(row_data[9]).strip() if len(row_data) > 9 and row_data[9] is not None else ""
-    status_str = str(row_data[11]).strip().lower() if len(row_data) > 11 and row_data[11] is not None else ""
-    notes_str = str(row_data[13]).strip() if len(row_data) > 13 and row_data[13] is not None else ""
+    # Hỗ trợ cả bố cục 17 cột mới (Mã ĐK ở cột B) và 15 cột cũ (Mã ĐK ở cột O)
+    is_legacy = (
+        len(row_data) >= 15
+        and str(row_data[14]).strip().isdigit()
+        and not (len(row_data) > 1 and str(row_data[1]).strip().isdigit())
+    )
+
+    if is_legacy:
+        sub_id_str = str(row_data[14]).strip()
+        partner_id_str = str(row_data[1]).strip()
+        partner_name_str = str(row_data[2]).strip()
+        product_name_str = str(row_data[6]).strip()
+        quantity_str = str(row_data[7]).strip()
+        starts_at_str = str(row_data[8]).strip()
+        expires_at_str = str(row_data[9]).strip()
+        status_str = str(row_data[11]).strip().lower()
+        account_manager_str = str(row_data[12]).strip()
+        notes_str = str(row_data[13]).strip()
+    else:
+        sub_id_str = str(row_data[1]).strip() if len(row_data) > 1 and row_data[1] is not None else ""
+        partner_id_str = str(row_data[2]).strip() if len(row_data) > 2 and row_data[2] is not None else ""
+        partner_name_str = str(row_data[3]).strip() if len(row_data) > 3 and row_data[3] is not None else ""
+        product_name_str = str(row_data[7]).strip() if len(row_data) > 7 and row_data[7] is not None else ""
+        quantity_str = str(row_data[8]).strip() if len(row_data) > 8 and row_data[8] is not None else "1"
+        starts_at_str = str(row_data[9]).strip() if len(row_data) > 9 and row_data[9] is not None else ""
+        expires_at_str = str(row_data[10]).strip() if len(row_data) > 10 and row_data[10] is not None else ""
+        status_str = str(row_data[13]).strip().lower() if len(row_data) > 13 and row_data[13] is not None else ""
+        account_manager_str = str(row_data[14]).strip() if len(row_data) > 14 and row_data[14] is not None else ""
+        notes_str = str(row_data[15]).strip() if len(row_data) > 15 and row_data[15] is not None else ""
 
     # 1. Tìm bản ghi subscription
-    sub = None
+    sub: Optional[TrainingProductSubscription] = None
     if sub_id_str.isdigit():
-        sub = TrainingProductSubscription.objects.filter(pk=int(sub_id_str)).first()
-
-    if not sub and partner_id_str.isdigit() and product_name_str:
-        sub = TrainingProductSubscription.objects.filter(
-            partner_id=int(partner_id_str),
-            product__name__iexact=product_name_str,
-        ).first()
-
-    if not sub and partner_name_str and product_name_str:
-        sub = TrainingProductSubscription.objects.filter(
-            partner__name__iexact=partner_name_str,
-            product__name__iexact=product_name_str,
-        ).first()
-
-    if not sub:
-        # Nếu chưa có trên Web nhưng có trên Sheet: Tạo mới đối tác & gói nếu có tên
-        if partner_name_str and product_name_str:
-            partner = None
-            if partner_id_str.isdigit():
-                partner = TrainingPartner.objects.filter(pk=int(partner_id_str)).first()
-            if not partner:
-                partner = TrainingPartner.objects.filter(name__iexact=partner_name_str).first()
-            if not partner:
-                province = str(row_data[3]).strip() if len(row_data) > 3 and row_data[3] is not None else ""
-                contact_person = str(row_data[4]).strip() if len(row_data) > 4 and row_data[4] is not None else ""
-                contact_phone = str(row_data[5]).strip() if len(row_data) > 5 and row_data[5] is not None else ""
-                partner = TrainingPartner.objects.create(
-                    name=partner_name_str,
-                    province=province,
-                    contact_person=contact_person,
-                    phone=contact_phone,
+        candidate_sub = TrainingProductSubscription.objects.select_related("partner", "product").filter(pk=int(sub_id_str)).first()
+        if candidate_sub:
+            # Kiểm tra an toàn: Tên trường trên dòng có khớp với sub không?
+            if partner_name_str and partner_name_str.strip().lower() != candidate_sub.partner.name.strip().lower():
+                msg = (
+                    f"Dòng {current_row_num}: Mã ĐK {candidate_sub.id} thuộc trường '{candidate_sub.partner.name}', "
+                    f"nhưng dòng trên Sheet ghi trường '{partner_name_str}' (không khớp). Bỏ qua dòng để tránh ghi đè nhầm."
                 )
+                logger.warning(msg)
+                LogNote.objects.create(
+                    key=f"subscription-sheet-conflict:{candidate_sub.id}:{timezone.now().timestamp()}",
+                    entity_key=f"digital-training-subscription-{candidate_sub.id}",
+                    content=msg,
+                    updated_by="Google Sheet Webhook",
+                    system=True,
+                )
+                return {"status": "skipped", "message": msg}
+            sub = candidate_sub
 
-            product = TrainingProduct.objects.filter(name__iexact=product_name_str).first()
-            if not product:
-                product = TrainingProduct.objects.create(name=product_name_str)
+    # Nếu không tìm thấy qua ID, thử tìm qua cặp partner + product
+    if not sub and partner_name_str and product_name_str:
+        partner = TrainingPartner.objects.filter(name__iexact=partner_name_str).first()
+        if not partner and partner_id_str.isdigit():
+            partner = TrainingPartner.objects.filter(pk=int(partner_id_str)).first()
 
-            starts_at = _parse_date_cell(starts_at_str) or timezone.now().date()
-            expires_at = _parse_date_cell(expires_at_str)
-            qty = int(quantity_str) if quantity_str.isdigit() and int(quantity_str) > 0 else 1
+        product = TrainingProduct.objects.filter(name__iexact=product_name_str).first()
+        if not product:
+            # Thử đối chiếu chuẩn hóa tên
+            target_norm = _normalise_product_name(product_name_str)
+            for p in TrainingProduct.objects.filter(active=True):
+                if _normalise_product_name(p.name) == target_norm or _normalise_product_name(p.code) == target_norm:
+                    product = p
+                    break
 
-            sub = TrainingProductSubscription.objects.create(
-                partner=partner,
-                product=product,
-                starts_at=starts_at,
-                expires_at=expires_at,
-                quantity=qty,
-                status="paused" if "tạm dừng" in status_str else ("cancelled" if "hủy" in status_str else "active"),
-                notes=notes_str,
+        if partner and product:
+            sub = TrainingProductSubscription.objects.filter(partner=partner, product=product).first()
+
+    # 2. Xử lý trường hợp chưa có subscription trên Web
+    if not sub:
+        # Q3: Chỉ tạo khi CẢ trường VÀ sản phẩm ĐÃ TỒN TẠI trên web
+        if not partner_name_str or not product_name_str:
+            return {"status": "skipped", "message": f"Dòng {current_row_num}: Thiếu tên trường hoặc tên sản phẩm."}
+
+        partner = TrainingPartner.objects.filter(name__iexact=partner_name_str).first()
+        if not partner and partner_id_str.isdigit():
+            partner = TrainingPartner.objects.filter(pk=int(partner_id_str)).first()
+
+        product = TrainingProduct.objects.filter(name__iexact=product_name_str).first()
+        if not product:
+            target_norm = _normalise_product_name(product_name_str)
+            for p in TrainingProduct.objects.filter(active=True):
+                if _normalise_product_name(p.name) == target_norm or _normalise_product_name(p.code) == target_norm:
+                    product = p
+                    break
+
+        if not partner:
+            msg = f"Dòng {current_row_num}: Trường '{partner_name_str}' chưa có trên web. Hệ thống không tự tạo trường mới từ Sheet."
+            LogNote.objects.create(
+                key=f"subscription-sheet-unknown-partner:{timezone.now().timestamp()}",
+                entity_key="digital-training-subscription-import",
+                content=msg,
+                updated_by="Google Sheet Webhook",
+                system=True,
             )
-            return {"status": "created", "subscription_id": sub.pk}
+            return {"status": "skipped", "message": msg}
 
-        return {
-            "status": "skipped",
-            "message": f"Dòng {current_row_num}: Không tìm thấy dịch vụ khớp (Trường: '{partner_name_str}', Dịch vụ: '{product_name_str}')",
-        }
+        if not product:
+            msg = f"Dòng {current_row_num}: Sản phẩm '{product_name_str}' không có trong danh mục. Hệ thống không tự tạo sản phẩm rác."
+            LogNote.objects.create(
+                key=f"subscription-sheet-unknown-product:{timezone.now().timestamp()}",
+                entity_key="digital-training-subscription-import",
+                content=msg,
+                updated_by="Google Sheet Webhook",
+                system=True,
+            )
+            return {"status": "skipped", "message": msg}
 
-    # 2. Cập nhật các trường
+        # Cả trường và sản phẩm đều hợp lệ -> tạo mới đăng ký
+        starts_at = _parse_date_cell(starts_at_str) or timezone.localdate()
+        expires_at = _parse_date_cell(expires_at_str) if product.code != "tap-huan" else None
+        qty = int(quantity_str) if quantity_str.isdigit() and int(quantity_str) > 0 else 1
+
+        mapped_status = "active"
+        if "tạm dừng" in status_str:
+            mapped_status = "paused"
+        elif "hủy" in status_str:
+            mapped_status = "cancelled"
+
+        sub = TrainingProductSubscription.objects.create(
+            partner=partner,
+            product=product,
+            starts_at=starts_at,
+            expires_at=expires_at,
+            quantity=qty,
+            status=mapped_status,
+            account_manager=account_manager_str,
+            notes=notes_str,
+        )
+        LogNote.objects.create(
+            key=f"subscription-created-sheet:{sub.id}",
+            entity_key=f"digital-training-subscription-{sub.id}",
+            content=f"Tự động tạo đăng ký '{product.name}' cho trường '{partner.name}' từ Google Sheet.",
+            updated_by="Google Sheet Webhook",
+            system=True,
+        )
+        return {"status": "created", "subscription_id": sub.pk}
+
+    # 3. Cập nhật đăng ký hiện có
     updates = []
     starts_at = _parse_date_cell(starts_at_str)
     if starts_at and sub.starts_at != starts_at:
         sub.starts_at = starts_at
         updates.append("starts_at")
 
-    expires_at = _parse_date_cell(expires_at_str)
-    if expires_at and sub.expires_at != expires_at:
-        sub.expires_at = expires_at
-        updates.append("expires_at")
-        sub.expiry_notice_stage = 0  # reset cờ cảnh báo khi có hạn mới
-        updates.append("expiry_notice_stage")
+    if sub.product.code == "tap-huan":
+        if sub.expires_at is not None:
+            sub.expires_at = None
+            updates.append("expires_at")
+    else:
+        expires_at = _parse_date_cell(expires_at_str)
+        if expires_at and sub.expires_at != expires_at:
+            sub.expires_at = expires_at
+            updates.append("expires_at")
+            sub.expiry_notice_stage = 0
+            updates.append("expiry_notice_stage")
+            WorkspaceNotification.objects.filter(
+                event_key__startswith=f"product-subscription:{sub.pk}:"
+            ).delete()
 
     if quantity_str.isdigit() and int(quantity_str) > 0 and sub.quantity != int(quantity_str):
         sub.quantity = int(quantity_str)
         updates.append("quantity")
 
-    if "tạm dừng" in status_str:
-        mapped_status = "paused"
-    elif "hủy" in status_str:
-        mapped_status = "cancelled"
-    else:
-        mapped_status = "active"
-
-    if sub.status != mapped_status:
-        sub.status = mapped_status
+    # Chỉ đổi trạng thái khi có giá trị rõ ràng (tránh ô trống biến paused/cancelled thành active)
+    if "tạm dừng" in status_str and sub.status != "paused":
+        sub.status = "paused"
         updates.append("status")
+    elif "hủy" in status_str and sub.status != "cancelled":
+        sub.status = "cancelled"
+        updates.append("status")
+    elif ("đang sử dụng" in status_str or "active" in status_str) and sub.status != "active":
+        sub.status = "active"
+        updates.append("status")
+
+    if account_manager_str and account_manager_str != sub.account_manager:
+        sub.account_manager = account_manager_str
+        updates.append("account_manager")
 
     if notes_str and notes_str != sub.notes:
         sub.notes = notes_str
         updates.append("notes")
 
+    # Cập nhật thông tin đối tác từ Sheet nếu giá trị hợp lệ (không ghi đè bằng giá trị trống)
+    partner_updates = []
+    if not is_legacy:  # Chỉ áp dụng cho layout 17 cột mới
+        province_str = str(row_data[4]).strip() if len(row_data) > 4 and row_data[4] is not None else ""
+        contact_str = str(row_data[5]).strip() if len(row_data) > 5 and row_data[5] is not None else ""
+        phone_str = str(row_data[6]).strip().lstrip("'") if len(row_data) > 6 and row_data[6] is not None else ""
+
+        if province_str and province_str != (sub.partner.province or ""):
+            sub.partner.province = province_str
+            partner_updates.append("province")
+        if contact_str and contact_str != (sub.partner.contact_person or ""):
+            sub.partner.contact_person = contact_str
+            partner_updates.append("contact_person")
+        # Chỉ cập nhật SĐT nếu là số 10 chữ số bắt đầu bằng 0
+        if phone_str and re.fullmatch(r'0\d{9}', phone_str) and phone_str != (sub.partner.phone or ""):
+            sub.partner.phone = phone_str
+            partner_updates.append("phone")
+
+        if partner_updates:
+            sub.partner.save(update_fields=partner_updates)
+
     if updates:
         sub.save(update_fields=[*updates, "updated_at"])
+        LogNote.objects.create(
+            key=f"subscription-sheet-update:{sub.id}:{timezone.now().timestamp()}",
+            entity_key=f"digital-training-subscription-{sub.id}",
+            content=f"Google Sheet cập nhật các trường: {', '.join(updates)}.",
+            updated_by="Google Sheet Webhook",
+            system=True,
+        )
         return {"status": "updated", "subscription_id": sub.pk}
 
     return {"status": "unchanged", "subscription_id": sub.pk}
 
 
 def import_subscriptions_from_sheet(start_row: int = 3, end_row: Optional[int] = None, google_token: Optional[str] = None) -> Dict[str, Any]:
-    """Đọc dữ liệu thay đổi từ Sheet và tự động cập nhật vào Web theo từng dòng.
-    Không chờ duyệt, lỗi 1 dòng chỉ bỏ qua dòng đó.
-    """
+    """Đọc dữ liệu thay đổi từ Sheet và tự động cập nhật vào Web theo từng dòng."""
     spreadsheet_id = get_spreadsheet_id()
     if not spreadsheet_id:
         return {"status": "error", "error_code": "NO_SPREADSHEET_ID", "message": "Chưa cấu hình Google Spreadsheet ID."}
@@ -606,26 +1007,37 @@ def import_subscriptions_from_sheet(start_row: int = 3, end_row: Optional[int] =
             "status": "error",
             "error_code": "NO_CREDENTIALS",
             "service_account_email": sa_email,
-            "message": "Chưa cấu hình tài khoản Google Service Account. Bạn có thể dán Service Account JSON trong Cấu hình Sheet hoặc dùng Apps Script webhook để đồng bộ tự động mà không cần tài khoản dịch vụ.",
+            "message": "Chưa cấu hình tài khoản Google Service Account.",
         }
 
+    # Lấy tên tab đích
+    target_title = DEFAULT_TAB_TITLE
+    try:
+        meta = service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id,
+            fields="sheets(properties.title)",
+        ).execute()
+        existing_titles = [s.get("properties", {}).get("title") for s in meta.get("sheets", [])]
+        for candidate in [DEFAULT_TAB_TITLE, "Trang tính1", "Dịch vụ khách hàng", "Theo dõi dịch vụ"]:
+            if candidate in existing_titles:
+                target_title = candidate
+                break
+    except Exception:
+        pass
+
+    escaped = "'" + target_title.replace("'", "''") + "'"
     range_end = end_row or 500
     try:
         read_res = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
-            range=f"'{DEFAULT_TAB_TITLE}'!A{start_row}:O{range_end}",
-            valueRenderOption="FORMATTED_VALUE",
+            range=f"{escaped}!A{start_row}:Q{range_end}",
+            # UNFORMATTED_VALUE: trả về serial number cho ngày, tránh bị đảo ngày/tháng
+            # theo locale của người dùng khi dùng FORMATTED_VALUE.
+            valueRenderOption="UNFORMATTED_VALUE",
         ).execute()
         rows = read_res.get("values", [])
     except Exception as exc:
-        err_str = str(exc)
-        if "403" in err_str or "permission" in err_str.lower():
-            msg = f"Tài khoản dịch vụ chưa có quyền truy cập Sheet. Vui lòng nhấn nút Share trên Google Sheet và chia sẻ cho email: {sa_email or 'tài khoản dịch vụ'} (quyền Người chỉnh sửa/Editor)."
-        elif "404" in err_str or "not found" in err_str.lower():
-            msg = f"Không tìm thấy Google Sheet với ID '{spreadsheet_id}'. Vui lòng kiểm tra lại đường link hoặc Spreadsheet ID."
-        else:
-            msg = f"Lỗi đọc Google Sheet: {exc}"
-        return {"status": "error", "error_code": "SHEET_ACCESS_DENIED", "service_account_email": sa_email, "message": msg}
+        return {"status": "error", "error_code": "READ_ERROR", "message": f"Lỗi đọc Google Sheet: {exc}"}
 
     updated_count = 0
     created_count = 0
@@ -651,6 +1063,7 @@ def import_subscriptions_from_sheet(start_row: int = 3, end_row: Optional[int] =
 
     return {
         "status": "success",
+        "tab_title": target_title,
         "updated": updated_count,
         "created": created_count,
         "skipped": skipped_count,

@@ -1,10 +1,12 @@
 import io
+import os
 import re
 from collections import Counter
 from datetime import date, datetime, time, timedelta
+from unittest import mock
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 from zipfile import ZipFile
-from unittest.mock import patch
 
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -491,8 +493,9 @@ class TrainingAssessmentTests(TestCase):
 
         self.assertEqual(first.status_code, 201, first.data)
         self.assertEqual(first.data['variant'], assigned_variant)
-        self.assertEqual(second.status_code, 200, second.data)
-        self.assertEqual(second.data["access_token"], first.data["access_token"])
+        self.assertEqual(second.status_code, 409, second.data)
+        self.assertEqual(second.data["code"], "unfinished_attempt")
+        self.assertEqual(second.data["attempt"]["access_token"], first.data["access_token"])
 
     def test_open_assessment_resumes_across_browsers_only_for_exact_identity(self):
         first = self.client.post(
@@ -515,9 +518,9 @@ class TrainingAssessmentTests(TestCase):
         )
 
         self.assertEqual(first.status_code, 201, first.data)
-        self.assertEqual(resumed.status_code, 200, resumed.data)
-        self.assertTrue(resumed.data["resumed"])
-        self.assertEqual(resumed.data["access_token"], first.data["access_token"])
+        self.assertEqual(resumed.status_code, 409, resumed.data)
+        self.assertEqual(resumed.data["code"], "unfinished_attempt")
+        self.assertEqual(resumed.data["attempt"]["access_token"], first.data["access_token"])
 
         mismatch = self.client.post(
             f"/api/training-assessments/{self.assessment.public_slug}/start",
@@ -529,7 +532,7 @@ class TrainingAssessmentTests(TestCase):
             format="json",
         )
         self.assertEqual(mismatch.status_code, 400, mismatch.data)
-        self.assertIn("chưa khớp", mismatch.data["error"])
+        self.assertTrue("khác nhau" in mismatch.data["error"] or "chưa khớp" in mismatch.data["error"])
 
     def test_reset_requires_exact_identity_and_clears_current_attempt(self):
         first = self.client.post(
@@ -1075,3 +1078,297 @@ class TrainingLeadConversionTests(TestCase):
         data = TrainingCustomerMeetingSerializer(meeting).data
         self.assertEqual(data["lead"], lead.id)
         self.assertEqual(data["lead_name"], lead.name)
+
+
+class SubscriptionSheetSyncTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user, _ = UserProfile.objects.get_or_create(
+            email="manager@example.com",
+            defaults={
+                "name": "Test Manager",
+                "role": "ADMIN",
+                "access_modules": ["digital-training"],
+            },
+        )
+        self.user.role = "ADMIN"
+        self.user.access_modules = ["digital-training"]
+        self.user.save()
+        self.client.force_authenticate(self.user)
+
+        self.partner, _ = TrainingPartner.objects.get_or_create(
+            name="THPT Chu Văn An",
+            defaults={"province": "Hà Nội", "contact_person": "Thầy Hùng", "phone": "0987654321"},
+        )
+        self.product, _ = TrainingProduct.objects.get_or_create(
+            code="bndc",
+            defaults={"name": "BNDC", "product_type": "product", "display_order": 1},
+        )
+        self.sub, _ = TrainingProductSubscription.objects.get_or_create(
+            partner=self.partner,
+            product=self.product,
+            defaults={
+                "quantity": 1,
+                "starts_at": date(2026, 1, 1),
+                "expires_at": date(2026, 12, 31),
+                "status": "active",
+                "account_manager": "Nguyễn Văn A",
+                "notes": "Ghi chú ban đầu",
+            },
+        )
+
+
+    def test_build_export_payload_structure_17_columns(self):
+        from .subscription_sheet_sync import build_export_payload, HEADERS
+        payload = build_export_payload()
+        self.assertEqual(len(payload["headers"]), 17)
+        self.assertEqual(payload["headers"], HEADERS)
+        self.assertEqual(payload["rows"][0][0], "FT. BẢNG THEO DÕI KHÁCH HÀNG, DỊCH VỤ & THỜI GIAN SỬ DỤNG")
+        self.assertEqual(payload["rows"][1], HEADERS)
+        self.assertGreaterEqual(len(payload["rows"]), 3)
+        row3 = payload["rows"][2]
+        self.assertEqual(row3[1], self.sub.id)  # Cột B: Mã ĐK
+        self.assertEqual(row3[2], self.partner.id)  # Cột C: Mã KH
+        self.assertEqual(row3[3], self.partner.name)  # Cột D: Tên trường
+        self.assertEqual(row3[7], self.product.name)  # Cột H: Sản phẩm
+        self.assertEqual(row3[14], "Nguyễn Văn A")  # Cột O: Phụ trách
+
+    def test_ingest_row_with_valid_matching_data(self):
+        from .subscription_sheet_sync import ingest_subscription_row
+        row_data = [
+            "",  # A: STT
+            self.sub.id,  # B: Mã ĐK
+            self.partner.id,  # C: Mã KH
+            self.partner.name,  # D: Tên trường
+            "Hà Nội",  # E: Tỉnh
+            "Thầy Hùng",  # F: Liên hệ
+            "0987654321",  # G: SĐT
+            "BNDC",  # H: Dịch vụ
+            2,  # I: Số lượng mới
+            "15/02/2026",  # J: Bắt đầu mới
+            "15/02/2027",  # K: Hết hạn mới
+            "",  # L: Còn lại
+            "",  # M: Tình trạng
+            "Tạm dừng",  # N: Trạng thái mới
+            "Trần Thị B",  # O: Phụ trách mới
+            "Gia hạn thêm 1 năm",  # P: Ghi chú mới
+            "",  # Q: Cập nhật lúc
+        ]
+        res = ingest_subscription_row(row_data, 3)
+        self.assertEqual(res["status"], "updated")
+        self.sub.refresh_from_db()
+        self.assertEqual(self.sub.quantity, 2)
+        self.assertEqual(self.sub.starts_at, date(2026, 2, 15))
+        self.assertEqual(self.sub.expires_at, date(2027, 2, 15))
+        self.assertEqual(self.sub.status, "paused")
+        self.assertEqual(self.sub.account_manager, "Trần Thị B")
+        self.assertEqual(self.sub.notes, "Gia hạn thêm 1 năm")
+
+    def test_ingest_row_rejects_mismatched_partner(self):
+        from .subscription_sheet_sync import ingest_subscription_row
+        row_data = [
+            "", self.sub.id, self.partner.id, "Trường Khác Toàn Bộ", "Hải Phòng",
+            "Người khác", "0900000000", "BNDC", 1, "01/01/2026", "01/01/2027",
+            "", "", "Đang sử dụng", "Nguyễn Văn A", "Test", ""
+        ]
+        res = ingest_subscription_row(row_data, 3)
+        self.assertEqual(res["status"], "skipped")
+        self.assertIn("không khớp", res["message"])
+        self.sub.refresh_from_db()
+        self.assertEqual(self.sub.partner, self.partner)
+
+    def test_ingest_row_new_subscription_requires_existing_partner_and_product(self):
+        from .subscription_sheet_sync import ingest_subscription_row
+        # Dòng mới chưa có Mã ĐK (Cột B rỗng)
+        # 1. Trường chưa có trên web -> Phải bỏ qua, KHÔNG tự tạo trường
+        row_unknown_school = [
+            "", "", "", "Trường Chưa Từng Có", "Đà Nẵng", "Cô Mai", "0911111111",
+            "BNDC", 1, "01/01/2026", "01/01/2027", "", "", "Đang sử dụng", "Admin", "", ""
+        ]
+        res1 = ingest_subscription_row(row_unknown_school, 4)
+        self.assertEqual(res1["status"], "skipped")
+        self.assertFalse(TrainingPartner.objects.filter(name="Trường Chưa Từng Có").exists())
+
+        # 2. Sản phẩm không có trong danh mục -> Phải bỏ qua, KHÔNG tạo sản phẩm rác
+        row_unknown_product = [
+            "", "", "", self.partner.name, "Hà Nội", "", "",
+            "Sản phẩm tự chế 123", 1, "01/01/2026", "01/01/2027", "", "", "Đang sử dụng", "Admin", "", ""
+        ]
+        res2 = ingest_subscription_row(row_unknown_product, 5)
+        self.assertEqual(res2["status"], "skipped")
+        self.assertFalse(TrainingProduct.objects.filter(name="Sản phẩm tự chế 123").exists())
+
+        # 3. Cả 2 đều có sẵn trên web -> Tạo mới subscription
+        p2, _ = TrainingProduct.objects.get_or_create(
+            code="ai-dung-chung",
+            defaults={"name": "AI dùng chung", "product_type": "product"},
+        )
+        TrainingProductSubscription.objects.filter(partner=self.partner, product=p2).delete()
+        row_valid = [
+            "", "", "", self.partner.name, "Hà Nội", "", "",
+            "AI dùng chung", 5, "01/03/2026", "01/03/2027", "", "", "Đang sử dụng", "Lê C", "Tạo từ sheet", ""
+        ]
+        res3 = ingest_subscription_row(row_valid, 6)
+        self.assertEqual(res3["status"], "created")
+        new_sub = TrainingProductSubscription.objects.get(partner=self.partner, product=p2)
+        self.assertEqual(new_sub.quantity, 5)
+        self.assertEqual(new_sub.account_manager, "Lê C")
+
+    def test_ingest_row_blank_status_does_not_overwrite_web(self):
+        from .subscription_sheet_sync import ingest_subscription_row
+        self.sub.status = "paused"
+        self.sub.save()
+
+        # Dòng trên Sheet để trống cột Trạng thái (Cột N)
+        row_blank_status = [
+            "", self.sub.id, self.partner.id, self.partner.name, "Hà Nội", "", "",
+            "BNDC", 1, "01/01/2026", "31/12/2026", "", "", "", "Nguyễn Văn A", "Ghi chú mới", ""
+        ]
+        ingest_subscription_row(row_blank_status, 3)
+        self.sub.refresh_from_db()
+        self.assertEqual(self.sub.status, "paused")  # Không bị chuyển thành active
+
+    def test_ingest_row_parses_serial_date(self):
+        from .subscription_sheet_sync import ingest_subscription_row
+        # 46023 serial date tương ứng với 01/01/2026 (base 30/12/1899)
+        # 46023 days from 1899-12-30 = 2026-01-01
+        row_serial = [
+            "", self.sub.id, self.partner.id, self.partner.name, "", "", "",
+            "BNDC", 1, 46023, 46388, "", "", "Đang sử dụng", "", "", ""
+        ]
+        ingest_subscription_row(row_serial, 3)
+        self.sub.refresh_from_db()
+        self.assertEqual(self.sub.starts_at, date(2026, 1, 1))
+        self.assertEqual(self.sub.expires_at, date(2027, 1, 1))
+
+    @mock.patch.dict(os.environ, {"SUBSCRIPTION_SHEET_WEBHOOK_SECRET": "test-sub-secret"})
+    def test_webhook_security_requires_secret_or_auth(self):
+        anon_client = APIClient()
+        # 1. Không có secret, không auth -> 401
+        res1 = anon_client.post("/api/digital-training/subscriptions/sheet-webhook", {"row": 3, "values": []}, format="json")
+        self.assertEqual(res1.status_code, 401)
+
+        # 2. Sai secret -> 401
+        res2 = anon_client.post(
+            "/api/digital-training/subscriptions/sheet-webhook",
+            {"row": 3, "values": []},
+            format="json",
+            HTTP_X_SHEET_WEBHOOK_SECRET="wrong-secret",
+        )
+        self.assertEqual(res2.status_code, 401)
+
+        # 3. Đúng secret -> 200
+        res3 = anon_client.post(
+            "/api/digital-training/subscriptions/sheet-webhook",
+            {"row": 3, "values": []},
+            format="json",
+            HTTP_X_SHEET_WEBHOOK_SECRET="test-sub-secret",
+        )
+        self.assertEqual(res3.status_code, 200)
+
+    @mock.patch.dict(os.environ, {"SUBSCRIPTION_SHEET_WEBHOOK_SECRET": "test-sub-secret"})
+    def test_get_sheet_sync_requires_auth(self):
+        anon_client = APIClient()
+        # Không có quyền -> 403
+        res1 = anon_client.get("/api/digital-training/subscriptions/sheet-sync")
+        self.assertEqual(res1.status_code, 403)
+
+        # Có secret -> 200
+        res2 = anon_client.get("/api/digital-training/subscriptions/sheet-sync", HTTP_X_SHEET_WEBHOOK_SECRET="test-sub-secret")
+        self.assertEqual(res2.status_code, 200)
+
+        # Đăng nhập quyền quản lý -> 200
+        res3 = self.client.get("/api/digital-training/subscriptions/sheet-sync")
+        self.assertEqual(res3.status_code, 200)
+
+    def test_subscription_outbox_queue(self):
+        from .models import SubscriptionSheetOutbox
+        from .subscription_queue import enqueue_subscription, enqueue_subscription_deletion
+
+        SubscriptionSheetOutbox.objects.all().delete()
+        enqueue_subscription(self.sub.id, "upsert")
+        job = SubscriptionSheetOutbox.objects.filter(subscription_id=str(self.sub.id)).first()
+        self.assertIsNotNone(job)
+        self.assertEqual(job.action, "upsert")
+
+        enqueue_subscription_deletion(self.sub.id)
+        job_del = SubscriptionSheetOutbox.objects.filter(subscription_id=str(self.sub.id)).first()
+        self.assertIsNotNone(job_del)
+        self.assertEqual(job_del.action, "delete")
+
+    def test_ingest_row_updates_partner_province_contact_phone(self):
+        """Sheet có thể cập nhật Tỉnh/Đầu mối/SĐT hợp lệ vào hồ sơ đối tác."""
+        from .subscription_sheet_sync import ingest_subscription_row
+        self.partner.province = ""
+        self.partner.contact_person = ""
+        self.partner.phone = ""
+        self.partner.save()
+
+        row_data = [
+            "", self.sub.id, self.partner.id, self.partner.name,
+            "Hải Phòng",       # E: Tỉnh mới
+            "Cô Lan",          # F: Đầu mối mới
+            "0912345678",      # G: SĐT hợp lệ
+            "BNDC", 1, "01/01/2026", "31/12/2026",
+            "", "", "Đang sử dụng", "", "", "",
+        ]
+        res = ingest_subscription_row(row_data, 3)
+        self.assertIn(res["status"], ("updated", "unchanged"))
+        self.partner.refresh_from_db()
+        self.assertEqual(self.partner.province, "Hải Phòng")
+        self.assertEqual(self.partner.contact_person, "Cô Lan")
+        self.assertEqual(self.partner.phone, "0912345678")
+
+    def test_ingest_row_does_not_update_partner_with_invalid_phone(self):
+        """SĐT không đúng định dạng 10 số bắt đầu bằng 0 không ghi đè."""
+        from .subscription_sheet_sync import ingest_subscription_row
+        original_phone = "0987654321"
+        self.partner.phone = original_phone
+        self.partner.save()
+
+        row_data = [
+            "", self.sub.id, self.partner.id, self.partner.name,
+            "Hà Nội", "Thầy Hùng",
+            "1234",            # G: SĐT sai định dạng
+            "BNDC", 1, "01/01/2026", "31/12/2026",
+            "", "", "Đang sử dụng", "", "", "",
+        ]
+        ingest_subscription_row(row_data, 3)
+        self.partner.refresh_from_db()
+        self.assertEqual(self.partner.phone, original_phone)  # Không bị xóa/thay
+
+    def test_ingest_row_does_not_overwrite_partner_with_empty_values(self):
+        """Ô trống trên Sheet không xóa tỉnh/đầu mối/SĐT đang có trên web."""
+        from .subscription_sheet_sync import ingest_subscription_row
+        self.partner.province = "Hà Nội"
+        self.partner.contact_person = "Thầy Hùng"
+        self.partner.phone = "0987654321"
+        self.partner.save()
+
+        row_data = [
+            "", self.sub.id, self.partner.id, self.partner.name,
+            "",    # E: Tỉnh trống
+            "",    # F: Đầu mối trống
+            "",    # G: SĐT trống
+            "BNDC", 1, "01/01/2026", "31/12/2026",
+            "", "", "Đang sử dụng", "", "Ghi chú mới", "",
+        ]
+        ingest_subscription_row(row_data, 3)
+        self.partner.refresh_from_db()
+        self.assertEqual(self.partner.province, "Hà Nội")
+        self.assertEqual(self.partner.contact_person, "Thầy Hùng")
+        self.assertEqual(self.partner.phone, "0987654321")
+
+    def test_parse_date_cell_handles_serial_number(self):
+        """_parse_date_cell phải đọc đúng serial number Google Sheets."""
+        from .subscription_sheet_sync import _parse_date_cell
+        import datetime
+        # 46023 serial days from 1899-12-30 = 2026-01-01
+        result = _parse_date_cell(46023)
+        self.assertEqual(result, datetime.date(2026, 1, 1))
+        # 46388 = 2027-01-01
+        result2 = _parse_date_cell(46388)
+        self.assertEqual(result2, datetime.date(2027, 1, 1))
+        # Chuỗi serial string
+        result3 = _parse_date_cell("46023")
+        self.assertEqual(result3, datetime.date(2026, 1, 1))

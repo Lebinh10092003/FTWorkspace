@@ -5,12 +5,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, BasePermission
 import calendar
 import datetime
-import logging
-
-logger = logging.getLogger(__name__)
+import hmac
 import json
-import uuid
+import logging
+import os
+import sys
 import unicodedata
+import uuid
 from django.conf import settings
 from django.utils import timezone
 
@@ -57,6 +58,25 @@ def _can_manage(request):
 
 def _forbidden():
     return Response({"error": "Bạn không có quyền thay đổi dữ liệu Đào tạo số."}, status=status.HTTP_403_FORBIDDEN)
+
+
+def _is_sheet_webhook_authorized(request) -> bool:
+    expected_secret = (
+        os.getenv("SUBSCRIPTION_SHEET_WEBHOOK_SECRET")
+        or os.getenv("SHEET_WEBHOOK_SECRET")
+        or getattr(settings, "SUBSCRIPTION_SHEET_WEBHOOK_SECRET", "")
+        or getattr(settings, "SHEET_WEBHOOK_SECRET", "")
+    )
+    provided_secret = (
+        request.headers.get("X-Sheet-Webhook-Secret")
+        or request.headers.get("X-Webhook-Secret")
+        or request.META.get("HTTP_X_SHEET_WEBHOOK_SECRET")
+        or request.META.get("HTTP_X_WEBHOOK_SECRET")
+        or ""
+    )
+    if expected_secret and provided_secret and hmac.compare_digest(provided_secret.strip(), expected_secret.strip()):
+        return True
+    return _can_manage(request)
 
 
 def _actor(request):
@@ -169,10 +189,10 @@ def _crud_collection(request, queryset, serializer_class, kind):
             logger.warning(f"Lỗi tự động xuất sheet sau khi tạo buổi tập huấn: {exc}")
     elif kind == "đăng ký sản phẩm":
         try:
-            from .subscription_sheet_sync import export_subscriptions_to_sheet
-            export_subscriptions_to_sheet(force=True)
+            from .subscription_queue import enqueue_subscription
+            enqueue_subscription(item.pk, "upsert")
         except Exception as exc:
-            logger.warning(f"Lỗi tự động xuất sheet sau khi tạo đăng ký sản phẩm: {exc}")
+            logger.warning(f"Lỗi đưa đăng ký sản phẩm vào hàng đợi: {exc}")
     _audit_item(item, kind, f"Tạo {kind}", None, request, serializer_class)
     return Response(serializer_class(item, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
@@ -200,10 +220,10 @@ def _crud_detail(request, queryset, serializer_class, pk, kind):
                 logger.warning(f"Lỗi xuất sheet sau khi xóa buổi tập huấn: {exc}")
         elif kind == "đăng ký sản phẩm":
             try:
-                from .subscription_sheet_sync import export_subscriptions_to_sheet
-                export_subscriptions_to_sheet(force=True)
+                from .subscription_queue import enqueue_subscription_deletion
+                enqueue_subscription_deletion(item.pk)
             except Exception as exc:
-                logger.warning(f"Lỗi xuất sheet sau khi xóa đăng ký sản phẩm: {exc}")
+                logger.warning(f"Lỗi đưa đăng ký sản phẩm vào hàng đợi xóa: {exc}")
         return Response(status=status.HTTP_204_NO_CONTENT)
     before = _snapshot(serializer_class, item, request)
     serializer = serializer_class(item, data=request.data, partial=True, context={"request": request})
@@ -219,10 +239,10 @@ def _crud_detail(request, queryset, serializer_class, pk, kind):
             logger.warning(f"Lỗi xuất sheet sau khi cập nhật buổi tập huấn: {exc}")
     elif kind == "đăng ký sản phẩm":
         try:
-            from .subscription_sheet_sync import export_subscriptions_to_sheet
-            export_subscriptions_to_sheet(force=True)
+            from .subscription_queue import enqueue_subscription
+            enqueue_subscription(updated.pk, "upsert")
         except Exception as exc:
-            logger.warning(f"Lỗi xuất sheet sau khi cập nhật đăng ký sản phẩm: {exc}")
+            logger.warning(f"Lỗi đưa đăng ký sản phẩm vào hàng đợi cập nhật: {exc}")
     _audit_item(updated, kind, f"Cập nhật {kind}", before, request, serializer_class)
     return Response(serializer_class(updated, context={"request": request}).data)
 
@@ -553,21 +573,24 @@ def renew_product_subscription(request, pk):
 
     sub.save(update_fields=["expires_at", "status", "expiry_notice_stage", "notes", "updated_at"])
 
-    # Tự động trigger đồng bộ Sheet
+    # Tự động trigger đồng bộ Sheet qua hàng đợi
     try:
-        from .subscription_sheet_sync import export_subscriptions_to_sheet
-        export_subscriptions_to_sheet(force=True)
+        from .subscription_queue import enqueue_subscription
+        enqueue_subscription(sub.pk, "upsert")
     except Exception as exc:
-        logger.warning(f"Lỗi đồng bộ Sheet sau khi gia hạn: {exc}")
+        logger.warning(f"Lỗi đưa đăng ký vào hàng đợi sau khi gia hạn: {exc}")
 
     return Response(TrainingProductSubscriptionSerializer(sub).data)
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticatedOrReadOnly])
+@permission_classes([AllowAny])
 def subscription_sheet_sync_now(request):
     """GET: Lấy toàn bộ cấu trúc bảng và dữ liệu từ Web để Apps Script hoặc Sheet client khởi tạo bảng.
     POST: Kích hoạt đồng bộ thủ công 2 chiều giữa Web và Google Sheet."""
+    if not _is_sheet_webhook_authorized(request):
+        return _forbidden()
+
     from .subscription_sheet_sync import sync_subscriptions_safely, build_export_payload
 
     if request.method == "GET":
@@ -608,8 +631,22 @@ def subscription_sheet_sync_now(request):
 @permission_classes([AllowAny])
 def subscription_sheet_webhook(request):
     """Điểm cuối nhận webhook từ Google Apps Script (onEdit / onChange / bulk sync)."""
+    if not _is_sheet_webhook_authorized(request):
+        return Response(
+            {"error": "Không xác thực được webhook. Yêu cầu secret hợp lệ hoặc tài khoản quản trị."},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
     from .subscription_sheet_sync import import_subscriptions_from_sheet, ingest_subscription_row
     data = request.data if isinstance(request.data, dict) else {}
+
+    # Kiểm tra tên tab nếu webhook gửi lên (tránh import nhầm tab khác)
+    sheet_name = str(data.get("sheet_name") or "").strip()
+    if sheet_name and sheet_name not in {"Dịch vụ khách hàng", "Trang tính1", "Theo dõi dịch vụ"}:
+        return Response({
+            "success": True,
+            "message": f"Bỏ qua chỉnh sửa ở tab '{sheet_name}' (không thuộc tab Dịch vụ khách hàng).",
+        })
 
     # Case 1: Direct row values from Apps Script onEdit
     if "values" in data and isinstance(data.get("values"), list):

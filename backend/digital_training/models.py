@@ -83,6 +83,7 @@ class TrainingProductSubscription(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
     notes = models.TextField(blank=True)
     expiry_notice_stage = models.PositiveSmallIntegerField(default=0)
+    account_manager = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -90,6 +91,21 @@ class TrainingProductSubscription(models.Model):
         ordering = ["partner__name", "product__display_order", "product__name"]
         constraints = [
             models.UniqueConstraint(fields=["partner", "product"], name="unique_product_subscription_per_partner"),
+        ]
+
+
+class SubscriptionSheetOutbox(models.Model):
+    """Pending subscription changes waiting to be synced to the Google Sheet."""
+    subscription_id = models.CharField(max_length=255)
+    action = models.CharField(max_length=20, default="upsert")
+    revision = models.UUIDField(default=uuid.uuid4)
+    enqueued_at = models.DateTimeField(auto_now=True)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["subscription_id"], name="unique_subscription_sheet_outbox")
         ]
 
 class TrainingProductOpportunity(models.Model):
