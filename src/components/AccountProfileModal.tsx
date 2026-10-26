@@ -73,6 +73,7 @@ export default function AccountProfileModal({
   const [aiNotice, setAiNotice] = useState('');
 
   const openApiUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/mcp/openapi.json` : '/api/mcp/openapi.json';
+  const mcpUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : '/api/mcp';
 
   useEffect(() => {
     if (open && activeTab === 'ai' && idToken) {
@@ -508,6 +509,26 @@ export default function AccountProfileModal({
                     bảo vệ tuyệt đối số liệu tài chính và tự động ghi nhật ký kiểm toán.
                   </p>
                 </div>
+              </div>
+
+              {/* Native MCP remote endpoint for Cursor, Claude and other MCP clients. */}
+              <div className="mt-4 pt-4 border-t border-sky-100">
+                <div className="text-xs font-bold text-slate-700 mb-1.5">
+                  URL MCP Streamable HTTP (cho Cursor, Claude và MCP client):
+                </div>
+                <div className="flex gap-2 items-center">
+                  <input type="text" readOnly value={mcpUrl}
+                    className="ft-input w-full bg-white font-mono text-xs text-slate-700" />
+                  <button type="button"
+                    onClick={() => navigator.clipboard?.writeText(mcpUrl)}
+                    className="ft-primary whitespace-nowrap text-xs px-4 py-2.5">
+                    Sao chép MCP URL
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-slate-600">
+                  Sử dụng HTTP Bearer với mã ft_ai_... ở bên dưới. ChatGPT GPT Actions sử dụng
+                  OpenAPI riêng; kết nối MCP native trong ChatGPT có thể cần OAuth.
+                </p>
               </div>
 
               {/* OpenAPI URL bar */}
