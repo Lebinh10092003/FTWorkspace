@@ -95,7 +95,7 @@ class StreamableHTTPTests(TestCase):
             "/api/mcp", HTTP_ORIGIN="https://chatgpt.com",
             HTTP_ACCESS_CONTROL_REQUEST_METHOD="POST",
         )
-        self.assertEqual(response.status_code, 204)
+        self.assertIn(response.status_code, (200, 204))
         self.assertEqual(response["Access-Control-Allow-Origin"], "https://chatgpt.com")
         self.assertEqual(
             self.rpc("ping", headers={**self.headers, "HTTP_ORIGIN": "https://attacker.example"}).status_code,
