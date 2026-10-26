@@ -74,7 +74,7 @@ export default function AccountProfileModal({
   const [aiNotice, setAiNotice] = useState('');
 
   const openApiUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/mcp/openapi.json` : '/api/mcp/openapi.json';
-  const mcpUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : '/api/mcp';
+  const mcpUrl = typeof window !== 'undefined' ? `${window.location.origin}/mcp` : '/mcp';
 
   useEffect(() => {
     if (open && activeTab === 'ai' && idToken) {

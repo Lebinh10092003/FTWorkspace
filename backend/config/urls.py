@@ -4,6 +4,8 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
 
+from mcp.streamable import streamable_http
+
 
 def health(_request):
     return JsonResponse({"status": "ok"})
@@ -21,6 +23,9 @@ urlpatterns = [
     path("api/", include("work_schedule.urls")),
     path("api/", include("documents.urls")),
     path("api/", include("mcp.urls")),
+    # URL MCP ngan /mcp, giong /api/mcp (nginx chuyen /mcp vao Django).
+    path("mcp", streamable_http, name="mcp_short"),
+    path("mcp/", streamable_http),
 ]
 
 if settings.DEBUG:

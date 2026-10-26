@@ -113,20 +113,37 @@ def _credentials_present(request):
     )
 
 
+MISSING_KEY_MESSAGE = (
+    "Missing MCP access token. Tao Ma ket noi AI (ft_ai_...) o Ho so ca nhan > Tro ly AI & MCP, "
+    "roi gui qua header Authorization: Bearer ft_ai_... hoac them ?key=ft_ai_... vao URL."
+)
+INVALID_KEY_MESSAGE = (
+    "Invalid or revoked MCP access token. Ma ket noi AI sai, da bi thu hoi hoac tai khoan da ngung hoat dong. "
+    "Tao ma moi o Ho so ca nhan > Tro ly AI & MCP."
+)
+
+
+def _unauthorized(request, req_id, message, *, invalid):
+    # 401 is required by the MCP auth spec. error="invalid_token" plus a description lets
+    # clients show "wrong key" instead of only trying (and failing) an OAuth flow.
+    response = _error(request, req_id, -32000, message, status=401)
+    challenge = 'Bearer realm="FTWorkspace MCP"'
+    if invalid:
+        challenge += ', error="invalid_token", error_description="Invalid, revoked or inactive ft_ai_ key"'
+    response["WWW-Authenticate"] = challenge
+    return response
+
+
 def _authenticate(request, req_id):
     if not _credentials_present(request):
-        response = _error(request, req_id, -32000, "Missing MCP access token", status=401)
-        response["WWW-Authenticate"] = 'Bearer realm="FTWorkspace MCP"'
-        return None, response
+        return None, _unauthorized(request, req_id, MISSING_KEY_MESSAGE, invalid=False)
     try:
         # Prevent an ambient Django browser session from overriding the key
         # supplied to this CSRF-exempt remote endpoint.
         request.user = AnonymousUser()
         ctx = resolve_user_context(request)
     except Exception:
-        response = _error(request, req_id, -32000, "Invalid or revoked MCP access token", status=401)
-        response["WWW-Authenticate"] = 'Bearer realm="FTWorkspace MCP"'
-        return None, response
+        return None, _unauthorized(request, req_id, INVALID_KEY_MESSAGE, invalid=True)
     return ctx, None
 
 
@@ -236,7 +253,12 @@ def streamable_http(request):
         try:
             check_tool_permission(ctx, tool)
         except MCPPermissionDenied as exc:
-            return _error(request, req_id, -32003, exc.message, status=403)
+            # Tool-level failure: return it as a tool result the model can read, not an
+            # HTTP/JSON-RPC error that clients surface as a broken connection.
+            return _result(request, req_id, {
+                "content": [{"type": "text", "text": f"Tu choi quyen truy cap: {exc.message}"}],
+                "isError": True,
+            })
         try:
             inspect.signature(tool.handler).bind(ctx, **arguments)
         except TypeError as exc:

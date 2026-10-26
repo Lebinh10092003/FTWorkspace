@@ -27,6 +27,12 @@ export default defineConfig(() => {
           changeOrigin: true,
           secure: false,
         },
+        // URL MCP ngắn /mcp (giống /api/mcp), khớp cấu hình nginx production.
+        '^/mcp/?$': {
+          target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
+          changeOrigin: true,
+          secure: false,
+        },
         '/uploads': {
           target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
           changeOrigin: true,

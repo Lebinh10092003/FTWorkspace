@@ -71,10 +71,21 @@ class StreamableHTTPTests(TestCase):
         revoke_ai_key("mcp.staff@fermat.vn", self.key["id"])
         self.assertEqual(self.rpc("tools/list").status_code, 401)
 
-    def test_forbidden_tools_return_403(self):
+    def test_forbidden_tools_return_readable_tool_error(self):
         res = self.rpc("tools/call", {"name": "finance_get_overview", "arguments": {}})
-        self.assertEqual(res.status_code, 403)
-        self.assertEqual(res.json()["error"]["code"], -32003)
+        self.assertEqual(res.status_code, 200)
+        result = res.json()["result"]
+        self.assertTrue(result["isError"])
+        self.assertIn("finance", result["content"][0]["text"])
+
+    def test_wrong_key_says_invalid_token(self):
+        res = self.rpc("tools/list", headers={**self.headers, "HTTP_AUTHORIZATION": "Bearer ft_ai_typo"})
+        self.assertEqual(res.status_code, 401)
+        self.assertIn('error="invalid_token"', res["WWW-Authenticate"])
+        missing = self.rpc("tools/list", headers={"HTTP_ACCEPT": "application/json, text/event-stream"})
+        self.assertEqual(missing.status_code, 401)
+        self.assertNotIn("invalid_token", missing["WWW-Authenticate"])
+        self.assertIn("ft_ai_", missing.json()["error"]["message"])
 
     def test_notification_is_accepted_without_response(self):
         response = self.client.post(
@@ -118,3 +129,13 @@ class StreamableHTTPTests(TestCase):
     def test_key_is_not_echoed(self):
         res = self.rpc("tools/list")
         self.assertNotIn(self.key["raw_key"], res.content.decode("utf-8"))
+
+    def test_short_mcp_url_works_like_api_mcp(self):
+        for url in ("/mcp", "/mcp/"):
+            res = self.client.post(
+                url,
+                data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+                content_type="application/json", **self.headers,
+            )
+            self.assertEqual(res.status_code, 200, url)
+            self.assertIn("system_whoami", {t["name"] for t in res.json()["result"]["tools"]})
