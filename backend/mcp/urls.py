@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from django.urls import path
-from . import views
+from . import views, streamable
 
 urlpatterns = [
+    # Remote MCP Streamable HTTP (stateless). Use this URL in MCP clients.
+    path("mcp", streamable.streamable_http, name="mcp_streamable"),
+    path("mcp/", streamable.streamable_http, name="mcp_streamable_slash"),
     # OpenAPI 3.1 & ChatGPT Actions
     path("mcp/openapi.json", views.openapi_spec, name="mcp_openapi_spec"),
     path("mcp/action/<str:tool_name>", views.action_invoke, name="mcp_action_invoke"),
