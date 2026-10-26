@@ -1,0 +1,31 @@
+name: MCP transport tests
+
+on:
+  pull_request:
+    paths:
+      - "backend/mcp/**"
+      - "backend/authentication/**"
+      - "backend/config/**"
+      - ".github/workflows/mcp-transport.yml"
+  workflow_dispatch:
+
+jobs:
+  django-mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Django MCP tests
+        working-directory: backend
+        env:
+          DJANGO_DEBUG: "true"
+          DJANGO_SECRET_KEY: "test-ci-not-for-production"
+          DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
+        run: python manage.py test mcp.test_streamable mcp.tests --noinput
