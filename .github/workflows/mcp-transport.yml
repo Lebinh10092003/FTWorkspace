@@ -28,4 +28,4 @@ jobs:
           DJANGO_DEBUG: "true"
           DJANGO_SECRET_KEY: "test-ci-not-for-production"
           DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,testserver"
-        run: python manage.py test mcp.test_streamable mcp.tests --noinput
+        run: python manage.py test mcp --noinput

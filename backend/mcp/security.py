@@ -168,6 +168,16 @@ def resolve_user_context(request, body_params: Optional[Dict[str, Any]] = None) 
                 if tok and getattr(tok.user, "is_active", True):
                     django_user = tok.user
 
+    # 3b. Mã kết nối AI trong URL (?key=ft_ai_...) cho client chỉ nhập được URL
+    # (claude.ai Connectors, ChatGPT Connectors). Chỉ nhận mã ft_ai_ thu hồi được, không nhận mật khẩu.
+    if django_user is None:
+        query = getattr(request, "query_params", None) or getattr(request, "GET", None) or {}
+        url_key = str(query.get("key") or query.get("ai_key") or "").strip()
+        if url_key.startswith("ft_ai_"):
+            matched_email = verify_ai_key(url_key)
+            if matched_email:
+                django_user = _find_or_create_user_by_email(matched_email)
+
     # 4. Kiểm tra tham số trong body (auth_email + auth_password hoặc session_token / auth_token)
     params = body_params or (request.data if hasattr(request, "data") and isinstance(request.data, dict) else {})
     if django_user is None and isinstance(params, dict):
@@ -193,6 +203,10 @@ def resolve_user_context(request, body_params: Optional[Dict[str, Any]] = None) 
             "tài khoản hệ thống (Email và Mật khẩu) thông qua HTTP Basic Auth, "
             "hoặc gọi công cụ 'auth_login' ngay trong cuộc trò chuyện."
         )
+
+    # Tài khoản đã bị khóa thì mọi mã kết nối AI / token của tài khoản đó đều không dùng được.
+    if not getattr(django_user, "is_active", True):
+        raise exceptions.AuthenticationFailed("Tài khoản đã bị vô hiệu hóa.")
 
     # Thiết lập UserProfile và quyền hạn
     email = (django_user.email or django_user.username or "").strip().lower()

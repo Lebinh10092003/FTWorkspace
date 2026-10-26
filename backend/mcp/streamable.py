@@ -8,6 +8,7 @@ works with multiple Gunicorn workers without per-process session state.
 """
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import re
@@ -31,7 +32,8 @@ from .security import (
 logger = logging.getLogger(__name__)
 
 # Supported versions of the stateless Streamable HTTP transport.
-SUPPORTED_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
+# 2024-11-05 kept for older clients (mcp-remote cu, Claude Desktop cu).
+SUPPORTED_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 SERVER_INFO = {"name": "FTWorkspace-MCP", "version": "1.1.0"}
 ALLOW_HEADERS = (
     "Authorization, Content-Type, Accept, MCP-Protocol-Version, MCP-Session-Id, "
@@ -90,12 +92,24 @@ def _result(request, req_id, result):
     return _response(request, {"jsonrpc": "2.0", "id": req_id, "result": result})
 
 
+def _url_key(request):
+    """AI Access Key in the URL (?key=ft_ai_...).
+
+    claude.ai and ChatGPT connectors only accept a URL (or OAuth), so the
+    per-user, revocable ft_ai_ key may be passed as a query parameter
+    (RFC 6750 section 2.3). Passwords and session tokens are never accepted here.
+    """
+    key = str(request.GET.get("key") or request.GET.get("ai_key") or "").strip()
+    return key if key.startswith("ft_ai_") else ""
+
+
 def _credentials_present(request):
     """Do not silently authorize a browser session on this CSRF-exempt endpoint."""
     return bool(
         request.headers.get("Authorization")
         or request.headers.get("X-AI-Key")
         or request.headers.get("X-API-Key")
+        or _url_key(request)
     )
 
 
@@ -180,7 +194,10 @@ def streamable_http(request):
             "protocolVersion": negotiated,
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": SERVER_INFO,
-            "instructions": "Only tools allowed for your FTWorkspace role are exposed.",
+            "instructions": (
+                "Cong cu nghiep vu FTWorkspace (Dao tao so, Khao thi, Lich cong tac, Cham cong, Van ban, Email). "
+                "Chi hien cac cong cu ma tai khoan duoc phep; moi thao tac thay doi du lieu deu ghi nhat ky."
+            ),
         })
 
     if method.startswith("notifications/") or method == "initialized":
@@ -220,6 +237,14 @@ def streamable_http(request):
             check_tool_permission(ctx, tool)
         except MCPPermissionDenied as exc:
             return _error(request, req_id, -32003, exc.message, status=403)
+        try:
+            inspect.signature(tool.handler).bind(ctx, **arguments)
+        except TypeError as exc:
+            # Wrong or missing arguments: tell the model so it can retry correctly.
+            return _result(request, req_id, {
+                "content": [{"type": "text", "text": f"Tham so khong hop le cho '{name}': {exc}"}],
+                "isError": True,
+            })
         try:
             result = tool.handler(ctx, **arguments)
             log_mcp_audit(ctx, tool, arguments, result)

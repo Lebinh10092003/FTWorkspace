@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { appDialog } from './AppDialog';
+import McpConnectGuide from './McpConnectGuide';
 
 type AccountUser = { email: string; displayName: string; photoURL?: string | null };
 
@@ -511,26 +512,6 @@ export default function AccountProfileModal({
                 </div>
               </div>
 
-              {/* Native MCP remote endpoint for Cursor, Claude and other MCP clients. */}
-              <div className="mt-4 pt-4 border-t border-sky-100">
-                <div className="text-xs font-bold text-slate-700 mb-1.5">
-                  URL MCP Streamable HTTP (cho Cursor, Claude và MCP client):
-                </div>
-                <div className="flex gap-2 items-center">
-                  <input type="text" readOnly value={mcpUrl}
-                    className="ft-input w-full bg-white font-mono text-xs text-slate-700" />
-                  <button type="button"
-                    onClick={() => navigator.clipboard?.writeText(mcpUrl)}
-                    className="ft-primary whitespace-nowrap text-xs px-4 py-2.5">
-                    Sao chép MCP URL
-                  </button>
-                </div>
-                <p className="mt-2 text-xs text-slate-600">
-                  Sử dụng HTTP Bearer với mã ft_ai_... ở bên dưới. ChatGPT GPT Actions sử dụng
-                  OpenAPI riêng; kết nối MCP native trong ChatGPT có thể cần OAuth.
-                </p>
-              </div>
-
               {/* OpenAPI URL bar */}
               <div className="mt-4 pt-4 border-t border-sky-100">
                 <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1.5">
@@ -708,6 +689,8 @@ export default function AccountProfileModal({
                 </table>
               </div>
             </div>
+
+            <McpConnectGuide mcpUrl={mcpUrl} apiKey={newlyCreatedKey} />
           </div>
         )}
       </div>
