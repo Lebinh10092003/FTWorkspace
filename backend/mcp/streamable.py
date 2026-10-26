@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+
+from django.contrib.auth.models import AnonymousUser
 from urllib.parse import urlsplit
 
 from django.conf import settings
@@ -62,7 +64,7 @@ def _response(request, content=None, *, status=200, allow=None):
         response = HttpResponse(status=status)
     else:
         response = JsonResponse(
-            content, status=status, json_dumps_params={"ensure_ascii": False, "cls": DjangoJSONEncoder}
+            content, status=status, encoder=DjangoJSONEncoder, json_dumps_params={"ensure_ascii": False}
         )
     response["Cache-Control"] = "no-store"
     response["Vary"] = "Origin"
@@ -103,6 +105,9 @@ def _authenticate(request, req_id):
         response["WWW-Authenticate"] = 'Bearer realm="FTWorkspace MCP"'
         return None, response
     try:
+        # Prevent an ambient Django browser session from overriding the key
+        # supplied to this CSRF-exempt remote endpoint.
+        request.user = AnonymousUser()
         ctx = resolve_user_context(request)
     except Exception:
         response = _error(request, req_id, -32000, "Invalid or revoked MCP access token", status=401)
