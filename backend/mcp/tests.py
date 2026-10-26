@@ -47,6 +47,20 @@ class MCPFrameworkTests(TestCase):
             province="Hà Nội",
         )
 
+    def test_oauth_protected_resource_metadata(self):
+        """/.well-known/ phai tra 200 JSON RFC 9728 de Claude / Cursor khong hien loi OAuth."""
+        # Nginx xu ly /.well-known/ trong production; endpoint Django la /api/mcp/.well-known/
+        res = self.client.get("/api/mcp/.well-known/oauth-protected-resource")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.json()
+        self.assertIn("resource", data)
+        self.assertIn("bearer_methods_supported", data)
+        self.assertIn("header", data["bearer_methods_supported"])
+        self.assertIn("query", data["bearer_methods_supported"])
+        self.assertIn("mcp", data["resource"])
+        self.assertEqual(res["Cache-Control"], "no-store")
+        self.assertEqual(res["Access-Control-Allow-Origin"], "*")
+
     def test_openapi_spec_generation(self):
         """Kiểm tra endpoint xuất lược đồ OpenAPI 3.1 cho ChatGPT Web."""
         response = self.client.get("/api/mcp/openapi.json")
@@ -186,11 +200,13 @@ class MCPFrameworkTests(TestCase):
         self.assertTrue(data["success"])
         self.assertGreaterEqual(len(data["completed_items"]), 1)
 
-    def test_mcp_sse_transport_endpoint(self):
-        """Kiểm tra endpoint stream SSE cho Remote MCP."""
+    def test_mcp_sse_legacy_path_serves_streamable_http(self):
+        """/api/mcp/sse cũ: GET trả 405 (không treo), POST xử lý như Streamable HTTP."""
         response = self.client.get("/api/mcp/sse")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response["Content-Type"], "text/event-stream")
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        post_res = self.client.post("/api/mcp/sse", {"jsonrpc": "2.0", "id": 1, "method": "ping"}, format="json")
+        self.assertEqual(post_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(post_res.json()["result"], {})
 
     def test_cors_preflight_options(self):
         """Kiểm tra preflight OPTIONS request từ browser trả về CORS headers hợp lệ."""
@@ -211,8 +227,8 @@ class MCPFrameworkTests(TestCase):
             {"jsonrpc": "2.0", "method": "notifications/initialized"},
             format="json",
         )
-        self.assertEqual(notif_res.status_code, status.HTTP_200_OK)
-        self.assertNotIn("error", notif_res.json())
+        self.assertEqual(notif_res.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(notif_res.content, b"")
 
         # 2. Resources list
         res_list = self.client.post(
@@ -681,3 +697,83 @@ class MCPFrameworkTests(TestCase):
 
 
 
+
+
+class MCPStreamableHttpTests(TestCase):
+    """Bắt tay MCP đầy đủ như Claude / Cursor / ChatGPT thực hiện trên /api/mcp."""
+
+    def setUp(self):
+        from mcp.keys import create_ai_key
+
+        self.client = APIClient()
+        UserProfile.objects.create(
+            email="staff@fermat.vn", name="Nhân viên", role="EMPLOYEE", access_modules=["digital-training"],
+        )
+        User.objects.create_user(username="staff@fermat.vn", email="staff@fermat.vn", password="x-Pass-123")
+        self.key = create_ai_key("staff@fermat.vn", name="Claude")["raw_key"]
+
+    def rpc(self, body, **extra):
+        return self.client.post("/api/mcp", body, format="json", HTTP_ACCEPT="application/json, text/event-stream", **extra)
+
+    def tool_names(self, response):
+        return {t["name"] for t in response.json()["result"]["tools"]}
+
+    def test_initialize_negotiates_protocol_version(self):
+        res = self.rpc({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["result"]["protocolVersion"], "2025-06-18")
+        self.assertIn("instructions", res.json()["result"])
+
+        old = self.rpc({"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": "2024-11-05"}})
+        self.assertEqual(old.json()["result"]["protocolVersion"], "2024-11-05")
+
+        unknown = self.rpc({"jsonrpc": "2.0", "id": 3, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}})
+        self.assertEqual(unknown.json()["result"]["protocolVersion"], "2025-06-18")
+
+    def test_get_returns_405(self):
+        self.assertEqual(self.client.get("/api/mcp").status_code, 405)
+
+    def test_tools_list_with_bearer_key(self):
+        anon = self.rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        authed = self.rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, HTTP_AUTHORIZATION=f"Bearer {self.key}")
+        self.assertIn("auth_login", self.tool_names(anon))
+        self.assertNotIn("crm_search_customers", self.tool_names(anon))
+        self.assertIn("crm_search_customers", self.tool_names(authed))
+
+    def test_key_in_url_query(self):
+        res = self.client.post(
+            f"/api/mcp?key={self.key}",
+            {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "system_whoami", "arguments": {}}},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        result = res.json()["result"]
+        self.assertFalse(result["isError"])
+        self.assertIn("staff@fermat.vn", result["content"][0]["text"])
+
+    def test_invalid_key_in_url_is_rejected(self):
+        res = self.client.post(
+            "/api/mcp?key=ft_ai_not-a-real-key",
+            {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "system_whoami", "arguments": {}}},
+            format="json",
+        )
+        self.assertTrue(res.json()["result"]["isError"])
+
+    def test_unauthenticated_call_returns_tool_error_not_http_401(self):
+        res = self.rpc({"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "crm_search_customers", "arguments": {}}})
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["result"]["isError"])
+        self.assertIn("ft_ai_", res.json()["result"]["content"][0]["text"])
+
+    def test_batch_request(self):
+        res = self.rpc([
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": "a", "method": "ping"},
+            {"jsonrpc": "2.0", "id": "b", "method": "prompts/list"},
+        ])
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual([r["id"] for r in res.json()], ["a", "b"])
+
+    def test_unknown_tool(self):
+        res = self.rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "nope"}}, HTTP_AUTHORIZATION=f"Bearer {self.key}")
+        self.assertEqual(res.json()["error"]["code"], -32602)
