@@ -360,9 +360,82 @@ def remove_subscription_sheet_rows(service, spreadsheet_id: str, tab_title: str,
         return 0
 
 
-def build_export_payload(sheet_row_map: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Tạo cấu trúc bảng 17 cột đầy đủ gồm banner, headers, độ rộng cột và các dòng dữ liệu."""
+SHEET_READ_MAX_ROWS = 5000
+# Cột Q (Cập nhật web lúc) bị Sheets đổi thành số ngày giờ nên không dùng để so sánh.
+_COMPARE_COLUMNS = range(1, 16)  # B..P
+
+
+def _normalise_cell(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    text = str(value).strip()
+    if text.startswith("'"):
+        text = text[1:]
+    if text.startswith("="):
+        text = text.replace(" ", "").replace(";", ",").upper()
+    return text
+
+
+def _row_matches(existing: List[Any], new_row: List[Any]) -> bool:
+    for col in _COMPARE_COLUMNS:
+        old = existing[col] if col < len(existing) else ""
+        new = new_row[col] if col < len(new_row) else ""
+        if _normalise_cell(old) != _normalise_cell(new):
+            return False
+    return True
+
+
+def _row_has_content(row: List[Any]) -> bool:
+    return any(_normalise_cell(cell) for cell in row[1:17])
+
+
+def plan_row_positions(existing_rows: List[List[Any]], sheet_row_map: Dict[str, Any]) -> Dict[int, int]:
+    """Mã ĐK -> dòng trên Sheet. Đăng ký đã có giữ dòng cũ; đăng ký mới nối sau dòng cuối có dữ liệu."""
+    last_used = 2
+    for idx, row in enumerate(existing_rows):
+        if idx >= 2 and _row_has_content(row):
+            last_used = idx + 1
+
+    taken = set()
+    positions: Dict[int, int] = {}
+    subscriptions = TrainingProductSubscription.objects.select_related("partner", "product").order_by(
+        "partner__name", "product__display_order", "product__name"
+    )
+    pending = []
+    for sub in subscriptions:
+        info = (
+            sheet_row_map.get(f"sub:{sub.id}")
+            or sheet_row_map.get(f"pair:{sub.partner_id}:{sub.product.name.strip().lower()}")
+        )
+        row_index = int(info.get("row_index") or 0) if info else 0
+        if row_index >= 3 and row_index not in taken:
+            positions[sub.id] = row_index
+            taken.add(row_index)
+        else:
+            pending.append(sub.id)
+    for sub_id in pending:
+        last_used += 1
+        while last_used in taken:
+            last_used += 1
+        positions[sub_id] = last_used
+        taken.add(last_used)
+    return positions
+
+
+def build_export_payload(
+    sheet_row_map: Optional[Dict[str, Any]] = None,
+    row_positions: Optional[Dict[int, int]] = None,
+) -> Dict[str, Any]:
+    """Tạo cấu trúc bảng 17 cột đầy đủ gồm banner, headers, độ rộng cột và các dòng dữ liệu.
+
+    row_positions: Mã ĐK -> số dòng trên Sheet. Công thức L/M phải trỏ đúng dòng sẽ ghi.
+    Không truyền thì dòng dữ liệu đánh số liên tiếp từ dòng 3 (dùng cho Apps Script kéo bảng mới).
+    """
     sheet_row_map = sheet_row_map or {}
+    row_positions = row_positions or {}
+    row_numbers: List[int] = []
     subscriptions = TrainingProductSubscription.objects.select_related("partner", "product").order_by(
         "partner__name", "product__display_order", "product__name"
     )
@@ -373,7 +446,8 @@ def build_export_payload(sheet_row_map: Optional[Dict[str, Any]] = None) -> Dict
     for idx, sub in enumerate(subscriptions):
         partner = sub.partner
         product = sub.product
-        row_num = idx + 3
+        row_num = row_positions.get(sub.id, idx + 3)
+        row_numbers.append(row_num)
 
         saved_info = (
             sheet_row_map.get(f"sub:{sub.id}")
@@ -428,6 +502,7 @@ def build_export_payload(sheet_row_map: Optional[Dict[str, Any]] = None) -> Dict
         "headers": HEADERS,
         "columnWidths": COLUMN_WIDTHS,
         "rows": rows_to_write,
+        "rowNumbers": row_numbers,
         "count": len(subscriptions),
     }
 
@@ -520,13 +595,14 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
     try:
         read_res = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
-            range=f"{escaped_title}!A1:Q500",
-            valueRenderOption="UNFORMATTED_VALUE",
+            range=f"{escaped_title}!A1:Q{SHEET_READ_MAX_ROWS}",
+            valueRenderOption="FORMULA",
         ).execute()
         existing_rows = read_res.get("values", [])
     except Exception as exc:
+        # Không đọc được vị trí dòng thì không ghi: ghi mù sẽ đè lên dòng khác.
         logger.warning(f"Lỗi đọc sheet hiện có: {exc}")
-        existing_rows = []
+        return {"status": "error", "error_code": "SHEET_READ_FAILED", "message": f"Không đọc được tab '{target_title}': {exc}"}
 
     sheet_row_map = {}
     for idx, row in enumerate(existing_rows):
@@ -572,9 +648,12 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
                 "custom_notes": custom_notes,
             }
 
-    # 3. Chuẩn bị danh sách dữ liệu từ Web
-    payload = build_export_payload(sheet_row_map)
+    # 3. Chuẩn bị danh sách dữ liệu từ Web. Dòng đã có trên Sheet giữ nguyên vị trí,
+    # dòng mới thêm vào cuối bảng.
+    row_positions = plan_row_positions(existing_rows, sheet_row_map)
+    payload = build_export_payload(sheet_row_map, row_positions)
     rows_to_write = payload["rows"]
+    row_numbers = payload["rowNumbers"]
     subscriptions_count = payload["count"]
 
     fingerprint = hashlib.sha256(
@@ -598,19 +677,21 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
     # Cài đặt công thức STT tại A3
     ensure_subscription_stt_formula(service, spreadsheet_id, target_title)
 
-    # Ghi dữ liệu từ cột B trở đi (B3:Q{N}), giữ nguyên cột A cho công thức
-    if len(rows_to_write) > 2:
-        data_rows_from_b = [row[1:] for row in rows_to_write[2:]]
-        service.spreadsheets().values().update(
+    # Chỉ ghi dòng mới hoặc dòng có thay đổi, từ cột B (cột A là công thức STT), đúng vị trí dòng.
+    changed = []
+    for row_num, row in zip(row_numbers, rows_to_write[2:]):
+        existing = existing_rows[row_num - 1] if row_num - 1 < len(existing_rows) else []
+        if not _row_matches(existing, row):
+            changed.append({"range": f"{escaped_title}!B{row_num}:Q{row_num}", "values": [row[1:]]})
+    if changed:
+        service.spreadsheets().values().batchUpdate(
             spreadsheetId=spreadsheet_id,
-            range=f"{escaped_title}!B3:Q{len(rows_to_write)}",
-            valueInputOption="USER_ENTERED",
-            body={"values": data_rows_from_b},
+            body={"valueInputOption": "USER_ENTERED", "data": changed},
         ).execute()
 
     # 5. Cập nhật định dạng đầy đủ chuẩn Fermat Workspace
     num_cols = len(HEADERS)
-    total_rows = max(len(rows_to_write), 10)
+    total_rows = max([len(existing_rows), 10, *row_numbers])
     format_requests: List[Dict[str, Any]] = [
         # 5.1. Đóng băng 2 hàng đầu (Banner và Headers)
         {
@@ -847,6 +928,7 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
         "spreadsheet_id": spreadsheet_id,
         "tab_title": target_title,
         "count": subscriptions_count,
+        "rows_written": len(changed),
     }
 
 

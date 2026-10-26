@@ -1335,6 +1335,56 @@ class SubscriptionSheetSyncTests(TestCase):
         self.assertEqual(bad.status_code, 400)
         self.assertIn("contract_expires_at", bad.data)
 
+    def _mock_sheet_service(self, values):
+        service = mock.MagicMock()
+        service.spreadsheets.return_value.get.return_value.execute.return_value = {
+            "sheets": [{"properties": {"sheetId": 1, "title": "Dịch vụ khách hàng"}}]
+        }
+        service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {"values": values}
+        return service
+
+    def test_export_updates_rows_in_place_and_appends_new(self):
+        from . import subscription_sheet_sync as sync
+
+        product2 = TrainingProduct.objects.create(code="test-goi-moi", name="Gói thử nghiệm mới", product_type="product", display_order=99)
+        new_sub = TrainingProductSubscription.objects.create(partner=self.partner, product=product2, quantity=3)
+
+        current = sync.build_export_payload()["rows"][2]  # dòng self.sub nếu ghi ở dòng 3
+        moved = list(current)
+        moved[11] = sync.days_left_formula(5)
+        moved[12] = sync.expiry_status_formula(5)
+        sheet = [
+            ["banner"], sync.HEADERS,
+            ["=ARRAYFORMULA(...)", "", "", "Trường chỉ có trên Sheet", "", "", "", "BNDC"],  # dòng 3: chỉ có trên Sheet
+            [],                                                                              # dòng 4 trống
+            moved,                                                                           # dòng 5: self.sub, không đổi
+        ]
+        service = self._mock_sheet_service(sheet)
+        with mock.patch.object(sync, "build_sheets_service", return_value=service), \
+                mock.patch.object(sync, "ensure_subscription_stt_formula", return_value=True):
+            result = sync.export_subscriptions_to_sheet(force=True)
+
+        self.assertEqual(result["status"], "synced")
+        self.assertEqual(result["rows_written"], 1)
+        body = service.spreadsheets.return_value.values.return_value.batchUpdate.call_args.kwargs["body"]
+        ranges = [item["range"] for item in body["data"]]
+        # Dòng 3 (chỉ có trên Sheet) và dòng 5 (không đổi) không bị ghi; đăng ký mới nối vào dòng 6.
+        self.assertEqual(ranges, ["'Dịch vụ khách hàng'!B6:Q6"])
+        written = body["data"][0]["values"][0]
+        self.assertEqual(written[0], new_sub.id)
+        self.assertIn("K6", written[10])  # công thức Còn lại trỏ đúng dòng 6
+
+    def test_export_does_not_write_when_sheet_cannot_be_read(self):
+        from . import subscription_sheet_sync as sync
+
+        service = self._mock_sheet_service([])
+        service.spreadsheets.return_value.values.return_value.get.return_value.execute.side_effect = RuntimeError("quota")
+        with mock.patch.object(sync, "build_sheets_service", return_value=service):
+            result = sync.export_subscriptions_to_sheet(force=True)
+        self.assertEqual(result["status"], "error")
+        service.spreadsheets.return_value.values.return_value.batchUpdate.assert_not_called()
+        service.spreadsheets.return_value.values.return_value.update.assert_not_called()
+
     def test_export_keeps_webhook_secret_in_config(self):
         from authentication.models import SystemConfig
         from . import subscription_sheet_sync as sync
