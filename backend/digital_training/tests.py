@@ -1241,6 +1241,122 @@ class SubscriptionSheetSyncTests(TestCase):
         self.assertEqual(self.sub.starts_at, date(2026, 1, 1))
         self.assertEqual(self.sub.expires_at, date(2027, 1, 1))
 
+    def _range_row(self, contract_cell, actual_cell):
+        return [
+            "", self.sub.id, self.partner.id, self.partner.name, "", "", "",
+            "BNDC", 1, contract_cell, actual_cell, "", "", "", "", "", "",
+        ]
+
+    def test_date_range_format_and_parse(self):
+        from .subscription_sheet_sync import format_date_range, parse_date_range
+        a, b = date(2026, 9, 1), date(2027, 8, 31)
+        self.assertEqual(format_date_range(a, b), "01/09/2026 - 31/08/2027")
+        self.assertEqual(format_date_range(a, None), "Từ 01/09/2026")
+        self.assertEqual(format_date_range(None, b), "Đến 31/08/2027")
+        self.assertEqual(format_date_range(None, None), "")
+        for text in ["01/09/2026 - 31/08/2027", "Từ 01/09/2026", "Đến 31/08/2027", ""]:
+            self.assertEqual(format_date_range(*parse_date_range(text)), text)
+        self.assertEqual(parse_date_range("31/08/2027"), (None, b))  # một ngày riêng = ngày hết hạn
+        self.assertEqual(parse_date_range("01/09/2026 -"), (a, None))
+        self.assertEqual(parse_date_range("2026-09-01 → 2027-08-31"), (a, b))
+        self.assertEqual(parse_date_range("chưa rõ"), (None, None))
+
+    def test_export_row_has_contract_and_actual_ranges(self):
+        from .subscription_sheet_sync import build_export_payload
+        self.sub.contract_starts_at = date(2025, 12, 15)
+        self.sub.contract_expires_at = date(2026, 12, 15)
+        self.sub.save()
+        payload = build_export_payload()
+        self.assertEqual(payload["headers"][9], "Thời gian theo HĐ")
+        self.assertEqual(payload["headers"][10], "Thời gian thực tế")
+        row = payload["rows"][2]
+        self.assertEqual(row[9], "15/12/2025 - 15/12/2026")
+        self.assertEqual(row[10], "01/01/2026 - 31/12/2026")
+        self.assertIn("K3", row[11])
+        self.assertIn("J3", row[11])
+        self.assertIn("REGEXEXTRACT", row[11])
+        self.assertTrue(row[12].startswith('=IF(L3=""'))
+
+    def test_ingest_row_reads_ranges_into_contract_and_actual(self):
+        from .subscription_sheet_sync import ingest_subscription_row
+        res = ingest_subscription_row(self._range_row("01/09/2026 - 31/08/2027", "15/09/2026 - 14/09/2027"), 3)
+        self.assertEqual(res["status"], "updated")
+        self.sub.refresh_from_db()
+        self.assertEqual(self.sub.contract_starts_at, date(2026, 9, 1))
+        self.assertEqual(self.sub.contract_expires_at, date(2027, 8, 31))
+        self.assertEqual(self.sub.starts_at, date(2026, 9, 15))
+        self.assertEqual(self.sub.expires_at, date(2027, 9, 14))
+
+    def test_ingest_row_blank_or_partial_range_keeps_web_dates(self):
+        from .subscription_sheet_sync import ingest_subscription_row
+        self.sub.contract_starts_at = date(2025, 12, 1)
+        self.sub.contract_expires_at = date(2026, 11, 30)
+        self.sub.save()
+        ingest_subscription_row(self._range_row("", "Từ 05/01/2026"), 3)
+        self.sub.refresh_from_db()
+        self.assertEqual(self.sub.contract_starts_at, date(2025, 12, 1))
+        self.assertEqual(self.sub.contract_expires_at, date(2026, 11, 30))
+        self.assertEqual(self.sub.starts_at, date(2026, 1, 5))
+        self.assertEqual(self.sub.expires_at, date(2026, 12, 31))
+
+    def test_expiry_uses_actual_then_contract(self):
+        from .serializers import product_subscription_status
+        from .product_lifecycle import run_product_subscription_lifecycle
+        today = timezone.localdate()
+        self.sub.expires_at = None
+        self.sub.contract_expires_at = today + timedelta(days=10)
+        self.sub.save()
+        self.assertEqual(self.sub.effective_expires_at, today + timedelta(days=10))
+        self.assertEqual(product_subscription_status(self.sub), "expiring")
+        data = TrainingProductSubscriptionSerializer(self.sub).data
+        self.assertEqual(data["days_remaining"], 10)
+        self.assertEqual(run_product_subscription_lifecycle(today)["expiring"], 1)
+
+        # Có ngày hết hạn thực tế thì dùng thực tế, bỏ qua hợp đồng
+        self.sub.expires_at = today + timedelta(days=200)
+        self.sub.save()
+        self.assertEqual(product_subscription_status(self.sub), "active")
+        self.assertEqual(TrainingProductSubscriptionSerializer(self.sub).data["days_remaining"], 200)
+
+    def test_api_saves_contract_dates_and_validates_order(self):
+        res = self.client.patch(
+            f"/api/digital-training/product-subscriptions/{self.sub.id}",
+            {"contract_starts_at": "2026-09-01", "contract_expires_at": "2027-08-31"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["contract_expires_at"], "2027-08-31")
+        self.assertEqual(res.data["effective_expires_at"], date(2026, 12, 31))
+        bad = self.client.patch(
+            f"/api/digital-training/product-subscriptions/{self.sub.id}",
+            {"contract_starts_at": "2027-09-01", "contract_expires_at": "2027-08-31"},
+            format="json",
+        )
+        self.assertEqual(bad.status_code, 400)
+        self.assertIn("contract_expires_at", bad.data)
+
+    def test_export_keeps_webhook_secret_in_config(self):
+        from authentication.models import SystemConfig
+        from . import subscription_sheet_sync as sync
+
+        SystemConfig.objects.update_or_create(
+            key=sync.SYNC_CONFIG_KEY,
+            defaults={"data": {"webhookSecret": "keep-me", "googleServiceAccountJson": "{}", "tabTitle": "Dịch vụ khách hàng"}},
+        )
+        service = mock.MagicMock()
+        service.spreadsheets.return_value.get.return_value.execute.return_value = {
+            "sheets": [{"properties": {"sheetId": 1, "title": "Dịch vụ khách hàng"}}]
+        }
+        service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {"values": []}
+        with mock.patch.object(sync, "build_sheets_service", return_value=service), \
+                mock.patch.object(sync, "ensure_subscription_stt_formula", return_value=True):
+            result = sync.export_subscriptions_to_sheet(force=True)
+        self.assertEqual(result["status"], "synced")
+        data = SystemConfig.objects.get(key=sync.SYNC_CONFIG_KEY).data
+        self.assertEqual(data["webhookSecret"], "keep-me")
+        self.assertEqual(data["googleServiceAccountJson"], "{}")
+        self.assertTrue(data["fingerprint"])
+
     @mock.patch.dict(os.environ, {"SUBSCRIPTION_SHEET_WEBHOOK_SECRET": "test-sub-secret"})
     def test_webhook_security_requires_secret_or_auth(self):
         anon_client = APIClient()

@@ -48,8 +48,8 @@ var HEADERS = [
   'Số điện thoại',             // G (7)
   'Dịch vụ / Sản phẩm',        // H (8)
   'Số lượng',                  // I (9)
-  'Ngày bắt đầu',              // J (10)
-  'Ngày hết hạn',              // K (11)
+  'Thời gian theo HĐ',         // J (10) dd/mm/yyyy - dd/mm/yyyy
+  'Thời gian thực tế',         // K (11) dd/mm/yyyy - dd/mm/yyyy
   'Còn lại (ngày)',            // L (12)
   'Tình trạng hạn',            // M (13)
   'Trạng thái',                // N (14)
@@ -68,8 +68,8 @@ var COLUMN_WIDTHS = [
   115,  // G: Số điện thoại
   180,  // H: Dịch vụ / Sản phẩm
   75,   // I: Số lượng
-  105,  // J: Ngày bắt đầu
-  105,  // K: Ngày hết hạn
+  190,  // J: Thời gian theo HĐ
+  190,  // K: Thời gian thực tế
   110,  // L: Còn lại (ngày)
   120,  // M: Tình trạng hạn
   125,  // N: Trạng thái
@@ -154,7 +154,7 @@ function initCleanSheetTemplate() {
   sheet.getRange(3, 7, 500, 1).setHorizontalAlignment('center');
   sheet.getRange(3, 8, 500, 1).setHorizontalAlignment('left');
   sheet.getRange(3, 9, 500, 1).setHorizontalAlignment('center');
-  sheet.getRange(3, 10, 500, 2).setHorizontalAlignment('center').setNumberFormat('dd/MM/yyyy');
+  sheet.getRange(3, 10, 500, 2).setHorizontalAlignment('center').setNumberFormat('@'); // Khoảng thời gian dạng chữ
   sheet.getRange(3, 12, 500, 1).setHorizontalAlignment('center').setFontWeight('bold');
   sheet.getRange(3, 13, 500, 2).setHorizontalAlignment('center');
   sheet.getRange(3, 15, 500, 2).setHorizontalAlignment('left');

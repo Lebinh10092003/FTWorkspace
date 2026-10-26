@@ -43,18 +43,37 @@ type SubscriptionItem = ProductSubscription & {
   updated_at?: string;
 };
 
+function effectiveExpiry(sub: ProductSubscription): string | null {
+  return sub.effective_expires_at ?? sub.expires_at ?? sub.contract_expires_at ?? null;
+}
+
+function showDay(value?: string | null): string {
+  return value ? new Date(value).toLocaleDateString("vi-VN") : "";
+}
+
+/** Khoảng thời gian giống ô trên Sheet: "a - b", "Từ a", "Đến b". */
+function formatRange(start?: string | null, end?: string | null): string {
+  if (start && end) return `${showDay(start)} - ${showDay(end)}`;
+  if (start) return `Từ ${showDay(start)}`;
+  if (end) return `Đến ${showDay(end)}`;
+  return "";
+}
+
 function getDaysRemaining(sub: ProductSubscription): number | null {
   if (sub.days_remaining != null) return sub.days_remaining;
-  if (!sub.expires_at) return null;
-  const target = new Date(sub.expires_at).getTime();
+  const expiry = effectiveExpiry(sub);
+  if (!expiry) return null;
+  const target = new Date(expiry).getTime();
   const now = Date.now();
   return Math.ceil((target - now) / (1000 * 60 * 60 * 24));
 }
 
 function getProgressPercent(sub: ProductSubscription): number {
-  if (!sub.starts_at || !sub.expires_at) return 50;
-  const start = new Date(sub.starts_at).getTime();
-  const end = new Date(sub.expires_at).getTime();
+  const startValue = sub.expires_at ? sub.starts_at : sub.contract_starts_at || sub.starts_at;
+  const endValue = effectiveExpiry(sub);
+  if (!startValue || !endValue) return 50;
+  const start = new Date(startValue).getTime();
+  const end = new Date(endValue).getTime();
   const total = end - start;
   if (total <= 0) return 100;
   const elapsed = Date.now() - start;
@@ -114,6 +133,8 @@ export default function CustomerSubscriptionDashboard({
     quantity: number;
     starts_at: string;
     expires_at: string;
+    contract_starts_at: string;
+    contract_expires_at: string;
     status: string;
     notes: string;
   }>({
@@ -122,6 +143,8 @@ export default function CustomerSubscriptionDashboard({
     quantity: 1,
     starts_at: "",
     expires_at: "",
+    contract_starts_at: "",
+    contract_expires_at: "",
     status: "active",
     notes: "",
   });
@@ -268,8 +291,8 @@ export default function CustomerSubscriptionDashboard({
       "Số điện thoại",
       "Sản phẩm / Dịch vụ",
       "Số lượng",
-      "Ngày bắt đầu",
-      "Ngày hết hạn",
+      "Thời gian theo HĐ",
+      "Thời gian thực tế",
       "Còn lại (ngày)",
       "Trạng thái",
       "Ghi chú",
@@ -294,8 +317,8 @@ export default function CustomerSubscriptionDashboard({
         `"${(partner?.phone || "").replace(/"/g, '""')}"`,
         `"${(sub.product_name || "").replace(/"/g, '""')}"`,
         sub.quantity || 1,
-        sub.starts_at || "",
-        sub.expires_at || "Vô thời hạn",
+        `"${formatRange(sub.contract_starts_at, sub.contract_expires_at)}"`,
+        `"${formatRange(sub.starts_at, sub.expires_at)}"`,
         days != null ? days : "Không giới hạn",
         `"${statusText}"`,
         `"${(sub.notes || "").replace(/"/g, '""')}"`,
@@ -369,6 +392,8 @@ export default function CustomerSubscriptionDashboard({
         quantity: Number(editingSub.quantity || 1),
         starts_at: editingSub.starts_at || null,
         expires_at: editingSub.expires_at || null,
+        contract_starts_at: editingSub.contract_starts_at || null,
+        contract_expires_at: editingSub.contract_expires_at || null,
         status: editingSub.status,
         notes: editingSub.notes.trim(),
       };
@@ -566,6 +591,8 @@ export default function CustomerSubscriptionDashboard({
                   quantity: 1,
                   starts_at: new Date().toISOString().split("T")[0],
                   expires_at: "",
+                  contract_starts_at: "",
+                  contract_expires_at: "",
                   status: "active",
                   notes: "",
                 });
@@ -869,8 +896,8 @@ export default function CustomerSubscriptionDashboard({
                 </th>
                 <th className="py-3 px-3">Khách hàng / Trường học</th>
                 <th className="py-3 px-3">Gói dịch vụ / BNDC</th>
-                <th className="py-3 px-3">Ngày đăng ký</th>
-                <th className="py-3 px-3">Ngày hết hạn</th>
+                <th className="py-3 px-3">Thời gian theo HĐ</th>
+                <th className="py-3 px-3">Thời gian thực tế</th>
                 <th className="py-3 px-3">Thời hạn còn lại</th>
                 <th className="py-3 px-3">Trạng thái</th>
                 <th className="py-3 px-3">Đầu mối & Ghi chú</th>
@@ -962,31 +989,23 @@ export default function CustomerSubscriptionDashboard({
                         </div>
                       </td>
 
-                      {/* Ngày đăng ký (Lúc nào đăng ký) */}
-                      <td className="py-3.5 px-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 text-xs text-slate-700 font-medium">
-                          <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                          <span>{sub.starts_at ? new Date(sub.starts_at).toLocaleDateString("vi-VN") : "—"}</span>
-                        </div>
-                      </td>
-
-                      {/* Ngày hết hạn (Lúc nào hết hạn) */}
-                      <td className="py-3.5 px-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold">
-                          <Clock3 className={`h-3.5 w-3.5 shrink-0 ${isExpired ? "text-rose-500" : isExpiring ? "text-amber-500" : "text-slate-400"}`} />
-                          <span
-                            className={
-                              isExpired
-                                ? "text-rose-600 font-bold"
-                                : isExpiring
-                                ? "text-amber-600 font-bold"
-                                : "text-slate-800"
-                            }
-                          >
-                            {sub.expires_at ? new Date(sub.expires_at).toLocaleDateString("vi-VN") : "Vô thời hạn"}
-                          </span>
-                        </div>
-                      </td>
+                      {/* Thời gian theo HĐ / thực tế; cột đang dùng để tính hạn được tô màu */}
+                      {[
+                        { start: sub.contract_starts_at, end: sub.contract_expires_at, drivesExpiry: !sub.expires_at && !!sub.contract_expires_at, Icon: Calendar },
+                        { start: sub.starts_at, end: sub.expires_at, drivesExpiry: !!sub.expires_at, Icon: Clock3 },
+                      ].map(({ start, end, drivesExpiry, Icon }, colIdx) => {
+                        const tone = drivesExpiry && isExpired ? "rose" : drivesExpiry && isExpiring ? "amber" : "";
+                        return (
+                          <td key={colIdx} className="py-3.5 px-3 whitespace-nowrap">
+                            <div className={`flex items-center gap-1.5 text-xs ${drivesExpiry ? "font-semibold" : "font-medium"}`}>
+                              <Icon className={`h-3.5 w-3.5 shrink-0 ${tone === "rose" ? "text-rose-500" : tone === "amber" ? "text-amber-500" : "text-slate-400"}`} />
+                              <span className={tone === "rose" ? "text-rose-600 font-bold" : tone === "amber" ? "text-amber-600 font-bold" : "text-slate-700"}>
+                                {formatRange(start, end) || "—"}
+                              </span>
+                            </div>
+                          </td>
+                        );
+                      })}
 
                       {/* Thời hạn còn lại & Tiến độ */}
                       <td className="py-3.5 px-3 min-w-[140px]">
@@ -1114,6 +1133,8 @@ export default function CustomerSubscriptionDashboard({
                                 quantity: sub.quantity,
                                 starts_at: sub.starts_at || "",
                                 expires_at: sub.expires_at || "",
+                                contract_starts_at: sub.contract_starts_at || "",
+                                contract_expires_at: sub.contract_expires_at || "",
                                 status: sub.status,
                                 notes: sub.notes || "",
                               });
@@ -1324,9 +1345,32 @@ export default function CustomerSubscriptionDashboard({
                 </div>
               </div>
 
+              <p className="text-xs font-bold text-slate-800">Thời gian theo hợp đồng</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Ngày bắt đầu</label>
+                  <label className="text-xs font-semibold text-slate-700">Bắt đầu (HĐ)</label>
+                  <input
+                    type="date"
+                    value={editingSub.contract_starts_at}
+                    onChange={(e) => setEditingSub({ ...editingSub, contract_starts_at: e.target.value })}
+                    className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-800 outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Hết hạn (HĐ)</label>
+                  <input
+                    type="date"
+                    value={editingSub.contract_expires_at}
+                    onChange={(e) => setEditingSub({ ...editingSub, contract_expires_at: e.target.value })}
+                    className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-800 outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <p className="text-xs font-bold text-slate-800">Thời gian thực tế</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Bắt đầu (thực tế)</label>
                   <input
                     type="date"
                     value={editingSub.starts_at}
@@ -1334,9 +1378,8 @@ export default function CustomerSubscriptionDashboard({
                     className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-800 outline-none focus:border-blue-500"
                   />
                 </div>
-
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Ngày hết hạn</label>
+                  <label className="text-xs font-semibold text-slate-700">Hết hạn (thực tế)</label>
                   <input
                     type="date"
                     value={editingSub.expires_at}
@@ -1345,6 +1388,7 @@ export default function CustomerSubscriptionDashboard({
                   />
                 </div>
               </div>
+              <p className="text-[11px] text-slate-500">Còn lại và cảnh báo hết hạn tính theo ngày hết hạn thực tế; chưa có thì theo hợp đồng.</p>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700">Trạng thái</label>
@@ -1520,10 +1564,15 @@ export default function CustomerSubscriptionDashboard({
               {/* Duration and Notes */}
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Thời hạn hợp đồng:</span>
+                  <span className="text-slate-500">Thời gian theo HĐ:</span>
                   <span className="font-medium text-slate-800">
-                    {detailSub.starts_at ? new Date(detailSub.starts_at).toLocaleDateString("vi-VN") : "—"} đến{" "}
-                    {detailSub.expires_at ? new Date(detailSub.expires_at).toLocaleDateString("vi-VN") : "Vô thời hạn"}
+                    {formatRange(detailSub.contract_starts_at, detailSub.contract_expires_at) || "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500">Thời gian thực tế:</span>
+                  <span className="font-medium text-slate-800">
+                    {formatRange(detailSub.starts_at, detailSub.expires_at) || "—"}
                   </span>
                 </div>
                 <div className="pt-1">

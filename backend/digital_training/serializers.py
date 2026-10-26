@@ -30,8 +30,9 @@ from .models import (
 def product_subscription_status(subscription):
     if subscription.status in {"paused", "cancelled"}:
         return subscription.status
-    if subscription.expires_at:
-        days = (subscription.expires_at - timezone.localdate()).days
+    expires_at = subscription.effective_expires_at
+    if expires_at:
+        days = (expires_at - timezone.localdate()).days
         if days < 0:
             return "expired"
         if days <= 30:
@@ -150,7 +151,8 @@ class TrainingProductSubscriptionSerializer(serializers.ModelSerializer):
         fields = [
             "id", "partner", "partner_name", "partner_group", "partner_subtype",
             "partner_province", "partner_ward", "product", "product_name",
-            "product_code", "quantity", "starts_at", "expires_at", "status",
+            "product_code", "quantity", "starts_at", "expires_at",
+            "contract_starts_at", "contract_expires_at", "effective_expires_at", "status",
             "effective_status", "days_remaining", "account_manager", "notes", "expiry_notice_stage", "created_at", "updated_at",
         ]
         read_only_fields = ["expiry_notice_stage"]
@@ -159,16 +161,22 @@ class TrainingProductSubscriptionSerializer(serializers.ModelSerializer):
         return product_subscription_status(obj)
 
     def get_days_remaining(self, obj):
-        return (obj.expires_at - timezone.localdate()).days if obj.expires_at else None
+        expires_at = obj.effective_expires_at
+        return (expires_at - timezone.localdate()).days if expires_at else None
 
     def validate(self, attrs):
         product = attrs.get("product", getattr(self.instance, "product", None))
         if product and product.code == "tap-huan":
             attrs["expires_at"] = None
-        starts_at = attrs.get("starts_at", getattr(self.instance, "starts_at", None))
-        expires_at = attrs.get("expires_at", getattr(self.instance, "expires_at", None))
-        if starts_at and expires_at and expires_at < starts_at:
-            raise serializers.ValidationError({"expires_at": "Han su dung phai sau ngay bat dau."})
+            attrs["contract_expires_at"] = None
+        for start_key, end_key, label in (
+            ("starts_at", "expires_at", "thực tế"),
+            ("contract_starts_at", "contract_expires_at", "theo hợp đồng"),
+        ):
+            starts_at = attrs.get(start_key, getattr(self.instance, start_key, None))
+            expires_at = attrs.get(end_key, getattr(self.instance, end_key, None))
+            if starts_at and expires_at and expires_at < starts_at:
+                raise serializers.ValidationError({end_key: f"Ngày hết hạn {label} phải sau ngày bắt đầu."})
         return attrs
 
     def _sync_partner_product_name(self, subscription):
@@ -185,10 +193,10 @@ class TrainingProductSubscriptionSerializer(serializers.ModelSerializer):
         return subscription
 
     def update(self, instance, validated_data):
-        previous_expiry = instance.expires_at
+        previous_expiry = instance.effective_expires_at
         previous_status = instance.status
         subscription = super().update(instance, validated_data)
-        if subscription.expires_at != previous_expiry or subscription.status != previous_status:
+        if subscription.effective_expires_at != previous_expiry or subscription.status != previous_status:
             subscription.expiry_notice_stage = 0
             subscription.save(update_fields=["expiry_notice_stage", "updated_at"])
             WorkspaceNotification.objects.filter(

@@ -38,8 +38,8 @@ HEADERS = [
     "Số điện thoại",             # G (6)
     "Dịch vụ / Sản phẩm",        # H (7)
     "Số lượng",                  # I (8)
-    "Ngày bắt đầu",              # J (9)
-    "Ngày hết hạn",              # K (10)
+    "Thời gian theo HĐ",         # J (9)  "dd/mm/yyyy - dd/mm/yyyy"
+    "Thời gian thực tế",         # K (10) "dd/mm/yyyy - dd/mm/yyyy"
     "Còn lại (ngày)",            # L (11)
     "Tình trạng hạn",            # M (12)
     "Trạng thái",                # N (13)
@@ -58,8 +58,8 @@ COLUMN_WIDTHS = [
     115,  # G: Số điện thoại
     180,  # H: Dịch vụ / Sản phẩm
     75,   # I: Số lượng
-    100,  # J: Ngày bắt đầu
-    100,  # K: Ngày hết hạn
+    190,  # J: Thời gian theo HĐ
+    190,  # K: Thời gian thực tế
     110,  # L: Còn lại (ngày)
     120,  # M: Tình trạng hạn
     120,  # N: Trạng thái
@@ -135,6 +135,92 @@ def _parse_date_cell(value: Any) -> Optional[datetime.date]:
 
 def _format_date(val: Optional[datetime.date]) -> str:
     return val.strftime("%d/%m/%Y") if val else ""
+
+
+_RANGE_DATE_RE = re.compile(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})|(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})")
+
+
+def format_date_range(start: Optional[datetime.date], end: Optional[datetime.date]) -> str:
+    """Ô khoảng thời gian trên Sheet: "a - b", chỉ có đầu "Từ a", chỉ có cuối "Đến b"."""
+    if start and end:
+        return f"{_format_date(start)} - {_format_date(end)}"
+    if start:
+        return f"Từ {_format_date(start)}"
+    if end:
+        return f"Đến {_format_date(end)}"
+    return ""
+
+
+def _range_dates(text: str) -> List[datetime.date]:
+    dates = []
+    for m in _RANGE_DATE_RE.finditer(text):
+        try:
+            if m.group(1):
+                dates.append(datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3))))
+            else:
+                dates.append(datetime.date(int(m.group(6)), int(m.group(5)), int(m.group(4))))
+        except ValueError:
+            continue
+    return dates
+
+
+def _is_bare_date(value: Any) -> bool:
+    """Ô chỉ có đúng một ngày, không có chữ "Từ/Đến" hay dấu nối khoảng."""
+    if value is None or value == "":
+        return False
+    if isinstance(value, (datetime.date, int, float)):
+        return _parse_date_cell(value) is not None
+    text = str(value).strip()
+    if _RANGE_DATE_RE.fullmatch(text):
+        return True
+    return text.replace(".", "", 1).isdigit() and _parse_date_cell(text) is not None
+
+
+def parse_date_range(value: Any) -> tuple[Optional[datetime.date], Optional[datetime.date]]:
+    """Đọc ô khoảng thời gian. Trả (bắt đầu, hết hạn); phần không có là None.
+    Một ngày đứng riêng được hiểu là ngày hết hạn."""
+    if value is None:
+        return None, None
+    if isinstance(value, (datetime.date, int, float)) and not isinstance(value, bool):
+        return None, _parse_date_cell(value)
+    text = str(value).strip()
+    if not text:
+        return None, None
+    dates = _range_dates(text)
+    if not dates:
+        return None, _parse_date_cell(text)
+    if len(dates) >= 2:
+        return dates[0], dates[-1]
+    lowered = text.lower()
+    if lowered.startswith("từ") or lowered.startswith("tu ") or re.search(r"[-–~→]\s*$", text):
+        return dates[0], None
+    return None, dates[0]
+
+
+def _end_date_expr(cell: str) -> str:
+    """Biểu thức Sheet lấy ngày hết hạn ở cuối ô khoảng thời gian (locale VN, dấu ;)."""
+    t = f"TRIM(TO_TEXT({cell}))"
+    return (
+        f'IFERROR(IF(REGEXMATCH(LOWER({t}); "^từ"); ""; '
+        rf'DATE(VALUE(REGEXEXTRACT({t}; "(\d{{4}})\s*$")); '
+        rf'VALUE(REGEXEXTRACT({t}; "(\d{{1,2}})/\d{{4}}\s*$")); '
+        rf'VALUE(REGEXEXTRACT({t}; "(\d{{1,2}})/\d{{1,2}}/\d{{4}}\s*$")))); "")'
+    )
+
+
+def days_left_formula(row_num: int) -> str:
+    """Còn lại (ngày): theo ngày hết hạn thực tế (cột K), thiếu thì theo hợp đồng (cột J)."""
+    return (
+        f'=LET(ek; {_end_date_expr(f"K{row_num}")}; ej; {_end_date_expr(f"J{row_num}")}; '
+        f'e; IF(ek<>""; ek; ej); IF(e=""; ""; INT(e - TODAY())))'
+    )
+
+
+def expiry_status_formula(row_num: int) -> str:
+    return (
+        f'=IF(L{row_num}=""; "Không thời hạn"; IF(L{row_num}<0; "Đã quá hạn"; '
+        f'IF(L{row_num}<=30; "Sắp hết hạn"; "Đang sử dụng")))'
+    )
 
 
 def get_sync_credentials(google_token: Optional[str] = None) -> tuple[Optional[str], dict[str, Any], Optional[str]]:
@@ -306,13 +392,6 @@ def build_export_payload(sheet_row_map: Optional[Dict[str, Any]] = None) -> Dict
             "cancelled": "Đã hủy",
         }.get(eff_status, "Đang sử dụng")
 
-        # Công thức cho Cột L (Còn lại) và Cột M (Tình trạng hạn)
-        days_left_formula = f'=IF(ISBLANK(K{row_num}); ""; INT(K{row_num} - TODAY()))'
-        expiry_status_formula = (
-            f'=IF(ISBLANK(K{row_num}); "Không thời hạn"; '
-            f'IF(INT(K{row_num}-TODAY())<0; "Đã quá hạn"; '
-            f'IF(INT(K{row_num}-TODAY())<=30; "Sắp hết hạn"; "Đang sử dụng")))'
-        )
 
         updated_str = sub.updated_at.strftime("%d/%m/%Y %H:%M") if sub.updated_at else ""
 
@@ -326,10 +405,16 @@ def build_export_payload(sheet_row_map: Optional[Dict[str, Any]] = None) -> Dict
             f"'{partner.phone}" if partner.phone else "", # G: SĐT (dạng text)
             product.name,                        # H: Dịch vụ / Sản phẩm
             sub.quantity,                        # I: Số lượng
-            _format_date(sub.starts_at),         # J: Ngày bắt đầu
-            _format_date(sub.expires_at) if product.code != "tap-huan" else "", # K: Ngày hết hạn
-            days_left_formula,                   # L: Còn lại (ngày)
-            expiry_status_formula,               # M: Tình trạng hạn
+            format_date_range(                   # J: Thời gian theo HĐ
+                sub.contract_starts_at,
+                sub.contract_expires_at if product.code != "tap-huan" else None,
+            ),
+            format_date_range(                   # K: Thời gian thực tế
+                sub.starts_at,
+                sub.expires_at if product.code != "tap-huan" else None,
+            ),
+            days_left_formula(row_num),          # L: Còn lại (ngày)
+            expiry_status_formula(row_num),      # M: Tình trạng hạn
             status_vi,                           # N: Trạng thái
             staff,                               # O: Nhân sự phụ trách
             notes,                               # P: Ghi chú gia hạn
@@ -745,7 +830,10 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
     except Exception as exc:
         logger.warning(f"Batch format warning: {exc}")
 
+    # Gộp vào cấu hình sẵn có: giữ webhookSecret, Service Account JSON do người dùng lưu.
+    sync_config.refresh_from_db(fields=["data"])
     sync_config.data = {
+        **(sync_config.data or {}),
         "spreadsheetId": spreadsheet_id,
         "tabTitle": target_title,
         "fingerprint": fingerprint,
@@ -784,8 +872,9 @@ def ingest_subscription_row(row_data: List[Any], current_row_num: int = 0) -> Di
         partner_name_str = str(row_data[2]).strip()
         product_name_str = str(row_data[6]).strip()
         quantity_str = str(row_data[7]).strip()
-        starts_at_str = str(row_data[8]).strip()
-        expires_at_str = str(row_data[9]).strip()
+        actual_start = _parse_date_cell(str(row_data[8]).strip())
+        actual_end = _parse_date_cell(str(row_data[9]).strip())
+        contract_start = contract_end = None
         status_str = str(row_data[11]).strip().lower()
         account_manager_str = str(row_data[12]).strip()
         notes_str = str(row_data[13]).strip()
@@ -795,8 +884,15 @@ def ingest_subscription_row(row_data: List[Any], current_row_num: int = 0) -> Di
         partner_name_str = str(row_data[3]).strip() if len(row_data) > 3 and row_data[3] is not None else ""
         product_name_str = str(row_data[7]).strip() if len(row_data) > 7 and row_data[7] is not None else ""
         quantity_str = str(row_data[8]).strip() if len(row_data) > 8 and row_data[8] is not None else "1"
-        starts_at_str = str(row_data[9]).strip() if len(row_data) > 9 and row_data[9] is not None else ""
-        expires_at_str = str(row_data[10]).strip() if len(row_data) > 10 and row_data[10] is not None else ""
+        j_cell = row_data[9] if len(row_data) > 9 else None
+        k_cell = row_data[10] if len(row_data) > 10 else None
+        if _is_bare_date(j_cell) and _is_bare_date(k_cell):
+            # Bố cục cũ trước khi có 2 cột thời gian: J = Ngày bắt đầu, K = Ngày hết hạn (thực tế).
+            contract_start = contract_end = None
+            actual_start, actual_end = _parse_date_cell(j_cell), _parse_date_cell(k_cell)
+        else:
+            contract_start, contract_end = parse_date_range(j_cell)
+            actual_start, actual_end = parse_date_range(k_cell)
         status_str = str(row_data[13]).strip().lower() if len(row_data) > 13 and row_data[13] is not None else ""
         account_manager_str = str(row_data[14]).strip() if len(row_data) > 14 and row_data[14] is not None else ""
         notes_str = str(row_data[15]).strip() if len(row_data) > 15 and row_data[15] is not None else ""
@@ -882,8 +978,10 @@ def ingest_subscription_row(row_data: List[Any], current_row_num: int = 0) -> Di
             return {"status": "skipped", "message": msg}
 
         # Cả trường và sản phẩm đều hợp lệ -> tạo mới đăng ký
-        starts_at = _parse_date_cell(starts_at_str) or timezone.localdate()
-        expires_at = _parse_date_cell(expires_at_str) if product.code != "tap-huan" else None
+        is_training = product.code == "tap-huan"
+        has_any_date = any([actual_start, actual_end, contract_start, contract_end])
+        starts_at = actual_start or (None if has_any_date else timezone.localdate())
+        expires_at = None if is_training else actual_end
         qty = int(quantity_str) if quantity_str.isdigit() and int(quantity_str) > 0 else 1
 
         mapped_status = "active"
@@ -897,6 +995,8 @@ def ingest_subscription_row(row_data: List[Any], current_row_num: int = 0) -> Di
             product=product,
             starts_at=starts_at,
             expires_at=expires_at,
+            contract_starts_at=contract_start,
+            contract_expires_at=None if is_training else contract_end,
             quantity=qty,
             status=mapped_status,
             account_manager=account_manager_str,
@@ -912,26 +1012,30 @@ def ingest_subscription_row(row_data: List[Any], current_row_num: int = 0) -> Di
         return {"status": "created", "subscription_id": sub.pk}
 
     # 3. Cập nhật đăng ký hiện có
+    # Ô trống / phần trống của khoảng thời gian không xóa dữ liệu web.
     updates = []
-    starts_at = _parse_date_cell(starts_at_str)
-    if starts_at and sub.starts_at != starts_at:
-        sub.starts_at = starts_at
-        updates.append("starts_at")
-
-    if sub.product.code == "tap-huan":
-        if sub.expires_at is not None:
-            sub.expires_at = None
-            updates.append("expires_at")
-    else:
-        expires_at = _parse_date_cell(expires_at_str)
-        if expires_at and sub.expires_at != expires_at:
-            sub.expires_at = expires_at
-            updates.append("expires_at")
-            sub.expiry_notice_stage = 0
-            updates.append("expiry_notice_stage")
-            WorkspaceNotification.objects.filter(
-                event_key__startswith=f"product-subscription:{sub.pk}:"
-            ).delete()
+    previous_expiry = sub.effective_expires_at
+    is_training = sub.product.code == "tap-huan"
+    for field, value in (
+        ("starts_at", actual_start),
+        ("contract_starts_at", contract_start),
+        ("expires_at", None if is_training else actual_end),
+        ("contract_expires_at", None if is_training else contract_end),
+    ):
+        if value and getattr(sub, field) != value:
+            setattr(sub, field, value)
+            updates.append(field)
+    if is_training:
+        for field in ("expires_at", "contract_expires_at"):
+            if getattr(sub, field) is not None:
+                setattr(sub, field, None)
+                updates.append(field)
+    if sub.effective_expires_at != previous_expiry:
+        sub.expiry_notice_stage = 0
+        updates.append("expiry_notice_stage")
+        WorkspaceNotification.objects.filter(
+            event_key__startswith=f"product-subscription:{sub.pk}:"
+        ).delete()
 
     if quantity_str.isdigit() and int(quantity_str) > 0 and sub.quantity != int(quantity_str):
         sub.quantity = int(quantity_str)

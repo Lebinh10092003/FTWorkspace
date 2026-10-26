@@ -69,6 +69,11 @@ export type ProductSubscription = {
   quantity: number;
   starts_at?: string | null;
   expires_at?: string | null;
+  /** Thời gian theo hợp đồng; starts_at/expires_at là thời gian thực tế. */
+  contract_starts_at?: string | null;
+  contract_expires_at?: string | null;
+  /** Hạn dùng để tính còn lại: thực tế, thiếu thì theo hợp đồng. */
+  effective_expires_at?: string | null;
   status: "active" | "paused" | "cancelled";
   effective_status: "active" | "expiring" | "expired" | "paused" | "cancelled";
   days_remaining?: number | null;

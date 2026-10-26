@@ -78,8 +78,11 @@ class TrainingProductSubscription(models.Model):
     partner = models.ForeignKey(TrainingPartner, on_delete=models.CASCADE, related_name="product_subscriptions")
     product = models.ForeignKey(TrainingProduct, on_delete=models.PROTECT, related_name="subscriptions")
     quantity = models.PositiveIntegerField(default=1)
+    # starts_at/expires_at = thời gian thực tế; contract_* = thời gian theo hợp đồng.
     starts_at = models.DateField(null=True, blank=True)
     expires_at = models.DateField(null=True, blank=True)
+    contract_starts_at = models.DateField(null=True, blank=True)
+    contract_expires_at = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
     notes = models.TextField(blank=True)
     expiry_notice_stage = models.PositiveSmallIntegerField(default=0)
@@ -92,6 +95,11 @@ class TrainingProductSubscription(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["partner", "product"], name="unique_product_subscription_per_partner"),
         ]
+
+    @property
+    def effective_expires_at(self):
+        """Hạn dùng để tính còn lại/cảnh báo: thực tế, thiếu thì theo hợp đồng."""
+        return self.expires_at or self.contract_expires_at
 
 
 class SubscriptionSheetOutbox(models.Model):
