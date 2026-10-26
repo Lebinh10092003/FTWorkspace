@@ -1,18 +1,17 @@
 /**
- * Realtime Sheet <-> Web sync trigger cho "Theo dõi dịch vụ khách hàng & Hạn dùng"
+ * =======================================================================
+ * FERMAT WORKSPACE - THEO DÕI DỊCH VỤ KHÁCH HÀNG & THỜI HẠN SỬ DỤNG
  * File Google Sheet: https://docs.google.com/spreadsheets/d/1ENU0abZu6hCiVz-u7ypMLmLzudzMewKF_6s-6NJ26qk/edit
  *
  * TÍNH NĂNG CHÍNH:
- * 1. Tự động khởi tạo bảng 17 cột chuẩn mực, độ rộng, kẻ viền, đóng băng, công thức STT & ngày còn lại.
- * 2. Bảo mật qua WEBHOOK_SECRET (Script Properties).
- * 3. Menu "🚀 Fermat Workspace" trực tiếp trên Google Sheet:
- *    - 📥 Khởi tạo bảng & Kéo dữ liệu từ Web
- *    - 📤 Đẩy toàn bộ dữ liệu Sheet lên Web
- *    - ⚡ Kích hoạt Trigger tự động khi sửa (onEdit)
- * 4. Không dùng tài khoản Google Cloud Service Account vẫn đồng bộ 2 chiều thời gian thực an toàn.
+ * 1. Khởi tạo khung bảng sạch 17 cột, đóng băng 2 hàng đầu, công thức STT tự động tại A3.
+ * 2. Tự động gom nhóm các dịch vụ của cùng một khách hàng nằm sát cạnh nhau.
+ * 3. Đồng bộ 2 chiều Web <-> Sheet qua Webhook & API (Bảo mật bằng WEBHOOK_SECRET).
+ * 4. Menu "🚀 Fermat Workspace" trực tiếp trên giao diện Google Sheet.
+ * =======================================================================
  */
 
-var FIRST_DATA_ROW = 3; // Dòng 1: Banner, Dòng 2: Header, Dòng 3 trở đi: Dữ liệu
+var FIRST_DATA_ROW = 3;
 var TAB_NAME = 'Dịch vụ khách hàng';
 var WEBHOOK_URL_DEFAULT = 'https://workspace.fermat.vn/api/digital-training/subscriptions/sheet-webhook';
 var SYNC_URL_DEFAULT = 'https://workspace.fermat.vn/api/digital-training/subscriptions/sheet-sync';
@@ -39,32 +38,36 @@ var HEADERS = [
 
 var COLUMN_WIDTHS = [
   55,   // A: STT
-  75,   // B: Mã ĐK
-  75,   // C: Mã KH
+  70,   // B: Mã ĐK
+  70,   // C: Mã KH
   280,  // D: Tên trường / Đơn vị
-  130,  // E: Tỉnh / Thành phố
-  150,  // F: Đầu mối liên hệ
+  120,  // E: Tỉnh / Thành phố
+  160,  // F: Đầu mối liên hệ
   115,  // G: Số điện thoại
   180,  // H: Dịch vụ / Sản phẩm
   75,   // I: Số lượng
-  100,  // J: Ngày bắt đầu
-  100,  // K: Ngày hết hạn
+  105,  // J: Ngày bắt đầu
+  105,  // K: Ngày hết hạn
   110,  // L: Còn lại (ngày)
   120,  // M: Tình trạng hạn
-  120,  // N: Trạng thái
+  125,  // N: Trạng thái
   140,  // O: Nhân sự phụ trách
-  280,  // P: Tiến độ & Ghi chú gia hạn
+  290,  // P: Tiến độ & Ghi chú gia hạn
   130,  // Q: Cập nhật web lúc
 ];
 
-// Tạo Menu tùy chỉnh ngay khi người dùng mở Google Sheet
+/**
+ * Tạo Menu tiện ích tùy chỉnh trên thanh công cụ Google Sheet
+ */
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('🚀 Fermat Workspace')
-    .addItem('📥 Khởi tạo bảng & Kéo dữ liệu từ Web', 'pullDataFromWebAndSetupSheet')
-    .addItem('📤 Đẩy tất cả dữ liệu Sheet lên Web', 'syncAllRowsToWeb')
+    .addItem('🧹 1. Khởi tạo khung bảng sạch (Xóa trắng & Setup)', 'initCleanSheetTemplate')
+    .addItem('📥 2. Kéo dữ liệu từ Web về Sheet', 'pullDataFromWebAndSetupSheet')
+    .addItem('📤 3. Đẩy tất cả dữ liệu Sheet lên Web', 'syncAllRowsToWeb')
     .addSeparator()
-    .addItem('⚡ Kích hoạt Trigger tự động (onEdit)', 'setupAutoTrigger')
+    .addItem('📊 4. Gom nhóm các dịch vụ cùng khách hàng', 'autoSortGroupPartners')
+    .addItem('⚡ 5. Kích hoạt Trigger tự động (onEdit)', 'setupAutoTrigger')
     .addToUi();
 }
 
@@ -84,29 +87,132 @@ function getSyncUrl_() {
 }
 
 /**
- * Khởi tạo bảng đầy đủ khi trang tính trống hoặc kéo dữ liệu mới từ Web về Google Sheet.
+ * 1. Khởi tạo khung bảng sạch chuẩn 17 cột, không chứa dữ liệu mẫu, sẵn sàng đồng bộ
+ */
+function initCleanSheetTemplate() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getActiveSheet();
+  
+  if (sheet.getName() === 'Trang tính1' || sheet.getName() === 'Sheet1') {
+    try { sheet.setName(TAB_NAME); } catch (e) {}
+  }
+
+  var numCols = HEADERS.length;
+
+  sheet.clearContents();
+  sheet.clearFormats();
+  var existingFilter = sheet.getFilter();
+  if (existingFilter) existingFilter.remove();
+
+  // Đóng băng 2 hàng đầu, không cố định cột để tránh lỗi merge banner
+  sheet.setFrozenColumns(0);
+  sheet.setFrozenRows(2);
+
+  sheet.setRowHeight(1, 38);
+  sheet.setRowHeight(2, 34);
+  for (var r = 3; r <= 30; r++) sheet.setRowHeight(r, 28);
+  for (var c = 0; c < COLUMN_WIDTHS.length; c++) sheet.setColumnWidth(c + 1, COLUMN_WIDTHS[c]);
+
+  // Banner Hàng 1
+  var titleRow = ["FT. BẢNG THEO DÕI KHÁCH HÀNG, DỊCH VỤ & THỜI GIAN SỬ DỤNG"];
+  for (var i = 1; i < numCols; i++) titleRow.push("");
+  sheet.getRange(1, 1, 1, numCols).setValues([titleRow]);
+  
+  var banner = sheet.getRange(1, 1, 1, numCols);
+  banner.merge().setBackground('#1D4ED8').setFontColor('#FFFFFF').setFontSize(12).setFontWeight('bold')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+
+  // Header Hàng 2
+  sheet.getRange(2, 1, 1, numCols).setValues([HEADERS]);
+  sheet.getRange(2, 1, 1, numCols)
+    .setBackground('#DBEAFE').setFontColor('#1E3A8A').setFontSize(10).setFontWeight('bold')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle').setWrap(true)
+    .setBorder(true, true, true, true, true, true, '#CBD5E1', SpreadsheetApp.BorderStyle.SOLID);
+
+  // Công thức STT tự động tại A3 (khi cột D có Tên trường thì tự nhảy số 1, 2, 3...)
+  sheet.getRange('A3').setFormula('=ARRAYFORMULA(IF(D3:D=""; ""; COUNTIFS(D3:D; "<>"; ROW(D3:D); "<="&ROW(D3:D))))');
+
+  // Định dạng các cột dữ liệu (500 dòng sẵn sàng)
+  var dataRange = sheet.getRange(3, 1, 500, numCols);
+  dataRange.setFontSize(10).setVerticalAlignment('middle');
+
+  sheet.getRange(3, 1, 500, 1).setHorizontalAlignment('center'); // STT
+  sheet.getRange(3, 2, 500, 2).setHorizontalAlignment('center'); // Mã ĐK, Mã KH
+  sheet.getRange(3, 4, 500, 1).setHorizontalAlignment('left').setFontWeight('bold'); // Tên trường in đậm
+  sheet.getRange(3, 5, 500, 2).setHorizontalAlignment('left');   // Tỉnh, Đầu mối
+  sheet.getRange(3, 7, 500, 1).setHorizontalAlignment('center'); // SĐT
+  sheet.getRange(3, 8, 500, 1).setHorizontalAlignment('left');   // Dịch vụ
+  sheet.getRange(3, 9, 500, 1).setHorizontalAlignment('center'); // Số lượng
+  sheet.getRange(3, 10, 500, 2).setHorizontalAlignment('center').setNumberFormat('dd/MM/yyyy'); // Ngày
+  sheet.getRange(3, 12, 500, 1).setHorizontalAlignment('center').setFontWeight('bold'); // Còn lại
+  sheet.getRange(3, 13, 500, 2).setHorizontalAlignment('center'); // Tình trạng, Trạng thái
+  sheet.getRange(3, 15, 500, 2).setHorizontalAlignment('left');   // Phụ trách, Ghi chú
+  sheet.getRange(3, 17, 500, 1).setHorizontalAlignment('center'); // Cập nhật lúc
+
+  // Khóa nền xám nhạt cho cột thông tin gốc (Cột B–G)
+  sheet.getRange(3, 2, 500, 6).setBackground('#F8FAFC').setFontColor('#334155');
+
+  // Dropdown Cột N (Trạng thái)
+  var statusRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Đang sử dụng', 'Tạm dừng', 'Đã hủy'], true)
+    .setAllowInvalid(false).build();
+  sheet.getRange(3, 14, 500, 1).setDataValidation(statusRule);
+
+  // Tô màu có điều kiện (Đỏ: Quá hạn, Vàng: Sắp hết hạn, Xanh: Đang sử dụng)
+  var expiryStatusRange = sheet.getRange(3, 13, 500, 1);
+  var daysLeftRange = sheet.getRange(3, 12, 500, 1);
+  var statusRange = sheet.getRange(3, 14, 500, 1);
+
+  sheet.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Đã quá hạn').setBackground('#FEE2E2').setFontColor('#991B1B').setRanges([expiryStatusRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Sắp hết hạn').setBackground('#FEF9C3').setFontColor('#854D0E').setRanges([expiryStatusRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Đang sử dụng').setBackground('#DCFCE7').setFontColor('#166534').setRanges([expiryStatusRange, statusRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenNumberLessThanOrEqualTo(0).setFontColor('#DC2626').setRanges([daysLeftRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenNumberBetween(1, 30).setFontColor('#D97706').setRanges([daysLeftRange]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Tạm dừng').setBackground('#F1F5F9').setFontColor('#475569').setRanges([statusRange]).build()
+  ]);
+
+  sheet.getRange(2, 1, 100, numCols).createFilter();
+  ss.toast('✅ Đã tạo khung bảng trắng chuẩn 17 cột, sẵn sàng đồng bộ!', 'Hoàn tất', 5);
+}
+
+/**
+ * 2. Tự động gom nhóm: Các dịch vụ của cùng 1 khách hàng luôn đứng sát cạnh nhau
+ */
+function autoSortGroupPartners() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < FIRST_DATA_ROW) return;
+
+  var numCols = HEADERS.length;
+  var range = sheet.getRange(FIRST_DATA_ROW, 1, lastRow - FIRST_DATA_ROW + 1, numCols);
+  
+  // Sắp xếp: Cột 4 (Tên trường) A-Z -> Cột 8 (Dịch vụ) A-Z
+  range.sort([
+    { column: 4, ascending: true },
+    { column: 8, ascending: true }
+  ]);
+
+  SpreadsheetApp.getActiveSpreadsheet().toast('✅ Đã tự động gom nhóm các dịch vụ cùng khách hàng liền kề nhau!', 'Sắp xếp');
+}
+
+/**
+ * 3. Kéo dữ liệu từ Web về Google Sheet (khi kết nối qua API)
  */
 function pullDataFromWebAndSetupSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getActiveSheet();
   
-  // Đổi tên tab thành "Dịch vụ khách hàng" nếu đang là "Trang tính1"
-  if (sheet.getName() === 'Trang tính1') {
-    try {
-      sheet.setName(TAB_NAME);
-    } catch (e) {}
+  if (sheet.getName() === 'Trang tính1' || sheet.getName() === 'Sheet1') {
+    try { sheet.setName(TAB_NAME); } catch (e) {}
   }
 
-  ss.toast('Đang kết nối đến Web Fermat...', 'Khởi tạo bảng', 3);
+  ss.toast('Đang kết nối đến Web Fermat...', 'Đồng bộ', 3);
 
   var payload = null;
   var secret = getWebhookSecret_();
-  var headers = {
-    'Accept': 'application/json',
-  };
-  if (secret) {
-    headers['X-Sheet-Webhook-Secret'] = secret;
-  }
+  var headers = { 'Accept': 'application/json' };
+  if (secret) headers['X-Sheet-Webhook-Secret'] = secret;
 
   try {
     var response = UrlFetchApp.fetch(getSyncUrl_(), {
@@ -117,233 +223,42 @@ function pullDataFromWebAndSetupSheet() {
     var code = response.getResponseCode();
     if (code >= 200 && code < 300) {
       var data = JSON.parse(response.getContentText());
-      if (data && data.success && data.data) {
-        payload = data.data;
-      }
+      if (data && data.success && data.data) payload = data.data;
     } else if (code === 401 || code === 403) {
-      ss.toast('⚠️ Không có quyền truy cập. Vui lòng kiểm tra lại WEBHOOK_SECRET trong Script Properties.', 'Lỗi xác thực', 8);
+      ss.toast('⚠️ WEBHOOK_SECRET không đúng hoặc chưa được cấu hình.', 'Lỗi xác thực', 8);
       return;
     }
   } catch (err) {
-    Logger.log('Không thể kéo dữ liệu trực tiếp: ' + err);
+    Logger.log('Lỗi kết nối Web: ' + err);
   }
 
-  if (!payload || !payload.rows || payload.rows.length === 0) {
-    ss.toast('⚠️ Không thể tải dữ liệu từ Web hoặc chưa có đăng ký nào. Vui lòng kiểm tra URL/Secret và kết nối mạng.', 'Thông báo', 6);
+  if (!payload || !payload.rows || payload.rows.length <= 2) {
+    ss.toast('ℹ️ Không có dòng dữ liệu nào trên Web hoặc chưa kết nối được.', 'Thông báo', 5);
     return;
   }
 
-  setupSheetFormatAndData_(sheet, payload);
-  ss.toast('✅ Đã tạo cấu trúc bảng 17 cột và đồng bộ dữ liệu thành công!', 'Hoàn tất', 5);
-}
+  initCleanSheetTemplate();
 
-/**
- * Thiết lập định dạng chuyên nghiệp chuẩn Fermat Workspace:
- * - 17 cột: Banner A1:Q1 xanh đậm #1D4ED8, Header A2:Q2 xanh nhạt #DBEAFE
- * - Đóng băng 2 dòng đầu và 4 cột đầu (A-D)
- * - Khóa màu xám nhạt #F8FAFC cho các cột đối tác (B-G)
- * - Cài đặt công thức STT tự động tại A3
- * - Dropdown chọn trạng thái (Cột N)
- * - Kẻ viền bảng xám #CBD5E1
- */
-function setupSheetFormatAndData_(sheet, payload) {
+  // Ghi dữ liệu lấy được từ Web
   var rows = payload.rows;
-  var numRows = Math.max(rows.length, 10);
   var numCols = HEADERS.length;
+  sheet.getRange(1, 1, rows.length, numCols).setValues(rows);
 
-  // 1. Đảm bảo đủ số dòng và cột
-  if (sheet.getMaxRows() < numRows + 10) {
-    sheet.insertRowsAfter(sheet.getMaxRows(), numRows + 10 - sheet.getMaxRows());
-  }
-  if (sheet.getMaxColumns() < numCols) {
-    sheet.insertColumnsAfter(sheet.getMaxColumns(), numCols - sheet.getMaxColumns());
-  }
-
-  // 2. Xóa định dạng cũ
-  sheet.getRange(1, 1, sheet.getMaxRows(), numCols).clear({ contentsOnly: false, formatOnly: true });
-
-  // 3. Đóng băng 2 hàng đầu và 4 cột đầu
-  sheet.setFrozenRows(2);
-  sheet.setFrozenColumns(4);
-
-  // 4. Chiều cao dòng
-  sheet.setRowHeight(1, 38);
-  sheet.setRowHeight(2, 32);
-  for (var r = 3; r <= numRows; r++) {
-    sheet.setRowHeight(r, 26);
-  }
-
-  // 5. Độ rộng cột
-  for (var c = 0; c < COLUMN_WIDTHS.length; c++) {
-    sheet.setColumnWidth(c + 1, COLUMN_WIDTHS[c]);
-  }
-
-  // 6. Ghi dữ liệu
-  if (rows && rows.length > 0) {
-    sheet.getRange(1, 1, rows.length, numCols).setValues(rows);
-  }
-
-  // 7. Cài đặt công thức STT tại A3
+  // Đảm bảo công thức STT tự động tại A3
   sheet.getRange('A3').setFormula('=ARRAYFORMULA(IF(D3:D=""; ""; COUNTIFS(D3:D; "<>"; ROW(D3:D); "<="&ROW(D3:D))))');
+  autoSortGroupPartners();
 
-  // 8. Định dạng Banner Hàng 1
-  var bannerRange = sheet.getRange(1, 1, 1, numCols);
-  bannerRange.merge();
-  bannerRange
-    .setBackground('#1D4ED8')
-    .setFontColor('#FFFFFF')
-    .setFontSize(12)
-    .setFontWeight('bold')
-    .setHorizontalAlignment('center')
-    .setVerticalAlignment('middle');
-
-  // 9. Định dạng Header Hàng 2
-  var headerRange = sheet.getRange(2, 1, 1, numCols);
-  headerRange
-    .setBackground('#DBEAFE')
-    .setFontColor('#1E3A8A')
-    .setFontSize(10)
-    .setFontWeight('bold')
-    .setHorizontalAlignment('center')
-    .setVerticalAlignment('middle')
-    .setWrap(true);
-
-  // 10. Định dạng các cột dữ liệu (từ hàng 3)
-  if (numRows >= 3) {
-    var fullTableRange = sheet.getRange(1, 1, numRows, numCols);
-    fullTableRange.setBorder(true, true, true, true, true, true, '#CBD5E1', SpreadsheetApp.BorderStyle.SOLID);
-
-    // Căn lề từng cột
-    sheet.getRange(3, 1, numRows - 2, 1).setHorizontalAlignment('center'); // A: STT
-    sheet.getRange(3, 2, numRows - 2, 1).setHorizontalAlignment('center'); // B: Mã ĐK
-    sheet.getRange(3, 3, numRows - 2, 1).setHorizontalAlignment('center'); // C: Mã KH
-    sheet.getRange(3, 4, numRows - 2, 1).setHorizontalAlignment('left');   // D: Tên trường
-    sheet.getRange(3, 5, numRows - 2, 1).setHorizontalAlignment('left');   // E: Tỉnh/TP
-    sheet.getRange(3, 6, numRows - 2, 1).setHorizontalAlignment('left');   // F: Đầu mối
-    sheet.getRange(3, 7, numRows - 2, 1).setHorizontalAlignment('center'); // G: SĐT
-    sheet.getRange(3, 8, numRows - 2, 1).setHorizontalAlignment('left');   // H: Dịch vụ/SP
-    sheet.getRange(3, 9, numRows - 2, 1).setHorizontalAlignment('center'); // I: Số lượng
-    sheet.getRange(3, 10, numRows - 2, 1).setHorizontalAlignment('center').setNumberFormat('dd/MM/yyyy'); // J: Bắt đầu
-    sheet.getRange(3, 11, numRows - 2, 1).setHorizontalAlignment('center').setNumberFormat('dd/MM/yyyy'); // K: Hết hạn
-    sheet.getRange(3, 12, numRows - 2, 1).setHorizontalAlignment('center'); // L: Còn lại
-    sheet.getRange(3, 13, numRows - 2, 1).setHorizontalAlignment('center'); // M: Tình trạng hạn
-    sheet.getRange(3, 14, numRows - 2, 1).setHorizontalAlignment('center'); // N: Trạng thái
-    sheet.getRange(3, 15, numRows - 2, 1).setHorizontalAlignment('left');   // O: Phụ trách
-    sheet.getRange(3, 16, numRows - 2, 1).setHorizontalAlignment('left').setWrap(true); // P: Ghi chú
-    sheet.getRange(3, 17, numRows - 2, 1).setHorizontalAlignment('center'); // Q: Cập nhật web
-
-    // Khóa màu các cột cố định đối tác (B-G: Cột 2-7) nền xám nhạt #F8FAFC
-    sheet.getRange(3, 2, numRows - 2, 6)
-      .setBackground('#F8FAFC')
-      .setFontColor('#475569');
-
-    // Dropdown chọn Trạng thái (Cột N - Cột 14)
-    var statusRule = SpreadsheetApp.newDataValidation()
-      .requireValueInList(['Đang sử dụng', 'Tạm dừng', 'Đã hủy'], true)
-      .setAllowInvalid(false)
-      .build();
-    sheet.getRange(3, 14, numRows - 2, 1).setDataValidation(statusRule);
-
-    // Conditional formatting cho Cột N (Trạng thái) và Cột M (Tình trạng hạn)
-    var statusRange = sheet.getRange(3, 14, numRows - 2, 1);
-    var expiryRange = sheet.getRange(3, 13, numRows - 2, 1);
-    var rules = [
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenTextEqualTo('Đang sử dụng')
-        .setBackground('#DCFCE7')
-        .setFontColor('#166534')
-        .setRanges([statusRange, expiryRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenTextEqualTo('Sắp hết hạn')
-        .setBackground('#FEF9C3')
-        .setFontColor('#854D0E')
-        .setRanges([expiryRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenTextEqualTo('Đã quá hạn')
-        .setBackground('#FEE2E2')
-        .setFontColor('#991B1B')
-        .setRanges([expiryRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenTextEqualTo('Tạm dừng')
-        .setBackground('#F1F5F9')
-        .setFontColor('#475569')
-        .setRanges([statusRange])
-        .build(),
-      SpreadsheetApp.newConditionalFormatRule()
-        .whenTextEqualTo('Đã hủy')
-        .setBackground('#E2E8F0')
-        .setFontColor('#64748B')
-        .setRanges([statusRange])
-        .build(),
-    ];
-    sheet.setConditionalFormatRules(rules);
-  }
+  ss.toast('✅ Đã kéo dữ liệu từ Web và gom nhóm dịch vụ thành công!', 'Hoàn tất', 5);
 }
 
 /**
- * Tự động tạo trigger onEdit mà không cần vào menu đồng hồ.
- */
-function setupAutoTrigger() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var triggers = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === 'onEditInstallable') {
-      ScriptApp.deleteTrigger(triggers[i]);
-    }
-  }
-
-  ScriptApp.newTrigger('onEditInstallable')
-    .forSpreadsheet(ss)
-    .onEdit()
-    .create();
-
-  ss.toast('⚡ Đã kích hoạt Trigger tự động onEdit thành công!', 'Cài đặt Trigger', 5);
-}
-
-/**
- * Trình kích hoạt tự động khi người dùng sửa dữ liệu trên Google Sheet.
- */
-function onEditInstallable(e) {
-  if (!e || !e.range) return;
-  var sheet = e.range.getSheet();
-  var row = e.range.getRow();
-
-  if (row < FIRST_DATA_ROW) return; // Bỏ qua chỉnh sửa ở dòng tiêu đề
-
-  var sheetName = sheet.getName();
-  if (sheetName !== TAB_NAME && sheetName !== 'Trang tính1' && sheetName !== 'Theo dõi dịch vụ') {
-    return; // Bỏ qua chỉnh sửa ở các tab khác
-  }
-
-  var lastCol = Math.max(sheet.getLastColumn(), 17);
-  var values = sheet.getRange(row, 1, 1, lastCol).getDisplayValues()[0];
-
-  var hasContent = values.some(function(cell) {
-    return String(cell || '').trim() !== '';
-  });
-  if (!hasContent) return;
-
-  var payload = {
-    row: row,
-    values: values,
-    edited_at: new Date().toISOString(),
-    sheet_name: sheetName,
-  };
-
-  sendToWebhook_(payload);
-}
-
-/**
- * Đồng bộ toàn bộ các dòng hiện có trên Google Sheet lên Web.
+ * 4. Đẩy toàn bộ dữ liệu trên Sheet lên Web
  */
 function syncAllRowsToWeb() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var lastRow = sheet.getLastRow();
   if (lastRow < FIRST_DATA_ROW) {
-    SpreadsheetApp.getActiveSpreadsheet().toast('Không có dòng dữ liệu nào để đồng bộ.', 'Thông báo');
+    SpreadsheetApp.getActiveSpreadsheet().toast('Bảng tính chưa có dòng dữ liệu nào.', 'Thông báo');
     return;
   }
 
@@ -355,14 +270,9 @@ function syncAllRowsToWeb() {
   var rowsPayload = [];
   for (var i = 0; i < allValues.length; i++) {
     var rowValues = allValues[i];
-    var hasContent = rowValues.some(function(cell) {
-      return String(cell || '').trim() !== '';
-    });
+    var hasContent = rowValues.some(function(cell) { return String(cell || '').trim() !== ''; });
     if (hasContent) {
-      rowsPayload.push({
-        row: FIRST_DATA_ROW + i,
-        values: rowValues,
-      });
+      rowsPayload.push({ row: FIRST_DATA_ROW + i, values: rowValues });
     }
   }
 
@@ -378,27 +288,71 @@ function syncAllRowsToWeb() {
   SpreadsheetApp.getActiveSpreadsheet().toast('Đã gửi ' + rowsPayload.length + ' dòng lên Web thành công.', 'Đồng bộ hoàn tất');
 }
 
+/**
+ * Trigger tự động khi người dùng sửa trên Sheet
+ */
+function onEditInstallable(e) {
+  if (!e || !e.range) return;
+  var sheet = e.range.getSheet();
+  var row = e.range.getRow();
+  var col = e.range.getColumn();
+
+  if (row < FIRST_DATA_ROW) return;
+  var sheetName = sheet.getName();
+  if (sheetName !== TAB_NAME && sheetName !== 'Trang tính1') return;
+
+  // Nếu người dùng nhập/sửa ở Cột D (Tên trường): Tự động gom nhóm lại
+  if (col === 4) {
+    autoSortGroupPartners();
+  }
+
+  var lastCol = Math.max(sheet.getLastColumn(), 17);
+  var values = sheet.getRange(row, 1, 1, lastCol).getDisplayValues()[0];
+  var hasContent = values.some(function(cell) { return String(cell || '').trim() !== ''; });
+  if (!hasContent) return;
+
+  sendToWebhook_({
+    row: row,
+    values: values,
+    edited_at: new Date().toISOString(),
+    sheet_name: sheetName,
+  });
+}
+
 function sendToWebhook_(payload) {
   var url = getWebhookUrl_();
   var secret = getWebhookSecret_();
-  var headers = {
-    'Content-Type': 'application/json',
-  };
-  if (secret) {
-    headers['X-Sheet-Webhook-Secret'] = secret;
-  }
-
-  var options = {
-    method: 'post',
-    headers: headers,
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true,
-  };
+  var headers = { 'Content-Type': 'application/json' };
+  if (secret) headers['X-Sheet-Webhook-Secret'] = secret;
 
   try {
-    var response = UrlFetchApp.fetch(url, options);
-    Logger.log('Webhook kết quả: ' + response.getContentText());
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      headers: headers,
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+    });
   } catch (error) {
-    Logger.log('Lỗi kết nối Webhook: ' + error);
+    Logger.log('Lỗi webhook: ' + error);
   }
+}
+
+/**
+ * Cài đặt Trigger onEdit tự động
+ */
+function setupAutoTrigger() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'onEditInstallable') {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+
+  ScriptApp.newTrigger('onEditInstallable')
+    .forSpreadsheet(ss)
+    .onEdit()
+    .create();
+
+  ss.toast('⚡ Đã kích hoạt Trigger tự động onEdit!', 'Cài đặt Trigger', 5);
 }

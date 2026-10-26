@@ -168,8 +168,8 @@ function setupSheetFormatAndData_(sheet, payload) {
   }
 
   sheet.getRange(1, 1, sheet.getMaxRows(), numCols).clear({ contentsOnly: false, formatOnly: true });
+  sheet.setFrozenColumns(0);
   sheet.setFrozenRows(2);
-  sheet.setFrozenColumns(4);
 
   sheet.setRowHeight(1, 38);
   sheet.setRowHeight(2, 32);

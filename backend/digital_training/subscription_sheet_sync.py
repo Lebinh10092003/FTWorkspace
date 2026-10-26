@@ -527,17 +527,16 @@ def export_subscriptions_to_sheet(*, force: bool = False, google_token: Optional
     num_cols = len(HEADERS)
     total_rows = max(len(rows_to_write), 10)
     format_requests: List[Dict[str, Any]] = [
-        # 5.1. Đóng băng 2 hàng đầu và 4 cột đầu (A-D)
+        # 5.1. Đóng băng 2 hàng đầu (Banner và Headers)
         {
             "updateSheetProperties": {
                 "properties": {
                     "sheetId": sheet_id,
                     "gridProperties": {
                         "frozenRowCount": 2,
-                        "frozenColumnCount": 4,
                     },
                 },
-                "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+                "fields": "gridProperties.frozenRowCount",
             }
         },
         # 5.2. Gộp ô Banner A1:Q1
