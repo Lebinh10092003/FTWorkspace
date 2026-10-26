@@ -9,6 +9,7 @@ import hmac
 import json
 import logging
 import os
+import secrets
 import sys
 import unicodedata
 import uuid
@@ -60,23 +61,87 @@ def _forbidden():
     return Response({"error": "Bạn không có quyền thay đổi dữ liệu Đào tạo số."}, status=status.HTTP_403_FORBIDDEN)
 
 
-def _is_sheet_webhook_authorized(request) -> bool:
-    expected_secret = (
+_PLACEHOLDER_WEBHOOK_SECRETS = {
+    "",
+    "replace-with-a-long-random-value",
+    "replace-with-a-different-long-random-value",
+}
+
+
+def _get_or_create_subscription_webhook_secret() -> str:
+    from authentication.models import SystemConfig
+    from .subscription_sheet_sync import SYNC_CONFIG_KEY
+
+    env_secret = (
         os.getenv("SUBSCRIPTION_SHEET_WEBHOOK_SECRET")
-        or os.getenv("SHEET_WEBHOOK_SECRET")
         or getattr(settings, "SUBSCRIPTION_SHEET_WEBHOOK_SECRET", "")
+        or os.getenv("SHEET_WEBHOOK_SECRET")
         or getattr(settings, "SHEET_WEBHOOK_SECRET", "")
-    )
-    provided_secret = (
+        or ""
+    ).strip()
+    if env_secret in _PLACEHOLDER_WEBHOOK_SECRETS:
+        env_secret = ""
+
+    try:
+        config_obj, _ = SystemConfig.objects.get_or_create(key=SYNC_CONFIG_KEY)
+        config_data = dict(config_obj.data or {})
+        stored_secret = str(config_data.get("webhookSecret") or "").strip()
+        if stored_secret and stored_secret not in _PLACEHOLDER_WEBHOOK_SECRETS:
+            return stored_secret
+        generated = env_secret or secrets.token_urlsafe(24)
+        config_data["webhookSecret"] = generated
+        config_obj.data = config_data
+        config_obj.save(update_fields=["data"])
+        return generated
+    except Exception:
+        return env_secret
+
+
+def _get_valid_subscription_webhook_secrets() -> list[str]:
+    from authentication.models import SystemConfig
+    from .subscription_sheet_sync import SYNC_CONFIG_KEY
+
+    candidates = [
+        os.getenv("SUBSCRIPTION_SHEET_WEBHOOK_SECRET", ""),
+        getattr(settings, "SUBSCRIPTION_SHEET_WEBHOOK_SECRET", ""),
+        os.getenv("SHEET_WEBHOOK_SECRET", ""),
+        getattr(settings, "SHEET_WEBHOOK_SECRET", ""),
+    ]
+    try:
+        config_obj = SystemConfig.objects.filter(key=SYNC_CONFIG_KEY).first()
+        if config_obj and isinstance(config_obj.data, dict):
+            candidates.append(str(config_obj.data.get("webhookSecret") or ""))
+    except Exception:
+        pass
+
+    valid: list[str] = []
+    for item in candidates:
+        cleaned = str(item or "").strip()
+        if cleaned and cleaned not in _PLACEHOLDER_WEBHOOK_SECRETS and cleaned not in valid:
+            valid.append(cleaned)
+    return valid
+
+
+def _is_sheet_webhook_authorized(request) -> bool:
+    data = request.data if isinstance(getattr(request, "data", None), dict) else {}
+    query_secret = request.query_params.get("secret", "") if hasattr(request, "query_params") else ""
+    provided_secret = str(
         request.headers.get("X-Sheet-Webhook-Secret")
         or request.headers.get("X-Webhook-Secret")
         or request.META.get("HTTP_X_SHEET_WEBHOOK_SECRET")
         or request.META.get("HTTP_X_WEBHOOK_SECRET")
+        or data.get("webhook_secret")
+        or data.get("secret")
+        or query_secret
         or ""
-    )
-    if expected_secret and provided_secret and hmac.compare_digest(provided_secret.strip(), expected_secret.strip()):
-        return True
-    return _can_manage(request)
+    ).strip()
+
+    if provided_secret:
+        for expected_secret in _get_valid_subscription_webhook_secrets():
+            if hmac.compare_digest(provided_secret, expected_secret):
+                return True
+
+    return IsAuthenticated().has_permission(request, None) or _can_manage(request)
 
 
 def _actor(request):
@@ -640,6 +705,12 @@ def subscription_sheet_webhook(request):
     from .subscription_sheet_sync import import_subscriptions_from_sheet, ingest_subscription_row
     data = request.data if isinstance(request.data, dict) else {}
 
+    if data.get("test"):
+        return Response({
+            "success": True,
+            "message": "Cổng Webhook đang hoạt động tốt (sẵn sàng nhận dữ liệu tự động từ Apps Script).",
+        })
+
     # Kiểm tra tên tab nếu webhook gửi lên (tránh import nhầm tab khác)
     sheet_name = str(data.get("sheet_name") or "").strip()
     if sheet_name and sheet_name not in {"Dịch vụ khách hàng", "Trang tính1", "Theo dõi dịch vụ"}:
@@ -686,7 +757,9 @@ def subscription_sheet_config_view(request):
     )
 
     config_obj, _ = SystemConfig.objects.get_or_create(key=SYNC_CONFIG_KEY)
-    config_data = config_obj.data or {}
+    config_data = dict(config_obj.data or {})
+    webhook_secret = _get_or_create_subscription_webhook_secret()
+    config_data.setdefault("webhookSecret", webhook_secret)
 
     if request.method == "POST":
         spreadsheet_input = str(request.data.get("spreadsheetId") or "").strip()
@@ -701,9 +774,15 @@ def subscription_sheet_config_view(request):
         if "tabTitle" in request.data:
             config_data["tabTitle"] = str(request.data.get("tabTitle") or "").strip()
 
+        if "webhookSecret" in request.data:
+            raw_secret = str(request.data.get("webhookSecret") or "").strip()
+            if raw_secret:
+                config_data["webhookSecret"] = raw_secret
+                webhook_secret = raw_secret
+
         config_data["updatedAt"] = timezone.now().isoformat()
         config_obj.data = config_data
-        config_obj.save(update_fields=["data", "updated_at"])
+        config_obj.save(update_fields=["data"])
 
         # Test connection immediately
         token, final_cfg, sa_email = get_sync_credentials()
@@ -740,6 +819,7 @@ def subscription_sheet_config_view(request):
                 "hasServiceAccount": bool(config_data.get("googleServiceAccountJson") or final_cfg.get("googleServiceAccountJson")),
                 "serviceAccountEmail": sa_email,
                 "tabTitle": config_data.get("tabTitle") or "Trang tính1",
+                "webhookSecret": webhook_secret,
             },
             "test": test_result,
         })
@@ -747,6 +827,7 @@ def subscription_sheet_config_view(request):
     # GET
     token, final_cfg, sa_email = get_sync_credentials()
     current_id = extract_spreadsheet_id(config_data.get("spreadsheetId") or "") or DEFAULT_SPREADSHEET_ID
+    can_read_secret = IsAuthenticated().has_permission(request, None) or _can_manage(request)
     return Response({
         "spreadsheetId": current_id,
         "spreadsheetUrl": f"https://docs.google.com/spreadsheets/d/{current_id}/edit",
@@ -754,6 +835,7 @@ def subscription_sheet_config_view(request):
         "serviceAccountEmail": sa_email,
         "tabTitle": config_data.get("tabTitle") or "Trang tính1",
         "webhookUrl": "/api/digital-training/subscriptions/sheet-webhook",
+        "webhookSecret": webhook_secret if can_read_secret else "",
         "updatedAt": config_data.get("updatedAt"),
     })
 

@@ -15,6 +15,7 @@ var FIRST_DATA_ROW = 3;
 var TAB_NAME = 'Dịch vụ khách hàng';
 var WEBHOOK_URL_DEFAULT = 'https://workspace.fermat.vn/api/digital-training/subscriptions/sheet-webhook';
 var SYNC_URL_DEFAULT = 'https://workspace.fermat.vn/api/digital-training/subscriptions/sheet-sync';
+var WEBHOOK_SECRET_DEFAULT = '';
 
 var HEADERS = [
   'STT',                       // A (1)
@@ -78,7 +79,7 @@ function getWebhookUrl_() {
 
 function getWebhookSecret_() {
   var props = PropertiesService.getScriptProperties();
-  return props.getProperty('WEBHOOK_SECRET') || '';
+  return props.getProperty('WEBHOOK_SECRET') || WEBHOOK_SECRET_DEFAULT || '';
 }
 
 function getSyncUrl_() {

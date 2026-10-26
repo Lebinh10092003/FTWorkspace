@@ -1281,6 +1281,64 @@ class SubscriptionSheetSyncTests(TestCase):
         res3 = self.client.get("/api/digital-training/subscriptions/sheet-sync")
         self.assertEqual(res3.status_code, 200)
 
+    def test_webhook_test_button_and_system_config_secret(self):
+        # 1. Nút Test Webhook từ giao diện Cài đặt sheet (đã đăng nhập) hoạt động ngay
+        res_auth_test = self.client.post(
+            "/api/digital-training/subscriptions/sheet-webhook",
+            {"test": True, "row": 3, "values": []},
+            format="json",
+        )
+        self.assertEqual(res_auth_test.status_code, 200)
+        self.assertTrue(res_auth_test.data.get("success"))
+
+        # 2. Lấy cấu hình sheet-config tự sinh webhookSecret và Apps Script dùng được ngay
+        cfg_res = self.client.get("/api/digital-training/subscriptions/sheet-config")
+        self.assertEqual(cfg_res.status_code, 200)
+        secret = cfg_res.data.get("webhookSecret")
+        self.assertTrue(bool(secret))
+
+        anon_client = APIClient()
+        res_anon_with_cfg_secret = anon_client.post(
+            "/api/digital-training/subscriptions/sheet-webhook",
+            {"test": True, "row": 3, "values": []},
+            format="json",
+            HTTP_X_SHEET_WEBHOOK_SECRET=secret,
+        )
+        self.assertEqual(res_anon_with_cfg_secret.status_code, 200)
+
+        # 3. Không có secret và chưa đăng nhập thì bị từ chối
+        res_anon_no_secret = anon_client.post(
+            "/api/digital-training/subscriptions/sheet-webhook",
+            {"test": True},
+            format="json",
+        )
+        self.assertEqual(res_anon_no_secret.status_code, 401)
+
+    def test_webhook_test_button_for_employee_with_module_access(self):
+        employee = UserProfile.objects.create(
+            email="staff@example.com", name="Staff", role="EMPLOYEE", access_modules=["digital-training"],
+        )
+        client = APIClient()
+        client.force_authenticate(employee)
+        res = client.post("/api/digital-training/subscriptions/sheet-webhook", {"test": True}, format="json")
+        self.assertEqual(res.status_code, 200)
+
+    def test_save_sheet_config_does_not_crash(self):
+        from authentication.models import SystemConfig
+        from .subscription_sheet_sync import SYNC_CONFIG_KEY
+
+        res = self.client.post(
+            "/api/digital-training/subscriptions/sheet-config",
+            {"spreadsheetId": "1ENU0abZu6hCiVz-u7ypMLmLzudzMewKF_6s-6NJ26qk", "tabTitle": "Dịch vụ khách hàng"},
+            format="json",
+        )
+        self.assertNotEqual(res.status_code, 500)
+        self.assertTrue(res.data.get("success"))
+        self.assertTrue(res.data["config"]["webhookSecret"])
+        saved = SystemConfig.objects.get(key=SYNC_CONFIG_KEY).data
+        self.assertEqual(saved.get("tabTitle"), "Dịch vụ khách hàng")
+        self.assertEqual(saved.get("webhookSecret"), res.data["config"]["webhookSecret"])
+
     def test_subscription_outbox_queue(self):
         from .models import SubscriptionSheetOutbox
         from .subscription_queue import enqueue_subscription, enqueue_subscription_deletion
