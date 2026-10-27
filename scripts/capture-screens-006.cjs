@@ -512,9 +512,27 @@ async function run() {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            metrics: { totalFollowers: 12500, totalPosts: 48, engagementRate: 4.8 },
+            kpis: {
+              postsCount: 12,
+              reactions: 450,
+              comments: 89,
+              shares: 34,
+              views: 12500,
+              reach: 9800,
+              totalEngagement: 573,
+              engagementRate: 4.8,
+              followers: 15400,
+              followersAvailable: true,
+            },
             channels: [{ id: 1, name: 'Fanpage Fermat', platform: 'facebook' }],
-            channelStats: [],
+            channelStats: [
+              { channelName: 'Fanpage Fermat', postsCount: 12, reactions: 450, comments: 89, shares: 34, views: 12500, engagementRate: 4.8 },
+            ],
+            trends: [
+              { date: '2026-10-25', engagement: 120, views: 2400, postsCount: 3, engagementRate: 5.0, 'Fanpage Fermat_likes': 80, 'Fanpage Fermat_comments': 25, 'Fanpage Fermat_shares': 15 },
+              { date: '2026-10-26', engagement: 210, views: 4200, postsCount: 4, engagementRate: 5.0, 'Fanpage Fermat_likes': 140, 'Fanpage Fermat_comments': 45, 'Fanpage Fermat_shares': 25 },
+              { date: '2026-10-27', engagement: 180, views: 3600, postsCount: 3, engagementRate: 5.0, 'Fanpage Fermat_likes': 120, 'Fanpage Fermat_comments': 40, 'Fanpage Fermat_shares': 20 },
+            ],
             topPosts: [],
             topViewedPosts: [],
             contentTypes: [],
@@ -575,7 +593,7 @@ async function run() {
     });
 
     await page.goto(`http://127.0.0.1:${PORT}${scr.path}`, { waitUntil: 'load' });
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(1200);
 
     const pageText = await page.evaluate(() => document.body.innerText);
     const hasExpected = scr.expectedText ? pageText.toLowerCase().includes(scr.expectedText.toLowerCase()) : true;
@@ -586,6 +604,27 @@ async function run() {
       innerWidth: window.innerWidth,
       ok: document.documentElement.scrollWidth <= window.innerWidth,
     }));
+
+    // Touch targets < 44px check
+    const touchTargetStats = await page.evaluate(() => {
+      const interactives = Array.from(document.querySelectorAll('button, a[href], input:not([type="hidden"]), select, textarea, [role="button"]'));
+      let smallCount = 0;
+      let totalCount = 0;
+      const smallItems = [];
+      interactives.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || rect.width === 0 || rect.height === 0) return;
+        totalCount++;
+        if (rect.width < 44 || rect.height < 44) {
+          smallCount++;
+          if (smallItems.length < 5) {
+            smallItems.push(`${el.tagName.toLowerCase()}.${Array.from(el.classList).slice(0, 2).join('.')}(${Math.round(rect.width)}x${Math.round(rect.height)})`);
+          }
+        }
+      });
+      return { totalCount, smallCount, smallItems };
+    });
 
     // Desktop rail check on mobile (<1024px)
     const railVis = await page.evaluate(() => {
@@ -603,9 +642,214 @@ async function run() {
       fs.writeFileSync(path.join(dir, filename), imgBuf);
     }
 
-    console.log(`[Captured ${mode}] ${filename}: hash=${imgHash.slice(0, 8)} | expectedText="${scr.expectedText}": ${hasExpected} | overflowOk=${overflowCheck.ok} (${overflowCheck.scrollWidth}/${overflowCheck.innerWidth}) | railVisMobile=${railVis}`);
+    console.log(`[Captured ${mode}] ${filename}: hash=${imgHash.slice(0, 8)} | expectedText="${scr.expectedText}": ${hasExpected} | overflowOk=${overflowCheck.ok} (${overflowCheck.scrollWidth}/${overflowCheck.innerWidth}) | railVisMobile=${railVis} | smallTargets=${touchTargetStats.smallCount}/${touchTargetStats.totalCount}`);
 
     await context.close();
+  }
+
+  // PART C: CAPTURE DARK MODE SCREENS
+  console.log(`\n=== CHỤP ẢNH CHẾ ĐỘ TỐI (DARK MODE) ===\n`);
+  const darkScreens = [
+    {
+      filename: 'partC-desktop-1440-home-dark.png',
+      path: '/',
+      width: 1440,
+      height: 900,
+      isMobile: false,
+    },
+    {
+      filename: 'partC-mobile-390-home-dark.png',
+      path: '/',
+      width: 390,
+      height: 844,
+      isMobile: true,
+    },
+    {
+      filename: 'partC-mobile-390-work-schedule-dark.png',
+      path: '/work-schedule',
+      width: 390,
+      height: 844,
+      isMobile: true,
+    },
+  ];
+
+  for (const scr of darkScreens) {
+    const context = await browser.newContext({
+      viewport: { width: scr.width, height: scr.height },
+      deviceScaleFactor: 1.25,
+      isMobile: Boolean(scr.isMobile),
+      hasTouch: Boolean(scr.isMobile),
+    });
+
+    const page = await context.newPage();
+    await page.route(/(fonts\.googleapis\.com|fonts\.gstatic\.com)/, route => route.abort());
+
+    await page.route('**/api/**', async route => {
+      const url = route.request().url();
+      if (url.includes('/api/auth/me')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            email: 'binhlt@fermat.vn',
+            name: 'Lê Bình',
+            displayName: 'Lê Bình',
+            role: 'ADMIN',
+            accessModules: ['all', 'workspace', 'work-schedule', 'attendance', 'weekly-report'],
+            departments: [{ name: 'Công nghệ' }],
+            jobTitle: { name: 'Kỹ sư phần mềm' },
+          }),
+        });
+      }
+      if (url.includes('/api/work-schedule/items') || url.includes('/api/work-schedule/tasks')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ items: realMockItems, tasks: realMockItems }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, items: [], list: [] }),
+      });
+    });
+
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'ft_auth_session',
+        JSON.stringify({
+          token: 'mock-token',
+          user: {
+            email: 'binhlt@fermat.vn',
+            displayName: 'Lê Bình',
+            accessModules: ['all', 'workspace', 'work-schedule', 'attendance'],
+          },
+          role: 'ADMIN',
+        })
+      );
+      localStorage.setItem('ft-workspace-appearance-v1', JSON.stringify({ theme: 'dark', customColor: '#8b5cf6', backgroundImage: '' }));
+      sessionStorage.setItem('timesheet_dismiss_yesterday', '1');
+    });
+
+    await page.goto(`http://127.0.0.1:${PORT}${scr.path}`, { waitUntil: 'load' });
+    await page.waitForTimeout(1200);
+
+    const imgBuf = await page.screenshot({ fullPage: false });
+    const imgHash = crypto.createHash('md5').update(imgBuf).digest('hex');
+
+    for (const dir of OUTPUT_DIRS) {
+      fs.writeFileSync(path.join(dir, scr.filename), imgBuf);
+    }
+    console.log(`[Captured Dark Mode] ${scr.filename}: hash=${imgHash.slice(0, 8)}`);
+    await context.close();
+  }
+
+  // PART C: 6 BREAKPOINTS OVERFLOW AUDIT
+  console.log(`\n=== KIỂM TRA THƯỚC ĐO CUỘN NGANG TRÊN 6 BREAKPOINT ===\n`);
+  const breakpoints = [360, 390, 768, 1024, 1280, 1440];
+  const auditRoutes = [
+    { name: 'Trang chủ', path: '/' },
+    { name: 'Lịch công tác', path: '/work-schedule' },
+    { name: 'Chấm công', path: '/attendance' },
+    { name: 'Báo cáo tuần', path: '/weekly-report' },
+    { name: 'Đề xuất kinh phí', path: '/funding-proposal' },
+    { name: 'Thiết kế email', path: '/communication-tools/email' },
+    { name: 'Quản lý nhân viên', path: '/account-management' },
+    { name: 'Báo cáo thu chi', path: '/finance-report' },
+    { name: 'Tạo mã QR', path: '/qr-generator' },
+    { name: 'Đào tạo số', path: '/digital-training' },
+    { name: 'Truyền thông', path: '/social-dashboard' },
+    { name: 'Khảo thí', path: '/examination' },
+  ];
+
+  const auditResults = [];
+
+  for (const bp of breakpoints) {
+    const isBpMobile = bp < 1024;
+    const context = await browser.newContext({
+      viewport: { width: bp, height: 800 },
+      isMobile: isBpMobile,
+      hasTouch: isBpMobile,
+    });
+    const page = await context.newPage();
+    await page.route(/(fonts\.googleapis\.com|fonts\.gstatic\.com)/, route => route.abort());
+    await page.route('**/api/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, items: [], list: [] }) }));
+    await page.addInitScript(() => {
+      localStorage.setItem('ft_auth_session', JSON.stringify({
+        token: 'mock-token',
+        user: { email: 'binhlt@fermat.vn', displayName: 'Lê Bình', accessModules: ['all'] },
+        role: 'ADMIN',
+      }));
+      sessionStorage.setItem('timesheet_dismiss_yesterday', '1');
+    });
+
+    for (const r of auditRoutes) {
+      await page.goto(`http://127.0.0.1:${PORT}${r.path}`, { waitUntil: 'load' });
+      await page.waitForTimeout(400);
+
+      const check = await page.evaluate((width) => {
+        const scrollW = document.documentElement.scrollWidth;
+        const innerW = window.innerWidth;
+        const desktopRail = document.querySelector('.ft-desktop-rail');
+        const railVis = Boolean(desktopRail && window.getComputedStyle(desktopRail).display !== 'none' && desktopRail.getBoundingClientRect().width > 0);
+        return {
+          scrollWidth: scrollW,
+          innerWidth: innerW,
+          overflow: scrollW > innerW,
+          railHiddenOnMobile: width < 1024 ? !railVis : true,
+        };
+      }, bp);
+
+      auditResults.push({
+        bp,
+        route: r.name,
+        path: r.path,
+        ...check,
+      });
+    }
+    await context.close();
+  }
+
+  const failedOverflow = auditResults.filter(r => r.overflow);
+  const failedRail = auditResults.filter(r => !r.railHiddenOnMobile);
+
+  console.log(`\nAudit 6 breakpoints: Tổng số lượt test: ${auditResults.length}`);
+  console.log(`Lỗi tràn ngang (scrollWidth > innerWidth): ${failedOverflow.length}`);
+  if (failedOverflow.length > 0) {
+    failedOverflow.forEach(f => console.log(`  [OVERFLOW] BP ${f.bp}px | ${f.route}: scrollWidth=${f.scrollWidth} > innerWidth=${f.innerWidth}`));
+  } else {
+    console.log(`  => ĐẠT CHUẨN 100%: Toàn bộ 12 tuyến đường không bị tràn ngang trên cả 6 breakpoint!`);
+  }
+
+  console.log(`Lỗi thanh bên desktop hiện trên mobile (<1024px): ${failedRail.length}`);
+  if (failedRail.length > 0) {
+    failedRail.forEach(f => console.log(`  [RAIL LEAK] BP ${f.bp}px | ${f.route}`));
+  } else {
+    console.log(`  => ĐẠT CHUẨN 100%: Thanh bên desktop ẩn hoàn toàn dưới 1024px!`);
+  }
+
+  // BẢNG SO SÁNH MD5 HASH BEFORE VS AFTER
+  console.log(`\n=== BẢNG SO SÁNH MÃ BĂM (MD5 HASH) BEFORE vs AFTER ===\n`);
+  const checkDir = OUTPUT_DIRS[0];
+  const tableRows = [];
+  for (const scr of screensToCapture) {
+    const beforeFile = `${scr.fileBase}-before.png`;
+    const afterFile = `${scr.fileBase}-after.png`;
+    const beforeP = path.join(checkDir, beforeFile);
+    const afterP = path.join(checkDir, afterFile);
+
+    const bHash = fs.existsSync(beforeP) ? crypto.createHash('md5').update(fs.readFileSync(beforeP)).digest('hex').slice(0, 8) : 'N/A';
+    const aHash = fs.existsSync(afterP) ? crypto.createHash('md5').update(fs.readFileSync(afterP)).digest('hex').slice(0, 8) : 'N/A';
+    const diff = bHash !== aHash && bHash !== 'N/A' && aHash !== 'N/A';
+    tableRows.push({
+      screen: scr.id,
+      fileBase: scr.fileBase,
+      beforeHash: bHash,
+      afterHash: aHash,
+      isDifferent: diff,
+    });
+    console.log(`| ${scr.id} | ${bHash} | ${aHash} | ${diff ? 'ĐÃ ĐỔI (ĐẠT)' : 'TRÙNG (CẦN XEM LẠI)'} |`);
   }
 
   await browser.close();
