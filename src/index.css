@@ -2565,6 +2565,12 @@ body.workspace-app-theme .bndc-tree-name { color: var(--workspace-surface-text);
   background: #eef2f7;
   padding: 1rem;
 }
+@media (max-width: 639px) {
+  .fp-viewport {
+    padding: 0.5rem;
+    border-radius: 0.75rem;
+  }
+}
 .fp-scale { transform-origin: top left; }
 
 .fp-page {

@@ -356,7 +356,7 @@ export default function Dashboard({ idToken, googleAccessToken, channels, onOpen
       container.removeEventListener('scroll', updateRecentPostsNavigation);
       observer.disconnect();
     };
-  }, [data?.topPosts.length]);
+  }, [data?.topPosts?.length]);
 
   useEffect(() => () => stopRecentPostsScroll(), []);
 

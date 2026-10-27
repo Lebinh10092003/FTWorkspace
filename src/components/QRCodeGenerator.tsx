@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Check, Clipboard, Download, ExternalLink, FileImage, Link2, LockKeyhole, QrCode, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, Clipboard, Download, ExternalLink, FileCode, FileImage, Link2, LockKeyhole, QrCode, ShieldCheck, Upload, X } from 'lucide-react';
 import ModuleShellHeader from './layout/ModuleShellHeader';
 import type { ModuleNavItem } from '../config/workspaceNavigation';
 import QRCode from 'qrcode';
@@ -61,10 +61,13 @@ function triggerDownload(dataUrl: string, filename: string) {
 
 export default function QRCodeGenerator({ onBackToWorkspace, backLabel = 'Workspace', navItems = [], onNavSelect }: QRCodeGeneratorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [rawUrl, setRawUrl] = useState('');
   const [title, setTitle] = useState('');
   const [purpose, setPurpose] = useState('Khảo sát tập huấn');
   const [foreground, setForeground] = useState('#102A43');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoName, setLogoName] = useState('');
   const [previewUrl, setPreviewUrl] = useState('');
   const [renderError, setRenderError] = useState('');
   const [notice, setNotice] = useState('');
@@ -141,16 +144,80 @@ export default function QRCodeGenerator({ onBackToWorkspace, backLabel = 'Worksp
     if (!canGenerate) { const context = canvas.getContext('2d'); if (context) context.clearRect(0, 0, canvas.width, canvas.height); setPreviewUrl(''); setRenderError(''); return; }
     setPreviewUrl('');
     QRCode.toCanvas(canvas, effectiveUrl, { width: 960, margin: 4, errorCorrectionLevel: 'H', color: { dark: foreground, light: '#FFFFFF' } })
-      .then(() => { if (!cancelled) { setPreviewUrl(canvas.toDataURL('image/png')); setRenderError(''); } })
+      .then(async () => {
+        if (cancelled) return;
+        if (logoUrl) {
+          try {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            await new Promise<void>((resolve, reject) => {
+              img.onload = () => resolve();
+              img.onerror = () => reject();
+              img.src = logoUrl;
+            });
+            if (cancelled) return;
+            const context = canvas.getContext('2d');
+            if (context) {
+              const logoSize = Math.floor(canvas.width * 0.22);
+              const logoX = (canvas.width - logoSize) / 2;
+              const logoY = (canvas.height - logoSize) / 2;
+              const pad = Math.floor(logoSize * 0.12);
+              context.fillStyle = '#FFFFFF';
+              roundedRect(context, logoX - pad, logoY - pad, logoSize + pad * 2, logoSize + pad * 2, Math.floor(logoSize * 0.2));
+              context.fill();
+              context.drawImage(img, logoX, logoY, logoSize, logoSize);
+            }
+          } catch {
+            // bỏ qua lỗi ảnh logo để vẫn giữ QR code
+          }
+        }
+        if (!cancelled) {
+          setPreviewUrl(canvas.toDataURL('image/png'));
+          setRenderError('');
+        }
+      })
       .catch(() => { if (!cancelled) { setPreviewUrl(''); setRenderError('Không thể tạo mã QR từ đường dẫn này.'); } });
     return () => { cancelled = true; };
-  }, [canGenerate, effectiveUrl, foreground]);
+  }, [canGenerate, effectiveUrl, foreground, logoUrl]);
 
   useEffect(() => { if (!notice) return; const timeout = window.setTimeout(() => setNotice(''), 2600); return () => window.clearTimeout(timeout); }, [notice]);
+
+  const handleLogoUpload = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setNotice('Vui lòng chọn file hình ảnh (PNG, JPG, SVG...).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setLogoUrl(e.target?.result as string);
+      setLogoName(file.name);
+      setNotice(`Đã thêm logo: ${file.name}`);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const downloadQR = () => {
     const canvas = canvasRef.current; if (!canvas || !canGenerate) return;
     triggerDownload(canvas.toDataURL('image/png'), `${safeFilename(title || effectiveHostname)}-qr.png`); setNotice('Đã tải mã QR PNG chất lượng cao.');
+  };
+
+  const downloadSVG = async () => {
+    if (!canGenerate) return;
+    try {
+      const svgString = await QRCode.toString(effectiveUrl, {
+        type: 'svg',
+        margin: 4,
+        errorCorrectionLevel: 'H',
+        color: { dark: foreground, light: '#FFFFFF' },
+      });
+      const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      triggerDownload(url, `${safeFilename(title || effectiveHostname)}-qr.svg`);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice('Đã tải mã QR vector (SVG).');
+    } catch {
+      setNotice('Không thể tạo file SVG.');
+    }
   };
 
   const copyQR = async () => {
@@ -281,8 +348,91 @@ export default function QRCodeGenerator({ onBackToWorkspace, backLabel = 'Worksp
               </div>
               <fieldset>
                 <legend className="mb-2 text-sm font-bold">Màu mã QR</legend>
-                <div className="flex flex-wrap gap-2.5">{colors.map(color => <button key={color.value} type="button" onClick={() => setForeground(color.value)} className={`inline-flex items-center gap-2 border px-3 py-2 text-xs font-bold transition ${foreground === color.value ? 'border-[#de6b35] bg-[#fff5ed] text-[#a94720]' : 'border-[#102A43]/15 bg-white text-[#52677a]'}`} aria-pressed={foreground === color.value}><span className="h-3.5 w-3.5 rounded-full" style={{ backgroundColor: color.value }} />{color.label}</button>)}</div>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {colors.map(color => (
+                    <button
+                      key={color.value}
+                      type="button"
+                      onClick={() => setForeground(color.value)}
+                      className={`inline-flex min-h-[44px] items-center gap-2 border px-4 py-2.5 text-xs font-bold transition ${foreground === color.value ? 'border-[#de6b35] bg-[#fff5ed] text-[#a94720]' : 'border-[#102A43]/15 bg-white text-[#52677a]'}`}
+                      aria-pressed={foreground === color.value}
+                    >
+                      <span className="h-4 w-4 rounded-full border border-black/10" style={{ backgroundColor: color.value }} />
+                      {color.label}
+                    </button>
+                  ))}
+                  <label className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 border border-[#102A43]/15 bg-white px-3.5 py-2.5 text-xs font-bold text-[#52677a] hover:bg-slate-50">
+                    <input
+                      type="color"
+                      value={foreground}
+                      onChange={e => setForeground(e.target.value)}
+                      className="h-6 w-6 cursor-pointer border-0 bg-transparent p-0"
+                      title="Tùy chọn màu khác"
+                    />
+                    <span>Tùy chỉnh</span>
+                  </label>
+                </div>
               </fieldset>
+
+              <div className="border border-[#102A43]/10 bg-[#fbfaf7] p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold">Logo chèn giữa mã QR (tùy chọn)</span>
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => { setLogoUrl(null); setLogoName(''); }}
+                      className="inline-flex min-h-[44px] items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-700"
+                    >
+                      <X className="h-4 w-4" />Gỡ logo
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handleLogoUpload(file);
+                  }}
+                />
+                <div
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) handleLogoUpload(file);
+                  }}
+                  className="mt-3 flex flex-col items-center justify-center border-2 border-dashed border-[#102A43]/20 bg-white p-5 text-center transition hover:border-[#de6b35]"
+                >
+                  {logoUrl ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <img src={logoUrl} alt="Logo" className="h-12 w-12 object-contain" />
+                      <span className="text-xs font-medium text-slate-700">{logoName || 'Logo đã chọn'}</span>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="mt-1 inline-flex min-h-[44px] items-center gap-2 border border-[#102A43]/15 bg-[#fbfaf7] px-4 py-2 text-xs font-bold text-[#102A43] hover:bg-slate-100"
+                      >
+                        <Upload className="h-4 w-4" />Đổi logo khác
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <Upload className="h-6 w-6 text-[#718294]" />
+                      <p className="text-xs font-medium text-[#52677a]">Kéo thả file ảnh logo vào đây hoặc</p>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="inline-flex min-h-[44px] items-center gap-2 border border-[#102A43]/20 bg-white px-4 py-2 text-xs font-bold text-[#102A43] shadow-sm hover:bg-slate-50"
+                      >
+                        <FileImage className="h-4 w-4 text-[#de6b35]" />Chọn ảnh từ thiết bị
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="mt-7 border-t border-[#102A43]/10 pt-6">
               <div className="flex items-center justify-between gap-5">
@@ -333,13 +483,30 @@ export default function QRCodeGenerator({ onBackToWorkspace, backLabel = 'Worksp
               <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
               {renderError && <p className="mt-3 text-center text-xs font-semibold text-rose-300">{renderError}</p>}
               <div className="mt-5 min-h-12 border border-white/10 bg-white/[0.06] px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">URL được mã hóa trong QR</p>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-white/45">URL được mã hóa trong QR</p>
                 <p className="mt-1 break-all text-xs font-bold leading-5">{effectiveUrl || assessment.normalizedUrl || 'Chưa có đường dẫn'}</p>
               </div>
-              <button type="button" onClick={downloadQR} disabled={!canGenerate} className="mt-4 inline-flex w-full items-center justify-center gap-2 bg-[#f4a261] px-4 py-3.5 text-sm font-extrabold text-[#102A43] transition hover:bg-[#ffb37a] disabled:cursor-not-allowed disabled:opacity-40"><Download className="h-4 w-4" />Tải mã QR (PNG)</button>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={downloadQR}
+                  disabled={!canGenerate}
+                  className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 bg-[#f4a261] px-4 py-3 text-xs sm:text-sm font-extrabold text-[#102A43] transition hover:bg-[#ffb37a] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Download className="h-4 w-4" />Tải PNG
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadSVG}
+                  disabled={!canGenerate}
+                  className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 border border-[#f4a261] bg-transparent px-4 py-3 text-xs sm:text-sm font-extrabold text-[#f4a261] transition hover:bg-[#f4a261]/10 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <FileCode className="h-4 w-4" />Tải SVG
+                </button>
+              </div>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <button type="button" onClick={copyQR} disabled={!canGenerate} className="inline-flex items-center justify-center gap-2 border border-white/15 px-3 py-3 text-xs font-bold transition hover:bg-white/10 disabled:opacity-35"><Clipboard className="h-4 w-4" />Sao chép ảnh</button>
-                <button type="button" onClick={downloadPoster} disabled={!canGenerate} className="inline-flex items-center justify-center gap-2 border border-white/15 px-3 py-3 text-xs font-bold transition hover:bg-white/10 disabled:opacity-35"><FileImage className="h-4 w-4" />Tải poster</button>
+                <button type="button" onClick={copyQR} disabled={!canGenerate} className="inline-flex min-h-[44px] items-center justify-center gap-2 border border-white/15 px-3 py-2.5 text-xs font-bold transition hover:bg-white/10 disabled:opacity-35"><Clipboard className="h-4 w-4" />Sao chép ảnh</button>
+                <button type="button" onClick={downloadPoster} disabled={!canGenerate} className="inline-flex min-h-[44px] items-center justify-center gap-2 border border-white/15 px-3 py-2.5 text-xs font-bold transition hover:bg-white/10 disabled:opacity-35"><FileImage className="h-4 w-4" />Tải poster</button>
               </div>
               <div className="mt-5 flex items-start gap-3 text-xs leading-5 text-white/58"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" /><p>URL thường được mã hóa ngay trên thiết bị. Riêng forms.gle được gửi tới máy chủ Fermat để xác minh và giải nén trước khi tạo QR.</p></div>
             </div>
