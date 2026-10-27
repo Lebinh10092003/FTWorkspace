@@ -32,11 +32,14 @@ from .tools_allowlist import (
     READ_TOOLS,
     VALID_WORKSPACE_PATHS,
     WRITE_TOOLS,
+    execute_tool_safely,
     filter_and_validate_links,
+    generate_action_preview,
     is_read_tool,
     is_tool_allowed,
     is_write_tool,
     sanitize_and_override_arguments,
+    validate_arguments_against_schema,
 )
 
 
@@ -132,6 +135,120 @@ class ChatbotSecurityTestCase(TestCase):
             self.user1,
         )
         self.assertEqual(cleaned_own["task_id"], self.task_user1.id)
+
+    def test_schema_validation_rejects_undeclared_keys_and_invalid_types(self):
+        """Undeclared keys (additionalProperties=false) and invalid types are rejected for all tools."""
+        # 1. Undeclared key in write tool
+        with self.assertRaises(ValueError) as ctx:
+            sanitize_and_override_arguments(
+                "schedule_update_task_progress",
+                {"task_id": self.task_user1.id, "status": "completed", "injected_backdoor": "evil"},
+                self.user1,
+            )
+        self.assertIn("injected_backdoor", str(ctx.exception))
+
+        # 2. Undeclared key in read tool
+        with self.assertRaises(ValueError) as ctx:
+            sanitize_and_override_arguments(
+                "schedule_get_my_tasks",
+                {"work_date": "2026-10-27", "unknown_filter": "sql_inject"},
+                self.user1,
+            )
+        self.assertIn("unknown_filter", str(ctx.exception))
+
+        # 3. Invalid enum value
+        with self.assertRaises(ValueError) as ctx:
+            sanitize_and_override_arguments(
+                "schedule_create_task",
+                {"title": "Việc test", "work_date": "2026-10-27", "priority": "super-urgent-injected"},
+                self.user1,
+            )
+        self.assertIn("không hợp lệ", str(ctx.exception))
+
+        # 4. Invalid type (e.g. string for integer week_number)
+        with self.assertRaises(ValueError) as ctx:
+            sanitize_and_override_arguments(
+                "docs_get_weekly_report",
+                {"week_number": "forty-three"},
+                self.user1,
+            )
+        self.assertIn("phải là số nguyên", str(ctx.exception))
+
+    def test_action_preview_rejects_hidden_parameters(self):
+        """Confirmation card rejects any hidden parameter outside the preview definition."""
+        # 1. generate_action_preview rejects unaccounted argument
+        with self.assertRaises(ValueError) as ctx:
+            generate_action_preview(
+                "schedule_create_task",
+                {
+                    "title": "Việc mới",
+                    "work_date": "2026-10-27",
+                    "priority": "medium",
+                    "hidden_exec_command": "cat /etc/passwd",
+                },
+                self.user1,
+            )
+        self.assertIn("tham số ẩn", str(ctx.exception))
+
+        # 2. execute_tool_safely also rejects unaccounted argument
+        with self.assertRaises(ValueError) as ctx:
+            execute_tool_safely(
+                "schedule_update_task_progress",
+                {"task_id": self.task_user1.id, "status": "completed", "unpreviewed_field": "sneak"},
+                self.user1,
+            )
+        self.assertIn("tham số ẩn", str(ctx.exception))
+
+        # 3. Valid preview includes all parameters in diff_summary['after'] and 'all_parameters'
+        desc, diff = generate_action_preview(
+            "schedule_create_task",
+            {
+                "title": "Việc A",
+                "work_date": "2026-10-28",
+                "priority": "high",
+                "start_time": "08:30",
+                "end_time": "11:30",
+                "description": "Mô tả chi tiết",
+            },
+            self.user1,
+        )
+        self.assertIn("Việc A", desc)
+        self.assertEqual(diff["after"]["Tên công việc"], "Việc A")
+        self.assertEqual(diff["after"]["Giờ bắt đầu"], "08:30")
+        self.assertEqual(diff["after"]["Giờ kết thúc"], "11:30")
+        self.assertEqual(diff["after"]["Mô tả"], "Mô tả chi tiết")
+        self.assertIn("all_parameters", diff)
+
+    def test_ownership_recheck_at_execution_time_blocks_reassigned_task(self):
+        """If task executor changes between card creation and confirmation, confirmation is blocked."""
+        # User 1 creates an action card for task_user1
+        action = ChatAction.objects.create(
+            user=self.user1,
+            tool_name="schedule_update_task_progress",
+            arguments={"task_id": self.task_user1.id, "status": "completed"},
+            preview_description="Cập nhật việc",
+            diff_summary={"after": {"status": "completed"}},
+            status=ChatAction.STATUS_PENDING,
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+
+        # Reassign task to user 2 (ownership transfer in background)
+        self.task_user1.executor = self.user2
+        self.task_user1.save()
+
+        # User 1 tries to confirm now -> MUST BE FORBIDDEN (403)
+        self.client.force_authenticate(user=self.user1)
+        res = self.client.post(f"/api/chatbot/actions/{action.id}/confirm/")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn("không còn là người phụ trách", res.json()["error"])
+
+        # Task was NOT modified
+        self.task_user1.refresh_from_db()
+        self.assertEqual(self.task_user1.status, "todo")
+
+        # Action is marked failed
+        action.refresh_from_db()
+        self.assertEqual(action.status, ChatAction.STATUS_FAILED)
 
     def test_link_validation_rejects_external_and_unregistered(self):
         """Links returned by model must strictly be safe internal Workspace paths."""

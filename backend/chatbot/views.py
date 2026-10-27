@@ -286,6 +286,18 @@ def confirm_chat_action(request, action_id):
                 "status": action.status,
             },
         })
+    except PermissionError as exc:
+        logger.warning("Permission denied confirming action %s for user %s: %s", action.id, user.email, exc)
+        action.status = ChatAction.STATUS_FAILED
+        action.error_message = str(exc)
+        action.save(update_fields=["status", "error_message"])
+        return Response({"error": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+    except ValueError as exc:
+        logger.warning("Invalid value confirming action %s for user %s: %s", action.id, user.email, exc)
+        action.status = ChatAction.STATUS_FAILED
+        action.error_message = str(exc)
+        action.save(update_fields=["status", "error_message"])
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as exc:
         logger.error("Error confirming action %s for user %s: %s", action.id, user.email, exc, exc_info=True)
         action.status = ChatAction.STATUS_FAILED
