@@ -13,6 +13,7 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Sparkles,
   Trash2,
   TriangleAlert,
   X,
@@ -64,9 +65,20 @@ type ReportSources = {
   documentUrl: string;
 };
 
+type AiHealthStatus = {
+  status: 'ready' | 'auth_error' | 'error';
+  ready: boolean;
+  statusDisplay: string;
+  errorMessage: string;
+  sessionDays: number;
+  lastCheckedAt: string | null;
+  lastReadyAt: string | null;
+};
+
 type Props = {
   idToken: string;
   userName: string;
+  userEmail?: string;
   userRole?: string;
   photoURL?: string | null;
   onAccountClick: () => void;
@@ -85,6 +97,7 @@ const moveItemInArray = (list: string[], fromIndex: number, toIndex: number): st
 export default function WeeklyReportCenter({
   idToken,
   userName,
+  userEmail,
   userRole,
   photoURL,
   onAccountClick,
@@ -104,6 +117,15 @@ export default function WeeklyReportCenter({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const canCreate = Boolean(idToken);
+
+  // AI Rewrite state
+  const [aiHealth, setAiHealth] = useState<AiHealthStatus | null>(null);
+  const [aiJobId, setAiJobId] = useState<number | null>(null);
+  const [aiJobStatus, setAiJobStatus] = useState<'queued' | 'running' | 'done' | 'failed' | 'cancelled' | null>(null);
+  const [aiQueuePosition, setAiQueuePosition] = useState<number | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiNotice, setAiNotice] = useState('');
+  const [suspiciousCompletedItems, setSuspiciousCompletedItems] = useState<string[]>([]);
 
   // Editing state
   const [isEditing, setIsEditing] = useState(false);
@@ -188,15 +210,159 @@ export default function WeeklyReportCenter({
     }
   };
 
+  const fetchAiHealth = async () => {
+    try {
+      const response = await fetch('/api/documents/weekly-reports/ai-status', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAiHealth(data);
+      }
+    } catch {
+      // Ignore background health fetch error
+    }
+  };
+
+  const requestAiRewrite = async () => {
+    if (!selected || aiLoading) return;
+    setError('');
+    setAiNotice('');
+    setSuspiciousCompletedItems([]);
+    setAiLoading(true);
+
+    try {
+      const response = await fetch(`/api/documents/weekly-reports/${selected.id}/ai-rewrite`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Không thể yêu cầu AI viết lại.');
+      }
+      setAiJobId(data.jobId);
+      setAiJobStatus(data.status);
+      setAiQueuePosition(data.queuePosition || 1);
+    } catch (cause: any) {
+      setError(cause.message || 'Không thể yêu cầu AI viết lại.');
+      setAiLoading(false);
+    }
+  };
+
+  const cancelAiJob = async () => {
+    if (!aiJobId) return;
+    try {
+      await fetch(`/api/documents/weekly-reports/ai-jobs/${aiJobId}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      setAiLoading(false);
+      setAiJobId(null);
+      setAiJobStatus(null);
+      setNotice('Đã hủy yêu cầu AI.');
+    } catch (cause: any) {
+      setError(cause.message || 'Không thể hủy yêu cầu AI.');
+    }
+  };
+
+  useEffect(() => {
+    if (!aiJobId || !aiLoading) return;
+
+    let isSubscribed = true;
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/documents/weekly-reports/ai-jobs/${aiJobId}`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || 'Lỗi khi kiểm tra tiến độ AI.');
+        }
+        const data = await response.json();
+        if (!isSubscribed) return;
+
+        setAiJobStatus(data.status);
+        if (data.status === 'queued') {
+          setAiQueuePosition(data.queuePosition || 1);
+        } else if (data.status === 'running') {
+          setAiQueuePosition(null);
+        } else if (data.status === 'done') {
+          clearInterval(interval);
+          setAiLoading(false);
+          setAiJobId(null);
+          setAiJobStatus(null);
+
+          // Populate editor with AI result
+          const result = data.result || {};
+          const cGroups =
+            Array.isArray(result.completedGroups) && result.completedGroups.length
+              ? result.completedGroups.map((g: any) => ({
+                  name: g.name || 'Công việc',
+                  items: Array.isArray(g.items) ? [...g.items] : [],
+                }))
+              : [{ name: 'Công việc', items: [] }];
+          const pGroups =
+            Array.isArray(result.plannedGroups) && result.plannedGroups.length
+              ? result.plannedGroups.map((g: any) => ({
+                  name: g.name || 'Công việc',
+                  items: Array.isArray(g.items) ? [...g.items] : [],
+                }))
+              : [{ name: 'Công việc', items: [] }];
+
+          setEditCompletedGroups(cGroups);
+          setEditDifficulties(Array.isArray(result.difficulties) ? [...result.difficulties] : []);
+          setEditPlannedGroups(pGroups);
+          setEditIncludeBldTask(selected?.includeBldTask !== false);
+          setSuspiciousCompletedItems(
+            Array.isArray(result.suspiciousCompletedItems) ? result.suspiciousCompletedItems : [],
+          );
+
+          setIsEditing(true);
+          setAiNotice('Bản do AI viết lại từ dữ liệu công việc, hãy kiểm tra và chỉnh sửa trước khi lưu.');
+        } else if (data.status === 'failed') {
+          clearInterval(interval);
+          setAiLoading(false);
+          setAiJobId(null);
+          setAiJobStatus(null);
+          setError(data.errorMessage || 'AI không thể tạo báo cáo. Vui lòng thử lại sau.');
+        } else if (data.status === 'cancelled') {
+          clearInterval(interval);
+          setAiLoading(false);
+          setAiJobId(null);
+          setAiJobStatus(null);
+          setNotice('Đã hủy yêu cầu AI.');
+        }
+      } catch (err: any) {
+        if (!isSubscribed) return;
+        clearInterval(interval);
+        setAiLoading(false);
+        setAiJobId(null);
+        setAiJobStatus(null);
+        setError(err.message || 'Lỗi kiểm tra tiến độ AI.');
+      }
+    }, 2000);
+
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
+  }, [aiJobId, aiLoading, idToken, selected]);
+
   useEffect(() => {
     setSources(null);
     void load();
+    void fetchAiHealth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idToken]);
 
-  // When changing selected report, exit edit mode
+  // When changing selected report, exit edit mode and clear AI notices
   useEffect(() => {
     setIsEditing(false);
+    setAiNotice('');
+    setSuspiciousCompletedItems([]);
   }, [selectedId]);
 
   const downloadReport = async () => {
@@ -528,6 +694,52 @@ export default function WeeklyReportCenter({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
+                        {aiLoading ? (
+                          <div className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs sm:text-sm font-bold text-indigo-700 shadow-sm">
+                            <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                            <span>
+                              {aiJobStatus === 'queued'
+                                ? `Đang chờ AI (vị trí ${aiQueuePosition || 1})…`
+                                : 'AI đang viết lại…'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void cancelAiJob()}
+                              className="ml-1 text-xs text-rose-600 hover:text-rose-800 underline font-semibold"
+                            >
+                              Hủy
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void requestAiRewrite()}
+                            disabled={
+                              saving ||
+                              (!userEmail || !selected.employeeEmail
+                                ? false
+                                : userEmail.toLowerCase() !== selected.employeeEmail.toLowerCase()) ||
+                              aiHealth?.status === 'auth_error' ||
+                              aiHealth?.status === 'error'
+                            }
+                            title={
+                              userEmail &&
+                              selected.employeeEmail &&
+                              userEmail.toLowerCase() !== selected.employeeEmail.toLowerCase()
+                                ? 'Chỉ chủ báo cáo mới có thể yêu cầu AI viết lại.'
+                                : aiHealth?.status === 'auth_error'
+                                ? 'AI tạm ngừng, quản trị viên cần đăng nhập lại.'
+                                : aiHealth?.status === 'error'
+                                ? 'Dịch vụ AI đang gặp lỗi hệ thống.'
+                                : 'Gemini tự động viết lại bản nháp theo mẫu chuẩn từ dữ liệu lịch công tác'
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50 transition"
+                          >
+                            <Sparkles className="h-4 w-4 text-indigo-600" />
+                            <span>AI viết lại</span>
+                          </button>
+                        )}
+
                         {isEditing ? (
                           <>
                             <button
@@ -576,6 +788,67 @@ export default function WeeklyReportCenter({
                         )}
                       </div>
                     </div>
+
+                    {/* AI Service Health warning banner if auth error */}
+                    {aiHealth?.status === 'auth_error' && (
+                      <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3.5 sm:p-4 text-amber-900 shadow-sm">
+                        <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                        <div className="text-xs sm:text-sm leading-5">
+                          <span className="font-bold">AI tạm ngừng: </span>
+                          <span>
+                            Quản trị viên cần đăng nhập lại tài khoản agy/Gemini trên VPS để tiếp tục sử dụng nút “AI
+                            viết lại”. Báo cáo bằng quy tắc và tải file Word vẫn dùng bình thường.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* AI Output Notice */}
+                    {aiNotice && (
+                      <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-3.5 sm:p-4 text-indigo-950 shadow-sm">
+                        <div className="flex items-start gap-2.5">
+                          <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" />
+                          <div className="flex-1 text-xs sm:text-sm leading-5">
+                            <span className="font-bold text-indigo-900">{aiNotice}</span>
+                            <span className="block text-indigo-700 mt-0.5">
+                              Dữ liệu do AI tạo ra đã được nạp vào các ô bên dưới. AI không bao giờ tự lưu. Bạn hãy
+                              kiểm tra, chỉnh sửa câu chữ và bấm “Lưu bản sửa” ở góc trên để xác nhận.
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setAiNotice('')}
+                            className="text-indigo-500 hover:text-indigo-800 p-0.5 shrink-0"
+                            aria-label="Đóng thông báo AI"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Anti-fabrication suspicious tasks warning */}
+                    {suspiciousCompletedItems.length > 0 && (
+                      <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3.5 sm:p-4 text-rose-950 shadow-sm">
+                        <div className="flex items-start gap-2.5">
+                          <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+                          <div className="flex-1 text-xs sm:text-sm leading-5">
+                            <span className="font-bold text-rose-900">
+                              Cảnh báo đối chiếu công việc (chống bịa việc):
+                            </span>
+                            <span className="block text-rose-800 mt-0.5">
+                              Các dòng sau không tìm thấy từ khóa trùng khớp trong lịch công tác tuần kết thúc. Vui lòng
+                              kiểm tra lại kỹ xem có đúng công việc bạn đã làm:
+                            </span>
+                            <ul className="mt-1 list-disc pl-5 space-y-0.5 text-rose-900 font-medium">
+                              {suspiciousCompletedItems.map((item, idx) => (
+                                <li key={`suspicious-${idx}`}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Insufficient planned tasks warning */}
                     {selected.plannedWarning && (
