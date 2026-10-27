@@ -393,3 +393,29 @@ class AiHealthCheckTests(AiWeeklyReportBaseTestCase):
         health.first_ready_at = timezone.now() - timedelta(days=5, hours=2)
         health.save()
         self.assertEqual(health.session_days_alive(), 5)
+
+    def test_default_ai_command_has_effort_low(self):
+        from .ai_service import get_ai_command
+        with patch.dict(os.environ, {}, clear=True):
+            cmd = get_ai_command()
+            self.assertIn("--effort low", cmd)
+            self.assertIn("--sandbox", cmd)
+
+    def test_prompt_instructs_no_tools(self):
+        from .ai_service import build_ai_report_prompt
+        prompt = build_ai_report_prompt(self.report)
+        self.assertIn("TUYỆT ĐỐI KHÔNG DÙNG CÔNG CỤ", prompt)
+
+    def test_execute_ai_command_no_output_produced_handled(self):
+        from .ai_service import execute_ai_command
+        mock_py = tempfile.NamedTemporaryFile("w", delete=False, suffix=".py")
+        mock_py.write("print('Error: no output produced by model.')\n")
+        mock_py.close()
+        try:
+            cmd = f"{sys.executable} {mock_py.name}"
+            with patch.dict(os.environ, {"AI_AGY_COMMAND": cmd}):
+                with self.assertRaises(ValueError) as ctx:
+                    execute_ai_command("test prompt")
+                self.assertIn("không thể phản hồi", str(ctx.exception))
+        finally:
+            os.unlink(mock_py.name)
