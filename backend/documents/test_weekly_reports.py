@@ -61,9 +61,11 @@ class WeeklyReportPipelineTests(TestCase):
 
         report = next(report for report in reports if report.employee_email == self.employee.email)
         self.assertEqual((report.completed_week, report.planned_week), (39, 40))
-        self.assertEqual(report.completed_items, ["08:30 · Hoàn thành hồ sơ"])
+        self.assertEqual(report.completed_items, ["Hoàn thành hồ sơ (8h30)"])
         self.assertEqual(report.difficulties, ["Chờ phản hồi khách hàng — Đã gửi hồ sơ."])
-        self.assertEqual(report.planned_items, ["Họp triển khai"])
+        self.assertEqual(report.planned_items, ["Họp triển khai, xong trong ngày 29/09."])
+        self.assertEqual(report.completed_groups, [{"name": "Công việc", "items": ["Hoàn thành hồ sơ (8h30)"]}])
+        self.assertEqual(report.planned_groups, [{"name": "Công việc", "items": ["Họp triển khai, xong trong ngày 29/09."]}])
         self.assertEqual(report.status, WeeklyReport.STATUS_SNAPSHOT)
 
     def test_snapshot_retry_preserves_already_published_ai_report(self):
@@ -85,6 +87,27 @@ class WeeklyReportPipelineTests(TestCase):
         report.refresh_from_db()
         self.assertEqual(report.completed_items, ["Nội dung AI đã biên tập"])
         self.assertEqual(report.status, WeeklyReport.STATUS_PUBLISHED)
+
+    def test_snapshot_retry_preserves_user_edited_report(self):
+        report = WeeklyReport.objects.create(
+            report_key="39-40-phong-example-com",
+            employee_email=self.employee.email,
+            employee_name=self.employee.name,
+            completed_week=39,
+            planned_week=40,
+            completed_groups=[{"name": "Hành chính", "items": ["Nội dung người dùng đã sửa tay"]}],
+            completed_items=["Nội dung người dùng đã sửa tay"],
+            status=WeeklyReport.STATUS_EDITED,
+        )
+        self._work(title="Công việc mới trên lịch", work_date=date(2026, 9, 22), status=WorkItem.STATUS_COMPLETED)
+
+        reports = build_schedule_reports(today=date(2026, 9, 25))
+
+        matching = next(item for item in reports if item.employee_email == self.employee.email)
+        self.assertEqual(matching.pk, report.pk)
+        report.refresh_from_db()
+        self.assertEqual(report.completed_items, ["Nội dung người dùng đã sửa tay"])
+        self.assertEqual(report.status, WeeklyReport.STATUS_EDITED)
 
     def test_manual_packet_scope_includes_only_the_requesting_employee(self):
         colleague = UserProfile.objects.create(
@@ -156,19 +179,37 @@ class WeeklyReportPipelineTests(TestCase):
             employee_name="Mr Phong",
             completed_week=39,
             planned_week=40,
+            completed_groups=[
+                {"name": "Hành chính", "items": ["Đã hoàn tất hồ sơ"]},
+            ],
             completed_items=["Đã hoàn tất hồ sơ"],
             difficulties=["Không có"],
-            planned_items=["Họp triển khai"],
+            planned_groups=[
+                {"name": "Công nghệ thông tin", "items": ["Họp triển khai, xong trong ngày 29/09."]},
+            ],
+            planned_items=["Họp triển khai, xong trong ngày 29/09."],
+            include_bld_task=True,
         )
 
         filename, content = build_weekly_report_docx(report)
 
-        self.assertTrue(filename.endswith(".docx"))
+        self.assertEqual(filename, "BC KQ tuần 39, NV tuần 40 (Mr Phong).docx")
         self.assertTrue(content.startswith(b"PK"))
         with ZipFile(BytesIO(content)) as archive:
             document_xml = archive.read("word/document.xml").decode("utf-8")
+        self.assertIn("BÁO CÁO", document_xml)
         self.assertIn("Kết quả tuần 39", document_xml)
-        self.assertIn("Họp triển khai", document_xml)
+        self.assertIn("(Mr Phong)", document_xml)
+        self.assertIn("I. KẾT QUẢ TUẦN 39", document_xml)
+        self.assertIn("1. Hành chính", document_xml)
+        self.assertIn("- Đã hoàn tất hồ sơ", document_xml)
+        self.assertIn("2. Khó khăn, vướng mắc", document_xml)
+        self.assertIn("II. NHIỆM VỤ TUẦN 40", document_xml)
+        self.assertIn("1. Công nghệ thông tin", document_xml)
+        self.assertIn("- Họp triển khai, xong trong ngày 29/09.", document_xml)
+        self.assertIn("- Thực hiện các nhiệm vụ khác theo chỉ đạo của BLĐ.", document_xml)
+        # Verify no Word automatic bullets
+        self.assertNotIn("<w:numPr>", document_xml)
 
 
 class WeeklyReportGenerationOptionsTests(TestCase):
@@ -299,16 +340,64 @@ class WeeklyReportAccessApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-        self.assertIn('attachment; filename="Bao-cao-tuan-39-ke-hoach-tuan-40-nhan-vien.docx"', response["Content-Disposition"])
+        self.assertIn("BC KQ tuan 39, NV tuan 40 (Nhan vien).docx", response["Content-Disposition"])
         with ZipFile(BytesIO(response.content)) as archive:
             document_xml = archive.read("word/document.xml").decode("utf-8")
         self.assertIn("Hoàn thành hồ sơ", document_xml)
         self.assertIn("Họp triển khai", document_xml)
+        self.assertNotIn("<w:numPr>", document_xml)
 
     def test_employee_cannot_download_another_employees_report(self):
         response = self._get(f"/api/documents/weekly-reports/{self.other_report.pk}.docx", "EMPLOYEE")
 
         self.assertEqual(response.status_code, 404)
+
+    def test_employee_can_edit_own_report_and_cannot_edit_others(self):
+        url = f"/api/documents/weekly-reports/{self.report.pk}"
+        edit_data = {
+            "completedGroups": [{"name": "AI & Công nghệ", "items": ["Đã tối ưu pipeline"]}],
+            "plannedGroups": [{"name": "AI & Công nghệ", "items": ["Tích hợp công cụ mới, xong trong ngày 02/10."]}],
+            "difficulties": ["Chờ phản hồi bảo mật"],
+            "includeBldTask": True,
+        }
+        response = self.client.put(
+            url,
+            edit_data,
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.tokens['EMPLOYEE']}",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "edited")
+        self.assertEqual(payload["statusDisplay"], "Đã chỉnh sửa")
+        self.assertEqual(payload["completedGroups"], [{"name": "AI & Công nghệ", "items": ["Đã tối ưu pipeline"]}])
+        self.assertEqual(payload["plannedGroups"], [{"name": "AI & Công nghệ", "items": ["Tích hợp công cụ mới, xong trong ngày 02/10."]}])
+        self.assertEqual(payload["difficulties"], ["Chờ phản hồi bảo mật"])
+        self.assertIsNotNone(payload["editedAt"])
+
+        # Cannot edit another employee's report
+        other_url = f"/api/documents/weekly-reports/{self.other_report.pk}"
+        fail_response = self.client.put(
+            other_url,
+            edit_data,
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.tokens['EMPLOYEE']}",
+        )
+        self.assertEqual(fail_response.status_code, 404)
+
+    def test_planned_warning_for_insufficient_planned_items(self):
+        response = self._get("/api/documents/weekly-reports", "EMPLOYEE")
+        self.assertEqual(response.status_code, 200)
+        report_data = response.json()["reports"][0]
+        # self.report has 1 planned_item -> warning expected
+        self.assertEqual(report_data["plannedWarning"], "Tuần 40 mới có 1 việc, cần đăng ký thêm")
+
+        # Update with 5 planned items -> warning should disappear
+        self.report.planned_items = [f"Việc {i}" for i in range(5)]
+        self.report.save()
+
+        response2 = self._get("/api/documents/weekly-reports", "EMPLOYEE")
+        self.assertIsNone(response2.json()["reports"][0]["plannedWarning"])
 
     def test_admin_can_download_selected_employees_report(self):
         response = self._get(f"/api/documents/weekly-reports/{self.other_report.pk}.docx", "ADMIN")

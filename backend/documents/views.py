@@ -8,6 +8,7 @@ from urllib.parse import quote
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
@@ -202,6 +203,13 @@ def _ascii_filename(filename):
 
 
 def _weekly_report_payload(report):
+    planned_items = report.planned_items or []
+    planned_count = len(planned_items)
+    planned_warning = (
+        f"Tuần {report.planned_week} mới có {planned_count} việc, cần đăng ký thêm"
+        if planned_count < 5
+        else None
+    )
     return {
         "id": report.pk,
         "employeeName": report.employee_name,
@@ -211,17 +219,31 @@ def _weekly_report_payload(report):
         "completedItems": report.completed_items,
         "difficulties": report.difficulties,
         "plannedItems": report.planned_items,
+        "completedGroups": report.get_completed_groups(),
+        "plannedGroups": report.get_planned_groups(),
+        "includeBldTask": report.include_bld_task,
         "status": report.status,
+        "statusDisplay": report.get_status_display(),
+        "editedByName": report.edited_by_name,
+        "editedByEmail": report.edited_by_email,
+        "editedAt": report.edited_at.isoformat() if report.edited_at else None,
+        "plannedWarning": planned_warning,
         "documentSyncedAt": report.document_synced_at.isoformat() if report.document_synced_at else None,
         "updatedAt": report.updated_at.isoformat(),
     }
 
 
+def _user_role(request):
+    role = getattr(request, "user_role", None) or getattr(getattr(request, "user", None), "role", None)
+    return str(role or "EMPLOYEE").upper()
+
+
 def _visible_weekly_reports(request):
     reports = WeeklyReport.objects.all()
-    if getattr(request, "user_role", "") in {"ADMIN", "MANAGER"}:
+    if _user_role(request) in {"ADMIN", "MANAGER"}:
         return reports
-    return reports.filter(employee_email=str(request.user.email or "").strip().lower())
+    email = str(getattr(request.user, "email", "") or "").strip().lower()
+    return reports.filter(employee_email=email)
 
 
 @api_view(["GET"])
@@ -237,8 +259,49 @@ def weekly_reports(request):
         "sources": {
             "sheetUrl": f"https://docs.google.com/spreadsheets/d/{quote(report_sheet_id(), safe='')}/edit",
             "documentUrl": f"https://docs.google.com/document/d/{quote(report_document_id(), safe='')}/edit",
-        } if getattr(request, "user_role", "") == "ADMIN" else None,
+        } if _user_role(request) == "ADMIN" else None,
     })
+
+
+@api_view(["PUT", "PATCH"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_report_update(request, report_id):
+    report = get_object_or_404(_visible_weekly_reports(request), pk=report_id)
+    data = request.data if isinstance(request.data, dict) else {}
+
+    completed_groups = data.get("completedGroups")
+    if completed_groups is not None and isinstance(completed_groups, list):
+        report.completed_groups = completed_groups
+        report.completed_items = [
+            str(item).strip()
+            for g in completed_groups if isinstance(g, dict)
+            for item in g.get("items", []) if str(item).strip()
+        ]
+
+    difficulties = data.get("difficulties")
+    if difficulties is not None and isinstance(difficulties, list):
+        report.difficulties = [str(item).strip() for item in difficulties if str(item).strip()]
+
+    planned_groups = data.get("plannedGroups")
+    if planned_groups is not None and isinstance(planned_groups, list):
+        report.planned_groups = planned_groups
+        report.planned_items = [
+            str(item).strip()
+            for g in planned_groups if isinstance(g, dict)
+            for item in g.get("items", []) if str(item).strip()
+        ]
+
+    if "includeBldTask" in data:
+        report.include_bld_task = bool(data.get("includeBldTask"))
+
+    user_name = getattr(request.user, "name", "") or getattr(request.user, "email", "")
+    report.status = WeeklyReport.STATUS_EDITED
+    report.edited_by_name = str(user_name or "Người dùng").strip()
+    report.edited_by_email = str(request.user.email or "").strip().lower()
+    report.edited_at = timezone.now()
+    report.save()
+
+    return Response(_weekly_report_payload(report), status=status.HTTP_200_OK)
 
 
 def _can_generate_weekly_report(request):

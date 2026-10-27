@@ -96,17 +96,141 @@ def _report_key(email, completed_week, planned_week, fallback=""):
     return f"{completed_week}-{planned_week}-{identity}"[:180]
 
 
-def _task_text(item):
-    text = str(item.title or "").strip()
-    if item.start_time:
-        text = f"{item.start_time.strftime('%H:%M')} · {text}"
+PAST_TENSE_PREFIXES = (
+    "đã ",
+    "hoàn thành ",
+    "đã hoàn thành ",
+    "họp ",
+    "tham gia ",
+    "gặp ",
+    "làm việc ",
+    "trao đổi ",
+    "xử lý ",
+    "đã xử lý ",
+    "hỗ trợ ",
+    "đã hỗ trợ ",
+    "triển khai ",
+    "đã triển khai ",
+    "kiểm thử ",
+    "đã kiểm thử ",
+    "soạn thảo ",
+    "đã soạn thảo ",
+    "gửi ",
+    "đã gửi ",
+)
+
+
+def _clean_title(title):
+    text = str(title or "").strip()
+    text = re.sub(r"^[\s*•–-]+", "", text).strip()
+    text = re.sub(r"^\s*\d{1,2}(?:[h:]\d{2})?\s*(?:[-–·:]\s*|\s+)", "", text).strip()
     return text
 
 
-def _difficulty_text(item):
+def _format_time_span(start_time, end_time):
+    if not start_time:
+        return ""
+    start_str = f"{start_time.hour}h{start_time.minute:02d}" if start_time.minute else f"{start_time.hour}h"
+    if end_time:
+        end_str = f"{end_time.hour}h{end_time.minute:02d}" if end_time.minute else f"{end_time.hour}h"
+        return f"{start_str}–{end_str}"
+    return start_str
+
+
+def format_completed_task(item):
+    text = _clean_title(item.title)
+    if not text:
+        return ""
+
+    time_span = _format_time_span(item.start_time, item.end_time)
+    has_time = bool(re.search(r"\b\d{1,2}(?:[h:]\d{2}|h)\b", text, flags=re.IGNORECASE))
+    if time_span and not has_time:
+        if text.casefold().startswith(("họp", "tham gia", "gặp", "làm việc", "trao đổi")):
+            text = f"{text} {time_span}"
+        else:
+            text = f"{text} ({time_span})"
+
+    lower_text = text.casefold()
+    if not any(lower_text.startswith(prefix) for prefix in PAST_TENSE_PREFIXES):
+        first_word = text.split(None, 1)[0]
+        if first_word.isupper():
+            text = f"Đã {text}"
+        else:
+            text = f"Đã {text[0].lower() + text[1:]}"
+    else:
+        text = text[0].upper() + text[1:]
+
+    return text.strip()
+
+
+def format_difficulty_task(item):
+    text = _clean_title(item.title)
+    if not text:
+        return ""
+    text = text[0].upper() + text[1:]
     note = str(item.progress_note or item.review_note or "").strip()
     suffix = f" — {note}" if note else " — Chưa hoàn thành theo lịch công tác."
-    return f"{_task_text(item)}{suffix}"
+    return f"{text}{suffix}".strip()
+
+
+def format_planned_task(item):
+    text = _clean_title(item.title)
+    if not text:
+        return ""
+    text = text.rstrip(". ;,")
+    text = text[0].upper() + text[1:]
+    has_deadline = bool(re.search(r"(?:xong|hoàn thành|hạn|ngày|\d{1,2}/\d{1,2})", text, flags=re.IGNORECASE))
+    if not has_deadline and getattr(item, "work_date", None):
+        date_str = item.work_date.strftime("%d/%m")
+        return f"{text}, xong trong ngày {date_str}."
+    if not text.endswith("."):
+        return f"{text}."
+    return text
+
+
+def _dedup(items):
+    seen = set()
+    result = []
+    for item in items:
+        clean = str(item or "").strip()
+        if not clean:
+            continue
+        key = clean.casefold()
+        if key not in seen:
+            seen.add(key)
+            result.append(clean)
+    return result
+
+
+def _group_items_by_label(items_with_labels):
+    groups_dict = {}
+    for raw_label, text in items_with_labels:
+        if not text:
+            continue
+        label = (raw_label or "").strip() or "Công việc"
+        label = label[0].upper() + label[1:]
+        if label not in groups_dict:
+            groups_dict[label] = []
+        groups_dict[label].append(text)
+
+    result = []
+    for label, group_items in groups_dict.items():
+        deduped = _dedup(group_items)
+        if deduped:
+            result.append({"name": label, "items": deduped})
+
+    if not result:
+        result = [{"name": "Công việc", "items": []}]
+
+    return result
+
+
+def _task_text(item):
+    return format_completed_task(item)
+
+
+def _difficulty_text(item):
+    return format_difficulty_task(item)
 
 
 def build_schedule_reports(*, today=None, report_week_start=None, employee_email=None):
@@ -150,15 +274,29 @@ def build_schedule_reports(*, today=None, report_week_start=None, employee_email
             },
         )
         # A retry must never overwrite prose that the AI has already published
-        # in the Google Doc for this employee and reporting period.
-        if created or report.status != WeeklyReport.STATUS_PUBLISHED:
+        # in the Google Doc or that the user has already edited on web.
+        if created or (report.status != WeeklyReport.STATUS_PUBLISHED and report.status != WeeklyReport.STATUS_EDITED):
             report.employee_email = employee.email
             report.employee_name = employee.name or employee.email
             report.completed_week = current_week
             report.planned_week = planned_week
-            report.completed_items = [_task_text(item) for item in current_items if item.status in DONE_STATUSES]
-            report.difficulties = [_difficulty_text(item) for item in current_items if item.status not in DONE_STATUSES]
-            report.planned_items = [_task_text(item) for item in future_items]
+
+            completed_pairs = [(item.label, format_completed_task(item)) for item in current_items if item.status in DONE_STATUSES]
+            completed_groups = _group_items_by_label(completed_pairs)
+            completed_items = [t for g in completed_groups for t in g["items"]]
+
+            difficulties = _dedup([format_difficulty_task(item) for item in current_items if item.status not in DONE_STATUSES])
+
+            planned_pairs = [(item.label, format_planned_task(item)) for item in future_items]
+            planned_groups = _group_items_by_label(planned_pairs)
+            planned_items = [t for g in planned_groups for t in g["items"]]
+
+            report.completed_groups = completed_groups
+            report.completed_items = completed_items
+            report.difficulties = difficulties
+            report.planned_groups = planned_groups
+            report.planned_items = planned_items
+            report.include_bld_task = True
             report.status = WeeklyReport.STATUS_SNAPSHOT
             report.save()
         reports.append(report)
@@ -405,6 +543,9 @@ def sync_reports_from_google_doc(*, google_token=None):
                 "planned_week": parsed["planned_week"],
             },
         )
+        if not is_created and report.status == WeeklyReport.STATUS_EDITED:
+            skipped += 1
+            continue
         changed = is_created or any([
             report.completed_items != parsed["completed_items"],
             report.difficulties != parsed["difficulties"],
@@ -418,8 +559,10 @@ def sync_reports_from_google_doc(*, google_token=None):
         report.employee_name = profile.name if profile else parsed["employee_name"]
         report.completed_week = parsed["completed_week"]
         report.planned_week = parsed["planned_week"]
+        report.completed_groups = [{"name": "Công việc", "items": parsed["completed_items"]}]
         report.completed_items = parsed["completed_items"]
         report.difficulties = parsed["difficulties"]
+        report.planned_groups = [{"name": "Công việc", "items": parsed["planned_items"]}]
         report.planned_items = parsed["planned_items"]
         report.status = WeeklyReport.STATUS_PUBLISHED
         report.google_document_id = document_id
