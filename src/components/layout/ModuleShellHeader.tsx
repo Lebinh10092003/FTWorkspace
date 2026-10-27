@@ -74,7 +74,9 @@ export default function ModuleShellHeader({
         {actions && <div className="flex items-center gap-2">{actions}</div>}
         {account && (
           <div className="flex items-center gap-2 pl-1">
-            <WorkspaceNotifications />
+            <div className="hidden lg:block">
+              <WorkspaceNotifications />
+            </div>
             {account}
           </div>
         )}

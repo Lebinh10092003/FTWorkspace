@@ -94,6 +94,12 @@ const moveItemInArray = (list: string[], fromIndex: number, toIndex: number): st
   return next;
 };
 
+const formatReportWeekTitle = (completedWeek?: number | null, plannedWeek?: number | null): string => {
+  const c = completedWeek && completedWeek > 0 ? `tuần ${completedWeek}` : '(chưa có tuần)';
+  const p = plannedWeek && plannedWeek > 0 ? `tuần ${plannedWeek}` : '(chưa có tuần)';
+  return `Kết quả ${c}, nhiệm vụ dự kiến ${p}`;
+};
+
 export default function WeeklyReportCenter({
   idToken,
   userName,
@@ -678,10 +684,10 @@ export default function WeeklyReportCenter({
                 {selected && (
                   <div className="mx-auto w-full min-w-0 max-w-[794px]">
                     {/* Top Action Bar */}
-                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+                    <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-slate-800 truncate">
-                          {selected.employeeName} · Tuần {selected.completedWeek} → {selected.plannedWeek}
+                          {selected.employeeName} · {selected.completedWeek && selected.plannedWeek ? `Tuần ${selected.completedWeek} → ${selected.plannedWeek}` : 'Báo cáo tuần'}
                         </p>
                         {selected.status === 'edited' && selected.editedByName && (
                           <p className="text-xs text-slate-500 mt-0.5">
@@ -693,19 +699,19 @@ export default function WeeklyReportCenter({
                         )}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                         {aiLoading ? (
-                          <div className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs sm:text-sm font-bold text-indigo-700 shadow-sm">
+                          <div className="inline-flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-700 shadow-sm min-h-[44px]">
                             <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
                             <span>
                               {aiJobStatus === 'queued'
-                                ? `Đang chờ AI (vị trí ${aiQueuePosition || 1})…`
+                                ? `Đang chờ AI (${aiQueuePosition || 1})…`
                                 : 'AI đang viết lại…'}
                             </span>
                             <button
                               type="button"
                               onClick={() => void cancelAiJob()}
-                              className="ml-1 text-xs text-rose-600 hover:text-rose-800 underline font-semibold"
+                              className="ml-1 text-xs text-rose-600 hover:text-rose-800 underline font-semibold min-h-[44px] inline-flex items-center"
                             >
                               Hủy
                             </button>
@@ -733,9 +739,9 @@ export default function WeeklyReportCenter({
                                 ? 'Dịch vụ AI đang gặp lỗi hệ thống.'
                                 : 'Gemini tự động viết lại bản nháp theo mẫu chuẩn từ dữ liệu lịch công tác'
                             }
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50 transition min-h-[44px]"
+                            className="inline-flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50 transition min-h-[44px]"
                           >
-                            <Sparkles className="h-4 w-4 text-indigo-600" />
+                            <Sparkles className="h-4 w-4 text-indigo-600 shrink-0" />
                             <span>AI viết lại</span>
                           </button>
                         )}
@@ -746,7 +752,7 @@ export default function WeeklyReportCenter({
                               type="button"
                               onClick={cancelEditing}
                               disabled={saving}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition min-h-[44px]"
+                              className="inline-flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition min-h-[44px]"
                             >
                               <RotateCcw className="h-4 w-4" />
                               Hủy
@@ -755,7 +761,7 @@ export default function WeeklyReportCenter({
                               type="button"
                               onClick={() => void saveEditing()}
                               disabled={saving}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition min-h-[44px]"
+                              className="inline-flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition min-h-[44px]"
                             >
                               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                               {saving ? 'Đang lưu…' : 'Lưu bản sửa'}
@@ -766,23 +772,23 @@ export default function WeeklyReportCenter({
                             <button
                               type="button"
                               onClick={startEditing}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition min-h-[44px]"
+                              className="inline-flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition min-h-[44px]"
                             >
-                              <Edit3 className="h-4 w-4 text-blue-600" />
+                              <Edit3 className="h-4 w-4 text-blue-600 shrink-0" />
                               Chỉnh sửa
                             </button>
                             <button
                               type="button"
                               onClick={() => void downloadReport()}
                               disabled={downloading}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition min-h-[44px]"
+                              className="inline-flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition min-h-[44px]"
                             >
                               {downloading ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
-                                <Download className="h-4 w-4" />
+                                <Download className="h-4 w-4 shrink-0" />
                               )}
-                              {downloading ? 'Đang tải…' : 'Tải Word (.docx)'}
+                              {downloading ? 'Đang tải…' : 'Tải Word'}
                             </button>
                           </>
                         )}
@@ -874,7 +880,7 @@ export default function WeeklyReportCenter({
                               BÁO CÁO
                             </h1>
                             <p className="font-bold text-sm sm:text-base mt-1">
-                              Kết quả tuần {selected.completedWeek}, nhiệm vụ dự kiến tuần {selected.plannedWeek}
+                              {formatReportWeekTitle(selected.completedWeek, selected.plannedWeek)}
                             </p>
                             <p className="font-bold text-sm sm:text-base">({selected.employeeName})</p>
                             <p className="text-xs text-blue-700 font-sans mt-2 italic">
@@ -886,7 +892,7 @@ export default function WeeklyReportCenter({
                           <div>
                             <div className="flex items-center justify-between pb-2 border-b">
                               <h2 className="text-sm sm:text-base font-bold text-slate-900">
-                                I. KẾT QUẢ TUẦN {selected.completedWeek}
+                                I. KẾT QUẢ TUẦN {selected.completedWeek && selected.completedWeek > 0 ? selected.completedWeek : 'HIỆN TẠI'}
                               </h2>
                               <button
                                 type="button"
@@ -1301,7 +1307,7 @@ export default function WeeklyReportCenter({
                               BÁO CÁO
                             </h1>
                             <p className="font-bold text-[14pt] leading-snug mt-0.5">
-                              Kết quả tuần {selected.completedWeek}, nhiệm vụ dự kiến tuần {selected.plannedWeek}
+                              {formatReportWeekTitle(selected.completedWeek, selected.plannedWeek)}
                             </p>
                             <p className="font-bold text-[14pt] leading-snug">
                               ({selected.employeeName})
@@ -1311,7 +1317,7 @@ export default function WeeklyReportCenter({
                           {/* SECTION I */}
                           <section className="mb-6">
                             <h2 className="font-bold text-[13pt] mb-2 uppercase">
-                              I. KẾT QUẢ TUẦN {selected.completedWeek}
+                              I. KẾT QUẢ TUẦN {selected.completedWeek && selected.completedWeek > 0 ? selected.completedWeek : 'HIỆN TẠI'}
                             </h2>
 
                             <div className="space-y-3">
@@ -1359,7 +1365,7 @@ export default function WeeklyReportCenter({
                           {/* SECTION II */}
                           <section>
                             <h2 className="font-bold text-[13pt] mb-2 uppercase">
-                              II. NHIỆM VỤ TUẦN {selected.plannedWeek}
+                              II. NHIỆM VỤ TUẦN {selected.plannedWeek && selected.plannedWeek > 0 ? selected.plannedWeek : 'TIẾP THEO'}
                             </h2>
 
                             <div className="space-y-3">

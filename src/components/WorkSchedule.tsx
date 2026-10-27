@@ -948,13 +948,13 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
             </section>
           )}
           {view === "board" && (
-            <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
               <div className="ws-stat">
                 <span className="ws-stat-icon bg-blue-50 text-blue-700">
                   <ListChecks />
                 </span>
-                <div>
-                  <span>Công việc trong ngày</span>
+                <div className="min-w-0 flex-1">
+                  <span className="truncate">Công việc trong ngày</span>
                   <b>{dailyTasks.length}</b>
                 </div>
               </div>
@@ -962,8 +962,8 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
                 <span className="ws-stat-icon bg-sky-50 text-sky-700">
                   <CircleDot />
                 </span>
-                <div>
-                  <span>Đang thực hiện</span>
+                <div className="min-w-0 flex-1">
+                  <span className="truncate">Đang thực hiện</span>
                   <b>{dailyTasks.filter((item) => item.status === "doing").length}</b>
                 </div>
               </div>
@@ -971,8 +971,8 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
                 <span className="ws-stat-icon bg-emerald-50 text-emerald-700">
                   <CheckCircle2 />
                 </span>
-                <div>
-                  <span>Đã làm xong</span>
+                <div className="min-w-0 flex-1">
+                  <span className="truncate">Đã làm xong</span>
                   <b>{completedCount}</b>
                 </div>
               </div>
@@ -980,12 +980,12 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
                 <span className="ws-stat-icon bg-violet-50 text-violet-700">
                   <ClipboardCheck />
                 </span>
-                <div>
-                  <span>Tiến độ chung</span>
-                  <b>
-                    {completedCount}/{dailyTasks.length} đầu việc
+                <div className="min-w-0 flex-1">
+                  <span className="truncate">Tiến độ chung</span>
+                  <b className="truncate">
+                    {completedCount}/{dailyTasks.length} việc
                   </b>
-                  <small className="text-[11px] font-semibold text-violet-600">{completionPercent}%</small>
+                  <small className="text-xs font-semibold text-violet-600">{completionPercent}%</small>
                 </div>
               </div>
             </section>

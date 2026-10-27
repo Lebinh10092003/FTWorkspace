@@ -171,6 +171,7 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
   const [saving, setSaving] = useState(false);
   const [popupError, setPopupError] = useState('');
   const [isEdit, setIsEdit] = useState(false);
+  const [showAllMissingDays, setShowAllMissingDays] = useState(false);
 
   /* ---------- Data loading ---------- */
   const load = useCallback(async (silent = false) => {
@@ -481,20 +482,37 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
             </div>
           ) : (<>
             {/* Title row */}
-            <section className="mb-7">
-              <p className="text-xl font-extrabold uppercase tracking-wide text-emerald-700 sm:text-2xl">Xin chào, {userName}</p>
+            <section className="mb-6">
+              <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Xin chào, {userName}</h1>
             </section>
 
             {error && <div className="mb-5 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800"><TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" /><span>{error}</span></div>}
 
-            {/* Missing weekday warnings (no buttons) */}
+            {/* Missing weekday warnings (collapsible) */}
             {missingWeekdays.length > 0 && (
               <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <div className="flex items-start gap-2">
                   <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-                  <div>
-                    <p className="text-sm font-bold text-amber-900">Các ngày chưa có công ca trong tháng:</p>
-                    <p className="mt-1 text-sm text-amber-800">{missingWeekdays.map(d => fmtDate(d)).join(', ')}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-amber-900">
+                      Các ngày chưa có công ca trong tháng ({missingWeekdays.length} ngày):
+                    </p>
+                    <p className="mt-1 text-sm text-amber-800">
+                      {(showAllMissingDays || missingWeekdays.length <= 5
+                        ? missingWeekdays
+                        : missingWeekdays.slice(0, 5)
+                      ).map(d => fmtDate(d)).join(', ')}
+                      {!showAllMissingDays && missingWeekdays.length > 5 && '…'}
+                    </p>
+                    {missingWeekdays.length > 5 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllMissingDays(!showAllMissingDays)}
+                        className="mt-2 inline-flex items-center text-xs font-bold text-amber-900 underline hover:text-amber-700 cursor-pointer min-h-[44px]"
+                      >
+                        {showAllMissingDays ? 'Thu gọn danh sách' : `Xem tất cả ${missingWeekdays.length} ngày chưa có công`}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
