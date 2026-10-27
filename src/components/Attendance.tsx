@@ -511,7 +511,7 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
                   <label><span className="sr-only">Chọn tháng</span><input type="month" value={month} onChange={e => setMonth(e.target.value)} className="ft-input" /></label>
                 </div>
 
-                <div className="mt-5 overflow-x-auto rounded-xl border">
+                <div className="mt-5 hidden md:block overflow-x-auto rounded-xl border">
                   <table className="ft-table min-w-[1160px] table-fixed text-sm">
                     <colgroup>
                       <col className="w-16" />
@@ -590,6 +590,145 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
                       })}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Mobile Cards View (<md) */}
+                <div className="mt-4 md:hidden space-y-3">
+                  {loading ? (
+                    <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">
+                      Đang tải bảng công...
+                    </div>
+                  ) : (
+                    allDates.map(dateStr => {
+                      const originalEntries = entriesByDate.get(dateStr) || [];
+                      const weekend = isWeekend(dateStr);
+                      const hasDayOff = originalEntries.some(e => e.isDayOff);
+                      const hasEntries = originalEntries.length > 0;
+                      const defaultDayOff = isEffectiveDayOff(dateStr);
+                      const markedDayOff = hasDayOff || (!hasEntries && defaultDayOff);
+                      const dayTotal = originalEntries.reduce((total, entry) => total + (entry.isDayOff ? 0 : entry.workedMinutes), 0);
+                      const isPast = dateStr < todayIso();
+                      const isFuture = dateStr > todayIso();
+                      const logs = editLogsByDate.get(dateStr) || [];
+
+                      return (
+                        <div
+                          key={`mobile-${dateStr}`}
+                          className={`rounded-2xl border p-4 transition-all shadow-xs ${
+                            markedDayOff
+                              ? 'border-slate-200 bg-slate-50/70'
+                              : !hasEntries && isPast && !defaultDayOff
+                              ? 'border-amber-200 bg-amber-50/30'
+                              : 'border-[#DDE5EF] bg-white'
+                          }`}
+                        >
+                          {/* Header: Date + Status Badge */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-base font-bold ${weekend ? 'text-rose-600' : 'text-[#0F1F33]'}`}>
+                                  {weekdayName(dateStr)}
+                                </span>
+                                <span className="text-sm font-bold tabular-nums text-[#4A5B70]">
+                                  {fmtDate(dateStr)}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              {markedDayOff ? (
+                                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-600">
+                                  Ngày nghỉ
+                                </span>
+                              ) : hasEntries ? (
+                                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
+                                  {fmtHours(dayTotal)} giờ
+                                </span>
+                              ) : isPast && !defaultDayOff ? (
+                                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800">
+                                  Chưa chấm công
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-400">
+                                  —
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                disabled={isFuture}
+                                onClick={() => void openPopup(dateStr)}
+                                className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-30 transition cursor-pointer"
+                                title={isFuture ? 'Không thể cập nhật công ca trong tương lai' : 'Chỉnh sửa công ca'}
+                                aria-label={`Chỉnh sửa công ca ngày ${dateStr}`}
+                              >
+                                <Edit3 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Shifts list */}
+                          {!markedDayOff && hasEntries && (
+                            <div className="mt-3 space-y-2 border-t border-slate-100 pt-2.5">
+                              {originalEntries.map((entry, idx) => (
+                                <div key={entry.id || idx} className="flex items-center justify-between text-xs bg-slate-50 p-2 rounded-xl border border-slate-100">
+                                  <div>
+                                    <span className="font-bold text-slate-700">Ca {entry.shiftNumber}:</span>{' '}
+                                    <span className="tabular-nums font-semibold text-slate-900">{entry.shiftStart} – {entry.shiftEnd}</span>
+                                    <span className="ml-2 tabular-nums text-slate-500 font-medium">({fmtHours(entry.workedMinutes)}h)</span>
+                                  </div>
+                                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${entry.workMode === 'online' ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                    {modeLabel(entry.workMode)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Quick Day Off Checkbox */}
+                          <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2 text-xs">
+                            <label className={`flex items-center gap-2 font-semibold text-amber-800 min-h-[44px] ${isFuture ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                              <input
+                                type="checkbox"
+                                checked={markedDayOff}
+                                disabled={isFuture}
+                                onChange={event => event.target.checked ? void quickDayOff(dateStr) : void openPopup(dateStr, false)}
+                                className="h-4 w-4 shrink-0 rounded border-slate-300 text-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
+                              />
+                              <span>Ngày nghỉ</span>
+                            </label>
+
+                            {logs.length > 0 && (
+                              <span className="text-[11px] text-slate-400 italic">
+                                {logs.length} ghi chú
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Notes */}
+                          {logs.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {logs.map(log => (
+                                <div key={log.id} className="flex items-start gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                                  <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                  <span className="min-w-0 flex-1">{editLogText(log)}</span>
+                                  {isAdmin && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void deleteNote(log)}
+                                      title="Xóa ghi chú"
+                                      className="shrink-0 p-1 text-amber-500 hover:text-rose-600 cursor-pointer"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 

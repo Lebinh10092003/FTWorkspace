@@ -2372,7 +2372,7 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
     <div className="mb-2 flex items-center justify-end gap-3 text-xs text-slate-500"><span role="status">{saving ? "Đang lưu…" : dirtyRows.length ? "Có thay đổi chưa lưu" : "Đã lưu"}</span><button type="button" disabled={saving || !dirtyRows.length} onClick={() => void saveTable(true)} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold disabled:opacity-50">Lưu bảng</button></div>
     {tableSaveError && <div role="status" className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"><span>{tableSaveError} Nội dung chưa lưu vẫn được giữ.</span><button type="button" disabled={saving} onClick={() => void saveTable(true)} className="shrink-0 rounded-lg border border-rose-300 px-3 py-2 font-semibold disabled:opacity-50">Thử lưu lại</button></div>}
     <section className="overflow-hidden border border-slate-400 bg-white shadow-sm">
-    <div className="overflow-x-auto"><table ref={tableRef} className="w-full min-w-[1400px] table-fixed border-collapse text-sm">
+    <div className="hidden md:block overflow-x-auto"><table ref={tableRef} className="w-full min-w-[1400px] table-fixed border-collapse text-sm">
       <thead className="bg-[#e5f4e8] text-[#001e40]"><tr>
         <th className="w-24 border-b border-r border-slate-400 px-2 py-2 text-left">Thứ</th><th className="w-28 border-b border-r border-slate-400 px-2 py-2 text-left">Ngày</th><th className="w-16 border-b border-r border-slate-400 px-2 py-2 text-center">Tuần</th>
         {people && <th className="w-44 border-b border-r border-slate-400 px-2 py-2 text-left">Nhân sự</th>}
@@ -2401,6 +2401,100 @@ function SpreadsheetScheduleTable({ days, tasks, executorEmail, people, idToken,
         </tr>;
       })}</tbody>
     </table></div>
+
+    {/* Mobile Cards for Table View (<md) */}
+    <div className="md:hidden space-y-3 p-3">
+      {gridRows.map(row => {
+        const workItems = rowsFor(row);
+        const draft = drafts[row.key] || { content: "", formatRuns: [], selfAssessment: "", leaderAssessment: "" };
+        const attendanceIsFuture = row.date > iso(new Date());
+        const canReviewDay = !!people?.length && workItems.some((task) => task.canAssess);
+        const compactSelfAssessment = isCompletionNote(draft.selfAssessment);
+        const compactLeaderAssessment = isCompletionNote(draft.leaderAssessment);
+
+        return (
+          <div key={`mobile-row-${row.key}`} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs space-y-2.5">
+            <div className="flex items-center justify-between border-b pb-2">
+              <div>
+                <b className="text-sm text-slate-800">{weekday(row.date)}, {fullDate(row.date)}</b>
+                {row.person && <span className="ml-2 text-xs font-semibold text-blue-700">({row.person.name})</span>}
+              </div>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                Tuần {weekNumber(row.date)}
+              </span>
+            </div>
+
+            {/* Work Content */}
+            <div>
+              <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                Nội dung công việc
+              </span>
+              <ImportantWorkContentEditor
+                value={draft.content}
+                formatRuns={draft.formatRuns}
+                onChange={snapshot => updateCell(row.key, { content: snapshot.value, formatRuns: snapshot.formatRuns })}
+                onBlur={() => void saveTable()}
+                className="w-full min-h-[64px] rounded-lg border border-slate-200 p-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Self Assessment */}
+            <div>
+              <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                Tự đánh giá / Ghi chú
+              </span>
+              <textarea
+                value={draft.selfAssessment}
+                onChange={e => updateCell(row.key, { selfAssessment: e.target.value })}
+                onBlur={() => void saveTable()}
+                placeholder="Ghi chú tiến trình..."
+                className={`w-full min-h-[44px] rounded-lg border border-slate-200 p-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none ${
+                  compactSelfAssessment ? "font-bold text-emerald-700 bg-emerald-50/50" : ""
+                }`}
+              />
+            </div>
+
+            {/* Attendance (if not people view) */}
+            {!people && (
+              <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-xs">
+                <span className="text-slate-500 font-medium">Chấm công:</span>
+                <button
+                  type="button"
+                  disabled={attendanceIsFuture}
+                  onClick={() => void openAttendanceEditor(row.date)}
+                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-40 min-h-[44px]"
+                >
+                  {(attendanceByDate[row.date] || []).some((shift) => !shift.isDayOff)
+                    ? (attendanceByDate[row.date] || []).filter((shift) => !shift.isDayOff).map((shift) => attendanceLine(shift)).join(', ')
+                    : (attendanceByDate[row.date] || []).some((shift) => shift.isDayOff)
+                    ? 'Ngày nghỉ'
+                    : 'Chưa chấm công / Sửa'}
+                </button>
+              </div>
+            )}
+
+            {/* Leader assessment */}
+            {(canReviewDay || draft.leaderAssessment) && (
+              <div className="border-t border-slate-100 pt-2">
+                <span className="block text-[11px] font-bold uppercase tracking-wider text-violet-700 mb-1">
+                  Lãnh đạo đánh giá
+                </span>
+                <textarea
+                  readOnly={!canReviewDay}
+                  value={draft.leaderAssessment}
+                  onChange={e => updateCell(row.key, { leaderAssessment: e.target.value })}
+                  onBlur={() => void saveTable()}
+                  placeholder="Chưa đánh giá"
+                  className={`w-full min-h-[44px] rounded-lg border border-slate-200 p-2 text-xs text-slate-800 focus:border-violet-500 focus:outline-none ${
+                    !canReviewDay ? "bg-slate-50 text-slate-600" : ""
+                  } ${compactLeaderAssessment ? "font-bold text-violet-700" : ""}`}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   </section>
     {attendanceEditor && createPortal(<div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={event => { if (event.target === event.currentTarget) void saveAttendanceEditor(); }}>
       <div role="dialog" aria-modal="true" aria-label="Chỉnh sửa công ca" className="w-full min-w-0 max-w-2xl rounded-2xl border bg-white shadow-2xl">

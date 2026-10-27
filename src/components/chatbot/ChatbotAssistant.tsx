@@ -482,6 +482,15 @@ export default function ChatbotAssistant({
         )}
       </button>
 
+      {/* Mobile Backdrop Overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-45 bg-slate-950/40 md:hidden backdrop-blur-xs transition-opacity"
+          onClick={() => setIsOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Chat window modal / sheet */}
       {isOpen && (
         <div
@@ -546,9 +555,10 @@ export default function ChatbotAssistant({
                 type="button"
                 onClick={handleToggleOpen}
                 title="Đóng cửa sổ"
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label="Đóng cửa sổ Trợ lý"
+                className="flex h-10 w-10 sm:h-8 sm:w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
               >
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown className="h-5 w-5" />
               </button>
             </div>
           </div>
@@ -782,8 +792,11 @@ export default function ChatbotAssistant({
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input Area */}
-              <div className="border-t border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+              {/* Input Area with safe-area and touch-friendly controls */}
+              <div
+                className="border-t border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+                style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+              >
                 <form
                   onSubmit={e => {
                     e.preventDefault();
@@ -801,15 +814,15 @@ export default function ChatbotAssistant({
                         ? 'AI tạm ngừng, vui lòng dùng nút Tìm tool...'
                         : 'Hỏi về lịch công tác, báo cáo tuần...'
                     }
-                    className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className="flex-1 min-h-[44px] rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
                   <button
                     type="submit"
                     disabled={!inputText.trim() || !!activeJobId || healthStatus === 'auth_error'}
                     aria-label="Gửi tin nhắn"
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0B72CE] text-white shadow-xs transition hover:bg-[#075CA8] disabled:opacity-40 cursor-pointer"
                   >
-                    <Send className="h-4 w-4" />
+                    <Send className="h-5 w-5" />
                   </button>
                 </form>
               </div>
