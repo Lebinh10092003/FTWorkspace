@@ -1,0 +1,1466 @@
+[
+  {
+    "page": "Trang chủ",
+    "theme": "DARK",
+    "viewport": "mobile-390",
+    "totalChecked": 71,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Thêm lịch làm việc",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.inline-flex.items-center > span",
+        "cr": 4.87,
+        "fontSize": 14,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      },
+      {
+        "text": "T3",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.flex.flex-col > span.font-semibold.uppercase",
+        "cr": 4.87,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      },
+      {
+        "text": "27",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.flex.flex-col > span.text-base.font-bold",
+        "cr": 4.87,
+        "fontSize": 15,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      },
+      {
+        "text": "Xem bản nháp",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.flex-1.inline-flex > span",
+        "cr": 4.87,
+        "fontSize": 14,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      },
+      {
+        "text": "Đang làm",
+        "tag": "span",
+        "selector": "div.border.p-4 > div.group.flex > span.px-2.5.py-1",
+        "cr": 5.96,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(10, 91, 165)",
+        "bg": "rgb(229, 240, 251)"
+      }
+    ]
+  },
+  {
+    "page": "Lịch công tác",
+    "theme": "DARK",
+    "viewport": "mobile-390",
+    "totalChecked": 16,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Lịch",
+        "tag": "span",
+        "selector": "nav.fixed.bottom-0 > button.ft-bottom-tab.flex > span.leading-tight.line-clamp-1",
+        "cr": 6.63,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "rgb(96, 165, 250)",
+        "bg": "rgb(20, 29, 46)"
+      },
+      {
+        "text": "Công việc trong ngày",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 7.61,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(157, 176, 200)",
+        "bg": "rgb(20, 29, 46)"
+      },
+      {
+        "text": "Đang thực hiện",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 7.61,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(157, 176, 200)",
+        "bg": "rgb(20, 29, 46)"
+      },
+      {
+        "text": "Đã làm xong",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 7.61,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(157, 176, 200)",
+        "bg": "rgb(20, 29, 46)"
+      },
+      {
+        "text": "Tiến độ chung",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 7.61,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(157, 176, 200)",
+        "bg": "rgb(20, 29, 46)"
+      }
+    ]
+  },
+  {
+    "page": "Báo cáo tuần",
+    "theme": "DARK",
+    "viewport": "mobile-390",
+    "totalChecked": 33,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "AI viết lại",
+        "tag": "span",
+        "selector": "div.flex.flex-wrap > button.inline-flex.flex-1 > span",
+        "cr": 5.16,
+        "fontSize": 14,
+        "isLarge": false,
+        "color": "oklch(0.673 0.182 276.935)",
+        "bg": "oklab(0.257 0.0176166 -0.088259 / 0.4)"
+      },
+      {
+        "text": "Tạo báo cáo",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.inline-flex.items-center > span",
+        "cr": 5.25,
+        "fontSize": 14,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "oklch(0.546 0.245 262.881)"
+      },
+      {
+        "text": "Báo cáo",
+        "tag": "span",
+        "selector": "nav.fixed.bottom-0 > button.ft-bottom-tab.flex > span.leading-tight.line-clamp-1",
+        "cr": 6.63,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "rgb(96, 165, 250)",
+        "bg": "rgb(20, 29, 46)"
+      },
+      {
+        "text": "Báo cáo tuần cá nhân · Mẫu chuẩn",
+        "tag": "p",
+        "selector": "div.mb-4.flex > div > p.text-sm.font-bold",
+        "cr": 7.37,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.707 0.165 254.624)",
+        "bg": "rgb(8, 13, 22)"
+      },
+      {
+        "text": "Tổng quan",
+        "tag": "span",
+        "selector": "nav.inline-flex.items-center > button.flex.items-center > span",
+        "cr": 7.95,
+        "fontSize": 14,
+        "isLarge": false,
+        "color": "rgb(180, 197, 218)",
+        "bg": "oklab(0.293057 -0.00603028 -0.0432768 / 0.9)"
+      }
+    ]
+  },
+  {
+    "page": "Chấm công",
+    "theme": "DARK",
+    "viewport": "mobile-390",
+    "totalChecked": 151,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "T7",
+        "tag": "span",
+        "selector": "div > div.flex.items-center > span.text-base.font-bold",
+        "cr": 5.42,
+        "fontSize": 15,
+        "isLarge": false,
+        "color": "oklch(0.712 0.194 13.428)",
+        "bg": "oklab(0.260552 -0.00491567 -0.0383641 / 0.7)"
+      },
+      {
+        "text": "CN",
+        "tag": "span",
+        "selector": "div > div.flex.items-center > span.text-base.font-bold",
+        "cr": 5.42,
+        "fontSize": 15,
+        "isLarge": false,
+        "color": "oklch(0.712 0.194 13.428)",
+        "bg": "oklab(0.260552 -0.00491567 -0.0383641 / 0.7)"
+      },
+      {
+        "text": "T7",
+        "tag": "span",
+        "selector": "div > div.flex.items-center > span.text-base.font-bold",
+        "cr": 5.42,
+        "fontSize": 15,
+        "isLarge": false,
+        "color": "oklch(0.712 0.194 13.428)",
+        "bg": "oklab(0.260552 -0.00491567 -0.0383641 / 0.7)"
+      },
+      {
+        "text": "CN",
+        "tag": "span",
+        "selector": "div > div.flex.items-center > span.text-base.font-bold",
+        "cr": 5.42,
+        "fontSize": 15,
+        "isLarge": false,
+        "color": "oklch(0.712 0.194 13.428)",
+        "bg": "oklab(0.260552 -0.00491567 -0.0383641 / 0.7)"
+      },
+      {
+        "text": "T7",
+        "tag": "span",
+        "selector": "div > div.flex.items-center > span.text-base.font-bold",
+        "cr": 5.42,
+        "fontSize": 15,
+        "isLarge": false,
+        "color": "oklch(0.712 0.194 13.428)",
+        "bg": "oklab(0.260552 -0.00491567 -0.0383641 / 0.7)"
+      }
+    ]
+  },
+  {
+    "page": "Phiếu đề xuất kinh phí",
+    "theme": "DARK",
+    "viewport": "mobile-390",
+    "totalChecked": 154,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "1. Thông tin đề xuất",
+        "tag": "h2",
+        "selector": "div.min-w-0.space-y-5 > section.rounded-2xl.border > h2.text-sm.font-extrabold",
+        "cr": 6.39,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.707 0.165 254.624)",
+        "bg": "rgb(20, 29, 46)"
+      },
+      {
+        "text": "2. Dự toán",
+        "tag": "h2",
+        "selector": "section.rounded-2xl.border > div.flex.flex-wrap > h2.text-sm.font-extrabold",
+        "cr": 6.39,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.707 0.165 254.624)",
+        "bg": "rgb(20, 29, 46)"
+      },
+      {
+        "text": "3. Đối chiếu và hồ sơ",
+        "tag": "h2",
+        "selector": "div.min-w-0.space-y-5 > section.rounded-2xl.border > h2.text-sm.font-extrabold",
+        "cr": 6.39,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.707 0.165 254.624)",
+        "bg": "rgb(20, 29, 46)"
+      },
+      {
+        "text": "5. Phê duyệt",
+        "tag": "h2",
+        "selector": "div.min-w-0.space-y-5 > section.rounded-2xl.border > h2.text-sm.font-extrabold",
+        "cr": 6.39,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.707 0.165 254.624)",
+        "bg": "rgb(20, 29, 46)"
+      },
+      {
+        "text": "Thêm",
+        "tag": "span",
+        "selector": "nav.fixed.bottom-0 > button.ft-bottom-tab.flex > span.leading-tight.line-clamp-1",
+        "cr": 6.63,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "rgb(96, 165, 250)",
+        "bg": "rgb(20, 29, 46)"
+      }
+    ]
+  },
+  {
+    "page": "Quản lý nhân viên",
+    "theme": "DARK",
+    "viewport": "mobile-390",
+    "totalChecked": 31,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Thêm",
+        "tag": "span",
+        "selector": "nav.fixed.bottom-0 > button.ft-bottom-tab.flex > span.leading-tight.line-clamp-1",
+        "cr": 6.63,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "rgb(96, 165, 250)",
+        "bg": "rgb(20, 29, 46)"
+      },
+      {
+        "text": "FT Workspace",
+        "tag": "p",
+        "selector": "div.flex.flex-wrap > div > p.text-xs.font-bold",
+        "cr": 7.37,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.707 0.165 254.624)",
+        "bg": "rgb(8, 13, 22)"
+      },
+      {
+        "text": "Đang hoạt động",
+        "tag": "span",
+        "selector": "div.p-4.space-y-3 > div.flex.items-start > span.inline-flex.shrink-0",
+        "cr": 7.56,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.765 0.177 163.223)",
+        "bg": "oklab(0.277542 -0.0203735 -0.0267204)"
+      },
+      {
+        "text": "Đang hoạt động",
+        "tag": "span",
+        "selector": "div.p-4.space-y-3 > div.flex.items-start > span.inline-flex.shrink-0",
+        "cr": 7.56,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.765 0.177 163.223)",
+        "bg": "oklab(0.277542 -0.0203735 -0.0267204)"
+      },
+      {
+        "text": "Đang hoạt động",
+        "tag": "span",
+        "selector": "div.p-4.space-y-3 > div.flex.items-start > span.inline-flex.shrink-0",
+        "cr": 7.56,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.765 0.177 163.223)",
+        "bg": "oklab(0.277542 -0.0203735 -0.0267204)"
+      }
+    ]
+  },
+  {
+    "page": "Trang chủ",
+    "theme": "DARK",
+    "viewport": "desktop-1440",
+    "totalChecked": 83,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Thêm lịch làm việc",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.inline-flex.items-center > span",
+        "cr": 4.87,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      },
+      {
+        "text": "Xem bản nháp",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.flex-1.inline-flex > span",
+        "cr": 4.87,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      },
+      {
+        "text": "Workspace OS",
+        "tag": "p",
+        "selector": "div.flex.flex-1 > div.min-w-0 > p.font-medium.truncate",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Của tôi",
+        "tag": "p",
+        "selector": "div.flex-1.overflow-y-auto > div.space-y-1 > p.px-2.pt-1",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Phân hệ",
+        "tag": "p",
+        "selector": "div.flex-1.overflow-y-auto > div.space-y-1 > p.px-2.pt-2",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      }
+    ]
+  },
+  {
+    "page": "Lịch công tác",
+    "theme": "DARK",
+    "viewport": "desktop-1440",
+    "totalChecked": 58,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Ưu tiên cao",
+        "tag": "span",
+        "selector": "div.mb-3.flex > div.flex.items-center > span.rounded-md.px-2",
+        "cr": 5.28,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.712 0.194 13.428)",
+        "bg": "oklab(0.272442 0.0194323 -0.0248764)"
+      },
+      {
+        "text": "Workspace OS",
+        "tag": "p",
+        "selector": "div.flex.flex-1 > div.min-w-0 > p.font-medium.truncate",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Của tôi",
+        "tag": "p",
+        "selector": "div.flex-1.overflow-y-auto > div.space-y-1 > p.px-2.pt-1",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Phân hệ",
+        "tag": "p",
+        "selector": "div.flex-1.overflow-y-auto > div.space-y-1 > p.px-2.pt-2",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "ADMIN",
+        "tag": "p",
+        "selector": "button.flex.items-center > div.min-w-0 > p.truncate.leading-tight",
+        "cr": 5.8,
+        "fontSize": 10,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      }
+    ]
+  },
+  {
+    "page": "Báo cáo tuần",
+    "theme": "DARK",
+    "viewport": "desktop-1440",
+    "totalChecked": 51,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "AI viết lại",
+        "tag": "span",
+        "selector": "div.flex.flex-wrap > button.inline-flex.flex-1 > span",
+        "cr": 5.16,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.673 0.182 276.935)",
+        "bg": "oklab(0.257 0.0176166 -0.088259 / 0.4)"
+      },
+      {
+        "text": "Tạo báo cáo tuần",
+        "tag": "span",
+        "selector": "div.hidden.items-center > button.inline-flex.items-center > span.hidden",
+        "cr": 5.25,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "oklch(0.546 0.245 262.881)"
+      },
+      {
+        "text": "Lê Bình",
+        "tag": "span",
+        "selector": "button.w-full.rounded-xl > div.flex.items-center > span.block.text-sm",
+        "cr": 5.25,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "oklch(0.546 0.245 262.881)"
+      },
+      {
+        "text": "Tuần 43 → 44",
+        "tag": "span",
+        "selector": "div.space-y-1.5 > button.w-full.rounded-xl > span.mt-1.block",
+        "cr": 5.25,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "oklch(0.546 0.245 262.881)"
+      },
+      {
+        "text": "Workspace OS",
+        "tag": "p",
+        "selector": "div.flex.flex-1 > div.min-w-0 > p.font-medium.truncate",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      }
+    ]
+  },
+  {
+    "page": "Chấm công",
+    "theme": "DARK",
+    "viewport": "desktop-1440",
+    "totalChecked": 217,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Workspace OS",
+        "tag": "p",
+        "selector": "div.flex.flex-1 > div.min-w-0 > p.font-medium.truncate",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Của tôi",
+        "tag": "p",
+        "selector": "div.flex-1.overflow-y-auto > div.space-y-1 > p.px-2.pt-1",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Phân hệ",
+        "tag": "p",
+        "selector": "div.flex-1.overflow-y-auto > div.space-y-1 > p.px-2.pt-2",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "ADMIN",
+        "tag": "p",
+        "selector": "button.flex.items-center > div.min-w-0 > p.truncate.leading-tight",
+        "cr": 5.8,
+        "fontSize": 10,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Tìm nhanh...",
+        "tag": "span",
+        "selector": "button.hidden.items-center > div.flex.items-center > span.truncate",
+        "cr": 6.18,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "rgb(147, 165, 189)",
+        "bg": "rgb(26, 36, 55)"
+      }
+    ]
+  },
+  {
+    "page": "Phiếu đề xuất kinh phí",
+    "theme": "DARK",
+    "viewport": "desktop-1440",
+    "totalChecked": 163,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Workspace OS",
+        "tag": "p",
+        "selector": "div.flex.flex-1 > div.min-w-0 > p.font-medium.truncate",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Của tôi",
+        "tag": "p",
+        "selector": "div.flex-1.overflow-y-auto > div.space-y-1 > p.px-2.pt-1",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Phân hệ",
+        "tag": "p",
+        "selector": "div.flex-1.overflow-y-auto > div.space-y-1 > p.px-2.pt-2",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "ADMIN",
+        "tag": "p",
+        "selector": "button.flex.items-center > div.min-w-0 > p.truncate.leading-tight",
+        "cr": 5.8,
+        "fontSize": 10,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Tìm nhanh...",
+        "tag": "span",
+        "selector": "button.hidden.items-center > div.flex.items-center > span.truncate",
+        "cr": 6.18,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "rgb(147, 165, 189)",
+        "bg": "rgb(26, 36, 55)"
+      }
+    ]
+  },
+  {
+    "page": "Quản lý nhân viên",
+    "theme": "DARK",
+    "viewport": "desktop-1440",
+    "totalChecked": 50,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Workspace OS",
+        "tag": "p",
+        "selector": "div.flex.flex-1 > div.min-w-0 > p.font-medium.truncate",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Của tôi",
+        "tag": "p",
+        "selector": "div.flex-1.overflow-y-auto > div.space-y-1 > p.px-2.pt-1",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Phân hệ",
+        "tag": "p",
+        "selector": "div.flex-1.overflow-y-auto > div.space-y-1 > p.px-2.pt-2",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "ADMIN",
+        "tag": "p",
+        "selector": "button.flex.items-center > div.min-w-0 > p.truncate.leading-tight",
+        "cr": 5.8,
+        "fontSize": 10,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Tìm nhanh...",
+        "tag": "span",
+        "selector": "button.hidden.items-center > div.flex.items-center > span.truncate",
+        "cr": 6.18,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "rgb(147, 165, 189)",
+        "bg": "rgb(26, 36, 55)"
+      }
+    ]
+  },
+  {
+    "page": "Trang chủ",
+    "theme": "LIGHT",
+    "viewport": "mobile-390",
+    "totalChecked": 71,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Hạn T6 16:45",
+        "tag": "span",
+        "selector": "div.flex.items-center > span.inline-flex.items-center > span",
+        "cr": 4.85,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "oklch(0.555 0.163 48.998)",
+        "bg": "oklch(0.987 0.022 95.277)"
+      },
+      {
+        "text": "Thêm lịch làm việc",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.inline-flex.items-center > span",
+        "cr": 4.87,
+        "fontSize": 14,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      },
+      {
+        "text": "T3",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.flex.flex-col > span.font-semibold.uppercase",
+        "cr": 4.87,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      },
+      {
+        "text": "27",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.flex.flex-col > span.text-base.font-bold",
+        "cr": 4.87,
+        "fontSize": 15,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      },
+      {
+        "text": "Xem bản nháp",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.flex-1.inline-flex > span",
+        "cr": 4.87,
+        "fontSize": 14,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      }
+    ]
+  },
+  {
+    "page": "Lịch công tác",
+    "theme": "LIGHT",
+    "viewport": "mobile-390",
+    "totalChecked": 42,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Công việc trong ngày",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(100, 116, 139)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Đang thực hiện",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(100, 116, 139)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Đã làm xong",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(100, 116, 139)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Tiến độ chung",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(100, 116, 139)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Không có mô tả.",
+        "tag": "p",
+        "selector": "div.space-y-3 > article.group.cursor-pointer > p.mt-1.line-clamp-2",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      }
+    ]
+  },
+  {
+    "page": "Báo cáo tuần",
+    "theme": "LIGHT",
+    "viewport": "mobile-390",
+    "totalChecked": 33,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Tạo báo cáo",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.inline-flex.items-center > span",
+        "cr": 5.25,
+        "fontSize": 14,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "oklch(0.546 0.245 262.881)"
+      },
+      {
+        "text": "Báo cáo tuần cá nhân · Mẫu chuẩn",
+        "tag": "p",
+        "selector": "div.mb-4.flex > div > p.text-sm.font-bold",
+        "cr": 6.3,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.488 0.243 264.376)",
+        "bg": "rgb(243, 246, 250)"
+      },
+      {
+        "text": "Báo cáo",
+        "tag": "span",
+        "selector": "nav.fixed.bottom-0 > button.ft-bottom-tab.flex > span.leading-tight.line-clamp-1",
+        "cr": 6.76,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "rgb(7, 92, 168)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Tổng quan",
+        "tag": "span",
+        "selector": "nav.inline-flex.items-center > button.flex.items-center > span",
+        "cr": 6.92,
+        "fontSize": 14,
+        "isLarge": false,
+        "color": "oklch(0.446 0.043 257.281)",
+        "bg": "oklab(0.968 -0.00263402 -0.00648552 / 0.9)"
+      },
+      {
+        "text": "Thiết kế Email",
+        "tag": "span",
+        "selector": "nav.inline-flex.items-center > button.flex.items-center > span",
+        "cr": 6.92,
+        "fontSize": 14,
+        "isLarge": false,
+        "color": "oklch(0.446 0.043 257.281)",
+        "bg": "oklab(0.968 -0.00263402 -0.00648552 / 0.9)"
+      }
+    ]
+  },
+  {
+    "page": "Chấm công",
+    "theme": "LIGHT",
+    "viewport": "mobile-390",
+    "totalChecked": 151,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "(8h)",
+        "tag": "span",
+        "selector": "div.flex.items-center > div > span.ml-2.tabular-nums",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      },
+      {
+        "text": "Trực tiếp",
+        "tag": "span",
+        "selector": "div.mt-3.space-y-2 > div.flex.items-center > span.inline-flex.rounded-full",
+        "cr": 4.72,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "oklch(0.508 0.118 165.612)",
+        "bg": "oklch(0.95 0.052 163.051)"
+      },
+      {
+        "text": "Tính đến hết Thứ Hai, ngày 26/10",
+        "tag": "p",
+        "selector": "div.space-y-4 > aside.rounded-2xl.border > p.mt-1.text-sm",
+        "cr": 4.76,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Tổng giờ làm",
+        "tag": "p",
+        "selector": "div.flex.items-center > div > p.text-xs.text-slate-500",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Trực tiếp",
+        "tag": "p",
+        "selector": "div.flex.items-center > div > p.text-xs.text-slate-500",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      }
+    ]
+  },
+  {
+    "page": "Phiếu đề xuất kinh phí",
+    "theme": "LIGHT",
+    "viewport": "mobile-390",
+    "totalChecked": 154,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Hạng mục 1",
+        "tag": "span",
+        "selector": "div.rounded-xl.border > div.flex.items-center > span.text-xs.font-bold",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      },
+      {
+        "text": "ĐVT",
+        "tag": "span",
+        "selector": "div.mt-2.grid > div > span.block.text-xs",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      },
+      {
+        "text": "Số lượng",
+        "tag": "span",
+        "selector": "div.mt-2.grid > div > span.block.text-xs",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      },
+      {
+        "text": "Đơn giá",
+        "tag": "span",
+        "selector": "div.mt-2.grid > div > span.block.text-xs",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      },
+      {
+        "text": "Hạng mục 2",
+        "tag": "span",
+        "selector": "div.rounded-xl.border > div.flex.items-center > span.text-xs.font-bold",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      }
+    ]
+  },
+  {
+    "page": "Quản lý nhân viên",
+    "theme": "LIGHT",
+    "viewport": "mobile-390",
+    "totalChecked": 31,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Hiển thị 1–3 / 3 nhân viên",
+        "tag": "span",
+        "selector": "section.overflow-hidden.rounded-2xl > footer.flex.flex-wrap > span",
+        "cr": 4.76,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Trước",
+        "tag": "button",
+        "selector": "footer.flex.flex-wrap > div.flex.items-center > button.rounded-lg.border",
+        "cr": 4.76,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Trang 1/1",
+        "tag": "span",
+        "selector": "footer.flex.flex-wrap > div.flex.items-center > span",
+        "cr": 4.76,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Sau",
+        "tag": "button",
+        "selector": "footer.flex.flex-wrap > div.flex.items-center > button.rounded-lg.border",
+        "cr": 4.76,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "FT Workspace",
+        "tag": "p",
+        "selector": "div.flex.flex-wrap > div > p.text-xs.font-bold",
+        "cr": 4.84,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.546 0.245 262.881)",
+        "bg": "rgb(243, 246, 250)"
+      }
+    ]
+  },
+  {
+    "page": "Trang chủ",
+    "theme": "LIGHT",
+    "viewport": "desktop-1440",
+    "totalChecked": 100,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Hạn T6 16:45",
+        "tag": "span",
+        "selector": "div.flex.items-center > span.inline-flex.items-center > span",
+        "cr": 4.85,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.555 0.163 48.998)",
+        "bg": "oklch(0.987 0.022 95.277)"
+      },
+      {
+        "text": "Thêm lịch làm việc",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.inline-flex.items-center > span",
+        "cr": 4.87,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      },
+      {
+        "text": "Xem bản nháp",
+        "tag": "span",
+        "selector": "div.flex.items-center > button.flex-1.inline-flex > span",
+        "cr": 4.87,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "rgb(11, 114, 206)"
+      },
+      {
+        "text": "Workspace OS",
+        "tag": "p",
+        "selector": "div.flex.flex-1 > div.min-w-0 > p.font-medium.truncate",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      },
+      {
+        "text": "Của tôi",
+        "tag": "p",
+        "selector": "div.flex-1.overflow-y-auto > div.space-y-1 > p.px-2.pt-1",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      }
+    ]
+  },
+  {
+    "page": "Lịch công tác",
+    "theme": "LIGHT",
+    "viewport": "desktop-1440",
+    "totalChecked": 58,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Công việc trong ngày",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(100, 116, 139)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Đang thực hiện",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(100, 116, 139)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Đã làm xong",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(100, 116, 139)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Tiến độ chung",
+        "tag": "span",
+        "selector": "div.ws-stat > div.min-w-0.flex-1 > span.truncate",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(100, 116, 139)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Không có mô tả.",
+        "tag": "p",
+        "selector": "div.space-y-3 > article.group.cursor-pointer > p.mt-1.line-clamp-2",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      }
+    ]
+  },
+  {
+    "page": "Báo cáo tuần",
+    "theme": "LIGHT",
+    "viewport": "desktop-1440",
+    "totalChecked": 51,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Báo cáo cá nhân",
+        "tag": "p",
+        "selector": "div.grid.items-start > aside.hidden.rounded-2xl > p.px-2.pb-2",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Tạo báo cáo tuần",
+        "tag": "span",
+        "selector": "div.hidden.items-center > button.inline-flex.items-center > span.hidden",
+        "cr": 5.25,
+        "fontSize": 13,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "oklch(0.546 0.245 262.881)"
+      },
+      {
+        "text": "Lê Bình",
+        "tag": "span",
+        "selector": "button.w-full.rounded-xl > div.flex.items-center > span.block.text-sm",
+        "cr": 5.25,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "oklch(0.546 0.245 262.881)"
+      },
+      {
+        "text": "Tuần 43 → 44",
+        "tag": "span",
+        "selector": "div.space-y-1.5 > button.w-full.rounded-xl > span.mt-1.block",
+        "cr": 5.25,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(255, 255, 255)",
+        "bg": "oklch(0.546 0.245 262.881)"
+      },
+      {
+        "text": "Workspace OS",
+        "tag": "p",
+        "selector": "div.flex.flex-1 > div.min-w-0 > p.font-medium.truncate",
+        "cr": 5.8,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "rgb(143, 166, 192)",
+        "bg": "rgb(11, 42, 74)"
+      }
+    ]
+  },
+  {
+    "page": "Chấm công",
+    "theme": "LIGHT",
+    "viewport": "desktop-1440",
+    "totalChecked": 217,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Trực tiếp",
+        "tag": "span",
+        "selector": "tr > td > span.inline-flex.rounded-full",
+        "cr": 4.72,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.508 0.118 165.612)",
+        "bg": "oklch(0.95 0.052 163.051)"
+      },
+      {
+        "text": "Tính đến hết Thứ Hai, ngày 26/10",
+        "tag": "p",
+        "selector": "div.space-y-4 > aside.rounded-2xl.border > p.mt-1.text-sm",
+        "cr": 4.76,
+        "fontSize": 12,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Tổng giờ làm",
+        "tag": "p",
+        "selector": "div.flex.items-center > div > p.text-xs.text-slate-500",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Trực tiếp",
+        "tag": "p",
+        "selector": "div.flex.items-center > div > p.text-xs.text-slate-500",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Online",
+        "tag": "p",
+        "selector": "div.flex.items-center > div > p.text-xs.text-slate-500",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      }
+    ]
+  },
+  {
+    "page": "Phiếu đề xuất kinh phí",
+    "theme": "LIGHT",
+    "viewport": "desktop-1440",
+    "totalChecked": 163,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Hạng mục 1",
+        "tag": "span",
+        "selector": "div.rounded-xl.border > div.flex.items-center > span.text-xs.font-bold",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      },
+      {
+        "text": "Hạng mục 2",
+        "tag": "span",
+        "selector": "div.rounded-xl.border > div.flex.items-center > span.text-xs.font-bold",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      },
+      {
+        "text": "Số phiếu (tự động)",
+        "tag": "span",
+        "selector": "div.mt-4.grid > label.block > span.mb-1.5.block",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Ngày lập",
+        "tag": "span",
+        "selector": "div.mt-4.grid > label.block > span.mb-1.5.block",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      },
+      {
+        "text": "Loại đề xuất",
+        "tag": "span",
+        "selector": "div.mt-4.grid > label.block > span.mb-1.5.block",
+        "cr": 4.76,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "rgb(255, 255, 255)"
+      }
+    ]
+  },
+  {
+    "page": "Quản lý nhân viên",
+    "theme": "LIGHT",
+    "viewport": "desktop-1440",
+    "totalChecked": 50,
+    "countNormalUnder4_5": 0,
+    "countLargeUnder3_0": 0,
+    "countCriticalUnder3": 0,
+    "worst5": [
+      {
+        "text": "Họ tên, email",
+        "tag": "th",
+        "selector": "thead.bg-slate-50.text-left > tr > th.px-4.py-3",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      },
+      {
+        "text": "Mã nhân viên",
+        "tag": "th",
+        "selector": "thead.bg-slate-50.text-left > tr > th.px-4.py-3",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      },
+      {
+        "text": "Phòng ban",
+        "tag": "th",
+        "selector": "thead.bg-slate-50.text-left > tr > th.px-4.py-3",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      },
+      {
+        "text": "Chức danh",
+        "tag": "th",
+        "selector": "thead.bg-slate-50.text-left > tr > th.px-4.py-3",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      },
+      {
+        "text": "Quyền hệ thống",
+        "tag": "th",
+        "selector": "thead.bg-slate-50.text-left > tr > th.px-4.py-3",
+        "cr": 4.55,
+        "fontSize": 11,
+        "isLarge": false,
+        "color": "oklch(0.554 0.046 257.417)",
+        "bg": "oklch(0.984 0.003 247.858)"
+      }
+    ]
+  }
+]
