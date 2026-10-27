@@ -2034,7 +2034,7 @@ body { overflow-x: hidden; }
    ========================================================================= */
 :root {
   --ft-rail-width: 248px;
-  --ft-rail-width-compact: 4.5rem;
+  --ft-rail-width-compact: 64px;
 }
 
 .ft-workspace-frame {
@@ -2374,12 +2374,16 @@ body { overflow-x: hidden; }
   .ft-module-bar-account { order: 2; }
 }
 
-/* Phones: the rail becomes a horizontal strip so the screen keeps its width. */
-@media (max-width: 767px) {
+/* Tablets & Phones: the frame has no fixed left rail padding */
+@media (max-width: 1023px) {
   .ft-workspace-frame { padding-left: 0; }
   .ft-workspace-frame:has(.ft-app-rail.is-compact) { padding-left: 0; }
   .ft-workspace-frame .ft-module-sidebar.fixed,
   .ft-workspace-frame:has(.ft-app-rail.is-compact) .ft-module-sidebar.fixed { left: 0; }
+}
+
+/* Phones: the rail becomes a horizontal strip so the screen keeps its width. */
+@media (max-width: 767px) {
   .ft-app-rail,
   .ft-app-rail.is-compact {
     position: sticky;
