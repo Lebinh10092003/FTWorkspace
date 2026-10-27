@@ -171,6 +171,7 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
   const [saving, setSaving] = useState(false);
   const [popupError, setPopupError] = useState('');
   const [isEdit, setIsEdit] = useState(false);
+  const [showAllMissingDays, setShowAllMissingDays] = useState(false);
 
   /* ---------- Data loading ---------- */
   const load = useCallback(async (silent = false) => {
@@ -481,20 +482,37 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
             </div>
           ) : (<>
             {/* Title row */}
-            <section className="mb-7">
-              <p className="text-xl font-extrabold uppercase tracking-wide text-emerald-700 sm:text-2xl">Xin chào, {userName}</p>
+            <section className="mb-6">
+              <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Xin chào, {userName}</h1>
             </section>
 
             {error && <div className="mb-5 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800"><TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" /><span>{error}</span></div>}
 
-            {/* Missing weekday warnings (no buttons) */}
+            {/* Missing weekday warnings (collapsible) */}
             {missingWeekdays.length > 0 && (
               <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <div className="flex items-start gap-2">
                   <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-                  <div>
-                    <p className="text-sm font-bold text-amber-900">Các ngày chưa có công ca trong tháng:</p>
-                    <p className="mt-1 text-sm text-amber-800">{missingWeekdays.map(d => fmtDate(d)).join(', ')}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-amber-900">
+                      Các ngày chưa có công ca trong tháng ({missingWeekdays.length} ngày):
+                    </p>
+                    <p className="mt-1 text-sm text-amber-800">
+                      {(showAllMissingDays || missingWeekdays.length <= 5
+                        ? missingWeekdays
+                        : missingWeekdays.slice(0, 5)
+                      ).map(d => fmtDate(d)).join(', ')}
+                      {!showAllMissingDays && missingWeekdays.length > 5 && '…'}
+                    </p>
+                    {missingWeekdays.length > 5 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllMissingDays(!showAllMissingDays)}
+                        className="mt-2 inline-flex items-center text-xs font-bold text-amber-900 underline hover:text-amber-700 cursor-pointer min-h-[44px]"
+                      >
+                        {showAllMissingDays ? 'Thu gọn danh sách' : `Xem tất cả ${missingWeekdays.length} ngày chưa có công`}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -505,7 +523,7 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
               <div className="min-w-0 rounded-2xl border bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold uppercase text-emerald-600">Bảng công{selectedEmpName ? ` — ${selectedEmpName}` : ''}</p>
+                    <p className="text-xs font-bold uppercase text-emerald-700 dark:text-emerald-400">Bảng công{selectedEmpName ? ` — ${selectedEmpName}` : ''}</p>
                     <h2 className="mt-1 text-xl font-extrabold">Tháng {fmtMonthLabel(month)}</h2>
                   </div>
                   <label><span className="sr-only">Chọn tháng</span><input type="month" value={month} onChange={e => setMonth(e.target.value)} className="ft-input" /></label>
@@ -576,7 +594,7 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
                                       {isAdmin && <button type="button" onClick={() => void deleteNote(log)} title="Xóa ghi chú" className="shrink-0 rounded p-0.5 text-amber-500 transition hover:bg-rose-100 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>}
                                     </p>
                                   ))}
-                                  {logs.length === 0 && <span className={!hasEntries && isPast && !defaultDayOff ? 'text-amber-500' : 'text-slate-300'}>{!hasEntries && isPast && !defaultDayOff ? 'Chưa có công ca' : '—'}</span>}
+                                  {logs.length === 0 && <span className={!hasEntries && isPast && !defaultDayOff ? 'text-amber-700 dark:text-amber-400 font-semibold' : 'text-slate-300 dark:text-slate-600'}>{!hasEntries && isPast && !defaultDayOff ? 'Chưa có công ca' : '—'}</span>}
                                 </td>}
                               </tr>
                             ))}
@@ -616,20 +634,20 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
                           key={`mobile-${dateStr}`}
                           className={`rounded-2xl border p-4 transition-all shadow-xs ${
                             markedDayOff
-                              ? 'border-slate-200 bg-slate-50/70'
+                              ? 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50'
                               : !hasEntries && isPast && !defaultDayOff
-                              ? 'border-amber-200 bg-amber-50/30'
-                              : 'border-[#DDE5EF] bg-white'
+                              ? 'border-amber-200 dark:border-amber-900/50 bg-amber-50/30 dark:bg-amber-950/20'
+                              : 'border-[#DDE5EF] dark:border-slate-800 bg-white dark:bg-slate-900'
                           }`}
                         >
                           {/* Header: Date + Status Badge */}
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <div className="flex items-center gap-2">
-                                <span className={`text-base font-bold ${weekend ? 'text-rose-600' : 'text-[#0F1F33]'}`}>
+                                <span className={`text-base font-bold ${weekend ? 'text-rose-700 dark:text-rose-400' : 'text-[#0F1F33] dark:text-slate-100'}`}>
                                   {weekdayName(dateStr)}
                                 </span>
-                                <span className="text-sm font-bold tabular-nums text-[#4A5B70]">
+                                <span className="text-sm font-bold tabular-nums text-[#4A5B70] dark:text-slate-300">
                                   {fmtDate(dateStr)}
                                 </span>
                               </div>
@@ -637,19 +655,19 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
 
                             <div className="flex items-center gap-1.5">
                               {markedDayOff ? (
-                                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-600">
+                                <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-xs font-bold text-slate-600 dark:text-slate-300">
                                   Ngày nghỉ
                                 </span>
                               ) : hasEntries ? (
-                                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
+                                <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/60 px-2.5 py-0.5 text-xs font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40">
                                   {fmtHours(dayTotal)} giờ
                                 </span>
                               ) : isPast && !defaultDayOff ? (
-                                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800">
+                                <span className="rounded-full bg-amber-100 dark:bg-amber-950/60 px-2.5 py-0.5 text-xs font-bold text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40">
                                   Chưa chấm công
                                 </span>
                               ) : (
-                                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-400">
+                                <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-xs font-bold text-slate-400 dark:text-slate-500">
                                   —
                                 </span>
                               )}
@@ -668,15 +686,15 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
 
                           {/* Shifts list */}
                           {!markedDayOff && hasEntries && (
-                            <div className="mt-3 space-y-2 border-t border-slate-100 pt-2.5">
+                            <div className="mt-3 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2.5">
                               {originalEntries.map((entry, idx) => (
-                                <div key={entry.id || idx} className="flex items-center justify-between text-xs bg-slate-50 p-2 rounded-xl border border-slate-100">
+                                <div key={entry.id || idx} className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
                                   <div>
-                                    <span className="font-bold text-slate-700">Ca {entry.shiftNumber}:</span>{' '}
-                                    <span className="tabular-nums font-semibold text-slate-900">{entry.shiftStart} – {entry.shiftEnd}</span>
-                                    <span className="ml-2 tabular-nums text-slate-500 font-medium">({fmtHours(entry.workedMinutes)}h)</span>
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">Ca {entry.shiftNumber}:</span>{' '}
+                                    <span className="tabular-nums font-semibold text-slate-900 dark:text-slate-100">{entry.shiftStart} – {entry.shiftEnd}</span>
+                                    <span className="ml-2 tabular-nums text-slate-500 dark:text-slate-400 font-medium">({fmtHours(entry.workedMinutes)}h)</span>
                                   </div>
-                                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${entry.workMode === 'online' ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${entry.workMode === 'online' ? 'bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 border border-violet-200/60 dark:border-violet-800/40' : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'}`}>
                                     {modeLabel(entry.workMode)}
                                   </span>
                                 </div>
@@ -685,14 +703,14 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
                           )}
 
                           {/* Quick Day Off Checkbox */}
-                          <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2 text-xs">
-                            <label className={`flex items-center gap-2 font-semibold text-amber-800 min-h-[44px] ${isFuture ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                          <div className="mt-3 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2 text-xs">
+                            <label className={`flex items-center gap-2 font-semibold text-amber-800 dark:text-amber-300 min-h-[44px] ${isFuture ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
                               <input
                                 type="checkbox"
                                 checked={markedDayOff}
                                 disabled={isFuture}
                                 onChange={event => event.target.checked ? void quickDayOff(dateStr) : void openPopup(dateStr, false)}
-                                className="h-4 w-4 shrink-0 rounded border-slate-300 text-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
+                                className="h-4 w-4 shrink-0 rounded border-slate-300 dark:border-slate-700 text-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
                               />
                               <span>Ngày nghỉ</span>
                             </label>
@@ -735,7 +753,7 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
               {/* Fixed right rail: summary and monthly Sheet link stay together. */}
               <div className="space-y-4 xl:sticky xl:top-28 xl:max-h-[calc(100dvh-8rem)] xl:overflow-y-auto">
                 <aside className="rounded-2xl border bg-white p-5 shadow-sm">
-                  <p className="text-xs font-bold uppercase text-emerald-600">Tổng quan{selectedEmpName ? ` — ${selectedEmpName}` : ''}</p>
+                  <p className="text-xs font-bold uppercase text-emerald-700 dark:text-emerald-400">Tổng quan{selectedEmpName ? ` — ${selectedEmpName}` : ''}</p>
                   <h2 className="mt-1 text-xl font-extrabold">Tháng {fmtMonthLabel(month)}</h2>
                   <p className="mt-1 text-sm font-semibold text-slate-500">Tính đến hết {weekdayLongName(summaryCutoff)}, ngày {fmtDate(summaryCutoff)}</p>
                   <div className="mt-5 space-y-5">

@@ -44,17 +44,17 @@ export function ResponsiveDataCard({
   return (
     <div
       onClick={onClick}
-      className={`relative rounded-[12px] border border-[#DDE5EF] bg-white p-3.5 shadow-xs transition-all ${
-        isClickable ? 'cursor-pointer hover:border-[#0B72CE]/40 hover:shadow-sm active:bg-slate-50/70' : ''
+      className={`relative rounded-[12px] border border-[var(--ft-border,#DDE5EF)] bg-[var(--workspace-card,#FFFFFF)] p-3.5 shadow-xs transition-all ${
+        isClickable ? 'cursor-pointer hover:border-[#0B72CE]/40 hover:shadow-sm active:bg-slate-50/70 dark:active:bg-slate-800/70' : ''
       } ${className}`}
     >
       <div className="flex items-start justify-between gap-2.5">
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-[#0F1F33] leading-snug break-words">
+          <div className="text-sm font-semibold text-[var(--workspace-surface-text,#0F1F33)] leading-snug break-words">
             {primary}
           </div>
           {secondary && (
-            <div className="mt-1 text-xs text-[#4A5B70] leading-relaxed break-words">
+            <div className="mt-1 text-xs text-[var(--workspace-surface-muted,#4A5B70)] leading-relaxed break-words">
               {secondary}
             </div>
           )}
@@ -63,16 +63,16 @@ export function ResponsiveDataCard({
       </div>
 
       {metadata && metadata.length > 0 && (
-        <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2.5 text-xs">
+        <div className="mt-3 grid grid-cols-2 gap-2 border-t border-[var(--ft-border-soft,#f1f5f9)] pt-2.5 text-xs">
           {metadata.map((meta, idx) => {
             const Icon = meta.icon;
             return (
               <div key={idx} className="min-w-0">
-                <span className="block text-[11px] font-medium text-slate-400 truncate">
+                <span className="block text-[11px] font-medium text-[var(--workspace-surface-muted,#94a6be)] truncate">
                   {meta.label}
                 </span>
-                <span className="mt-0.5 flex items-center gap-1 font-semibold text-slate-700 truncate">
-                  {Icon && <Icon className="h-3 w-3 shrink-0 text-slate-400" />}
+                <span className="mt-0.5 flex items-center gap-1 font-semibold text-[var(--workspace-surface-text,#334155)] truncate">
+                  {Icon && <Icon className="h-3 w-3 shrink-0 text-[var(--workspace-surface-muted,#94a6be)]" />}
                   {meta.value}
                 </span>
               </div>
@@ -83,7 +83,7 @@ export function ResponsiveDataCard({
 
       {actions && (
         <div
-          className="mt-3 flex items-center justify-end gap-2 border-t border-slate-100 pt-2.5"
+          className="mt-3 flex items-center justify-end gap-2 border-t border-[var(--ft-border-soft,#f1f5f9)] pt-2.5"
           onClick={e => e.stopPropagation()}
         >
           {actions}

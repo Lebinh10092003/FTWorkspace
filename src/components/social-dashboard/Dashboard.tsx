@@ -356,7 +356,7 @@ export default function Dashboard({ idToken, googleAccessToken, channels, onOpen
       container.removeEventListener('scroll', updateRecentPostsNavigation);
       observer.disconnect();
     };
-  }, [data?.topPosts.length]);
+  }, [data?.topPosts?.length]);
 
   useEffect(() => () => stopRecentPostsScroll(), []);
 
@@ -550,24 +550,26 @@ export default function Dashboard({ idToken, googleAccessToken, channels, onOpen
         <p className="text-sm text-slate-500 mt-1">Theo dõi hiệu quả nội dung đa kênh theo thời gian thực.</p>
       </section>
 
-      <section className="flex flex-wrap items-center gap-3 bg-slate-50 border border-slate-200/70 p-3 rounded-xl">
-        <Filter className="w-5 h-5 text-slate-400" />
-        <span className="text-sm font-bold text-slate-600">Lọc nhanh:</span>
+      <section className="flex flex-wrap items-center gap-2.5 sm:gap-3 bg-slate-50 border border-slate-200/70 p-3 rounded-xl">
+        <div className="flex items-center gap-2">
+          <Filter className="w-5 h-5 text-slate-400" />
+          <span className="text-sm font-bold text-slate-600">Lọc nhanh:</span>
+        </div>
         <SearchableSelect
           value={platformFilter}
           onChange={value => { setPlatformFilter(value); setChannelFilter('all'); }}
           options={[{ value: 'all', label: 'Tất cả nền tảng' }, { value: 'facebook', label: 'Facebook Pages' }, { value: 'zalo', label: 'Zalo OA' }]}
-          className="min-w-[190px]"
+          className="w-full sm:w-auto min-w-[190px]"
         />
         <SearchableSelect
           value={channelFilter}
           onChange={setChannelFilter}
           options={[{ value: 'all', label: 'Tổng tất cả trang' }, ...filteredChannels.map(channel => ({ value: channel.id, label: channel.name }))]}
-          className="min-w-[220px]"
+          className="w-full sm:w-auto min-w-[220px]"
         />
-        <div className="flex flex-wrap items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm">
-          <Calendar className="w-4 h-4 text-slate-400" />
-          <select value={datePreset} onChange={event => updatePreset(event.target.value as DatePreset)} className="text-sm font-bold text-slate-700 bg-transparent outline-none">
+        <div className="flex flex-wrap items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto min-h-[44px]">
+          <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
+          <select value={datePreset} onChange={event => updatePreset(event.target.value as DatePreset)} className="text-xs sm:text-sm font-bold text-slate-700 bg-transparent outline-none min-h-[36px]">
             <option value="custom">Tùy chọn</option>
             <option value="7days">7 ngày qua</option>
             <option value="30days">1 tháng qua</option>
@@ -575,15 +577,15 @@ export default function Dashboard({ idToken, googleAccessToken, channels, onOpen
             <option value="6months">6 tháng qua</option>
             <option value="1year">1 năm qua</option>
           </select>
-          <input type="date" value={startDate} min={getPastDateStr(365)} max={endDate} onChange={event => { setStartDate(event.target.value); setDatePreset('custom'); }} className="text-sm text-slate-600 outline-none" />
-          <span className="text-sm text-slate-400">đến</span>
-          <input type="date" value={endDate} min={startDate} max={getTodayStr()} onChange={event => { setEndDate(event.target.value); setDatePreset('custom'); }} className="text-sm text-slate-600 outline-none" />
+          <input type="date" value={startDate} min={getPastDateStr(365)} max={endDate} onChange={event => { setStartDate(event.target.value); setDatePreset('custom'); }} className="text-xs sm:text-sm text-slate-600 outline-none" />
+          <span className="text-xs text-slate-400">đến</span>
+          <input type="date" value={endDate} min={startDate} max={getTodayStr()} onChange={event => { setEndDate(event.target.value); setDatePreset('custom'); }} className="text-xs sm:text-sm text-slate-600 outline-none" />
         </div>
         <button
           onClick={syncSelectedPeriod}
           disabled={syncingSelectedPeriod}
           title="Cập nhật phần dữ liệu phát sinh kể từ lần đồng bộ gần nhất"
-          className="inline-flex items-center gap-2 bg-white border border-slate-200 px-3 py-2 rounded-lg text-sm font-extrabold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-extrabold text-slate-700 hover:bg-slate-100 disabled:opacity-60 shadow-sm"
         >
           <RefreshCw className={'w-4 h-4 ' + (syncingSelectedPeriod ? 'animate-spin' : '')} />
           {syncingSelectedPeriod ? 'Đang đồng bộ...' : 'Đồng bộ lại'}
@@ -600,21 +602,22 @@ export default function Dashboard({ idToken, googleAccessToken, channels, onOpen
       {syncMessage && <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg text-xs text-emerald-800"><span className="w-2 h-2 rounded-full bg-emerald-500" />{syncMessage}</div>}
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-28 bg-white border border-slate-200 rounded-3xl space-y-4">
-          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <div className="flex flex-col items-center justify-center py-20 bg-white border border-slate-200 rounded-2xl space-y-4">
+          <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-sm font-bold text-slate-500">Đang tải thống kê truyền thông...</p>
         </div>
       ) : error ? (
-        <div className="p-10 bg-rose-50 border border-rose-200 rounded-3xl text-center space-y-4 max-w-xl mx-auto">
-          <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
-          <p className="text-base text-rose-800">{error}</p>
-          <button onClick={fetchDashboardData} className="bg-rose-600 text-white px-5 py-2.5 rounded-xl font-bold">Thử lại</button>
+        <div className="p-8 sm:p-10 bg-rose-50 border border-rose-200 rounded-2xl text-center space-y-4 max-w-xl mx-auto">
+          <AlertCircle className="w-10 h-10 text-rose-500 mx-auto" />
+          <p className="text-sm sm:text-base text-rose-800">{error}</p>
+          <button onClick={fetchDashboardData} className="inline-flex min-h-[44px] items-center justify-center bg-rose-600 text-white px-5 py-2.5 rounded-xl font-bold">Thử lại</button>
         </div>
-      ) : !data || data.kpis.postsCount === 0 ? (
-        <div className="p-16 text-center bg-white border border-slate-200 rounded-3xl">
-          <Layers className="w-14 h-14 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-extrabold text-slate-800">Chưa có bài đăng trong khoảng thời gian này</h3>
-          {!!data?.errors?.length && <p className="mx-auto mt-2 max-w-2xl text-sm text-rose-700">Kết quả có thể thiếu vì lần đồng bộ mới nhất đang thất bại. Dữ liệu cũ không bị xóa.</p>}
+      ) : !data || !data.kpis || data.kpis.postsCount === 0 ? (
+        <div className="p-8 sm:p-12 text-center bg-white border border-slate-200/80 rounded-2xl shadow-sm">
+          <Layers className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-base sm:text-lg font-extrabold text-slate-800">Chưa có bài đăng trong khoảng thời gian này</h3>
+          <p className="mt-1 text-xs sm:text-sm text-slate-500">Hãy chọn khoảng thời gian khác hoặc kiểm tra kết nối tài khoản mạng xã hội.</p>
+          {!!data?.errors?.length && <p className="mx-auto mt-2 max-w-2xl text-xs text-rose-700">Kết quả có thể thiếu vì lần đồng bộ mới nhất đang thất bại. Dữ liệu cũ không bị xóa.</p>}
         </div>
       ) : (
         <>

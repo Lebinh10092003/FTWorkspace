@@ -948,13 +948,13 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
             </section>
           )}
           {view === "board" && (
-            <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
               <div className="ws-stat">
                 <span className="ws-stat-icon bg-blue-50 text-blue-700">
                   <ListChecks />
                 </span>
-                <div>
-                  <span>Công việc trong ngày</span>
+                <div className="min-w-0 flex-1">
+                  <span className="truncate">Công việc trong ngày</span>
                   <b>{dailyTasks.length}</b>
                 </div>
               </div>
@@ -962,8 +962,8 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
                 <span className="ws-stat-icon bg-sky-50 text-sky-700">
                   <CircleDot />
                 </span>
-                <div>
-                  <span>Đang thực hiện</span>
+                <div className="min-w-0 flex-1">
+                  <span className="truncate">Đang thực hiện</span>
                   <b>{dailyTasks.filter((item) => item.status === "doing").length}</b>
                 </div>
               </div>
@@ -971,8 +971,8 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
                 <span className="ws-stat-icon bg-emerald-50 text-emerald-700">
                   <CheckCircle2 />
                 </span>
-                <div>
-                  <span>Đã làm xong</span>
+                <div className="min-w-0 flex-1">
+                  <span className="truncate">Đã làm xong</span>
                   <b>{completedCount}</b>
                 </div>
               </div>
@@ -980,12 +980,12 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
                 <span className="ws-stat-icon bg-violet-50 text-violet-700">
                   <ClipboardCheck />
                 </span>
-                <div>
-                  <span>Tiến độ chung</span>
-                  <b>
-                    {completedCount}/{dailyTasks.length} đầu việc
+                <div className="min-w-0 flex-1">
+                  <span className="truncate">Tiến độ chung</span>
+                  <b className="truncate">
+                    {completedCount}/{dailyTasks.length} việc
                   </b>
-                  <small className="text-[11px] font-semibold text-violet-600">{completionPercent}%</small>
+                  <small className="text-xs font-semibold text-violet-600">{completionPercent}%</small>
                 </div>
               </div>
             </section>
@@ -1067,13 +1067,13 @@ function BoardView({ tasks, selectedDate, setSelectedDate, userEmail, selectedId
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-extrabold text-[#001e40]">Công việc {prettyDate(selectedDate)}</h2>
-          <p className="mt-1 text-sm text-slate-500">Kéo thẻ để đổi trạng thái. Công việc hoàn thành cần quản lý review.</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Kéo thẻ để đổi trạng thái. Công việc hoàn thành cần quản lý review.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" disabled={!tasks.length} onClick={() => setSelectedIds(allSelected ? [] : tasks.map((task) => task.id))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 disabled:opacity-40">
             {allSelected ? "Bỏ chọn tất cả" : "Chọn tất cả"}
           </button>
-          <button type="button" disabled={isToday} onClick={() => setSelectedDate(iso(new Date()))} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:border-slate-200 disabled:bg-white disabled:text-slate-400">
+          <button type="button" disabled={isToday} onClick={() => setSelectedDate(iso(new Date()))} className="rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 px-3 py-2 text-xs font-bold text-blue-700 dark:text-blue-300 hover:bg-blue-100 disabled:border-slate-200 dark:disabled:border-slate-700 disabled:bg-white dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400">
             Hôm nay
           </button>
           <div className="flex items-center rounded-xl border border-slate-200 bg-white p-1">

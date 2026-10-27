@@ -65,7 +65,7 @@ export default function FundingProposalBuilder({
   const storageKey = useMemo(() => draftKey(idToken, userName), [idToken, userName]);
   const currentStorageKey = useRef(storageKey);
   const [value, setValue] = useState<FundingProposal>(() => readDraft(storageKey));
-  const [zoom, setZoom] = useState(0.72);
+  const [zoom, setZoom] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 640 ? 0.44 : 0.72));
   const [downloading, setDownloading] = useState(false);
   const [savingToDrive, setSavingToDrive] = useState(false);
   const [saveNotice, setSaveNotice] = useState('');
@@ -244,16 +244,16 @@ export default function FundingProposalBuilder({
                 title: 'Làm lại phiếu', confirmText: 'Làm lại', tone: 'danger',
               })) { setValue(blankProposal()); setError(''); setSaveNotice(''); }
             }}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
-              <RotateCcw className="h-4 w-4" /><span className="hidden sm:inline">Làm lại</span>
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 min-h-[44px] shrink-0">
+              <RotateCcw className="h-4 w-4" /><span>Làm lại</span>
             </button>
             <button type="button" onClick={() => void saveToDrive()} disabled={downloading || savingToDrive}
-              className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50">
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm font-bold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-slate-700 disabled:opacity-50 min-h-[44px] shrink-0">
               {savingToDrive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {savingToDrive ? 'Đang lưu…' : 'Lưu vào Drive'}
             </button>
             <button type="button" onClick={() => void download()} disabled={downloading || savingToDrive}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50">
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 min-h-[44px] shrink-0">
               {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {downloading ? 'Đang tạo…' : 'Tải file Word'}
             </button>
@@ -264,7 +264,7 @@ export default function FundingProposalBuilder({
 
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
-          <p role="status" className={`mb-4 text-xs font-semibold ${draftError ? 'text-rose-700' : 'text-slate-500'}`}>
+          <p role="status" className={`mb-4 text-xs font-semibold ${draftError ? 'text-rose-700' : 'text-slate-600 dark:text-slate-300'}`}>
             {draftError ? 'Không thể tự lưu bản nháp trên trình duyệt này.'
               : `Bản nháp tự lưu trên trình duyệt này${savedAt ? ` lúc ${savedAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}.`}
           </p>
@@ -331,8 +331,8 @@ export default function FundingProposalBuilder({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="text-sm font-extrabold uppercase tracking-wide text-blue-700">2. Dự toán</h2>
                   <button type="button" onClick={() => setValue(c => ({ ...c, items: [...c.items, newItem()] }))}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                    <Plus className="h-3.5 w-3.5" />Thêm hạng mục
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 min-h-[44px]">
+                    <Plus className="h-4 w-4" />Thêm hạng mục
                   </button>
                 </div>
 
@@ -356,7 +356,7 @@ export default function FundingProposalBuilder({
 
                 <div className="mt-4 space-y-3">
                   {value.items.map((item, index) => (
-                    <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4 shadow-2xs">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-bold text-slate-500">Hạng mục {index + 1}</span>
                         <div className="flex items-center gap-2">
@@ -364,16 +364,25 @@ export default function FundingProposalBuilder({
                           {value.items.length > 1 && (
                             <button type="button" aria-label={`Xóa hạng mục ${index + 1}`}
                               onClick={() => setValue(c => ({ ...c, items: c.items.filter(row => row.id !== item.id) }))}
-                              className="rounded-md p-1 text-rose-500 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>
+                              className="inline-flex items-center justify-center rounded-lg p-2 text-rose-500 hover:bg-rose-50 min-h-[44px] min-w-[44px]"><Trash2 className="h-4 w-4" /></button>
                           )}
                         </div>
                       </div>
                       <input value={item.description} onChange={e => setItem(item.id, { description: e.target.value })}
                         placeholder="Nội dung, quy cách" className={`${FIELD} mt-2`} />
-                      <div className="mt-2 grid grid-cols-3 gap-2">
-                        <input value={item.unit} onChange={e => setItem(item.id, { unit: e.target.value })} placeholder="ĐVT" className={FIELD} />
-                        <input value={item.quantity} onChange={e => setItem(item.id, { quantity: e.target.value })} placeholder="Số lượng" inputMode="decimal" className={FIELD} />
-                        <input value={item.unitPrice} onChange={e => setItem(item.id, { unitPrice: e.target.value })} placeholder="Đơn giá" inputMode="decimal" className={FIELD} />
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                          <span className="block text-xs font-semibold text-slate-500 sm:hidden mb-0.5">ĐVT</span>
+                          <input value={item.unit} onChange={e => setItem(item.id, { unit: e.target.value })} placeholder="ĐVT" className={FIELD} />
+                        </div>
+                        <div>
+                          <span className="block text-xs font-semibold text-slate-500 sm:hidden mb-0.5">Số lượng</span>
+                          <input value={item.quantity} onChange={e => setItem(item.id, { quantity: e.target.value })} placeholder="Số lượng" inputMode="decimal" className={FIELD} />
+                        </div>
+                        <div>
+                          <span className="block text-xs font-semibold text-slate-500 sm:hidden mb-0.5">Đơn giá</span>
+                          <input value={item.unitPrice} onChange={e => setItem(item.id, { unitPrice: e.target.value })} placeholder="Đơn giá" inputMode="decimal" className={FIELD} />
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -458,10 +467,10 @@ export default function FundingProposalBuilder({
                     <legend className="px-1 text-xs font-bold text-slate-600">Hồ sơ kèm theo</legend>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {ATTACHMENT_OPTIONS.map(option => (
-                        <label key={option.value} className="flex items-center gap-2 text-sm text-slate-700">
+                        <label key={option.value} className="flex items-center gap-2.5 text-sm text-slate-700 min-h-[44px] cursor-pointer">
                           <input type="checkbox" checked={value.attachments.includes(option.value)}
-                            onChange={e => toggleAttachment(option.value, e.target.checked)} className="h-4 w-4" />
-                          {option.label}
+                            onChange={e => toggleAttachment(option.value, e.target.checked)} className="h-5 w-5 rounded border-slate-300" />
+                          <span>{option.label}</span>
                         </label>
                       ))}
                     </div>
@@ -498,13 +507,13 @@ export default function FundingProposalBuilder({
             {/* ---------- Preview ---------- */}
             <div className="min-w-0 xl:sticky xl:top-28">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Xem trước bản in (A4)</p>
-                <div className="flex items-center gap-1">
-                  <button type="button" aria-label="Thu nhỏ" onClick={() => setZoom(z => Math.max(0.4, +(z - 0.08).toFixed(2)))}
-                    className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-slate-50"><ZoomOut className="h-4 w-4" /></button>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Xem trước bản in (A4)</p>
+                <div className="flex items-center gap-1.5">
+                  <button type="button" aria-label="Thu nhỏ" onClick={() => setZoom(z => Math.max(0.3, +(z - 0.08).toFixed(2)))}
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 min-h-[44px] min-w-[44px]"><ZoomOut className="h-4 w-4" /></button>
                   <span className="w-12 text-center text-xs font-bold tabular-nums text-slate-600">{Math.round(zoom * 100)}%</span>
                   <button type="button" aria-label="Phóng to" onClick={() => setZoom(z => Math.min(1.4, +(z + 0.08).toFixed(2)))}
-                    className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-slate-50"><ZoomIn className="h-4 w-4" /></button>
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 min-h-[44px] min-w-[44px]"><ZoomIn className="h-4 w-4" /></button>
                 </div>
               </div>
               <div className="fp-viewport">

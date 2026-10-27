@@ -197,7 +197,7 @@ export default function CompetitionLandingManager({ idToken }: { idToken: string
                 <button
                   type="button"
                   onClick={async () => { await navigator.clipboard.writeText(publicUrl); setCopied(true); }}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-xs font-extrabold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-xs font-extrabold text-slate-700 hover:bg-slate-50"
                 >
                   {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
                   {copied ? 'Đã sao chép' : 'Sao chép liên kết'}

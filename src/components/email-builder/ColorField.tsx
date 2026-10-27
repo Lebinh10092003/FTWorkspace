@@ -58,15 +58,15 @@ export default function ColorField({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <label className="block text-[10px] font-bold text-slate-500">{label}</label>
-        <div className="flex rounded-md bg-slate-100 p-0.5" aria-label="Định dạng mã màu">
+        <label className="block text-xs font-bold text-slate-600">{label}</label>
+        <div className="flex rounded-lg bg-slate-100 p-0.5" aria-label="Định dạng mã màu">
           {(['hex', 'rgb'] as const).map(item => (
             <button
               key={item}
               type="button"
               onClick={() => setColorFormat(item)}
-              className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase transition ${
-                format === item ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+              className={`rounded-md px-2.5 py-1 text-xs font-bold uppercase transition min-h-[36px] ${
+                format === item ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
               {item}
@@ -79,7 +79,7 @@ export default function ColorField({
           type="color"
           value={pickerValue}
           onChange={event => commit(event.target.value)}
-          className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-slate-200 bg-white p-1 shadow-sm"
+          className="h-11 w-11 shrink-0 cursor-pointer rounded-lg border border-slate-200 bg-white p-1 shadow-sm min-h-[44px] min-w-[44px]"
           aria-label={`Mở bộ chọn ${label.toLowerCase()}`}
           title="Mở bộ chọn màu đầy đủ"
         />
@@ -103,14 +103,14 @@ export default function ColorField({
             }
           }}
           spellCheck={false}
-          className={`h-9 min-w-0 flex-1 rounded-lg border px-3 text-xs font-semibold outline-none shadow-sm transition ${
+          className={`h-11 min-h-[44px] min-w-0 flex-1 rounded-lg border px-3 text-xs font-semibold outline-none shadow-sm transition ${
             parsedDraft ? 'border-slate-200 focus:border-blue-500' : 'border-rose-300 bg-rose-50 text-rose-700 focus:border-rose-400'
           }`}
           placeholder={format === 'rgb' ? 'rgb(20, 115, 209)' : '#1473D1'}
           aria-invalid={!parsedDraft}
         />
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-2">
         {quickSwatches.map(swatch => (
           <button
             key={swatch.value}
@@ -118,7 +118,7 @@ export default function ColorField({
             onClick={() => commit(swatch.value)}
             title={`${swatch.name} · ${swatch.value}`}
             aria-label={`Chọn màu ${swatch.name}`}
-            className={`h-5 w-5 rounded-md border transition hover:-translate-y-0.5 ${
+            className={`h-9 w-9 min-h-[36px] min-w-[36px] rounded-lg border transition hover:-translate-y-0.5 ${
               parsedDraft?.hex === normalizeEmailColor(swatch.value)
                 ? 'border-white ring-2 ring-blue-550'
                 : 'border-slate-300'
@@ -130,18 +130,18 @@ export default function ColorField({
           <button
             type="button"
             onClick={() => setShowPalette(open => !open)}
-            className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[8px] font-black text-slate-500 hover:border-blue-300 hover:text-blue-700"
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:border-blue-300 hover:text-blue-700 min-h-[40px]"
             aria-expanded={showPalette}
           >
-            <Palette className="h-3 w-3" />
+            <Palette className="h-4 w-4" />
             {showPalette ? 'Thu gọn' : 'Bảng màu'}
-            <ChevronDown className={`h-3 w-3 transition ${showPalette ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`h-4 w-4 transition ${showPalette ? 'rotate-180' : ''}`} />
           </button>
         )}
       </div>
       {showPalette && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 shadow-inner">
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(24px,1fr))] gap-1.5">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 shadow-inner">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(36px,1fr))] gap-2">
             {swatches.map(swatch => (
               <button
                 key={swatch.value}
@@ -149,7 +149,7 @@ export default function ColorField({
                 onClick={() => commit(swatch.value)}
                 title={`${swatch.name} · ${swatch.value}`}
                 aria-label={`Chọn màu ${swatch.name}`}
-                className={`aspect-square min-h-6 rounded-md border transition hover:scale-110 ${
+                className={`aspect-square min-h-9 min-w-9 rounded-lg border transition hover:scale-105 ${
                   parsedDraft?.hex === normalizeEmailColor(swatch.value)
                     ? 'border-white ring-2 ring-blue-550'
                     : 'border-slate-300'
@@ -161,9 +161,9 @@ export default function ColorField({
         </div>
       )}
       {parsedDraft ? (
-        <p className="text-[9px] font-medium text-slate-400">{parsedDraft.hex} · {parsedDraft.rgb}</p>
+        <p className="text-xs font-medium text-slate-400">{parsedDraft.hex} · {parsedDraft.rgb}</p>
       ) : (
-        <p className="text-[9px] font-bold text-rose-600">Nhập #RGB, #RRGGBB hoặc rgb(0, 0, 0).</p>
+        <p className="text-xs font-bold text-rose-600">Nhập #RGB, #RRGGBB hoặc rgb(0, 0, 0).</p>
       )}
     </div>
   );

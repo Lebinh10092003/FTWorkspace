@@ -232,28 +232,82 @@ export default function FinanceReport({
       {!canEdit && <p className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-semibold text-blue-700">Bạn đang có quyền xem. Chỉ Kế toán và Admin được chỉnh sửa dữ liệu.</p>}
     </header>
 
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><ArrowDownCircle className="h-5 w-5 text-emerald-700" /><span className="mt-3 block text-xs font-bold uppercase text-emerald-700">Tổng thu</span><b className="mt-1 block text-2xl text-emerald-900">{formatMoney(income)}</b></article>
-      <article className="rounded-2xl border border-rose-200 bg-rose-50 p-5"><ArrowUpCircle className="h-5 w-5 text-rose-700" /><span className="mt-3 block text-xs font-bold uppercase text-rose-700">Tổng chi</span><b className="mt-1 block text-2xl text-rose-900">{formatMoney(expense)}</b></article>
-      <article className={`rounded-2xl border p-5 ${income - expense >= 0 ? "border-blue-200 bg-blue-50" : "border-orange-200 bg-orange-50"}`}><WalletCards className={`h-5 w-5 ${income - expense >= 0 ? "text-blue-700" : "text-orange-700"}`} /><span className="mt-3 block text-xs font-bold uppercase text-slate-600">Chênh lệch</span><b className="mt-1 block text-2xl text-slate-900">{formatMoney(income - expense)}</b></article>
-      <article className={`rounded-2xl border p-5 ${pending ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}><CircleDollarSign className={`h-5 w-5 ${pending ? "text-amber-700" : "text-emerald-700"}`} /><span className="mt-3 block text-xs font-bold uppercase text-slate-600">Chờ xử lý / quá hạn</span><b className="mt-1 block text-2xl text-slate-900">{pending}</b></article>
+    <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
+      <article className="rounded-xl sm:rounded-2xl border border-emerald-200 bg-emerald-50 p-3 sm:p-5"><ArrowDownCircle className="h-5 w-5 text-emerald-700" /><span className="mt-2 sm:mt-3 block text-xs font-bold uppercase text-emerald-700">Tổng thu</span><b className="mt-1 block text-lg sm:text-2xl text-emerald-900">{formatMoney(income)}</b></article>
+      <article className="rounded-xl sm:rounded-2xl border border-rose-200 bg-rose-50 p-3 sm:p-5"><ArrowUpCircle className="h-5 w-5 text-rose-700" /><span className="mt-2 sm:mt-3 block text-xs font-bold uppercase text-rose-700">Tổng chi</span><b className="mt-1 block text-lg sm:text-2xl text-rose-900">{formatMoney(expense)}</b></article>
+      <article className={`rounded-xl sm:rounded-2xl border p-3 sm:p-5 ${income - expense >= 0 ? "border-blue-200 bg-blue-50" : "border-orange-200 bg-orange-50"}`}><WalletCards className={`h-5 w-5 ${income - expense >= 0 ? "text-blue-700" : "text-orange-700"}`} /><span className="mt-2 sm:mt-3 block text-xs font-bold uppercase text-slate-600">Chênh lệch</span><b className="mt-1 block text-lg sm:text-2xl text-slate-900">{formatMoney(income - expense)}</b></article>
+      <article className={`rounded-xl sm:rounded-2xl border p-3 sm:p-5 ${pending ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}><CircleDollarSign className={`h-5 w-5 ${pending ? "text-amber-700" : "text-emerald-700"}`} /><span className="mt-2 sm:mt-3 block text-xs font-bold uppercase text-slate-600">Chờ xử lý</span><b className="mt-1 block text-lg sm:text-2xl text-slate-900">{pending}</b></article>
     </div>
 
     <article className="overflow-hidden rounded-2xl border bg-white shadow-sm">
       <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-7">
-        <label className="relative xl:col-span-2"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} className="w-full rounded-lg border py-2 pl-9 pr-3 text-sm" placeholder="Tìm nội dung, mã, khách hàng..." /></label>
-        <input type="date" value={filters.dateFrom} onChange={(event) => setFilters({ ...filters, dateFrom: event.target.value })} className="rounded-lg border px-3 py-2 text-sm" title="Từ ngày" />
-        <input type="date" value={filters.dateTo} min={filters.dateFrom || undefined} onChange={(event) => setFilters({ ...filters, dateTo: event.target.value })} className="rounded-lg border px-3 py-2 text-sm" title="Đến ngày" />
-        <select value={filters.entryType} onChange={(event) => setFilters({ ...filters, entryType: event.target.value })} className="rounded-lg border px-3 py-2 text-sm"><option value="">Tất cả thu / chi</option><option value="income">Khoản thu</option><option value="expense">Khoản chi</option></select>
-        <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} className="rounded-lg border px-3 py-2 text-sm"><option value="">Tất cả trạng thái</option>{Object.entries(statusLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-        <select value={filters.partner} onChange={(event) => setFilters({ ...filters, partner: event.target.value })} className="rounded-lg border px-3 py-2 text-sm"><option value="">Tất cả khách hàng</option>{partners.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+        <label className="relative xl:col-span-2"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} className="w-full rounded-lg border py-2.5 pl-9 pr-3 text-sm min-h-[44px]" placeholder="Tìm nội dung, mã, khách hàng..." /></label>
+        <input type="date" value={filters.dateFrom} onChange={(event) => setFilters({ ...filters, dateFrom: event.target.value })} className="rounded-lg border px-3 py-2 text-sm min-h-[44px]" title="Từ ngày" />
+        <input type="date" value={filters.dateTo} min={filters.dateFrom || undefined} onChange={(event) => setFilters({ ...filters, dateTo: event.target.value })} className="rounded-lg border px-3 py-2 text-sm min-h-[44px]" title="Đến ngày" />
+        <select value={filters.entryType} onChange={(event) => setFilters({ ...filters, entryType: event.target.value })} className="rounded-lg border px-3 py-2 text-sm min-h-[44px]"><option value="">Tất cả thu / chi</option><option value="income">Khoản thu</option><option value="expense">Khoản chi</option></select>
+        <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} className="rounded-lg border px-3 py-2 text-sm min-h-[44px]"><option value="">Tất cả trạng thái</option>{Object.entries(statusLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        <select value={filters.partner} onChange={(event) => setFilters({ ...filters, partner: event.target.value })} className="rounded-lg border px-3 py-2 text-sm min-h-[44px]"><option value="">Tất cả khách hàng</option>{partners.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       </div>
       {notice && <p className="mx-4 mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{notice}</p>}
-      <div className="overflow-x-auto border-t">
+
+      {/* Mobile Card List (<768px) */}
+      <div className="md:hidden divide-y divide-slate-100 border-t">
+        {visible.map(item => (
+          <div key={item.id} className="p-4 space-y-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-bold ${
+                    item.entry_type === "income" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"
+                  }`}>
+                    {item.entry_type === "income" ? "Thu" : "Chi"}
+                  </span>
+                  <span className="text-xs font-medium text-slate-500">{showDate(item.transaction_date)}</span>
+                </div>
+                <p className="mt-1 font-bold text-slate-800 text-sm leading-snug">{item.description}</p>
+                {item.notes && <p className="text-xs text-slate-500 mt-0.5">{item.notes}</p>}
+              </div>
+              <b className={`text-base font-extrabold shrink-0 ${item.entry_type === "income" ? "text-emerald-700" : "text-rose-700"}`}>
+                {item.entry_type === "income" ? "+" : "-"}{formatMoney(item.amount)}
+              </b>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1 border-t border-slate-50">
+              <div>
+                <span className="text-slate-400 font-medium">Khách hàng: </span>
+                <span className="font-semibold text-slate-700">{item.partner_name || "—"}</span>
+              </div>
+              <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-bold ${statusClass[item.status]}`}>
+                {statusLabel[item.status]}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+              <span>{item.payment_method || "Tiền mặt"} · {item.reference_code || "Không có mã"}</span>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => openEditor(item)}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-900 min-h-[44px] px-2.5 py-1 rounded-lg hover:bg-blue-50"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Sửa
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {!visible.length && (
+          <div className="p-8 text-center text-sm text-slate-500">Chưa có dữ liệu phù hợp bộ lọc.</div>
+        )}
+      </div>
+
+      {/* Desktop Table (>=768px) with sticky first column */}
+      <div className="hidden md:block overflow-x-auto border-t">
         <table className="ft-table min-w-[1100px]">
-          <thead><tr><th>Ngày</th><th>Loại</th><th>Nhóm thu chi</th><th>Nội dung</th><th>Khách hàng</th><th>Số tiền</th><th>Trạng thái</th><th>Thanh toán / chứng từ</th>{canEdit && <th></th>}</tr></thead>
+          <thead><tr><th className="sticky left-0 bg-slate-50 z-10">Ngày</th><th>Loại</th><th>Nhóm thu chi</th><th>Nội dung</th><th>Khách hàng</th><th>Số tiền</th><th>Trạng thái</th><th>Thanh toán / chứng từ</th>{canEdit && <th></th>}</tr></thead>
           <tbody>{visible.map((item) => <tr key={item.id}>
-            <td>{showDate(item.transaction_date)}</td>
+            <td className="sticky left-0 bg-white font-semibold z-10 shadow-[1px_0_0_0_#e2e8f0]">{showDate(item.transaction_date)}</td>
             <td><span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${item.entry_type === "income" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>{item.entry_type === "income" ? "Thu" : "Chi"}</span></td>
             <td><b>{item.category}</b></td>
             <td className="max-w-sm whitespace-normal">{item.description}<span className="block text-xs text-slate-500">{item.notes}</span></td>
@@ -261,7 +315,7 @@ export default function FinanceReport({
             <td><b className={item.entry_type === "income" ? "text-emerald-700" : "text-rose-700"}>{formatMoney(item.amount)}</b></td>
             <td><span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${statusClass[item.status]}`}>{statusLabel[item.status]}</span></td>
             <td><span className="block">{item.payment_method || "—"}</span><span className="block text-xs text-slate-500">{item.reference_code || "Chưa có mã chứng từ"}</span></td>
-            {canEdit && <td><button onClick={() => openEditor(item)} className="ft-btn ft-btn-secondary"><Pencil className="h-4 w-4" />Sửa</button></td>}
+            {canEdit && <td><button onClick={() => openEditor(item)} className="ft-btn ft-btn-secondary min-h-[44px]"><Pencil className="h-4 w-4" />Sửa</button></td>}
           </tr>)}{!visible.length && <tr><td colSpan={canEdit ? 9 : 8} className="py-12 text-center text-slate-500">Chưa có dữ liệu phù hợp bộ lọc.</td></tr>}</tbody>
         </table>
       </div>

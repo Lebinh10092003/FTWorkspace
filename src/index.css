@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=Plus+Jakarta+Sans:wght@600;700;800&family=Roboto:wght@300;400;500;700;900&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *, .dark, .dark *, body.workspace-theme-dark, body.workspace-theme-dark *));
+
 /* ══════════════════════════════════════════════════════════════
    FT Workspace — Design Tokens
    ══════════════════════════════════════════════════════════════ */
@@ -709,6 +711,12 @@ html { scrollbar-width: thin; scrollbar-color: #94a3b8 #e2e8f0; }
    same module shell, sidebar and responsive navigation as every other module. */
 .ws-board { display: grid; grid-template-columns: repeat(4, minmax(280px, 1fr)); gap: 1rem; overflow-x: auto; padding-bottom: .5rem; }
 .ws-stat { display: flex; align-items: center; gap: .875rem; min-height: 88px; border: 1px solid #e2e8f0; border-radius: 1rem; background: #fff; padding: 1rem; box-shadow: 0 2px 8px rgba(15,23,42,.04); }
+@media (max-width: 639px) {
+  .ws-stat { min-height: 60px; padding: 0.625rem 0.75rem; gap: 0.625rem; border-radius: 0.75rem; }
+  .ws-stat-icon { width: 2.25rem; height: 2.25rem; flex: 0 0 2.25rem; border-radius: 0.625rem; }
+  .ws-stat-icon svg { width: 1.125rem; height: 1.125rem; }
+  .ws-stat div b { font-size: 1.125rem; line-height: 1.2; }
+}
 .ws-stat-icon { display: grid; width: 2.75rem; height: 2.75rem; flex: 0 0 2.75rem; place-items: center; border-radius: .875rem; }
 .ws-stat-icon svg { width: 1.25rem; height: 1.25rem; }
 .ws-stat div span { display: block; font-size: .75rem; font-weight: 600; color: #64748b; }
@@ -1399,6 +1407,16 @@ body.workspace-app-theme img.ft-module-logo {
   padding: .5rem .75rem;
   box-shadow: var(--ft-logo-plate-shadow);
 }
+/* Luôn giữ ô logo Fermat màu trắng tinh ở mọi chế độ giao diện */
+.ft-logo-plate,
+body.workspace-theme-dark .ft-logo-plate,
+body.workspace-app-theme .ft-logo-plate,
+body.workspace-theme-dark button.ft-logo-plate,
+body.workspace-theme-dark div.ft-logo-plate {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+}
+
 body.workspace-app-theme .ft-sidebar-brand {
   min-height: 6rem;
   border-radius: 0 !important;
@@ -2559,6 +2577,12 @@ body.workspace-app-theme .bndc-tree-name { color: var(--workspace-surface-text);
   background: #eef2f7;
   padding: 1rem;
 }
+@media (max-width: 639px) {
+  .fp-viewport {
+    padding: 0.5rem;
+    border-radius: 0.75rem;
+  }
+}
 .fp-scale { transform-origin: top left; }
 
 .fp-page {
@@ -2648,6 +2672,14 @@ body.workspace-theme-dark {
   --ftd-text-5:        #5f7491;  /* slate-300, placeholders */
   --ftd-accent:        #5b9dff;
 
+  --workspace-text:          var(--ftd-text);
+  --workspace-muted:         var(--ftd-text-3);
+  --workspace-surface-text:  var(--ftd-text);
+  --workspace-surface-muted: var(--ftd-text-3);
+  --workspace-card:          var(--ftd-surface);
+  --workspace-panel:         var(--ftd-surface);
+  --workspace-background:    var(--ftd-canvas);
+
   /* Direction A dark tokens */
   --ft-navy:             #091322;
   --ft-navy-text:        #C9D6E6;
@@ -2709,6 +2741,24 @@ body.workspace-theme-dark {
   :where(body.workspace-theme-dark) :where(*, ::before, ::after) {
     border-color: var(--ftd-border);
   }
+}
+
+/* Hardcoded hex overrides in dark mode to guarantee high contrast */
+body.workspace-theme-dark [class*="text-[#0F1F33]"],
+body.workspace-theme-dark [class*="text-[#0f1f33]"] {
+  color: var(--ftd-text) !important;
+}
+body.workspace-theme-dark [class*="text-[#4A5B70]"],
+body.workspace-theme-dark [class*="text-[#4a5b70]"] {
+  color: var(--ftd-text-3) !important;
+}
+body.workspace-theme-dark [class*="bg-[#F3F6FA]"],
+body.workspace-theme-dark [class*="bg-[#f3f6fa]"] {
+  background-color: var(--ftd-canvas) !important;
+}
+body.workspace-theme-dark [class*="border-[#DDE5EF]"],
+body.workspace-theme-dark [class*="border-[#dde5ef]"] {
+  border-color: var(--ftd-border) !important;
 }
 
 /* Tailwind's box-shadow utilities are tuned for light backgrounds. */
@@ -3048,6 +3098,7 @@ body.workspace-theme-dark .bg-amber-100 { background-color: color-mix(in oklab, 
 body.workspace-theme-dark .bg-amber-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 17%, var(--ftd-surface)) 60%, transparent); }
 body.workspace-theme-dark .bg-amber-200 { background-color: color-mix(in oklab, oklch(76.9% .188 70.08) 26%, var(--ftd-surface)); }
 body.workspace-theme-dark .bg-amber-50 { background-color: color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-amber-50\/30 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 30%, transparent); }
 body.workspace-theme-dark .bg-amber-50\/40 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 40%, transparent); }
 body.workspace-theme-dark .bg-amber-50\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 60%, transparent); }
 body.workspace-theme-dark .bg-amber-50\/70 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 70%, transparent); }
@@ -3100,6 +3151,7 @@ body.workspace-theme-dark .bg-sky-50 { background-color: color-mix(in oklab, okl
 body.workspace-theme-dark .bg-sky-50\/50 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(68.5% .169 237.323) 10%, var(--ftd-surface)) 50%, transparent); }
 body.workspace-theme-dark .bg-slate-100 { background-color: var(--ftd-surface-3); }
 body.workspace-theme-dark .bg-slate-100\/80 { background-color: color-mix(in oklab, var(--ftd-surface-3) 80%, transparent); }
+body.workspace-theme-dark .bg-slate-100\/90 { background-color: color-mix(in oklab, var(--ftd-surface-3) 90%, transparent); }
 body.workspace-theme-dark .bg-slate-200 { background-color: var(--ftd-surface-4); }
 body.workspace-theme-dark .bg-slate-200\/50 { background-color: color-mix(in oklab, var(--ftd-surface-4) 50%, transparent); }
 body.workspace-theme-dark .bg-slate-200\/60 { background-color: color-mix(in oklab, var(--ftd-surface-4) 60%, transparent); }

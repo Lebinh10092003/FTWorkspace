@@ -486,13 +486,27 @@ export default function App() {
     const variables = workspaceAppearanceStyle(appearance) as Record<string, string>;
     document.body.classList.remove(...themeClasses);
     document.body.classList.add('workspace-app-theme', `workspace-theme-${appearance.theme}`);
+    if (appearance.theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.body.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.body.classList.remove('dark');
+    }
     Object.entries(variables).forEach(([property, value]) => {
-      if (property.startsWith('--')) document.body.style.setProperty(property, value);
+      if (property.startsWith('--')) {
+        document.body.style.setProperty(property, value);
+        document.documentElement.style.setProperty(property, value);
+      }
     });
     return () => {
-      document.body.classList.remove('workspace-app-theme', ...themeClasses);
+      document.body.classList.remove('workspace-app-theme', 'dark', ...themeClasses);
+      document.documentElement.classList.remove('dark');
       Object.keys(variables).forEach(property => {
-        if (property.startsWith('--')) document.body.style.removeProperty(property);
+        if (property.startsWith('--')) {
+          document.body.style.removeProperty(property);
+          document.documentElement.style.removeProperty(property);
+        }
       });
     };
   }, [appearance]);
