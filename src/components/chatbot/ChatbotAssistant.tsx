@@ -468,7 +468,7 @@ export default function ChatbotAssistant({
         type="button"
         onClick={handleToggleOpen}
         aria-label="Mở Trợ lý AI Workspace"
-        className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-500/30 transition-all duration-200 hover:scale-105 hover:bg-blue-700 active:scale-95 focus:outline-none focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-900"
+        className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-4 lg:bottom-6 lg:right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#0B72CE] text-white shadow-xl shadow-[#0B72CE]/30 transition-all duration-200 hover:scale-105 hover:bg-[#075CA8] active:scale-95 focus:outline-none focus:ring-4 focus:ring-[#0B72CE]/30"
       >
         {isOpen ? (
           <X className="h-6 w-6" />

@@ -61,7 +61,8 @@ export type WorkspaceAreaId =
   | 'communication-tools'
   | 'account-management'
   | 'finance-report'
-  | 'attendance';
+  | 'attendance'
+  | 'weekly-report';
 
 export type WorkspaceArea = {
   /** Matches the App view mode so the rail can drive routing directly. */
@@ -151,6 +152,14 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     description: 'Ghi nhận giờ vào, giờ ra và theo dõi dữ liệu công ca theo tháng.',
     icon: CalendarCheck,
     path: '/attendance',
+  },
+  {
+    id: 'weekly-report',
+    label: 'Báo cáo tuần',
+    shortLabel: 'Báo cáo',
+    description: 'Bản nháp và xuất file Word báo cáo cuối tuần chuẩn công ty.',
+    icon: ClipboardList,
+    path: '/communication-tools/weekly-report',
   },
 ];
 

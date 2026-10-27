@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronsUpDown } from 'lucide-react';
+import { ChevronsUpDown, Search } from 'lucide-react';
 import ModuleTopNav from './ModuleTopNav';
 import { ModuleNavItem } from '../../config/workspaceNavigation';
 import WorkspaceNotifications from '../WorkspaceNotifications';
@@ -28,8 +28,12 @@ export default function ModuleShellHeader({
   actions,
   account,
 }: ModuleShellHeaderProps) {
+  const handleOpenSearch = () => {
+    window.dispatchEvent(new CustomEvent('toggle-command-palette'));
+  };
+
   return (
-    <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between border-b border-slate-200/90 bg-white/95 px-4 sm:px-6 backdrop-blur-md">
+    <header className="sticky top-0 z-30 flex h-14 lg:h-16 w-full items-center justify-between border-b border-[#DDE5EF] bg-white px-4 sm:px-6 backdrop-blur-md">
       {/* Left: Department Switcher & Breadcrumbs */}
       <div className="flex items-center gap-3 min-w-0 shrink-0">
         <div className="hidden sm:flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-slate-50/70 px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs">
@@ -50,8 +54,23 @@ export default function ModuleShellHeader({
         <ModuleTopNav items={items} activeId={activeId} onSelect={onSelect} ariaLabel={ariaLabel || `Điều hướng ${title}`} />
       </div>
 
-      {/* Right: Actions & User Avatar */}
+      {/* Right: Search, Actions & User Avatar */}
       <div className="flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={handleOpenSearch}
+          className="hidden xl:flex items-center justify-between rounded-lg border border-slate-200/90 bg-slate-50/70 px-2.5 py-1.5 text-xs text-slate-400 hover:border-slate-300 hover:bg-slate-100/70 transition-colors cursor-pointer w-40"
+          title="Tìm kiếm nhanh (Ctrl K)"
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <span className="truncate">Tìm nhanh...</span>
+          </div>
+          <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-500 shadow-2xs shrink-0">
+            Ctrl K
+          </kbd>
+        </button>
+
         {actions && <div className="flex items-center gap-2">{actions}</div>}
         {account && (
           <div className="flex items-center gap-2 pl-1">
