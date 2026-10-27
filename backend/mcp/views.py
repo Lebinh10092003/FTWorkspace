@@ -23,7 +23,9 @@ from .security import (
 from . import (  # noqa: F401
     tools_attendance,
     tools_auth,
+    tools_company_accounts,
     tools_crm,
+    tools_customers,
     tools_documents,
     tools_email,
     tools_examination,
@@ -164,6 +166,8 @@ SERVER_INSTRUCTIONS = (
     "Chấm công, Văn bản, Email...). Mọi thao tác chạy theo quyền của tài khoản đã kết nối. "
     "Nếu chỉ thấy công cụ đăng nhập, nghĩa là chưa có Mã kết nối AI: hãy tạo mã ở Hồ sơ cá nhân > "
     "Trợ lý AI & MCP rồi thêm vào header Authorization: Bearer ft_ai_... hoặc vào URL ?key=ft_ai_..."
+    " Mật khẩu (tài khoản AI của khách hàng, tài khoản công ty) bị che mặc định: chỉ yêu cầu hiển thị khi người dùng "
+    "hỏi rõ, mỗi lần xem đều được ghi nhật ký. Trước khi gọi công cụ xóa hoặc ghi đè dữ liệu, hãy xác nhận lại với người dùng."
 )
 
 
@@ -200,7 +204,7 @@ def _handle_rpc_message(request, message: Any) -> Optional[Dict[str, Any]]:
         return _rpc_result(req_id, {
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "FTWorkspace-MCP", "version": "1.1.0"},
+            "serverInfo": {"name": "FTWorkspace-MCP", "version": "1.2.0"},
             "instructions": SERVER_INSTRUCTIONS,
         })
 

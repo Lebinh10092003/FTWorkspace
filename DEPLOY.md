@@ -68,6 +68,12 @@ BOOTSTRAP_ADMIN_PASSWORD=THAY_BANG_MAT_KHAU_MANH
 CRON_SECRET=THAY_BANG_CHUOI_BI_MAT_KHAC
 ```
 
+### Tài khoản công ty
+
+Không cần cấu hình thêm. Mật khẩu ở trang Quản lý nhân viên → Tài khoản công ty được mã hóa bằng khóa
+suy ra từ `DJANGO_SECRET_KEY`, nên **đừng đổi `DJANGO_SECRET_KEY`** trên máy chủ (đổi thì mật khẩu đã lưu
+không giải mã được). Có thể đặt `COMPANY_ACCOUNT_ENCRYPTION_KEY` nếu muốn tách riêng khóa này.
+
 ### Báo cáo cuối tuần
 
 Timer backend `workspace-weekly-report.timer` chạy lúc **16:45 thứ Sáu, giờ

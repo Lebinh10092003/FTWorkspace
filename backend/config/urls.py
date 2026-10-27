@@ -22,6 +22,7 @@ urlpatterns = [
     path("api/", include("attendance.urls")),
     path("api/", include("work_schedule.urls")),
     path("api/", include("documents.urls")),
+    path("api/", include("company_accounts.urls")),
     path("api/", include("mcp.urls")),
     # URL MCP ngan /mcp, giong /api/mcp (nginx chuyen /mcp vao Django).
     path("mcp", streamable_http, name="mcp_short"),

@@ -16,14 +16,42 @@ class MCPTool:
     require_finance: bool = False
     audit_action: Optional[str] = None  # Tên hành động ghi log audit nếu tool này thay đổi dữ liệu
     requires_auth: bool = True  # Nếu False thì có thể gọi không cần đăng nhập trước (ví dụ: auth_login)
+    title: Optional[str] = None  # Tên ngắn hiển thị trong client MCP
+    destructive: Optional[bool] = None  # True: xóa/thu hồi dữ liệu, client nên hỏi xác nhận
+
+    @property
+    def read_only(self) -> bool:
+        return not self.audit_action
+
+    @property
+    def is_destructive(self) -> bool:
+        if self.destructive is not None:
+            return self.destructive
+        return any(word in self.name for word in ("delete", "revoke", "remove"))
+
+    def annotations(self) -> Dict[str, Any]:
+        """Gợi ý hành vi theo đặc tả MCP (2025-03-26+) để client biết khi nào cần hỏi xác nhận."""
+        hints: Dict[str, Any] = {
+            "readOnlyHint": self.read_only,
+            "openWorldHint": False,
+        }
+        if not self.read_only:
+            hints["destructiveHint"] = self.is_destructive
+        if self.title:
+            hints["title"] = self.title
+        return hints
 
     def to_mcp_format(self) -> Dict[str, Any]:
         """Định dạng theo đặc tả Model Context Protocol (MCP)."""
-        return {
+        payload = {
             "name": self.name,
             "description": f"[{self.module.upper()}] {self.description}",
             "inputSchema": self.parameters,
+            "annotations": self.annotations(),
         }
+        if self.title:
+            payload["title"] = self.title
+        return payload
 
     def to_openapi_operation(self) -> Dict[str, Any]:
         """Định dạng theo OpenAPI 3.1 dùng cho ChatGPT Custom GPT Actions."""
@@ -93,6 +121,8 @@ class ToolRegistry:
         require_finance: bool = False,
         audit_action: Optional[str] = None,
         requires_auth: bool = True,
+        title: Optional[str] = None,
+        destructive: Optional[bool] = None,
     ):
         def decorator(func: Callable):
             tool = MCPTool(
@@ -105,6 +135,8 @@ class ToolRegistry:
                 require_finance=require_finance,
                 audit_action=audit_action,
                 requires_auth=requires_auth,
+                title=title,
+                destructive=destructive,
             )
             registry = cls()
             registry._tools[name] = tool

@@ -18,6 +18,7 @@ import {
   FolderTree,
   GraduationCap,
   Handshake,
+  KeyRound,
   Layers3,
   LayoutDashboard,
   LayoutGrid,
@@ -131,7 +132,7 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     id: 'account-management',
     label: 'Quản lý nhân viên',
     shortLabel: 'Nhân viên',
-    description: 'Tạo, phân quyền và quản lý thành viên Workspace.',
+    description: 'Tạo, phân quyền thành viên Workspace và quản lý tài khoản dịch vụ của công ty.',
     icon: ShieldUser,
     path: '/account-management',
   },
@@ -332,6 +333,7 @@ export const ATTENDANCE_NAV: ModuleNavItem[] = [
 /** Horizontal menu of "Quản lý nhân viên". Ids match the module tabs. */
 export const ACCOUNT_MANAGEMENT_NAV: ModuleNavItem[] = [
   { id: 'employees', label: 'Danh sách nhân viên', icon: Users },
+  { id: 'company-accounts', label: 'Tài khoản công ty', icon: KeyRound },
 ];
 
 /** Horizontal menu of "Báo cáo thu chi". */

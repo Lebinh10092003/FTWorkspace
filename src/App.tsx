@@ -39,6 +39,7 @@ const Posts = lazyWithRecovery(() => import('./components/social-dashboard/Posts
 const Sync = lazyWithRecovery(() => import('./components/social-dashboard/Sync'));
 const Config = lazyWithRecovery(() => import('./components/social-dashboard/Config'));
 const AccountManagement = lazyWithRecovery(() => import('./components/social-dashboard/AccountManagement'));
+const CompanyAccounts = lazyWithRecovery(() => import('./components/account-management/CompanyAccounts'));
 const EmailTemplateBuilder = lazyWithRecovery(() => import('./components/email-builder/EmailTemplateBuilder'));
 const SignatureBuilder = lazyWithRecovery(() => import('./components/email-builder/SignatureBuilder'));
 const FinanceWorkspace = lazyWithRecovery(() => import('./components/digital-training/FinanceWorkspace'));
@@ -248,6 +249,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [accessNotice, setAccessNotice] = useState('');
+  const [accountTab, setAccountTab] = useState<'employees' | 'company-accounts'>(() => (window.location.hash === '#company-accounts' ? 'company-accounts' : 'employees'));
   const [appearance, setAppearance] = useState<WorkspaceAppearance>(readWorkspaceAppearance);
 
   const [viewMode, setViewModeState] = useState<ViewMode>(getInitialViewMode());
@@ -998,13 +1000,13 @@ export default function App() {
             eyebrow="Quản trị Workspace"
             title="Quản lý nhân viên"
             items={ACCOUNT_MANAGEMENT_NAV}
-            activeId="employees"
-            onSelect={() => undefined}
+            activeId={accountTab}
+            onSelect={id => { const next = id === 'company-accounts' ? 'company-accounts' : 'employees'; setAccountTab(next); window.history.replaceState(null, '', `/account-management${next === 'company-accounts' ? '#company-accounts' : ''}`); }}
             ariaLabel="Điều hướng Quản lý nhân viên"
             account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />}
           />
           <main className="min-w-0 flex-1">
-            <div className="ft-module-content mx-auto p-5 md:p-7"><Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Đang tải quản lý nhân viên...</div>}><AccountManagement idToken={idToken || ''} userRole={userRole} /></Suspense></div>
+            <div className="ft-module-content mx-auto p-5 md:p-7"><Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Đang tải...</div>}>{accountTab === 'company-accounts' ? <CompanyAccounts idToken={idToken || ''} /> : <AccountManagement idToken={idToken || ''} userRole={userRole} />}</Suspense></div>
           </main>
         </div>
         {loginModal}{profileModal}

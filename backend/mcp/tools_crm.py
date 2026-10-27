@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 from django.db.models import Q
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from digital_training.models import (
@@ -14,7 +15,9 @@ from digital_training.models import (
     TrainingProductSubscription,
 )
 from digital_training.product_service import sync_partner_product_subscriptions
+from digital_training.serializers import product_subscription_status
 from .registry import register_tool
+from .lookups import find_partner
 
 
 @register_tool(
@@ -129,14 +132,10 @@ def crm_search_customers(ctx: Dict[str, Any], query: str = "", customer_type: st
     },
 )
 def crm_get_customer_360(ctx: Dict[str, Any], partner_id: Optional[int] = None, partner_name: Optional[str] = None, **_kwargs) -> Dict[str, Any]:
-    partner = None
-    if partner_id:
-        partner = TrainingPartner.objects.filter(pk=partner_id).first()
-    elif partner_name:
-        partner = TrainingPartner.objects.filter(name__icontains=partner_name.strip()).first()
+    partner, lookup_error = find_partner(partner_id, partner_name) if (partner_id or partner_name) else (None, "")
 
     if not partner:
-        return {"success": False, "error": "Không tìm thấy khách hàng phù hợp."}
+        return {"success": False, "error": lookup_error or "Không tìm thấy khách hàng phù hợp."}
 
     # 1. Gói sản phẩm / subscriptions
     subs = TrainingProductSubscription.objects.filter(partner=partner).select_related("product")
@@ -146,10 +145,10 @@ def crm_get_customer_360(ctx: Dict[str, Any], partner_id: Optional[int] = None, 
             "product_name": s.product.name,
             "product_code": s.product.code,
             "quantity": s.quantity,
-            "status": s.status,
             "starts_at": s.starts_at.isoformat() if s.starts_at else None,
-            "expires_at": s.expires_at.isoformat() if s.expires_at else None,
-            "is_expiring_soon": s.expiry_notice_stage > 0,
+            "expires_at": s.effective_expires_at.isoformat() if s.effective_expires_at else None,
+            "status": product_subscription_status(s),
+            "is_expiring_soon": product_subscription_status(s) == "expiring",
         })
 
     # 2. Lịch gặp gần đây
@@ -503,19 +502,22 @@ def crm_get_expiring_products(ctx: Dict[str, Any], days_ahead: int = 30, **_kwar
 
     due = TrainingProductSubscription.objects.select_related("partner", "product").filter(
         status="active",
-        expires_at__isnull=False,
-        expires_at__lte=target_date,
-    ).exclude(product__code="tap-huan").order_by("expires_at")
+    ).exclude(product__code="tap-huan").annotate(
+        effective_expiry=Coalesce("expires_at", "contract_expires_at"),
+    ).filter(
+        effective_expiry__isnull=False,
+        effective_expiry__lte=target_date,
+    ).order_by("effective_expiry")
 
     items = []
     for s in due[:50]:
-        days_left = (s.expires_at - today).days
+        days_left = (s.effective_expiry - today).days
         items.append({
             "subscription_id": s.id,
             "partner_id": s.partner.id,
             "partner_name": s.partner.name,
             "product_name": s.product.name,
-            "expires_at": s.expires_at.isoformat(),
+            "expires_at": s.effective_expiry.isoformat(),
             "days_left": days_left,
             "status": "Đã quá hạn" if days_left < 0 else f"Còn {days_left} ngày",
             "contact_person": s.partner.contact_person,
@@ -577,24 +579,16 @@ def crm_list_subscriptions(
         qs = qs.filter(product__code=product_code)
 
     items = []
-    for sub in qs.order_by("partner__name", "product__display_order")[:100]:
-        days_left = (sub.expires_at - today).days if sub.expires_at else None
-
-        # Xác định trạng thái
-        if sub.status != "active":
-            eff = sub.status
-        elif not sub.expires_at or sub.product.code == "tap-huan":
-            eff = "active"
-        elif days_left is not None and days_left < 0:
-            eff = "expired"
-        elif days_left is not None and days_left <= 30:
-            eff = "expiring"
-        else:
-            eff = "active"
+    for sub in qs.order_by("partner__name", "product__display_order"):
+        expiry = sub.effective_expires_at
+        days_left = (expiry - today).days if expiry else None
+        eff = product_subscription_status(sub)
 
         if status_filter != "all" and eff != status_filter:
             continue
 
+        if len(items) >= 100:
+            break
         items.append({
             "subscription_id": sub.id,
             "partner_id": sub.partner.id,
@@ -606,7 +600,7 @@ def crm_list_subscriptions(
             "product_code": sub.product.code,
             "quantity": sub.quantity,
             "starts_at": sub.starts_at.isoformat() if sub.starts_at else None,
-            "expires_at": sub.expires_at.isoformat() if sub.expires_at else None,
+            "expires_at": expiry.isoformat() if expiry else None,
             "days_remaining": days_left,
             "status": eff,
             "status_label": {
@@ -681,10 +675,17 @@ def crm_renew_subscription(
     if subscription_id:
         sub = TrainingProductSubscription.objects.select_related("partner", "product").filter(pk=subscription_id).first()
     elif partner_name:
-        qs = TrainingProductSubscription.objects.select_related("partner", "product").filter(partner__name__icontains=partner_name.strip())
+        partner, lookup_error = find_partner(None, partner_name)
+        if not partner:
+            return {"success": False, "error": lookup_error}
+        qs = TrainingProductSubscription.objects.select_related("partner", "product").filter(partner=partner)
         if product_name:
             qs = qs.filter(Q(product__name__icontains=product_name.strip()) | Q(product__code__icontains=product_name.strip()))
-        sub = qs.first()
+        candidates = list(qs[:6])
+        if len(candidates) > 1:
+            names = "; ".join(f"{c.product.name} (subscription_id {c.id})" for c in candidates[:5])
+            return {"success": False, "error": f"'{partner.name}' có nhiều gói khớp: {names}. Hãy nêu product_name hoặc subscription_id."}
+        sub = candidates[0] if candidates else None
 
     if not sub:
         return {"success": False, "error": f"Không tìm thấy gói dịch vụ khớp với thông tin cung cấp (Partner: '{partner_name}', Product: '{product_name}')."}
@@ -697,7 +698,8 @@ def crm_renew_subscription(
             return {"success": False, "error": "Định dạng new_expiry_date không hợp lệ (cần YYYY-MM-DD)."}
     elif months_to_add:
         m = int(months_to_add)
-        base_date = sub.expires_at if (sub.expires_at and sub.expires_at > today) else today
+        current_expiry = sub.effective_expires_at
+        base_date = current_expiry if (current_expiry and current_expiry > today) else today
         month_idx = base_date.month - 1 + m
         year = base_date.year + month_idx // 12
         month = month_idx % 12 + 1
@@ -780,11 +782,34 @@ def _generate_secure_password(length: int = 12) -> str:
     return "".join(secrets.choice(chars) for _ in range(length))
 
 
+def _mask_secret(value: str) -> str:
+    value = str(value or "")
+    if not value:
+        return ""
+    return f"{value[:2]}{'•' * 6}" if len(value) > 4 else "••••••"
+
+
+def _log_secret_access(ctx: Dict[str, Any], action: str, count: int, scope: str) -> None:
+    """Ghi nhật ký mỗi lần mật khẩu tài khoản AI được hiển thị qua MCP."""
+    try:
+        import uuid as _uuid
+
+        from examination.models import LogNote
+
+        LogNote.objects.create(
+            key=f"mcp:ai-account-secret:{_uuid.uuid4().hex[:8]}",
+            entity_key="mcp-digital-training",
+            content=f"[AI Plugin/MCP] {action}: hiển thị mật khẩu của {count} tài khoản AI ({scope}).",
+            updated_by=f"{ctx.get('name') or ctx.get('email')} (qua MCP)",
+            actor_email=ctx.get("email", ""),
+            system=False,
+        )
+    except Exception:  # Nhật ký phụ, không làm hỏng thao tác chính.
+        pass
+
+
 def _sync_partner_ai_count(partner: TrainingPartner) -> int:
-    count = partner.ai_accounts.filter(status="active").count()
-    partner.ai_account_count = count
-    partner.save(update_fields=["ai_account_count"])
-    return count
+    return partner.refresh_ai_account_count()
 
 
 # =========================================================================
@@ -844,18 +869,9 @@ def crm_export_subscriptions(
 
     items = []
     for sub in qs.order_by("partner__name", "product__display_order"):
-        days_left = (sub.expires_at - today).days if sub.expires_at else None
-
-        if sub.status != "active":
-            eff = sub.status
-        elif not sub.expires_at or sub.product.code == "tap-huan":
-            eff = "active"
-        elif days_left is not None and days_left < 0:
-            eff = "expired"
-        elif days_left is not None and days_left <= 30:
-            eff = "expiring"
-        else:
-            eff = "active"
+        expiry = sub.effective_expires_at
+        days_left = (expiry - today).days if expiry else None
+        eff = product_subscription_status(sub)
 
         if status_filter != "all" and eff != status_filter:
             continue
@@ -871,7 +887,7 @@ def crm_export_subscriptions(
             "product_code": sub.product.code,
             "quantity": sub.quantity,
             "starts_at": sub.starts_at.isoformat() if sub.starts_at else "",
-            "expires_at": sub.expires_at.isoformat() if sub.expires_at else "",
+            "expires_at": expiry.isoformat() if expiry else "",
             "days_remaining": days_left,
             "status": eff,
             "notes": sub.notes or "",
@@ -1007,14 +1023,10 @@ def crm_import_subscriptions(
         p_id = item.get("partner_id")
         p_code = str(item.get("product_code", "")).strip()
 
-        partner = None
-        if p_id:
-            partner = TrainingPartner.objects.filter(pk=p_id).first()
-        elif p_name:
-            partner = TrainingPartner.objects.filter(name__icontains=p_name).first()
+        partner, lookup_error = find_partner(p_id, p_name) if (p_id or p_name) else (None, "")
 
         if not partner:
-            errors.append(f"Dòng {idx}: Không tìm thấy trường/đối tác '{p_name or p_id}'")
+            errors.append(f"Dòng {idx}: {lookup_error}" if lookup_error else f"Dòng {idx}: Không tìm thấy trường/đối tác '{p_name or p_id}'")
             continue
 
         product = TrainingProduct.objects.filter(
@@ -1120,6 +1132,10 @@ def crm_import_subscriptions(
                 "description": "Lọc theo trạng thái tài khoản",
             },
             "query": {"type": "string", "description": "Tìm kiếm email/username, người nhận, tổ bộ môn hoặc ghi chú"},
+            "show_passwords": {
+                "type": "boolean",
+                "description": "Mặc định false: mật khẩu bị che. Chỉ đặt true khi người dùng yêu cầu rõ xem mật khẩu; mỗi lần xem được ghi nhật ký.",
+            },
         },
         "additionalProperties": False,
     },
@@ -1131,6 +1147,7 @@ def crm_list_ai_accounts(
     platform: str = "all",
     status: str = "all",
     query: str = "",
+    show_passwords: bool = False,
     **_kwargs,
 ) -> Dict[str, Any]:
     today = timezone.localdate()
@@ -1165,7 +1182,7 @@ def crm_list_ai_accounts(
             "platform": acc.platform,
             "platform_display": acc.get_platform_display(),
             "account_username": acc.account_username,
-            "account_password": acc.account_password,
+            "account_password": acc.account_password if show_passwords else _mask_secret(acc.account_password),
             "assigned_to": acc.assigned_to,
             "starts_at": acc.starts_at.isoformat() if acc.starts_at else None,
             "expires_at": acc.expires_at.isoformat() if acc.expires_at else None,
@@ -1175,8 +1192,12 @@ def crm_list_ai_accounts(
             "notes": acc.notes,
         })
 
+    if show_passwords and accounts:
+        _log_secret_access(ctx, "Tra cứu tài khoản AI", len(accounts), partner_name or str(partner_id or "tất cả"))
+
     return {
         "count": len(accounts),
+        "passwords_hidden": not show_passwords,
         "accounts": accounts,
     }
 
@@ -1229,14 +1250,10 @@ def crm_create_ai_account(
     import datetime
 
     today = timezone.localdate()
-    partner = None
-    if partner_id:
-        partner = TrainingPartner.objects.filter(pk=partner_id).first()
-    elif partner_name:
-        partner = TrainingPartner.objects.filter(name__icontains=partner_name.strip()).first()
+    partner, lookup_error = find_partner(partner_id, partner_name) if (partner_id or partner_name) else (None, "")
 
     if not partner:
-        return {"success": False, "error": f"Không tìm thấy trường học khớp với thông tin ('{partner_name or partner_id}')."}
+        return {"success": False, "error": lookup_error or f"Không tìm thấy trường học khớp với thông tin ('{partner_name or partner_id}')."}
 
     password = account_password.strip() if account_password else _generate_secure_password(12)
 
@@ -1495,14 +1512,10 @@ def crm_import_ai_accounts(
     import datetime
 
     today = timezone.localdate()
-    partner = None
-    if partner_id:
-        partner = TrainingPartner.objects.filter(pk=partner_id).first()
-    elif partner_name:
-        partner = TrainingPartner.objects.filter(name__icontains=partner_name.strip()).first()
+    partner, lookup_error = find_partner(partner_id, partner_name) if (partner_id or partner_name) else (None, "")
 
     if not partner:
-        return {"success": False, "error": f"Không tìm thấy trường học nhận tài khoản ('{partner_name or partner_id}')."}
+        return {"success": False, "error": lookup_error or f"Không tìm thấy trường học nhận tài khoản ('{partner_name or partner_id}')."}
 
     s_date = today
     if starts_at:
@@ -1667,6 +1680,9 @@ def crm_export_ai_accounts(
             "status_display": acc.get_status_display(),
             "notes": acc.notes or "",
         })
+
+    if items:
+        _log_secret_access(ctx, "Xuất danh sách tài khoản AI", len(items), partner_name or str(partner_id or "tất cả"))
 
     if format == "csv":
         import csv

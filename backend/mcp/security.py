@@ -319,6 +319,36 @@ def check_tool_permission(ctx: Dict[str, Any], tool: MCPTool) -> None:
         )
 
 
+SECRET_FIELD_MARKERS = ("password", "secret", "token", "ai_key", "api_key", "access_key", "otp", "recovery_code")
+AUDIT_TEXT_LIMIT = 4000
+
+
+def redact_secrets(value: Any) -> Any:
+    """Thay giá trị của các trường bí mật (mật khẩu, token, mã kết nối...) bằng '***'.
+
+    Nhật ký audit được nhiều người đọc; không bao giờ lưu mật khẩu dạng chữ thường vào đó.
+    """
+    if isinstance(value, dict):
+        cleaned = {}
+        for key, item in value.items():
+            lowered = str(key).lower()
+            if any(marker in lowered for marker in SECRET_FIELD_MARKERS) and not isinstance(item, (dict, list, bool)):
+                cleaned[key] = "***" if item not in (None, "") else item
+            else:
+                cleaned[key] = redact_secrets(item)
+        return cleaned
+    if isinstance(value, (list, tuple)):
+        return [redact_secrets(item) for item in value]
+    if isinstance(value, str) and value.startswith("ft_ai_"):
+        return "ft_ai_***"
+    return value
+
+
+def _audit_json(value: Any) -> str:
+    text = json.dumps(redact_secrets(value), ensure_ascii=False, default=str)
+    return text if len(text) <= AUDIT_TEXT_LIMIT else f"{text[:AUDIT_TEXT_LIMIT]}… (đã rút gọn)"
+
+
 def log_mcp_audit(ctx: Dict[str, Any], tool: MCPTool, params: Dict[str, Any], result: Dict[str, Any]) -> None:
     """Ghi lại nhật ký kiểm toán (Audit Log) cho các hành động thay đổi dữ liệu từ AI / MCP."""
     if not tool.audit_action:
@@ -329,8 +359,8 @@ def log_mcp_audit(ctx: Dict[str, Any], tool: MCPTool, params: Dict[str, Any], re
         entity_key = f"mcp:{tool.name}:{uuid.uuid4().hex[:8]}"
         content = (
             f"[AI Plugin/MCP] {tool.audit_action} bởi {actor_name} ({actor_email}). "
-            f"Tham số: {json.dumps(params, ensure_ascii=False, default=str)}. "
-            f"Kết quả: {json.dumps(result, ensure_ascii=False, default=str)}"
+            f"Tham số: {_audit_json(params)}. "
+            f"Kết quả: {_audit_json(result)}"
         )
         LogNote.objects.create(
             key=entity_key,

@@ -11,6 +11,7 @@ from digital_training.models import (
     TrainingSession,
 )
 from .registry import register_tool
+from .lookups import find_partner
 
 
 @register_tool(
@@ -145,14 +146,10 @@ def training_create_session(
     notes: str = "",
     **_kwargs,
 ) -> Dict[str, Any]:
-    partner = None
-    if partner_id:
-        partner = TrainingPartner.objects.filter(pk=partner_id).first()
-    elif partner_name:
-        partner = TrainingPartner.objects.filter(name__icontains=partner_name.strip()).first()
+    partner, lookup_error = find_partner(partner_id, partner_name) if (partner_id or partner_name) else (None, "")
 
     if not partner and (partner_id or partner_name):
-        return {"success": False, "error": f"Không tìm thấy khách hàng khớp với '{partner_name or partner_id}'."}
+        return {"success": False, "error": lookup_error or f"Không tìm thấy khách hàng khớp với '{partner_name or partner_id}'."}
 
     # Tìm hoặc tạo lớp học
     training_class = None
@@ -352,14 +349,10 @@ def training_create_class(
     notes: str = "",
     **_kwargs,
 ) -> Dict[str, Any]:
-    partner = None
-    if partner_id:
-        partner = TrainingPartner.objects.filter(pk=partner_id).first()
-    elif partner_name:
-        partner = TrainingPartner.objects.filter(name__icontains=partner_name.strip()).first()
+    partner, lookup_error = find_partner(partner_id, partner_name) if (partner_id or partner_name) else (None, "")
 
     if not partner:
-        return {"success": False, "error": "Vui lòng cung cấp partner_id hoặc partner_name hợp lệ."}
+        return {"success": False, "error": lookup_error or "Vui lòng cung cấp partner_id hoặc partner_name hợp lệ."}
 
     t_class, created = TrainingClass.objects.get_or_create(
         partner=partner,

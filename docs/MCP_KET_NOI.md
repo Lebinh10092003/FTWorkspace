@@ -84,6 +84,22 @@ Hỏi AI: *"Tôi là ai trên FTWorkspace?"*. AI sẽ gọi công cụ `system_w
 
 - Mã đặt trong URL (`?key=`) có thể bị ghi vào nhật ký máy chủ (nginx) và lịch sử của ứng dụng. Chỉ dùng cách này khi ứng dụng không cho nhập header (claude.ai, ChatGPT, Claude Desktop trên Windows). Mỗi ứng dụng dùng một mã riêng để thu hồi được riêng.
 - URL chỉ nhận mã `ft_ai_`, không bao giờ nhận mật khẩu.
+- Mật khẩu tài khoản AI của khách hàng bị che khi tra cứu (`crm_list_ai_accounts`); chỉ hiện khi gửi `show_passwords: true`, và mỗi lần hiện hoặc xuất danh sách đều ghi nhật ký.
+- Nhật ký audit MCP tự che mọi trường mật khẩu/token/mã kết nối (`redact_secrets` trong `security.py`).
+- Tài khoản công ty (`company_*`) chỉ Admin dùng được. Xem mật khẩu phải nêu lý do (`company_get_account_password`), được ghi vào nhật ký của tài khoản đó.
+
+## Công cụ mới (v1.2)
+
+| Công cụ | Quyền | Việc |
+|---|---|---|
+| `crm_pipeline_overview` | Nhân viên Đào tạo số | Khách hàng mới theo giai đoạn, dịch vụ sắp/đã hết hạn, tài khoản AI sắp hết hạn |
+| `crm_list_meetings` | Nhân viên Đào tạo số | Lịch gặp khách hàng theo khoảng ngày, khách hàng, nhân viên |
+| `crm_update_customer` | Quản lý | Sửa liên hệ, địa chỉ, trạng thái hợp đồng; thêm đầu mối; nối thêm ghi chú chăm sóc |
+| `company_list_accounts`, `company_accounts_overview` | Admin | Tra cứu tài khoản công ty, chi phí/tháng, lịch gia hạn |
+| `company_create_account`, `company_update_account`, `company_delete_account` | Admin | Thêm/sửa/xóa (xóa cần `confirm: true`) |
+| `company_get_account_password` | Admin | Lấy mật khẩu, bắt buộc có `reason` |
+
+Mỗi công cụ có `annotations` theo đặc tả MCP (`readOnlyHint`, `destructiveHint`) để ứng dụng AI biết khi nào cần hỏi xác nhận.
 
 ## Cho lập trình viên
 

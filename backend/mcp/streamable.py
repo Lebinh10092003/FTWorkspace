@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # Supported versions of the stateless Streamable HTTP transport.
 # 2024-11-05 kept for older clients (mcp-remote cu, Claude Desktop cu).
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
-SERVER_INFO = {"name": "FTWorkspace-MCP", "version": "1.1.0"}
+SERVER_INFO = {"name": "FTWorkspace-MCP", "version": "1.2.0"}
 ALLOW_HEADERS = (
     "Authorization, Content-Type, Accept, MCP-Protocol-Version, MCP-Session-Id, "
     "X-AI-Key, X-API-Key"
@@ -213,7 +213,9 @@ def streamable_http(request):
             "serverInfo": SERVER_INFO,
             "instructions": (
                 "Cong cu nghiep vu FTWorkspace (Dao tao so, Khao thi, Lich cong tac, Cham cong, Van ban, Email). "
-                "Chi hien cac cong cu ma tai khoan duoc phep; moi thao tac thay doi du lieu deu ghi nhat ky."
+                "Chi hien cac cong cu ma tai khoan duoc phep; moi thao tac thay doi du lieu deu ghi nhat ky. "
+                "Mat khau (tai khoan AI cua khach hang, tai khoan cong ty) bi che mac dinh: chi hien khi nguoi dung "
+                "yeu cau ro, moi lan xem deu ghi nhat ky. Hoi lai nguoi dung truoc khi xoa hoac ghi de du lieu."
             ),
         })
 
