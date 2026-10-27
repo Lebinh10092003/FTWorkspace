@@ -129,7 +129,7 @@ export default function WorkspaceAppRail({
 
   return (
     <nav
-      className={`ft-app-rail fixed inset-y-0 left-0 z-40 hidden lg:flex flex-col border-r border-[#0B2A4A]/20 bg-[#0B2A4A] transition-[width] duration-200 ease-in-out ${
+      className={`ft-desktop-rail fixed inset-y-0 left-0 z-40 hidden lg:flex flex-col border-r border-[#0B2A4A]/20 bg-[#0B2A4A] transition-[width] duration-200 ease-in-out ${
         compact ? 'is-compact w-16 p-2' : 'w-[248px] p-3'
       }`}
       aria-label="Điều hướng chính FermatTech Workspace"

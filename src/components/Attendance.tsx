@@ -218,7 +218,7 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
 
   /* ---------- Entries for selected view ---------- */
   const viewEntries = useMemo(() => {
-    if (!data) return [];
+    if (!data || !Array.isArray(data.entries)) return [];
     if (data.scope === 'mine') return data.entries;
     const target = selectedEmployee || userEmail || '';
     if (!target) return data.entries;
