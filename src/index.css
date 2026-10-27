@@ -16,6 +16,42 @@
   --ft-font-display: "Plus Jakarta Sans", "Be Vietnam Pro", system-ui, sans-serif;
   --ft-font-vn:      "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
 
+  /* -------------------------------------------------------------
+     Direction A (Navy FT) Tokens — Workspace Design System
+     ------------------------------------------------------------- */
+  --ft-navy:             #0B2A4A;  /* Sidebar & Mobile header background */
+  --ft-navy-text:        #C9D6E6;  /* Sidebar nav text */
+  --ft-navy-label:       #8FA6C0;  /* Sidebar section label */
+  --ft-navy-hover:       rgba(255, 255, 255, 0.08); /* 8% white hover */
+  --ft-navy-active:      rgba(255, 255, 255, 0.14); /* 14% white active */
+
+  --ft-blue:             #0B72CE;  /* Primary brand blue, 4.5:1 contrast on white */
+  --ft-blue-hover:       #075CA8;  /* Primary hover */
+
+  --ft-page-bg:          #F3F6FA;  /* Page background */
+  --ft-card-bg:          #FFFFFF;  /* Card surface */
+  --ft-card-border:      #DDE5EF;  /* Card border */
+
+  --ft-text-main:        #0F1F33;  /* Main text */
+  --ft-text-sub:         #4A5B70;  /* Secondary text */
+
+  /* Status tokens: done, doing, todo, due soon, error */
+  --ft-status-done-bg:   #E3F5EC;
+  --ft-status-done-text: #0E5A38;
+  --ft-status-doing-bg:  #E5F0FB;
+  --ft-status-doing-text:#0A5BA5;
+  --ft-status-todo-bg:   #EEF1F5;
+  --ft-status-todo-text: #3C4C61;
+  --ft-status-due-bg:    #FFF1D6;
+  --ft-status-due-text:  #7A4300;
+  --ft-status-error-bg:  #FEE8E7;
+  --ft-status-error-text:#C2261B;
+
+  /* Component Radii */
+  --ft-card-radius:      12px;
+  --ft-control-radius:   10px;
+  --ft-chip-radius:      12px;
+
   /* Brand — Shadcn UI Kit Blue & White */
   --ft-primary:         #2563EB;  /* Blue-600 */
   --ft-primary-hover:   #1D4ED8;  /* Blue-700 */
@@ -1997,7 +2033,7 @@ body { overflow-x: hidden; }
    between domains without returning to the Workspace launcher.
    ========================================================================= */
 :root {
-  --ft-rail-width: 16rem;
+  --ft-rail-width: 248px;
   --ft-rail-width-compact: 4.5rem;
 }
 
@@ -2614,6 +2650,30 @@ body.workspace-theme-dark {
   --ftd-text-4:        #7d92ad;  /* slate-400 */
   --ftd-text-5:        #5f7491;  /* slate-300, placeholders */
   --ftd-accent:        #5b9dff;
+
+  /* Direction A dark tokens */
+  --ft-navy:             #091322;
+  --ft-navy-text:        #C9D6E6;
+  --ft-navy-label:       #7E97B5;
+  --ft-navy-hover:       rgba(255, 255, 255, 0.06);
+  --ft-navy-active:      rgba(255, 255, 255, 0.12);
+  --ft-blue:             #3B92E6;
+  --ft-blue-hover:       #5DA7EE;
+  --ft-page-bg:          var(--ftd-canvas);
+  --ft-card-bg:          var(--ftd-surface);
+  --ft-card-border:      var(--ftd-border);
+  --ft-text-main:        var(--ftd-text);
+  --ft-text-sub:         var(--ftd-text-3);
+  --ft-status-done-bg:   #133827;
+  --ft-status-done-text: #7ee8b0;
+  --ft-status-doing-bg:  #143254;
+  --ft-status-doing-text:#8bc0f8;
+  --ft-status-todo-bg:   #1f2b3e;
+  --ft-status-todo-text: #b6c6dc;
+  --ft-status-due-bg:    #3e2b10;
+  --ft-status-due-text:  #fcd07c;
+  --ft-status-error-bg:  #421815;
+  --ft-status-error-text:#ff8b82;
 
   /* Shared design tokens follow the dark scale. */
   --ft-bg:               var(--ftd-canvas);
@@ -3339,3 +3399,72 @@ body.workspace-theme-dark .text-violet-700 { color: oklch(70.2% .183 293.541); }
 body.workspace-theme-dark .text-violet-800 { color: oklch(81.1% .111 293.571); }
 body.workspace-theme-dark .text-violet-900 { color: oklch(81.1% .111 293.571); }
 body.workspace-theme-dark .text-zinc-400 { color: var(--ftd-text-4); }
+
+/* ══════════════════════════════════════════════════════════════
+   Direction A — Global Mobile & Accessibility Optimizations (Đợt 1)
+   ══════════════════════════════════════════════════════════════ */
+
+/* Numbers and time tabular figures */
+.tabular-nums,
+[data-tabular="true"],
+time {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 767px) {
+  /* 1. Sửa lỗi chữ nhỏ (<12px): Nâng các lớp text-[8px..11px] lên tối thiểu 12px trên màn hình di động */
+  [class*="text-[8px]"],
+  [class*="text-[9px]"],
+  [class*="text-[10px]"],
+  [class*="text-[11px]"] {
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  /* 2. Mục chạm tối thiểu 44×44px trên mobile cho các nút và trường nhập liệu chính */
+  .ft-touch-target,
+  .ft-bottom-tab,
+  .ft-mobile-header button,
+  .ft-home-action-btn,
+  button.ft-btn,
+  button.ft-btn-primary,
+  button.ft-btn-secondary,
+  .ft-workspace-header button:not(.ft-subnav-btn):not([aria-hidden="true"]) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Giữ nguyên độ cao tự nhiên của bảng dữ liệu chi tiết dày đặc để tránh vỡ cột */
+  table button,
+  .table-actions button,
+  .dense-grid button {
+    min-height: unset;
+    min-width: unset;
+  }
+}
+
+/* 3. Gợi ý cuộn ngang cho bảng: bóng mờ mép trên mobile */
+@media (max-width: 1023px) {
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    background:
+      linear-gradient(to right, white 30%, rgba(255, 255, 255, 0)),
+      linear-gradient(to right, rgba(255, 255, 255, 0), white 70%) 100% 0,
+      radial-gradient(farthest-side at 0 50%, rgba(11, 42, 74, 0.12), rgba(0, 0, 0, 0)),
+      radial-gradient(farthest-side at 100% 50%, rgba(11, 42, 74, 0.12), rgba(0, 0, 0, 0)) 100% 0;
+    background-repeat: no-repeat;
+    background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+
+  body.workspace-theme-dark .overflow-x-auto {
+    background:
+      linear-gradient(to right, var(--ftd-surface, #141d2e) 30%, rgba(20, 29, 46, 0)),
+      linear-gradient(to right, rgba(20, 29, 46, 0), var(--ftd-surface, #141d2e) 70%) 100% 0,
+      radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0)),
+      radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0)) 100% 0;
+    background-repeat: no-repeat;
+    background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+}
