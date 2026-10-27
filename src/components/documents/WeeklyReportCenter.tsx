@@ -620,7 +620,7 @@ export default function WeeklyReportCenter({
                     id="mobile-report-select"
                     value={selected?.id || ''}
                     onChange={e => setSelectedId(Number(e.target.value))}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none"
                   >
                     {reports.map(report => (
                       <option key={report.id} value={report.id}>
@@ -733,7 +733,7 @@ export default function WeeklyReportCenter({
                                 ? 'Dịch vụ AI đang gặp lỗi hệ thống.'
                                 : 'Gemini tự động viết lại bản nháp theo mẫu chuẩn từ dữ liệu lịch công tác'
                             }
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50 transition"
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50 transition min-h-[44px]"
                           >
                             <Sparkles className="h-4 w-4 text-indigo-600" />
                             <span>AI viết lại</span>
@@ -746,7 +746,7 @@ export default function WeeklyReportCenter({
                               type="button"
                               onClick={cancelEditing}
                               disabled={saving}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition"
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition min-h-[44px]"
                             >
                               <RotateCcw className="h-4 w-4" />
                               Hủy
@@ -755,7 +755,7 @@ export default function WeeklyReportCenter({
                               type="button"
                               onClick={() => void saveEditing()}
                               disabled={saving}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition"
+                              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition min-h-[44px]"
                             >
                               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                               {saving ? 'Đang lưu…' : 'Lưu bản sửa'}
@@ -766,7 +766,7 @@ export default function WeeklyReportCenter({
                             <button
                               type="button"
                               onClick={startEditing}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition"
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition min-h-[44px]"
                             >
                               <Edit3 className="h-4 w-4 text-blue-600" />
                               Chỉnh sửa
@@ -775,7 +775,7 @@ export default function WeeklyReportCenter({
                               type="button"
                               onClick={() => void downloadReport()}
                               disabled={downloading}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition"
+                              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition min-h-[44px]"
                             >
                               {downloading ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />

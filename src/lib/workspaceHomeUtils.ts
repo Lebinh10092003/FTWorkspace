@@ -239,3 +239,63 @@ export function mapTaskStatus(status?: string, taskDateStr?: string, todayStr?: 
     isDueToday: false,
   };
 }
+
+export type CleanedTaskTitle = {
+  cleanTitle: string;
+  links: string[];
+  hasLinks: boolean;
+  originalTitle: string;
+};
+
+/**
+ * Cleans task title for clean UI presentation:
+ * - Strips redundant time prefixes (e.g. "9h30: ", "09:30 - ", "15:00-16:00: ")
+ * - Strips redundant timezone indicators (e.g. "(giờ Việt Nam)", "(giờ VN)")
+ * - Extracts URLs into a links array (for "Liên kết" chip display)
+ * - Removes raw URLs from title text to avoid breaking layout
+ * - Does not modify original data; preserves full originalTitle in returned object
+ */
+export function cleanTaskTitleForDisplay(title?: string): CleanedTaskTitle {
+  const originalTitle = String(title || '').trim();
+  if (!originalTitle) {
+    return {
+      cleanTitle: '',
+      links: [],
+      hasLinks: false,
+      originalTitle: '',
+    };
+  }
+
+  // 1. Extract URLs
+  const urlRegex = /(?:https?:\/\/|www\.)[^\s<>"'{}|\\^`]+[^\s<>"'{}|\\^`.,;:?!)]/gi;
+  const rawLinks = originalTitle.match(urlRegex) || [];
+  const links = rawLinks.map(l => (l.startsWith('www.') ? `https://${l}` : l));
+
+  // 2. Remove URL and preceding label (e.g. "Meet: https://...", "Link: https://...", "Zoom: https://...")
+  const linkLabelAndUrlRegex = /(?:(?:Meet|Google\s*Meet|Zoom|Link|Liên\s*kết)\s*:\s*)?(?:https?:\/\/|www\.)[^\s<>"'{}|\\^`]+[^\s<>"'{}|\\^`.,;:?!)]/gi;
+  let text = originalTitle.replace(linkLabelAndUrlRegex, '').trim();
+
+  // 3. Remove leading time / time range + timezone prefixes
+  const prefixRegex = /^\s*(?:(?:\d{1,2}(?:[:h]\d{2}|h))(?:\s*[\-\–~]\s*(?:\d{1,2}(?:[:h]\d{2}|h)))?)?\s*(?:\(\s*(?:giờ\s*việt\s*nam|giờ\s*vn|ict|gmt\+7)\s*\))?\s*[:\-\–~]\s*/i;
+
+  let prevText = '';
+  while (text !== prevText) {
+    prevText = text;
+    text = text.replace(prefixRegex, '').trim();
+  }
+
+  // Standalone timezone prefix
+  text = text.replace(/^\s*\(\s*(?:giờ\s*việt\s*nam|giờ\s*vn|ict|gmt\+7)\s*\)\s*[:\-\–~]?\s*/i, '').trim();
+
+  // Clean trailing punctuation left over by removed URLs
+  text = text.replace(/[\s\-\–:.,;…]+$/, '').trim();
+
+  const cleanTitle = text || originalTitle;
+
+  return {
+    cleanTitle,
+    links,
+    hasLinks: links.length > 0,
+    originalTitle,
+  };
+}

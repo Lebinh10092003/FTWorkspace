@@ -30,6 +30,7 @@ import { matchesSearch } from "../lib/searchText";
 import { DateBadge, DeadlineLegend as Legend, Metric, SessionsTable, TimeField, dateValue, emptyDate, todayIso, sessionDisplayName, sessionTimelineLabel, sessionRecencyKey, formatGrade, BirthDateControl, LIST_PAGE_SIZE, TablePagination } from "./examination/ui";
 import { roundDates, sessionRounds } from "./examination/rounds";
 import { examinationPathFor, examinationRouteFromPath } from "./examination/routes";
+import ResponsiveDataList from "./ui/ResponsiveDataList";
 const emptyCandidate: Candidate = {
   code: "",
   name: "",
@@ -1287,7 +1288,8 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Lọc mã, tên cuộc thi hoặc BTC..." />
           </label>
         </div>
-        <div className="overflow-x-auto">
+        {/* Desktop Table View (>=md) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="ft-table min-w-[900px]">
             <thead>
               <tr>
@@ -1326,6 +1328,45 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Cards View (<md) */}
+        <div className="md:hidden p-3">
+          <ResponsiveDataList
+            items={visibleCompetitions}
+            keyExtractor={c => c.id || c.code}
+            onItemClick={c => selectCompetition(c)}
+            primaryExtractor={c => (
+              <span className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-extrabold text-[#0B72CE]">{c.code}</span>
+                <span className="text-[#0F1F33]">— {c.name}</span>
+              </span>
+            )}
+            secondaryExtractor={c => `BTC: ${c.organizer}`}
+            badgeExtractor={c => {
+              const rounds = sessions.filter(s => s.competitionId === c.id || s.code === c.code);
+              return (
+                <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#0B72CE]">
+                  {rounds.length} kỳ
+                </span>
+              );
+            }}
+            metadataExtractor={c => {
+              const rounds = sessions.filter(s => s.competitionId === c.id || s.code === c.code);
+              const latest = latestCompetitionSession(c);
+              return [
+                {
+                  label: 'Thí sinh tích lũy',
+                  value: `${rounds.reduce((total, item) => total + item.candidates, 0).toLocaleString('vi-VN')} thí sinh`,
+                },
+                {
+                  label: 'Kỳ gần nhất',
+                  value: latest ? sessionDisplayName(latest) : 'Chưa có',
+                },
+              ];
+            }}
+            emptyMessage="Không tìm thấy cuộc thi phù hợp"
+          />
         </div>
         <TablePagination total={filteredCompetitions.length} page={activeCompetitionPage} onPageChange={setCompetitionPage} label="cuộc thi" />
       </section>

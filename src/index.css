@@ -2034,15 +2034,35 @@ body { overflow-x: hidden; }
    ========================================================================= */
 :root {
   --ft-rail-width: 248px;
-  --ft-rail-width-compact: 4.5rem;
+  --ft-rail-width-compact: 64px;
 }
 
 .ft-workspace-frame {
   min-height: 100dvh;
-  padding-left: var(--ft-rail-width);
-  transition: padding-left var(--ft-duration-base, .2s) var(--ft-ease, ease);
 }
-.ft-workspace-frame:has(.ft-app-rail.is-compact) { padding-left: var(--ft-rail-width-compact); }
+
+@media (min-width: 1024px) {
+  .ft-workspace-frame {
+    padding-left: var(--ft-rail-width);
+    transition: padding-left var(--ft-duration-base, .2s) var(--ft-ease, ease);
+  }
+  .ft-workspace-frame:has(.ft-desktop-rail.is-compact),
+  .ft-workspace-frame:has(.ft-app-rail.is-compact) {
+    padding-left: var(--ft-rail-width-compact);
+  }
+}
+
+@media (max-width: 1023px) {
+  .ft-workspace-frame,
+  .ft-workspace-frame:has(.ft-desktop-rail.is-compact),
+  .ft-workspace-frame:has(.ft-app-rail.is-compact) {
+    padding-left: 0 !important;
+  }
+  .ft-desktop-rail,
+  .ft-app-rail {
+    display: none !important;
+  }
+}
 .ft-workspace-frame-body { min-width: 0; }
 
 .ft-app-rail {
@@ -2229,6 +2249,7 @@ body { overflow-x: hidden; }
 /* Module sidebars that position themselves against the viewport must start
    after the rail instead of underneath it. */
 .ft-workspace-frame .ft-module-sidebar.fixed { left: var(--ft-rail-width); }
+.ft-workspace-frame:has(.ft-desktop-rail.is-compact) .ft-module-sidebar.fixed,
 .ft-workspace-frame:has(.ft-app-rail.is-compact) .ft-module-sidebar.fixed { left: var(--ft-rail-width-compact); }
 
 /* One module bar: name, horizontal menu, module actions, account. The logo is
@@ -2374,43 +2395,19 @@ body { overflow-x: hidden; }
   .ft-module-bar-account { order: 2; }
 }
 
-/* Phones: the rail becomes a horizontal strip so the screen keeps its width. */
-@media (max-width: 767px) {
-  .ft-workspace-frame { padding-left: 0; }
-  .ft-workspace-frame:has(.ft-app-rail.is-compact) { padding-left: 0; }
+/* Tablets & Phones: the frame has no fixed left rail padding, desktop rail is strictly hidden */
+@media (max-width: 1023px) {
+  .ft-workspace-frame,
+  .ft-workspace-frame:has(.ft-desktop-rail.is-compact),
+  .ft-workspace-frame:has(.ft-app-rail.is-compact) { padding-left: 0 !important; }
   .ft-workspace-frame .ft-module-sidebar.fixed,
-  .ft-workspace-frame:has(.ft-app-rail.is-compact) .ft-module-sidebar.fixed { left: 0; }
+  .ft-workspace-frame:has(.ft-desktop-rail.is-compact) .ft-module-sidebar.fixed,
+  .ft-workspace-frame:has(.ft-app-rail.is-compact) .ft-module-sidebar.fixed { left: 0 !important; }
+  .ft-desktop-rail,
   .ft-app-rail,
-  .ft-app-rail.is-compact {
-    position: sticky;
-    top: 0;
-    inset-block: auto;
-    width: 100%;
-    flex-direction: row;
-    align-items: center;
-    gap: .4rem;
-    border-right: 0;
-    border-bottom: 1px solid #d9e9f7;
-    padding: .45rem .7rem;
+  nav[aria-label="Điều hướng chính FermatTech Workspace"] {
+    display: none !important;
   }
-  .ft-app-rail-brand { flex: 0 0 auto; padding: .25rem .45rem; margin: 0; min-height: 0; }
-  .ft-app-rail-brand img { height: 1.9rem; }
-  .ft-app-rail-brand span { display: none; }
-  .ft-app-rail-items { flex-direction: row; overflow-x: auto; overflow-y: hidden; }
-  .ft-app-rail .ft-app-rail-item,
-  .ft-app-rail.is-compact .ft-app-rail-item {
-    flex-direction: row;
-    gap: .4rem;
-    min-height: 2.2rem;
-    padding: .35rem .6rem;
-    border: 1px solid #cfe4f5;
-    background: #fff;
-  }
-  .ft-app-rail .ft-app-rail-label { display: block; font-size: .68rem; white-space: nowrap; -webkit-line-clamp: 1; }
-  .ft-app-rail-tooltip { display: none; }
-  .ft-app-rail-toggle { display: none; }
-  .ft-app-rail-group { display: none; }
-  .ft-app-rail-more { flex: 0 0 auto; margin: 0; white-space: nowrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {

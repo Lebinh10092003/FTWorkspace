@@ -162,6 +162,13 @@ function userFromApi(value: any): AppUser {
 }
 
 function getInitialViewMode(): ViewMode {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = (params.get('view') || params.get('mode')) as ViewMode | null;
+    if (viewParam) return viewParam;
+  } catch {
+    /* ignore search param parse error */
+  }
   const path = window.location.pathname;
   if (path.startsWith('/examination/invigilation')) return 'examination-invigilation';
   if (path === '/dang-ky-du-thi' || path === '/dang-ky-du-thi/') return 'public-exam-registration';
