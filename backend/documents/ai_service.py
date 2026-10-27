@@ -145,6 +145,8 @@ def build_ai_report_prompt(report: WeeklyReport) -> str:
     if p_groups:
         draft_parts.append("Kế hoạch hiện tại: " + json.dumps(p_groups, ensure_ascii=False))
     draft_str = "\n".join(draft_parts) if draft_parts else "(Chưa có bản nháp)"
+    completed_text = "\n".join(c_lines)
+    planned_text = "\n".join(p_lines)
 
     prompt = f"""Bạn là trợ lý AI chuyên nghiệp của Fermat Tech (FT). Hãy tổng hợp và viết lại báo cáo tuần cá nhân cho nhân viên theo đúng mẫu chuẩn của công ty.
 TUYỆT ĐỐI KHÔNG DÙNG CÔNG CỤ (tool/command), CHỈ TRẢ LỜI VĂN BẢN JSON THUẦN TÚY.
@@ -188,10 +190,10 @@ Tuần báo cáo kết quả: Tuần {report.completed_week}
 Tuần kế hoạch dự kiến: Tuần {report.planned_week}
 
 1. Lịch công việc trong tuần báo cáo ({report.completed_week}):
-{"\n".join(c_lines)}
+{completed_text}
 
 2. Lịch công việc trong tuần kế hoạch ({report.planned_week}):
-{"\n".join(p_lines)}
+{planned_text}
 
 3. Bản nháp hiện tại (nếu có):
 {draft_str}
