@@ -59,6 +59,7 @@ const CompetitionLandingPublic = lazyWithRecovery(() => import('./components/exa
 const CompetitionHub = lazyWithRecovery(() => import('./components/examination/CompetitionHub'));
 const GuestInvigilation = lazyWithRecovery(() => import('./components/examination/GuestInvigilation'));
 const PublicExamRegistration = lazyWithRecovery(() => import('./components/examination/PublicExamRegistration'));
+const ChatbotAssistant = lazyWithRecovery(() => import('./components/chatbot/ChatbotAssistant'));
 
 type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management';
 
@@ -1363,5 +1364,52 @@ export default function App() {
     </WorkspaceAreaFrame>
   );
   const publicViews: ViewMode[] = ['competition-landing-public', 'competition-hub', 'guest-invigilation', 'public-exam-registration', 'training-assessment-public'];
-  return <>{framedContent}{!authChecking && !isGuest && idToken && !publicViews.includes(viewMode) && <InvigilationReminders key={user.email} token={idToken} email={user.email} canPreview={userRole === 'ADMIN' || userRole === 'MANAGER'} />}</>;
+
+  const handleChatbotNavigate = (targetPath: string) => {
+    const cleanPath = targetPath.split('?')[0].split('#')[0].replace(/^\/+|\/+$/g, '');
+    const pathToView: Record<string, ViewMode> = {
+      '': 'workspace',
+      'work-schedule': 'work-schedule',
+      'attendance': 'attendance',
+      'social-dashboard': 'social-dashboard',
+      'account-management': 'account-management',
+      'finance-report': 'finance-report',
+      'examination': 'examination',
+      'digital-training': 'digital-training',
+      'communication-tools': 'communication-tools',
+      'communication-tools/weekly-report': 'weekly-report',
+      'communication-tools/email-builder': 'email-builder',
+      'communication-tools/signature-builder': 'signature-builder',
+      'communication-tools/qr-generator': 'qr-generator',
+      'communication-tools/funding-proposal': 'funding-proposal',
+      'communication-tools/document-number': 'document-number',
+      'communication-tools/competition-landing': 'competition-landing',
+    };
+    const targetMode = pathToView[cleanPath];
+    if (targetMode) {
+      setViewMode(targetMode);
+    } else {
+      window.location.href = targetPath;
+    }
+  };
+
+  return (
+    <>
+      {framedContent}
+      {!authChecking && !isGuest && idToken && !publicViews.includes(viewMode) && (
+        <>
+          <InvigilationReminders key={user.email} token={idToken} email={user.email} canPreview={userRole === 'ADMIN' || userRole === 'MANAGER'} />
+          <Suspense fallback={null}>
+            <ChatbotAssistant
+              token={idToken}
+              userName={user.displayName}
+              userEmail={user.email}
+              userRole={userRole}
+              onNavigate={handleChatbotNavigate}
+            />
+          </Suspense>
+        </>
+      )}
+    </>
+  );
 }
