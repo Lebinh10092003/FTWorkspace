@@ -361,7 +361,11 @@ class CandidateRoundHistoryTests(TestCase):
         self.assertRegex(candidate.code, r'^FT-\d{5}$')
         self.assertEqual(candidate.birth_date, '2014-03-20')
         self.assertEqual(candidate.city, 'Hà Nội')
-        result = RoundResult.objects.get(participation__candidate=candidate, round_name='Vòng 1')
+        # The round is stored under the session's configured name, not the file's label.
+        self.session.refresh_from_db()
+        configured_first = self.session.rounds[0]
+        result = RoundResult.objects.get(participation__candidate=candidate)
+        self.assertEqual((result.round_id, result.round_name), (configured_first['id'], configured_first['name']))
         self.assertEqual(result.exam_date, '2026-06-21')
         self.assertEqual(result.time_slot, '09:00 - 10:00')
         self.assertEqual(result.account, 'candidate.account')
@@ -397,7 +401,8 @@ class CandidateRoundHistoryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(CandidateParticipation.objects.filter(candidate=self.candidate, session=self.session).exists())
 
-        first = RoundResult.objects.get(round_name='Round 1')
+        # "Round 1" is the session's first configured round, stored under its configured name.
+        first = RoundResult.objects.get(round_id='r1', round_name='Vòng Chung kết Quốc gia')
         response = self.client.delete(f'/api/examination/round-results/{first.id}?removeFromSession=1')
         self.assertEqual(response.status_code, 200)
         self.assertFalse(CandidateParticipation.objects.filter(candidate=self.candidate, session=self.session).exists())

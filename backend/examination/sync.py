@@ -389,18 +389,8 @@ ROUND_HISTORY_FIELD_MAP = {
 
 
 def occurrence_id_from_history(round_config, occurrence_id='', exam_date='', time_slot=''):
-    explicit = clean_txt(occurrence_id)
-    if explicit:
-        return explicit
-    from .views import slot_for_date_and_time
-    date_value = clean_txt(exam_date)
-    slots = (round_config or {}).get('slots') or []
-    matched = slot_for_date_and_time(slots, date_value, time_slot)
-    if matched:
-        return clean_txt(matched.get('id'))
-    if len(slots) == 1 and isinstance(slots[0], dict):
-        return clean_txt(slots[0].get('id'))
-    return ''
+    from .views import occurrence_id_from_round
+    return occurrence_id_from_round(round_config, occurrence_id, exam_date, time_slot)
 
 
 def merged_headers(grid, header_index):
@@ -762,6 +752,24 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
     }
 
 
+def merge_registration_data(existing, incoming, *, clear_empty=False):
+    """Merge incoming registration fields into the stored dict.
+
+    Keys only the web knows (payment proof, public registration id, form row,
+    school fee...) are kept. A blank incoming value never erases stored data,
+    except with ``clear_empty`` (a person emptied that field on the web).
+    """
+    merged = dict(existing or {})
+    for key, value in (incoming or {}).items():
+        key = str(key)
+        if value in (None, '') or (isinstance(value, str) and not value.strip()):
+            if clear_empty:
+                merged.pop(key, None)
+            continue
+        merged[key] = value
+    return merged
+
+
 def history_for_session(history, session):
     """Keep only round data that belongs to this session.
 
@@ -784,17 +792,35 @@ def history_for_session(history, session):
     return kept
 
 
-def upsert_participation_history(candidate, session_id, history, source='', registration=None):
+def upsert_participation_history(candidate, session_id, history, source='', registration=None,
+                                 update_mode='replace-nonempty', import_empty_values=True, historical_import=False):
+    """Store one session membership and each populated round of it.
+
+    Single implementation for every path (Sheet scan, manual Sheet import,
+    school Excel). Rules follow the Sheet import:
+    - a blank incoming cell never erases web data;
+    - a round result is merged into the existing one of the same round
+      (including the one with a blank occurrence), never duplicated;
+    - new results take the session's configured round name;
+    - "Trạng thái dự thi" is not imported (ROUND_HISTORY_FIELD_MAP);
+    - a new membership with no round data enters the first configured round,
+      so it shows in that round's roster (no room/date/slot is assigned).
+
+    ``update_mode='fill-empty'`` only fills empty fields (school Excel).
+    ``import_empty_values=False`` only updates fields that already have a value
+    and does not create new rounds for an existing membership.
+    """
     if not session_id:
         return None
     session = ExamSession.objects.filter(id=session_id).first()
     if not session:
         return None
-    participation, _ = CandidateParticipation.objects.get_or_create(
+    participation, participation_created = CandidateParticipation.objects.get_or_create(
         candidate=candidate,
         session=session,
-        defaults={'source': source or ''},
+        defaults={'source': source or '', 'registration_data': {'historicalImport': True} if historical_import else {}},
     )
+    fill_empty = update_mode == 'fill-empty'
     updates = []
     if source and participation.source != source:
         participation.source = source
@@ -807,14 +833,36 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
     }
     for payload_field, model_field in registration_fields.items():
         value = clean_txt(registration.get(payload_field))
-        if value:
-            setattr(participation, model_field, value)
-            updates.append(model_field)
+        current = clean_txt(getattr(participation, model_field))
+        if not value or value == current:
+            continue
+        if fill_empty and current:
+            continue
+        if not fill_empty and not import_empty_values and not participation_created and not current:
+            continue
+        setattr(participation, model_field, value)
+        updates.append(model_field)
     if registration:
-        participation.registration_data = {str(key): value for key, value in registration.items() if value not in (None, '')}
-        updates.append('registration_data')
+        stored = participation.registration_data or {}
+        if fill_empty:
+            merged_registration = dict(stored)
+            for key, value in registration.items():
+                if value not in (None, '') and not clean_txt(merged_registration.get(key)):
+                    merged_registration[str(key)] = value
+        elif not import_empty_values and not participation_created:
+            merged_registration = dict(stored)
+            for key, value in registration.items():
+                if value not in (None, '') and clean_txt(merged_registration.get(key)):
+                    merged_registration[str(key)] = value
+        else:
+            merged_registration = merge_registration_data(stored, registration)
+        if merged_registration != stored:
+            participation.registration_data = merged_registration
+            updates.append('registration_data')
     if updates:
         participation.save(update_fields=list(set(updates)) + ['updated_at'])
+
+    from .views import ensure_sheet_room_assignment
     configured_rounds = [item for item in (session.rounds or []) if isinstance(item, dict)]
     history = history_for_session(history, session)
     for position, item in enumerate(history or []):
@@ -831,7 +879,14 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
             values['eligibility'] = normalize_eligibility(values['eligibility'])
         if values.get('exam_date'):
             values['exam_date'] = parse_dob(values['exam_date']) or values['exam_date']
-        round_config = next((config for config in configured_rounds if clean_txt(config.get('name')).casefold() == round_name.casefold()), configured_rounds[position] if position < len(configured_rounds) else {})
+        template_slot = int(item.get('templateSlot')) if str(item.get('templateSlot') or '').isdigit() else 0
+        if 1 <= template_slot <= len(configured_rounds):
+            round_config = configured_rounds[template_slot - 1]
+        else:
+            round_config = next(
+                (config for config in configured_rounds if clean_txt(config.get('name')).casefold() == round_name.casefold()),
+                configured_rounds[position] if position < len(configured_rounds) else {},
+            )
         values['round_id'] = clean_txt(item.get('roundId')) or clean_txt(round_config.get('id'))
         values['occurrence_id'] = occurrence_id_from_history(round_config, values.get('occurrence_id'), values.get('exam_date'), values.get('time_slot'))
         values['raw_data'] = {str(key): value for key, value in item.items() if value not in (None, '')}
@@ -843,20 +898,35 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
             same_round = RoundResult.objects.filter(participation=participation, round_id=values['round_id'])
             existing_result = same_round.filter(occurrence_id='').first() or (same_round.first() if same_round.count() == 1 else None)
         if existing_result:
+            if not values.get('round_id'):
+                values['round_id'] = existing_result.round_id
             for model_field in ROUND_HISTORY_FIELD_MAP.values():
-                if not values.get(model_field):
+                current = clean_txt(getattr(existing_result, model_field))
+                if (
+                    not values.get(model_field)
+                    or (fill_empty and current)
+                    or (not fill_empty and not import_empty_values and not current)
+                ):
                     values[model_field] = getattr(existing_result, model_field)
-        if existing_result:
             for key, value in values.items():
                 setattr(existing_result, key, value)
             existing_result.save()
-            saved = existing_result
-        else:
+            ensure_sheet_room_assignment(existing_result)
+        elif import_empty_values or participation_created:
             # Use the session's own round name, not the Sheet's upper-case group label.
             saved = RoundResult.objects.create(participation=participation, round_name=clean_txt(round_config.get('name')) or round_name, **values)
-        from .views import ensure_sheet_room_assignment
-        ensure_sheet_room_assignment(saved)
+            ensure_sheet_room_assignment(saved)
+    # A new registration enters the first configured round so it is visible in that roster.
+    if not participation.round_results.exists():
+        first_round_config = next((item for item in configured_rounds if clean_txt(item.get('name'))), None)
+        first_round = clean_txt((first_round_config or {}).get('name')) or 'Vòng 1'
+        RoundResult.objects.get_or_create(
+            participation=participation,
+            round_name=first_round,
+            defaults={'round_id': clean_txt((first_round_config or {}).get('id'))},
+        )
     return participation
+
 
 def append_existing_candidate_link_note(candidate, session_id, previous_session_ids):
     """Leave a readable trace when an import reuses a profile in another session."""
@@ -2162,7 +2232,7 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
         }
 
 def sync_examination_from_google_sheet(spreadsheet_url=None, session_id=None, sheet_doc_id=None, sheet_tab=''):
-    ts_vn = datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    ts_vn = timezone.localtime().strftime('%d/%m/%Y %H:%M:%S')
     
     # helper to update system config state
     def update_global_state(data):

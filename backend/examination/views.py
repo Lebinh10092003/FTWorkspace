@@ -56,6 +56,9 @@ from .sync import (
     output_sheet_export_preview,
     sync_single_sheet,
     format_sheet_percentage,
+    history_for_session,
+    merge_registration_data,
+    upsert_participation_history,
 )
 
 
@@ -647,26 +650,6 @@ def merge_exam_history(existing, incoming, session_id='', source='', update_mode
             rows.append(clean)
     return rows
 
-ROUND_FIELD_MAP = {
-    'occurrenceId': 'occurrence_id',
-    'eligibility': 'eligibility',
-    'sbd': 'sbd',
-    'date': 'exam_date',
-    'time': 'time_slot',
-    'mode': 'mode',
-    'location': 'location',
-    'link': 'link',
-    'account': 'account',
-    'password': 'password',
-    'attendance': 'attendance',
-    'score': 'score',
-    'scoreRate': 'score_rate',
-    'rank': 'rank',
-    'result': 'result',
-    'note': 'note',
-}
-
-
 def _time_key(value):
     return tuple((int(h), int(m)) for h, m in re.findall(r'(\d{1,2})\s*[:hg]\s*(\d{2})', str(value or '')))
 
@@ -700,153 +683,6 @@ def occurrence_id_from_round(round_config, occurrence_id='', exam_date='', time_
     if len(slots) == 1 and isinstance(slots[0], dict):
         return str(slots[0].get('id') or '').strip()
     return ''
-
-
-def history_for_session(history, session):
-    """Keep only round data that belongs to this session.
-
-    A candidate's history spans every competition they ever sat. Adding them
-    to a new session must never copy rounds of another session (IMO 2026
-    results into FIMO 2026-2027) or rounds the session does not have.
-    """
-    round_ids = {str(item.get('id')) for item in (session.rounds or []) if isinstance(item, dict) and item.get('id')}
-    kept = []
-    for item in history or []:
-        if not isinstance(item, dict):
-            continue
-        source_session = str(item.get('sessionId') or '').strip()
-        round_id = str(item.get('roundId') or '').strip()
-        if source_session and source_session != str(session.pk):
-            continue
-        if round_id and round_ids and round_id not in round_ids:
-            continue
-        kept.append(item)
-    return kept
-
-
-def upsert_participation_history(candidate, session_id, history, source='', registration=None, update_mode='replace-nonempty', import_empty_values=True, historical_import=False):
-    """Store a source tab as one session and each populated round independently."""
-    if not session_id:
-        return None
-    session = ExamSession.objects.filter(id=session_id).first()
-    if not session:
-        return None
-    participation, participation_created = CandidateParticipation.objects.get_or_create(
-        candidate=candidate,
-        session=session,
-        defaults={'source': source or '', 'registration_data': {'historicalImport': True} if historical_import else {}},
-    )
-    updates = []
-    if source and participation.source != source:
-        participation.source = source
-        updates.append('source')
-    registration = registration or {}
-    registration_fields = {
-        'subject': 'subject', 'category': 'category', 'registrationMethod': 'registration_method',
-        'registrationUnit': 'registration_unit', 'teamName': 'team_name', 'examLanguage': 'exam_language',
-        'generalNote': 'general_note', 'certificateLink': 'certificate_link',
-    }
-    for payload_field, model_field in registration_fields.items():
-        value = str(registration.get(payload_field) or '').strip()
-        current_value = str(getattr(participation, model_field) or '').strip()
-        can_write = value and (
-            not current_value if update_mode == 'fill-empty'
-            else (import_empty_values or participation_created or bool(current_value))
-        )
-        if can_write:
-            setattr(participation, model_field, value)
-            updates.append(model_field)
-    if registration:
-        incoming_registration = {str(key): value for key, value in registration.items() if value not in (None, '')}
-        if update_mode == 'fill-empty':
-            merged_registration = dict(participation.registration_data or {})
-            for key, value in incoming_registration.items():
-                if not str(merged_registration.get(key) or '').strip():
-                    merged_registration[key] = value
-            participation.registration_data = merged_registration
-        elif not import_empty_values and not participation_created:
-            merged_registration = dict(participation.registration_data or {})
-            for key, value in incoming_registration.items():
-                if str(merged_registration.get(key) or '').strip():
-                    merged_registration[key] = value
-            participation.registration_data = merged_registration
-        else:
-            participation.registration_data = incoming_registration
-        updates.append('registration_data')
-    if updates:
-        participation.save(update_fields=list(set(updates)) + ['updated_at'])
-
-    configured_rounds = [item for item in (session.rounds or []) if isinstance(item, dict)]
-    history = history_for_session(history, session)
-    for history_index, item in enumerate(history or []):
-        if not isinstance(item, dict):
-            continue
-        round_name = str(item.get('round') or '').strip()
-        if not round_name:
-            continue
-        values = {
-            model_field: str(item.get(payload_field) or '').strip()
-            for payload_field, model_field in ROUND_FIELD_MAP.items()
-        }
-        template_slot = int(item.get('templateSlot') or 0) if str(item.get('templateSlot') or '').isdigit() else 0
-        matching_round = (
-            configured_rounds[template_slot - 1] if 1 <= template_slot <= len(configured_rounds)
-            else next(
-                (config for config in configured_rounds if str(config.get('name') or '').strip().casefold() == round_name.casefold()),
-                configured_rounds[history_index] if history_index < len(configured_rounds) else None,
-            )
-        )
-        values['round_id'] = str(item.get('roundId') or (matching_round or {}).get('id') or '').strip()
-        if values.get('eligibility'):
-            values['eligibility'] = normalize_eligibility(values['eligibility'])
-        if values.get('exam_date'):
-            values['exam_date'] = parse_dob(values['exam_date']) or values['exam_date']
-        values['occurrence_id'] = occurrence_id_from_round(matching_round, values.get('occurrence_id'), values.get('exam_date'), values.get('time_slot'))
-        values['raw_data'] = {str(key): value for key, value in item.items() if value not in (None, '')}
-        existing_result = RoundResult.objects.filter(
-            participation=participation,
-            round_id=values['round_id'],
-            occurrence_id=values['occurrence_id'],
-        ).first() if values['round_id'] and values['occurrence_id'] else None
-        if not existing_result:
-            existing_result = RoundResult.objects.filter(participation=participation, round_name=round_name, occurrence_id=values['occurrence_id']).first()
-        if not existing_result and values.get('round_id'):
-            existing_result = RoundResult.objects.filter(
-                participation=participation,
-                round_id=values['round_id'],
-            ).first()
-        if existing_result:
-            if not values.get('round_id'):
-                values['round_id'] = existing_result.round_id
-            for model_field in ROUND_FIELD_MAP.values():
-                current_value = str(getattr(existing_result, model_field) or '').strip()
-                if (
-                    not values.get(model_field)
-                    or (update_mode == 'fill-empty' and current_value)
-                    or (update_mode != 'fill-empty' and not import_empty_values and not current_value)
-                ):
-                    values[model_field] = getattr(existing_result, model_field)
-            for field_name, value in values.items():
-                setattr(existing_result, field_name, value)
-            existing_result.save()
-            ensure_sheet_room_assignment(existing_result)
-        elif import_empty_values or participation_created:
-            saved_result = RoundResult.objects.create(
-                participation=participation,
-                round_name=round_name,
-                **values,
-            )
-            ensure_sheet_room_assignment(saved_result)
-    # A new registration always enters the first configured round so it is visible and manageable in the round roster.
-    if not participation.round_results.exists():
-        first_round = next((str(item.get('name') or '').strip() for item in (session.rounds or []) if isinstance(item, dict) and item.get('name')), 'Vòng 1')
-        first_round_config = next((item for item in configured_rounds if item.get('name')), {})
-        RoundResult.objects.get_or_create(
-            participation=participation,
-            round_name=first_round,
-            defaults={'round_id': str(first_round_config.get('id') or '')},
-        )
-    return participation
 
 
 def normalized_exam_history(candidate):
@@ -2031,7 +1867,7 @@ def apply_round_slot(request, session_id, round_id):
             if update_fields:
                 result.save(update_fields=list(set(update_fields)) + ['updated_at'])
                 candidate = result.participation.candidate
-                candidate.updated = timezone.now().strftime('%d/%m/%Y %H:%M')
+                candidate.updated = timezone.localtime().strftime('%d/%m/%Y %H:%M')
                 candidate.save(update_fields=['updated'])
                 changed += 1
 
@@ -2094,7 +1930,7 @@ def candidate_detail(request, pk):
         if 'sessionIds' in data and isinstance(data['sessionIds'], list):
             cand.session_ids = list(set([str(s_id).strip() for s_id in data['sessionIds'] if str(s_id).strip()]))
             
-        cand.updated = timezone.now().strftime('%d/%m/%Y %H:%M')
+        cand.updated = timezone.localtime().strftime('%d/%m/%Y %H:%M')
         cand.sort_key = f"{cand.name.lower()}_{cand.identity or cand.id}"
         cand.save()
         
@@ -2151,7 +1987,7 @@ def round_result_detail(request, pk):
             CandidateParticipation.objects.filter(candidate=candidate, session_id=session_id).delete()
         else:
             item.delete()
-        candidate.updated = timezone.now().strftime('%d/%m/%Y %H:%M')
+        candidate.updated = timezone.localtime().strftime('%d/%m/%Y %H:%M')
         candidate.save()
         action = f'Gỡ thí sinh {candidate.code} ({candidate.name}) khỏi toàn bộ kỳ tổ chức.' if request.query_params.get('removeFromSession') == '1' else f'Gỡ thí sinh {candidate.code} ({candidate.name}) khỏi {round_name}.'
         append_audit(f'candidate-{candidate.code}', action, request)
@@ -2238,13 +2074,13 @@ def round_result_detail(request, pk):
             setattr(item.participation, model_field, str(registration[payload_field] or '').strip())
             participation_updates.append(model_field)
     if registration:
-        item.participation.registration_data = {str(key): value for key, value in registration.items() if value not in (None, '')}
+        item.participation.registration_data = merge_registration_data(item.participation.registration_data, registration, clear_empty=True)
         participation_updates.append('registration_data')
     item.save()
     if participation_updates:
         item.participation.save(update_fields=list(set(participation_updates)) + ['updated_at'])
     candidate = item.participation.candidate
-    candidate.updated = timezone.now().strftime('%d/%m/%Y %H:%M')
+    candidate.updated = timezone.localtime().strftime('%d/%m/%Y %H:%M')
     candidate.save(update_fields=['updated'])
     after_round = {'roomName': item.room_name, 'eligibility': item.eligibility, 'sbd': item.sbd, 'date': item.exam_date, 'time': item.time_slot, 'mode': item.mode, 'location': item.location, 'link': item.link, 'account': item.account, 'password': item.password, 'attendance': item.attendance, 'score': item.score, 'scoreRate': item.score_rate, 'rank': item.rank, 'result': item.result, 'note': item.note, 'registration': json.dumps(item.participation.registration_data or {}, ensure_ascii=False)}
     round_labels = {'roomName':'Phòng thi', 'eligibility':'Điều kiện', 'sbd':'Số báo danh', 'date':'Ngày thi', 'time':'Giờ/ca thi', 'mode':'Hình thức', 'location':'Địa điểm', 'link':'Link dự thi (Nếu có)', 'account':'Tài khoản', 'password':'Mật khẩu', 'attendance':'Trạng thái dự thi', 'score':'Điểm', 'scoreRate':'Tỷ lệ điểm', 'rank':'Xếp hạng', 'result':'Kết quả', 'note':'Ghi chú', 'registration':'Thông tin đăng ký'}
@@ -2280,7 +2116,7 @@ def candidate_remove_from_session(request, pk, session_id):
     # The school's total drops by the removed pupil's fee (until accounting acted).
     from .transfer import refresh_school_group
     refresh_school_group(group)
-    cand.updated = timezone.now().strftime('%d/%m/%Y %H:%M')
+    cand.updated = timezone.localtime().strftime('%d/%m/%Y %H:%M')
     cand.save()
     action = f'Gỡ thí sinh {cand.code} ({cand.name}) khỏi kỳ tổ chức.'
     append_audit(f'candidate-{cand.code}', action, request)
@@ -2655,7 +2491,7 @@ def sheet_import_preview(request):
     if not session:
         return Response({'error': 'Không tìm thấy kỳ tổ chức đã chọn.'}, status=status.HTTP_404_NOT_FOUND)
 
-    timestamp = timezone.now().strftime('%d/%m/%Y %H:%M:%S')
+    timestamp = timezone.localtime().strftime('%d/%m/%Y %H:%M:%S')
     result = sync_single_sheet(
         source_url,
         timestamp,
@@ -2945,7 +2781,7 @@ def import_candidates(request):
             if update_mode == 'add-only' and base:
                 continue
             code = base.code if base else (rec_code if (rec_code and rec_code not in existing_codes_set) else next_code(existing_codes_set))
-            ts_vn = timezone.now().strftime('%d/%m/%Y %H:%M')
+            ts_vn = timezone.localtime().strftime('%d/%m/%Y %H:%M')
             
             if base:
                 before_values = {

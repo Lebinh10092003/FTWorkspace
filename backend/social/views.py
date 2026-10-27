@@ -17,7 +17,7 @@ from authentication.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 from .sync import SyncEngine
 
 def get_today_date():
-    return timezone.now().strftime('%Y-%m-%d')
+    return timezone.localdate().isoformat()
 
 def get_recent_start_date(days):
     return (timezone.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d')

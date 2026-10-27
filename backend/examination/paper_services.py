@@ -373,21 +373,6 @@ def call_ai_json(*, paper: ExamPaper, task_type: str, model: str, system: str, p
     raise ValueError('AI chưa thể hoàn tất yêu cầu. Tiến trình đã được lưu nháp. ' + ' · '.join(failures))
 
 
-def generate_questions_with_ai(paper: ExamPaper, user_email: str) -> list[dict]:
-    distribution = validate_distribution(paper.total_questions, paper.difficulty_distribution)
-    demand = ', '.join(f'{DIFFICULTY_LABELS[key]}: {value}' for key, value in distribution.items())
-    prompt = f'''Tạo chính xác {paper.total_questions} câu trắc nghiệm một đáp án đúng cho đề "{paper.title}".\nCuộc thi: {paper.competition.name if paper.competition else ''}\nKỳ thi: {paper.session.name if paper.session else ''}\nMôn: {paper.subject}; Khối/Bảng: {paper.grade_or_category}; Ngôn ngữ: {paper.language}; Thời gian: {paper.duration_minutes} phút.\nPhân bố: {demand}.\nChỉ trả JSON theo dạng {{"questions":[{{"content":"","choices":["A","B","C","D"],"correctAnswer":"A","explanation":"","difficulty":"EASY|MEDIUM|HARD|VERY_HARD","topic":""}}]}}. Không sao chép nguyên văn nguồn.\n\nNguồn tham chiếu:\n{source_context(paper)}'''
-    result = call_ai_json(paper=paper, task_type='generate', model=_config().generation_model, user_email=user_email, system='Bạn là chuyên gia ra đề. Chỉ trả JSON hợp lệ, không markdown, không văn bản tự do.', prompt=prompt)
-    rows = result.get('questions') if isinstance(result, dict) else None
-    if not isinstance(rows, list) or len(rows) != paper.total_questions:
-        raise ValueError('AI trả về số lượng câu hỏi không đúng yêu cầu.')
-    normalized = [normalize_question(item, index + 1) for index, item in enumerate(rows)]
-    actual = {key: sum(1 for item in normalized if item['difficulty'] == key) for key in DIFFICULTIES}
-    if actual != distribution:
-        raise ValueError('AI trả về phân bố độ khó không đúng yêu cầu.')
-    return normalized
-
-
 def review_questions_with_ai(paper: ExamPaper, auto_fix: bool, user_email: str) -> list[dict]:
     current = [serialize_question(item) for item in paper.questions.all()]
     prompt = f'''Kiểm tra đề dưới đây: đúng loại câu và đúng số phương án theo từng slot, một đáp án đúng, số lượng, độ khó, câu trùng, mơ hồ, vượt phạm vi, lỗi ngôn ngữ và phương án nhiễu. Nếu autoFix=true, chỉ viết lại các câu lỗi và giữ nguyên mọi ràng buộc slot.\nTrả JSON {{"questions":[{{"id":"","status":"PASSED|AI_FIXED|NEEDS_REVIEW|WARNING","warnings":[""],"replacement":null hoặc question schema}}]}}.\nautoFix={str(auto_fix).lower()}\nĐề: {json.dumps(current, ensure_ascii=False)}\nNguồn: {source_context(paper)}'''
@@ -554,22 +539,6 @@ def xlsx_export(paper: ExamPaper) -> bytes:
         sheet.append([question.order, question.content, choices[0], choices[1], choices[2], choices[3], choices[4], question.correct_answer, question.explanation, DIFFICULTY_LABELS.get(question.difficulty, question.difficulty), question.topic, paper.competition.name if paper.competition else '', question.check_status, '; '.join(question.warnings or [])])
     output = BytesIO(); workbook.save(output); return output.getvalue()
 
-def revise_question_with_ai(paper: ExamPaper, question: ExamQuestion, action: str, user_email: str) -> dict:
-    instructions = {
-        'rewrite': 'Viết lại câu hỏi để rõ ràng hơn nhưng giữ mục tiêu kiến thức và độ khó.',
-        'distractors': 'Giữ nội dung và đáp án đúng, thay ba phương án nhiễu hợp lý, có sức phân loại.',
-        'increase-difficulty': 'Tăng độ khó đúng một bậc nếu có thể, không vượt phạm vi đề.',
-        'decrease-difficulty': 'Giảm độ khó đúng một bậc nhưng vẫn kiểm tra cùng kiến thức.',
-        'replace': 'Thay bằng một câu hoàn toàn khác, cùng chủ đề và độ khó.',
-    }
-    if action not in instructions:
-        raise ValueError('Thao tác AI cho câu hỏi không hợp lệ.')
-    prompt = f'''{instructions[action]}\nChỉ trả JSON {{"question":{{"content":"","choices":["","","",""],"correctAnswer":"A","explanation":"","difficulty":"EASY|MEDIUM|HARD|VERY_HARD","topic":""}}}}.\nCâu hiện tại: {json.dumps(serialize_question(question), ensure_ascii=False)}\nNguồn: {source_context(paper)}'''
-    result = call_ai_json(paper=paper, task_type=f'question_{action}', model=_config().generation_model, user_email=user_email, system='Bạn là chuyên gia ra đề. Chỉ trả JSON hợp lệ, không markdown.', prompt=prompt)
-    row = result.get('question') if isinstance(result, dict) else None
-    if not isinstance(row, dict):
-        raise ValueError('AI không trả về câu hỏi hợp lệ.')
-    return normalize_question({**row, 'order': question.order}, question.order)
 # Blueprint-aware generation overrides. Every AI call receives one immutable slot;
 # the returned question is normalised back against that slot rather than AI choices.
 def _text_fingerprint(value: str, *, remove_numbers: bool = False) -> str:

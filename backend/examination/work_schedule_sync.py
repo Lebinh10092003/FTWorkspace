@@ -20,6 +20,7 @@ import unicodedata
 from datetime import date, datetime
 
 from django.db.models import Max
+from django.utils import timezone
 
 from authentication.models import UserProfile
 from work_schedule.models import WorkItem
@@ -143,7 +144,7 @@ def sync_examination_work_schedule(*, apply=True, today=None):
     Past days are left alone: rewriting a schedule somebody already worked
     through helps nobody.
     """
-    horizon = today or date.today()
+    horizon = today or timezone.localdate()
     staff = examination_staff()
     summary = {
         "staff": [person.email for person in staff],

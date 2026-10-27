@@ -869,7 +869,7 @@ def training_sessions_sheet_webhook(request):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticatedOrReadOnly])
+@permission_classes([IsAuthenticated])
 def training_partner_ai_accounts(request):
     """Lấy danh sách hoặc tạo mới tài khoản AI dùng chung cho khách hàng."""
     queryset = TrainingPartnerAiAccount.objects.select_related("partner", "subscription").all()
@@ -898,13 +898,12 @@ def training_partner_ai_accounts(request):
     serializer = TrainingPartnerAiAccountSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     item = serializer.save()
-    item.partner.ai_account_count = item.partner.ai_accounts.filter(status="active").count()
-    item.partner.save(update_fields=["ai_account_count"])
+    item.partner.refresh_ai_account_count()
     return Response(TrainingPartnerAiAccountSerializer(item).data, status=status.HTTP_201_CREATED)
 
 
 @api_view(["GET", "PATCH", "PUT", "DELETE"])
-@permission_classes([IsAuthenticatedOrReadOnly])
+@permission_classes([IsAuthenticated])
 def training_partner_ai_account_detail(request, pk):
     """Xem, cập nhật (đổi mật khẩu, ngày hết hạn, trạng thái) hoặc xóa tài khoản AI."""
     item = TrainingPartnerAiAccount.objects.select_related("partner", "subscription").filter(pk=pk).first()
@@ -915,23 +914,25 @@ def training_partner_ai_account_detail(request, pk):
         return Response(TrainingPartnerAiAccountSerializer(item).data)
 
     if request.method in ("PATCH", "PUT"):
+        previous_partner = item.partner
         serializer = TrainingPartnerAiAccountSerializer(item, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         updated = serializer.save()
-        updated.partner.ai_account_count = updated.partner.ai_accounts.filter(status="active").count()
-        updated.partner.save(update_fields=["ai_account_count"])
+        updated.partner.refresh_ai_account_count()
+        if previous_partner.pk != updated.partner_id:
+            # Tài khoản được chuyển sang trường khác: trường cũ cũng phải đếm lại.
+            previous_partner.refresh_ai_account_count()
         return Response(TrainingPartnerAiAccountSerializer(updated).data)
 
     # DELETE
     partner = item.partner
     item.delete()
-    partner.ai_account_count = partner.ai_accounts.filter(status="active").count()
-    partner.save(update_fields=["ai_account_count"])
+    partner.refresh_ai_account_count()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticatedOrReadOnly])
+@permission_classes([IsAuthenticated])
 def training_partner_ai_accounts_bulk(request):
     """Tạo nhiều tài khoản AI cùng lúc cho một hoặc nhiều khách hàng."""
     accounts_data = request.data.get("accounts", [])
@@ -948,8 +949,7 @@ def training_partner_ai_accounts_bulk(request):
             touched_partners.add(saved.partner)
 
     for p in touched_partners:
-        p.ai_account_count = p.ai_accounts.filter(status="active").count()
-        p.save(update_fields=["ai_account_count"])
+        p.refresh_ai_account_count()
 
     return Response(
         {

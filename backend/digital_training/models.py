@@ -39,6 +39,12 @@ class TrainingPartner(models.Model):
     class Meta:
         ordering = ["name"]
 
+    def refresh_ai_account_count(self) -> int:
+        """Đếm lại số tài khoản AI đang dùng của khách hàng."""
+        self.ai_account_count = self.ai_accounts.filter(status="active").count()
+        self.save(update_fields=["ai_account_count"])
+        return self.ai_account_count
+
 
 class TrainingProduct(models.Model):
     TYPE_CHOICES = [
