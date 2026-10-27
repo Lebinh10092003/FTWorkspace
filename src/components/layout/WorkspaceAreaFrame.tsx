@@ -184,7 +184,7 @@ export default function WorkspaceAreaFrame({
       {/* ========================================================= */}
       {/* MAIN CONTENT AREA                                         */}
       {/* ========================================================= */}
-      <div className="ft-workspace-frame-body flex-1 min-w-0 pt-14 lg:pt-0 pb-24 lg:pb-0">
+      <div className="ft-workspace-frame-body flex-1 min-w-0 pt-14 lg:pt-0 pb-[calc(8.5rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
         {children}
       </div>
 

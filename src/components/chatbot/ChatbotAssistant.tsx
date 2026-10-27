@@ -649,7 +649,10 @@ export default function ChatbotAssistant({
                           onClick={() => handleSendMessage(p)}
                           className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-left text-xs font-medium text-slate-700 transition hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-700 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-blue-950/40"
                         >
-                          💬 {p}
+                          <span className="inline-flex items-center gap-1.5">
+                            <MessageSquare className="h-3 w-3 shrink-0 opacity-70" />
+                            <span>{p}</span>
+                          </span>
                         </button>
                       ))}
                     </div>

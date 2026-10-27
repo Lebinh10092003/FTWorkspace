@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
+  AlertTriangle,
   ArrowRight,
   BadgeDollarSign,
   CalendarCheck,
@@ -117,6 +118,16 @@ export default function WorkspaceHome({
 
   // Selected day for mobile horizontal strip view (defaults to today)
   const [selectedMobileDate, setSelectedMobileDate] = useState<string>(todayStr);
+  const todayChipRef = useRef<HTMLButtonElement>(null);
+
+  // Auto-scroll today's chip into view on mobile
+  useEffect(() => {
+    if (todayChipRef.current) {
+      try {
+        todayChipRef.current.scrollIntoView({ inline: 'center', block: 'nearest' });
+      } catch {}
+    }
+  }, []);
 
   // 1. Fetch current week's work schedule items
   useEffect(() => {
@@ -244,6 +255,11 @@ export default function WorkspaceHome({
     return itemsByDate[selectedMobileDate] || [];
   }, [itemsByDate, selectedMobileDate]);
 
+  // Unified task list (switches with mobile day selection or shows today)
+  const displayedTasks = useMemo(() => {
+    return selectedMobileDate === todayStr ? todayTasks : mobileSelectedTasks;
+  }, [selectedMobileDate, todayStr, todayTasks, mobileSelectedTasks]);
+
   // Curated list of quick tools, filtered by user permissions
   const quickTools = useMemo(() => {
     const all = [
@@ -357,12 +373,12 @@ export default function WorkspaceHome({
       {/* ========================================================= */}
       {/* MAIN CONTENT                                              */}
       {/* ========================================================= */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-32 lg:pb-12 max-w-7xl w-full mx-auto space-y-6">
         {/* 1. Header Greeting & Date */}
         <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-[#DDE5EF] pb-5">
           <div>
             <h1 className="text-2xl sm:text-[26px] font-bold tracking-tight text-[#0F1F33]">
-              {greeting}, {user.displayName || 'bạn'} 👋
+              {greeting}, {user.displayName || 'bạn'}
             </h1>
             <p className="text-sm text-[#4A5B70] font-medium mt-0.5">
               {fullDateText} • <span className="tabular-nums font-semibold">Tuần {isoWeek}</span>
@@ -449,7 +465,7 @@ export default function WorkspaceHome({
                   {/* Day tasks list */}
                   <div className="flex-1 space-y-1.5 overflow-hidden">
                     {dayTasks.length === 0 ? (
-                      <p className="text-[11px] text-slate-300 italic pt-2 text-center">
+                      <p className="text-xs text-[#4A5B70] font-medium pt-2 text-center">
                         Không có việc
                       </p>
                     ) : (
@@ -485,8 +501,8 @@ export default function WorkspaceHome({
           </div>
 
           {/* Mobile horizontal scrolling day chips (<1024px) */}
-          <div className="lg:hidden space-y-3">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none select-none">
+          <div className="lg:hidden">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none select-none overscroll-x-contain touch-pan-x">
               {weekDays.map(day => {
                 const dayTasks = itemsByDate[day.dateStr] || [];
                 const isSelected = selectedMobileDate === day.dateStr;
@@ -495,19 +511,20 @@ export default function WorkspaceHome({
                 return (
                   <button
                     key={day.dateStr}
+                    ref={isToday ? todayChipRef : undefined}
                     type="button"
                     onClick={() => setSelectedMobileDate(day.dateStr)}
                     className={`flex flex-col items-center justify-center shrink-0 w-[52px] h-[68px] rounded-[12px] border transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-[#0B72CE] text-white border-[#0B72CE] shadow-xs'
                         : isToday
-                        ? 'bg-white text-[#0B72CE] border-[#0B72CE] ring-1 ring-[#0B72CE]'
+                        ? 'bg-white text-[#0B72CE] border-[#0B72CE] ring-2 ring-[#0B72CE]/40 font-bold'
                         : 'bg-white text-slate-700 border-[#DDE5EF]'
                     }`}
                   >
                     <span
                       className={`text-[11px] font-semibold uppercase ${
-                        isSelected ? 'text-white/80' : 'text-slate-400'
+                        isSelected ? 'text-white/80' : isToday ? 'text-[#0B72CE]' : 'text-slate-400'
                       }`}
                     >
                       {day.dayOfWeekVN}
@@ -528,56 +545,6 @@ export default function WorkspaceHome({
                 );
               })}
             </div>
-
-            {/* Tasks list for selected mobile day */}
-            <div className="rounded-[12px] bg-white border border-[#DDE5EF] p-3 shadow-xs">
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
-                <span className="text-xs font-semibold text-slate-700">
-                  {selectedMobileDate === todayStr
-                    ? 'Lịch hôm nay'
-                    : `Lịch ngày ${selectedMobileDate}`}
-                </span>
-                <span className="text-xs tabular-nums text-slate-400">
-                  {mobileSelectedTasks.length} công việc
-                </span>
-              </div>
-
-              {mobileSelectedTasks.length === 0 ? (
-                <div className="py-4 text-center">
-                  <p className="text-xs text-slate-400">Không có công việc nào trong ngày này.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {mobileSelectedTasks.map(task => {
-                    const statusInfo = mapTaskStatus(task.status, task.date, todayStr);
-                    return (
-                      <div
-                        key={task.id}
-                        onClick={() => onNavigate('work-schedule')}
-                        className="flex items-center justify-between p-2.5 rounded-[10px] bg-slate-50 border border-slate-200/60 min-h-[52px] cursor-pointer"
-                      >
-                        <div className="min-w-0 flex-1 pr-2">
-                          <p className="text-xs font-semibold text-slate-900 truncate">
-                            {task.title}
-                          </p>
-                          {task.startTime && (
-                            <p className="text-[11px] tabular-nums text-slate-500 mt-0.5">
-                              {task.startTime} {task.endTime ? `- ${task.endTime}` : ''}
-                            </p>
-                          )}
-                        </div>
-                        <span
-                          className="px-2 py-0.5 rounded-md text-[11px] font-semibold shrink-0"
-                          style={statusInfo.badgeStyle}
-                        >
-                          {statusInfo.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
           </div>
         </section>
 
@@ -589,10 +556,10 @@ export default function WorkspaceHome({
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-[#0B72CE]" />
                 <h2 className="text-sm sm:text-base font-bold text-[#0F1F33]">
-                  Nhiệm vụ hôm nay
+                  {selectedMobileDate === todayStr ? 'Nhiệm vụ hôm nay' : `Nhiệm vụ ngày ${selectedMobileDate}`}
                 </h2>
                 <span className="rounded-full bg-blue-50 text-[#0B72CE] border border-blue-200/60 px-2 py-0.2 text-xs font-bold tabular-nums">
-                  {todayTasks.length}
+                  {displayedTasks.length}
                 </span>
               </div>
               <button
@@ -605,10 +572,12 @@ export default function WorkspaceHome({
             </div>
 
             <div className="rounded-[12px] bg-white border border-[#DDE5EF] p-4 shadow-xs space-y-2.5">
-              {todayTasks.length === 0 ? (
+              {displayedTasks.length === 0 ? (
                 <div className="py-8 text-center space-y-2">
                   <p className="text-xs sm:text-sm text-slate-500">
-                    Hôm nay bạn chưa có lịch công tác nào.
+                    {selectedMobileDate === todayStr
+                      ? 'Hôm nay bạn chưa có lịch công tác nào.'
+                      : `Ngày ${selectedMobileDate} chưa có lịch công tác nào.`}
                   </p>
                   <button
                     type="button"
@@ -620,31 +589,31 @@ export default function WorkspaceHome({
                   </button>
                 </div>
               ) : (
-                todayTasks.map(task => {
+                displayedTasks.map(task => {
                   const statusInfo = mapTaskStatus(task.status, task.date, todayStr);
                   return (
                     <div
                       key={task.id}
                       onClick={() => onNavigate('work-schedule')}
-                      className="group flex items-center justify-between p-3 rounded-[10px] border border-slate-200/70 bg-slate-50/50 hover:bg-white hover:border-[#0B72CE]/40 hover:shadow-xs transition-all cursor-pointer min-h-[60px]"
+                      className="group flex items-start sm:items-center justify-between p-3 rounded-[10px] border border-slate-200/70 bg-slate-50/50 hover:bg-white hover:border-[#0B72CE]/40 hover:shadow-xs transition-all cursor-pointer min-h-[60px] gap-2.5"
                     >
-                      <div className="min-w-0 flex-1 pr-3">
-                        <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                           {task.startTime ? (
-                            <span className="text-xs font-bold tabular-nums text-[#0B72CE]">
-                              {task.startTime}
+                            <span className="text-xs font-bold tabular-nums text-[#0B72CE] shrink-0">
+                              {task.startTime}{task.endTime ? ` - ${task.endTime}` : ''}
                             </span>
                           ) : (
-                            <span className="text-xs text-slate-400">Trong ngày</span>
+                            <span className="text-xs text-slate-400 shrink-0">Trong ngày</span>
                           )}
-                          <h3 className="text-xs sm:text-sm font-semibold text-[#0F1F33] truncate group-hover:text-[#0B72CE] transition-colors">
+                          <h3 className="text-xs sm:text-sm font-semibold text-[#0F1F33] break-words whitespace-normal leading-snug group-hover:text-[#0B72CE] transition-colors">
                             {task.title}
                           </h3>
                         </div>
                       </div>
 
                       <span
-                        className="px-2.5 py-1 rounded-[12px] text-xs font-semibold shrink-0"
+                        className="px-2.5 py-1 rounded-[12px] text-xs font-semibold shrink-0 self-start sm:self-center"
                         style={statusInfo.badgeStyle}
                       >
                         {statusInfo.label}
@@ -688,8 +657,9 @@ export default function WorkspaceHome({
                     <b className="tabular-nums font-bold">{weeklyReport.plannedCount} việc</b>
                   </div>
                   {weeklyReport.plannedWarning && (
-                    <p className="text-[11px] font-medium text-amber-700 pt-1">
-                      ⚠️ {weeklyReport.plannedWarning}
+                    <p className="text-[11px] font-medium text-amber-700 pt-1 flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                      <span>{weeklyReport.plannedWarning}</span>
                     </p>
                   )}
                 </div>
