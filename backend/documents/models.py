@@ -1,4 +1,7 @@
 from django.db import models
+from django.utils import timezone
+
+from authentication.models import UserProfile
 
 
 class FundingProposalRecord(models.Model):
@@ -91,3 +94,78 @@ class WeeklyReport(models.Model):
         if self.planned_items and isinstance(self.planned_items, list):
             return [{"name": "Công việc", "items": list(self.planned_items)}]
         return [{"name": "Công việc", "items": []}]
+
+
+class AiReportJob(models.Model):
+    STATUS_QUEUED = "queued"
+    STATUS_RUNNING = "running"
+    STATUS_DONE = "done"
+    STATUS_FAILED = "failed"
+    STATUS_CANCELLED = "cancelled"
+
+    STATUS_CHOICES = [
+        (STATUS_QUEUED, "Đang chờ"),
+        (STATUS_RUNNING, "Đang xử lý"),
+        (STATUS_DONE, "Hoàn thành"),
+        (STATUS_FAILED, "Thất bại"),
+        (STATUS_CANCELLED, "Đã hủy"),
+    ]
+
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="ai_report_jobs")
+    report = models.ForeignKey(WeeklyReport, on_delete=models.CASCADE, related_name="ai_report_jobs")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_QUEUED, db_index=True)
+    result = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True, default="")
+    duration_seconds = models.FloatField(blank=True, null=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="ai_job_status_created"),
+            models.Index(fields=["user", "status"], name="ai_job_user_status"),
+        ]
+
+    def __str__(self):
+        return f"AI Job #{self.pk} · {self.user.email} · {self.status}"
+
+
+class AiServiceHealth(models.Model):
+    STATUS_READY = "ready"
+    STATUS_AUTH_ERROR = "auth_error"
+    STATUS_ERROR = "error"
+
+    STATUS_CHOICES = [
+        (STATUS_READY, "Sẵn sàng"),
+        (STATUS_AUTH_ERROR, "Lỗi đăng nhập"),
+        (STATUS_ERROR, "Lỗi hệ thống"),
+    ]
+
+    key = models.CharField(max_length=50, default="default", unique=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_READY)
+    last_checked_at = models.DateTimeField(blank=True, null=True)
+    last_ready_at = models.DateTimeField(blank=True, null=True)
+    last_error_at = models.DateTimeField(blank=True, null=True)
+    first_ready_at = models.DateTimeField(blank=True, null=True)
+    error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def get_current(cls):
+        health, _ = cls.objects.get_or_create(key="default")
+        return health
+
+    def is_ready(self):
+        return self.status == self.STATUS_READY
+
+    def session_days_alive(self):
+        if not self.first_ready_at:
+            return 0
+        end_time = self.last_error_at if self.status == self.STATUS_AUTH_ERROR and self.last_error_at else timezone.now()
+        diff = end_time - self.first_ready_at
+        return max(0, diff.days)
+

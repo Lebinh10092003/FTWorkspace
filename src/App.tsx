@@ -1174,6 +1174,7 @@ export default function App() {
           <WeeklyReportCenter
             idToken={idToken || ''}
             userName={user.displayName}
+            userEmail={user.email}
             userRole={userRole}
             photoURL={user.photoURL}
             onAccountClick={openAccount}

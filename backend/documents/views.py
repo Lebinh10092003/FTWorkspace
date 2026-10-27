@@ -21,7 +21,8 @@ from authentication.permissions import IsWorkspaceAuthenticated
 from .funding_proposal import build_funding_proposal, file_title
 from .funding_archive import save_proposal
 from .funding_numbering import assign_funding_number
-from .models import FundingProposalRecord, WeeklyReport
+from .models import AiReportJob, AiServiceHealth, FundingProposalRecord, WeeklyReport
+from .ai_service import cancel_ai_job, get_job_queue_position
 from .numbering import (
     DOCUMENT_TYPES,
     format_number,
@@ -383,3 +384,115 @@ def weekly_report_docx(request, report_id):
     )
     response["Content-Length"] = str(len(content))
     return response
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_report_ai_rewrite(request, report_id):
+    """Enqueue an AI rewrite job for the user's weekly report."""
+    report = get_object_or_404(WeeklyReport, pk=report_id)
+
+    # Permission check: strictly report owner only
+    user_email = str(getattr(request.user, "email", "") or "").strip().lower()
+    report_email = str(report.employee_email or "").strip().lower()
+    if not user_email or user_email != report_email:
+        return Response(
+            {"error": "Bạn chỉ có thể yêu cầu AI viết lại cho báo cáo của chính mình."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    # Health check
+    health = AiServiceHealth.get_current()
+    if health.status == AiServiceHealth.STATUS_AUTH_ERROR:
+        return Response(
+            {"error": "AI tạm ngừng, quản trị viên cần đăng nhập lại."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    # One job per user limit (queued or running)
+    active_job = AiReportJob.objects.filter(
+        user=request.user,
+        status__in=[AiReportJob.STATUS_QUEUED, AiReportJob.STATUS_RUNNING],
+    ).first()
+    if active_job:
+        return Response(
+            {
+                "error": "Bạn đã có một yêu cầu đang chờ hoặc đang xử lý. Vui lòng đợi hoặc hủy yêu cầu trước đó.",
+                "activeJobId": active_job.id,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    job = AiReportJob.objects.create(
+        user=request.user,
+        report=report,
+        status=AiReportJob.STATUS_QUEUED,
+    )
+
+    return Response({
+        "jobId": job.id,
+        "status": job.status,
+        "queuePosition": get_job_queue_position(job),
+        "createdAt": job.created_at.isoformat(),
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_report_ai_job_detail(request, job_id):
+    """Check status and retrieve results of an AI rewrite job."""
+    job = get_object_or_404(AiReportJob.objects.select_related("user"), pk=job_id)
+
+    user_email = str(getattr(request.user, "email", "") or "").strip().lower()
+    job_email = str(job.user.email or "").strip().lower()
+    if user_email != job_email and _user_role(request) not in {"ADMIN", "MANAGER"}:
+        return Response({"error": "Bạn không có quyền xem yêu cầu này."}, status=status.HTTP_403_FORBIDDEN)
+
+    return Response({
+        "id": job.id,
+        "reportId": job.report_id,
+        "status": job.status,
+        "queuePosition": get_job_queue_position(job),
+        "result": job.result if job.status == AiReportJob.STATUS_DONE else None,
+        "errorMessage": job.error_message if job.status == AiReportJob.STATUS_FAILED else "",
+        "durationSeconds": job.duration_seconds,
+        "createdAt": job.created_at.isoformat(),
+        "startedAt": job.started_at.isoformat() if job.started_at else None,
+        "completedAt": job.completed_at.isoformat() if job.completed_at else None,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_report_ai_job_cancel(request, job_id):
+    """Cancel a queued or running AI rewrite job."""
+    job = get_object_or_404(AiReportJob.objects.select_related("user"), pk=job_id)
+
+    try:
+        cancelled = cancel_ai_job(job, user=request.user)
+    except PermissionError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+
+    return Response({
+        "id": job.id,
+        "status": job.status,
+        "cancelled": cancelled,
+        "message": "Đã hủy yêu cầu AI thành công." if cancelled else "Yêu cầu đã kết thúc hoặc không thể hủy.",
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_report_ai_status(request):
+    """Return health and status of the AI report rewrite service."""
+    health = AiServiceHealth.get_current()
+    return Response({
+        "status": health.status,
+        "ready": health.is_ready(),
+        "statusDisplay": health.get_status_display(),
+        "errorMessage": health.error_message,
+        "sessionDays": health.session_days_alive(),
+        "lastCheckedAt": health.last_checked_at.isoformat() if health.last_checked_at else None,
+        "lastReadyAt": health.last_ready_at.isoformat() if health.last_ready_at else None,
+    })
+
