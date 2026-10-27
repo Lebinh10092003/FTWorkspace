@@ -27,6 +27,7 @@ import {
 import WorkspaceNotifications from '../WorkspaceNotifications';
 import AccountMenu from '../AccountMenu';
 import {
+  cleanTaskTitleForDisplay,
   formatDateIso,
   formatVietnameseFullDate,
   getGreeting,
@@ -471,6 +472,7 @@ export default function WorkspaceHome({
                     ) : (
                       dayTasks.slice(0, 3).map(task => {
                         const statusInfo = mapTaskStatus(task.status, task.date, todayStr);
+                        const clean = cleanTaskTitleForDisplay(task.title);
                         return (
                           <div
                             key={task.id}
@@ -478,21 +480,29 @@ export default function WorkspaceHome({
                             title={task.title}
                           >
                             {task.startTime && (
-                              <p className="text-[10px] tabular-nums font-semibold text-[#0B72CE] leading-tight">
-                                {task.startTime}
-                              </p>
+                              <span className="text-[11px] tabular-nums font-bold text-[#0B72CE] leading-tight block mb-0.5">
+                                {task.startTime}{task.endTime ? ` - ${task.endTime}` : ''}
+                              </span>
                             )}
-                            <p className="text-xs font-medium text-slate-800 line-clamp-1 leading-snug">
-                              {task.title}
+                            <p className="text-xs font-medium text-slate-800 line-clamp-2 leading-snug">
+                              {clean.cleanTitle}
                             </p>
                           </div>
                         );
                       })
                     )}
                     {dayTasks.length > 3 && (
-                      <p className="text-[10px] font-semibold text-[#0B72CE] text-center pt-0.5">
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          onNavigate('work-schedule');
+                        }}
+                        className="w-full text-[11px] font-semibold text-[#0B72CE] hover:text-[#075CA8] hover:bg-blue-50/60 rounded py-0.5 text-center transition-colors cursor-pointer"
+                        title="Mở Lịch làm việc xem toàn bộ các việc trong ngày"
+                      >
                         +{dayTasks.length - 3} việc nữa
-                      </p>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -591,11 +601,13 @@ export default function WorkspaceHome({
               ) : (
                 displayedTasks.map(task => {
                   const statusInfo = mapTaskStatus(task.status, task.date, todayStr);
+                  const clean = cleanTaskTitleForDisplay(task.title);
                   return (
                     <div
                       key={task.id}
                       onClick={() => onNavigate('work-schedule')}
                       className="group flex items-start sm:items-center justify-between p-3 rounded-[10px] border border-slate-200/70 bg-slate-50/50 hover:bg-white hover:border-[#0B72CE]/40 hover:shadow-xs transition-all cursor-pointer min-h-[60px] gap-2.5"
+                      title={task.title}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
@@ -606,9 +618,24 @@ export default function WorkspaceHome({
                           ) : (
                             <span className="text-xs text-slate-400 shrink-0">Trong ngày</span>
                           )}
-                          <h3 className="text-xs sm:text-sm font-semibold text-[#0F1F33] break-words whitespace-normal leading-snug group-hover:text-[#0B72CE] transition-colors">
-                            {task.title}
-                          </h3>
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <h3 className="text-xs sm:text-sm font-semibold text-[#0F1F33] line-clamp-2 leading-snug group-hover:text-[#0B72CE] transition-colors">
+                              {clean.cleanTitle}
+                            </h3>
+                            {clean.hasLinks && clean.links[0] && (
+                              <a
+                                href={clean.links[0]}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#E5F0FB] text-[#0A5BA5] hover:bg-blue-100 transition-colors shrink-0 cursor-pointer"
+                                title={`Mở liên kết: ${clean.links[0]}`}
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                <span>Liên kết</span>
+                              </a>
+                            )}
+                          </div>
                         </div>
                       </div>
 

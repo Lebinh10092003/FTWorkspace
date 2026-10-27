@@ -168,3 +168,75 @@ test('mapTaskStatus maps statuses to standard labels', () => {
   assert.equal(mapTaskStatus('todo', '2026-10-27', '2026-10-27').label, 'Hạn hôm nay');
   assert.equal(mapTaskStatus('todo', '2026-10-28', '2026-10-27').label, 'Chưa làm');
 });
+
+function cleanTaskTitleForDisplay(title) {
+  const originalTitle = String(title || '').trim();
+  if (!originalTitle) {
+    return {
+      cleanTitle: '',
+      links: [],
+      hasLinks: false,
+      originalTitle: '',
+    };
+  }
+
+  const urlRegex = /(?:https?:\/\/|www\.)[^\s<>"'{}|\\^`]+[^\s<>"'{}|\\^`.,;:?!)]/gi;
+  const rawLinks = originalTitle.match(urlRegex) || [];
+  const links = rawLinks.map(l => (l.startsWith('www.') ? `https://${l}` : l));
+
+  const linkLabelAndUrlRegex = /(?:(?:Meet|Google\s*Meet|Zoom|Link|Liên\s*kết)\s*:\s*)?(?:https?:\/\/|www\.)[^\s<>"'{}|\\^`]+[^\s<>"'{}|\\^`.,;:?!)]/gi;
+  let text = originalTitle.replace(linkLabelAndUrlRegex, '').trim();
+
+  const prefixRegex = /^\s*(?:(?:\d{1,2}(?:[:h]\d{2}|h))(?:\s*[\-\–~]\s*(?:\d{1,2}(?:[:h]\d{2}|h)))?)?\s*(?:\(\s*(?:giờ\s*việt\s*nam|giờ\s*vn|ict|gmt\+7)\s*\))?\s*[:\-\–~]\s*/i;
+
+  let prevText = '';
+  while (text !== prevText) {
+    prevText = text;
+    text = text.replace(prefixRegex, '').trim();
+  }
+
+  text = text.replace(/^\s*\(\s*(?:giờ\s*việt\s*nam|giờ\s*vn|ict|gmt\+7)\s*\)\s*[:\-\–~]?\s*/i, '').trim();
+  text = text.replace(/[\s\-\–:.,;…]+$/, '').trim();
+
+  const cleanTitle = text || originalTitle;
+
+  return {
+    cleanTitle,
+    links,
+    hasLinks: links.length > 0,
+    originalTitle,
+  };
+}
+
+test('cleanTaskTitleForDisplay strips duplicate time prefix "9h30: "', () => {
+  const res = cleanTaskTitleForDisplay('9h30: Qua làm việc với đối tác tại cơ sở');
+  assert.equal(res.cleanTitle, 'Qua làm việc với đối tác tại cơ sở');
+  assert.equal(res.hasLinks, false);
+  assert.equal(res.links.length, 0);
+  assert.equal(res.originalTitle, '9h30: Qua làm việc với đối tác tại cơ sở');
+});
+
+test('cleanTaskTitleForDisplay strips time range and (giờ Việt Nam) prefix and extracts Meet link', () => {
+  const raw = '15:00-16:00 (giờ Việt Nam): Họp trực tuyến với Gimasys về triển khai Workspace … Meet: https://meet.google.com/abc-defg-hij';
+  const res = cleanTaskTitleForDisplay(raw);
+  assert.equal(res.cleanTitle, 'Họp trực tuyến với Gimasys về triển khai Workspace');
+  assert.equal(res.hasLinks, true);
+  assert.equal(res.links.length, 1);
+  assert.equal(res.links[0], 'https://meet.google.com/abc-defg-hij');
+  assert.equal(res.originalTitle, raw);
+});
+
+test('cleanTaskTitleForDisplay handles "09:30 -" and "14h00 - 16h30 (giờ VN) -"', () => {
+  const res1 = cleanTaskTitleForDisplay('09:30 - Họp phòng Công nghệ');
+  assert.equal(res1.cleanTitle, 'Họp phòng Công nghệ');
+
+  const res2 = cleanTaskTitleForDisplay('14h00 - 16h30 (giờ VN) - Tập huấn giáo viên trực tuyến');
+  assert.equal(res2.cleanTitle, 'Tập huấn giáo viên trực tuyến');
+});
+
+test('cleanTaskTitleForDisplay preserves regular titles without time prefix', () => {
+  const res = cleanTaskTitleForDisplay('Rà soát tài liệu Khảo thí');
+  assert.equal(res.cleanTitle, 'Rà soát tài liệu Khảo thí');
+  assert.equal(res.hasLinks, false);
+});
+
