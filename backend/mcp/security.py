@@ -78,8 +78,13 @@ def resolve_user_context(request, body_params: Optional[Dict[str, Any]] = None) 
             scheme = parts[0].lower() if parts else ""
             credential = parts[1].strip() if len(parts) > 1 else ""
 
+            # 2o. Access token OAuth (ChatGPT/Claude đăng nhập qua trang web)
+            if scheme == "bearer" and credential.startswith("ft_oat_"):
+                from mcp_oauth.services import verify_access_token
+                django_user = verify_access_token(credential)
+
             # 2a. AI Access Key dạng Bearer ft_ai_... hoặc ft_ai_... trực tiếp
-            if credential.startswith("ft_ai_") or auth_header.startswith("ft_ai_"):
+            elif credential.startswith("ft_ai_") or auth_header.startswith("ft_ai_"):
                 raw_k = credential if credential.startswith("ft_ai_") else auth_header
                 matched_email = verify_ai_key(raw_k)
                 if matched_email:

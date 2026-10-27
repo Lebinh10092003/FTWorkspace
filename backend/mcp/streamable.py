@@ -75,7 +75,7 @@ def _response(request, content=None, *, status=200, allow=None):
         response["Access-Control-Allow-Origin"] = origin
     response["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS, DELETE"
     response["Access-Control-Allow-Headers"] = ALLOW_HEADERS
-    response["Access-Control-Expose-Headers"] = "MCP-Session-Id, MCP-Protocol-Version"
+    response["Access-Control-Expose-Headers"] = "MCP-Session-Id, MCP-Protocol-Version, WWW-Authenticate"
     if allow:
         response["Allow"] = allow
     return response
@@ -114,7 +114,7 @@ def _credentials_present(request):
 
 
 MISSING_KEY_MESSAGE = (
-    "Missing MCP access token. Tao Ma ket noi AI (ft_ai_...) o Ho so ca nhan > Tro ly AI & MCP, "
+    "Missing MCP access token. Dang nhap qua OAuth (client tu mo trang dang nhap FTWorkspace) hoac tao Ma ket noi AI (ft_ai_...) o Ho so ca nhan > Tro ly AI & MCP, "
     "roi gui qua header Authorization: Bearer ft_ai_... hoac them ?key=ft_ai_... vao URL."
 )
 INVALID_KEY_MESSAGE = (
@@ -126,10 +126,14 @@ INVALID_KEY_MESSAGE = (
 def _unauthorized(request, req_id, message, *, invalid):
     # 401 is required by the MCP auth spec. error="invalid_token" plus a description lets
     # clients show "wrong key" instead of only trying (and failing) an OAuth flow.
+    from mcp_oauth.services import base_url
+
     response = _error(request, req_id, -32000, message, status=401)
-    challenge = 'Bearer realm="FTWorkspace MCP"'
+    path = "/api/mcp" if request.path.startswith("/api/") else "/mcp"
+    metadata_url = f"{base_url(request)}/.well-known/oauth-protected-resource{path}"
+    challenge = f'Bearer realm="FTWorkspace MCP", resource_metadata="{metadata_url}", scope="mcp"'
     if invalid:
-        challenge += ', error="invalid_token", error_description="Invalid, revoked or inactive ft_ai_ key"'
+        challenge += ', error="invalid_token", error_description="Invalid, expired or revoked token"'
     response["WWW-Authenticate"] = challenge
     return response
 

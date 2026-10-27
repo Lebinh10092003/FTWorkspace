@@ -29,11 +29,12 @@ def auth_login(ctx: Optional[Dict[str, Any]], **_kwargs) -> Dict[str, Any]:
         "success": False,
         "error": "Chưa có Mã kết nối AI. MCP không nhận email/mật khẩu.",
         "how_to_connect": [
-            "Đăng nhập https://workspace.fermat.vn, mở Hồ sơ cá nhân > Trợ lý AI & MCP, tạo mã mới (ft_ai_...).",
-            "claude.ai / ChatGPT / Claude Desktop: dùng URL https://workspace.fermat.vn/mcp?key=ft_ai_...",
-            "Claude Code / Cursor: URL https://workspace.fermat.vn/mcp với header Authorization: Bearer ft_ai_...",
+            "Thêm connector với URL https://workspace.fermat.vn/mcp (Authentication: OAuth). Ứng dụng AI sẽ mở trang "
+            "đăng nhập FTWorkspace; người dùng đăng nhập trên trang đó là kết nối xong.",
+            "Ứng dụng không hỗ trợ OAuth: tạo Mã kết nối AI ở Hồ sơ cá nhân > Trợ lý AI & MCP, dùng URL "
+            "https://workspace.fermat.vn/mcp?key=ft_ai_... hoặc header Authorization: Bearer ft_ai_...",
         ],
-        "instruction_for_ai": "Không hỏi mật khẩu của người dùng. Hướng dẫn họ tạo Mã kết nối AI theo các bước trên.",
+        "instruction_for_ai": "Không hỏi mật khẩu trong khung chat. Người dùng chỉ đăng nhập trên trang FTWorkspace mà ứng dụng mở ra.",
     }
 
 

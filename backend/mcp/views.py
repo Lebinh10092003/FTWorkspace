@@ -53,29 +53,12 @@ def _cors(response):
 @authentication_classes([])
 @permission_classes([AllowAny])
 def oauth_protected_resource(request):
-    """RFC 9728 - OAuth 2.0 Protected Resource Metadata.
-
-    Tra ve metadata de client (Claude, Cursor, ChatGPT) biet may chu nay khong
-    dung OAuth flow ma chi chap nhan Bearer token (AI Access Key ft_ai_...)
-    qua header hoac URL (?key=ft_ai_...).
-
-    Neu endpoint nay tra 404 hoac HTML, claude.ai / Cursor se hien loi
-    'Khong the tu dong xac dinh cai dat OAuth'.
-    """
+    """RFC 9728 - metadata OAuth cho /api/mcp (giong /.well-known/oauth-protected-resource/api/mcp)."""
     if request.method == "OPTIONS":
         return _cors(HttpResponse(status=status.HTTP_200_OK))
-    env_server = os.getenv("MCP_SERVER_URL", "").strip()
-    if env_server:
-        resource_url = env_server
-    else:
-        host = request.get_host()
-        scheme = "https" if request.is_secure() else "http"
-        resource_url = f"{scheme}://{host}/api/mcp"
-    metadata = {
-        "resource": resource_url,
-        "bearer_methods_supported": ["header", "query"],
-    }
-    resp = _cors(JsonResponse(metadata, json_dumps_params={"ensure_ascii": False}))
+    from mcp_oauth.services import protected_resource_metadata
+
+    resp = _cors(JsonResponse(protected_resource_metadata(request, "/api/mcp"), json_dumps_params={"ensure_ascii": False}))
     resp["Cache-Control"] = "no-store"
     return resp
 
@@ -416,3 +399,33 @@ def revoke_my_key(request, key_id: str):
     success = revoke_ai_key(ctx["email"], key_id)
     return _cors(JsonResponse({"success": success}))
 
+
+
+@api_view(["GET", "OPTIONS"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def list_my_oauth_connections(request):
+    """Các ứng dụng AI đã kết nối bằng đăng nhập (OAuth)."""
+    if request.method == "OPTIONS":
+        return _cors(HttpResponse(status=status.HTTP_200_OK))
+    from mcp_oauth.services import connections_for_email
+    try:
+        ctx = resolve_user_context(request)
+    except Exception as exc:
+        return _cors(JsonResponse({"success": False, "error": str(exc)}, status=status.HTTP_401_UNAUTHORIZED))
+    return _cors(JsonResponse({"success": True, "connections": connections_for_email(ctx["email"])}))
+
+
+@api_view(["POST", "DELETE", "OPTIONS"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def revoke_my_oauth_connection(request, grant_id: int):
+    """Ngắt kết nối một ứng dụng AI đã đăng nhập."""
+    if request.method == "OPTIONS":
+        return _cors(HttpResponse(status=status.HTTP_200_OK))
+    from mcp_oauth.services import revoke_connection_for_email
+    try:
+        ctx = resolve_user_context(request)
+    except Exception as exc:
+        return _cors(JsonResponse({"success": False, "error": str(exc)}, status=status.HTTP_401_UNAUTHORIZED))
+    return _cors(JsonResponse({"success": revoke_connection_for_email(ctx["email"], grant_id)}))

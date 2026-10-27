@@ -690,7 +690,7 @@ export default function AccountProfileModal({
               </div>
             </div>
 
-            <McpConnectGuide mcpUrl={mcpUrl} apiKey={newlyCreatedKey} />
+            <McpConnectGuide mcpUrl={mcpUrl} apiKey={newlyCreatedKey} idToken={idToken} />
           </div>
         )}
       </div>

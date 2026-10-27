@@ -1,62 +1,56 @@
-import React, { useState } from 'react';
-import { Check, Copy, Plug } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Check, Copy, Plug, Unplug } from 'lucide-react';
 
 type ClientId = 'claude-web' | 'claude-desktop' | 'claude-code' | 'cursor' | 'chatgpt';
+type OAuthConnection = { id: number; client: string; created_at: string; last_used_at: string | null };
 
 const KEY_PLACEHOLDER = 'ft_ai_MA_CUA_BAN';
+const LOGIN_STEP = 'Trang đăng nhập FTWorkspace sẽ tự mở: đăng nhập (hoặc bấm "Cho phép" nếu đang đăng nhập web) là xong.';
 
-function buildSnippet(client: ClientId, mcpUrl: string, key: string): { steps: string[]; code: string } {
+// Mặc định đăng nhập OAuth: chỉ cần URL, ứng dụng AI tự mở trang đăng nhập FTWorkspace.
+// Mã ft_ai_ chỉ dùng khi ứng dụng không hỗ trợ OAuth.
+function buildSnippet(client: ClientId, mcpUrl: string, key: string, useKey: boolean): { steps: string[]; code: string } {
+  const url = useKey ? `${mcpUrl}?key=${key}` : mcpUrl;
+  const auth = useKey ? 'URL đã kèm mã nên không cần đăng nhập.' : LOGIN_STEP;
   switch (client) {
     case 'claude-web':
       return {
         steps: [
           'Mở claude.ai > Settings > Connectors > Add custom connector.',
-          'Đặt tên "FTWorkspace", dán URL bên dưới (đã kèm mã), bấm Add. Không cần điền OAuth.',
+          'Đặt tên "FTWorkspace", dán URL bên dưới, để trống OAuth Client ID/Secret, bấm Add rồi bấm Connect.',
+          auth,
           'Trong khung chat, bật FTWorkspace ở nút công cụ rồi hỏi bình thường, ví dụ "Tôi là ai trên FTWorkspace?".',
         ],
-        code: `${mcpUrl}?key=${key}`,
+        code: url,
       };
     case 'claude-desktop':
       return {
         steps: [
-          'Cài Node.js (bản 18 trở lên) trên máy.',
-          'Mở Claude Desktop > Settings > Developer > Edit Config, dán đoạn dưới vào file claude_desktop_config.json.',
-          'Lưu file, thoát hẳn Claude Desktop rồi mở lại.',
+          'Cách nhanh nhất: Claude Desktop > Settings > Connectors > Add custom connector, dán URL như bản web.',
+          'Hoặc cài Node.js 18+, mở Settings > Developer > Edit Config, dán đoạn dưới vào claude_desktop_config.json, lưu rồi mở lại Claude Desktop.',
+          auth,
         ],
-        code: JSON.stringify(
-          {
-            mcpServers: {
-              ftworkspace: {
-                command: 'npx',
-                // Mã đặt trong URL: trên Windows npx tách tham số theo dấu cách nên "--header Authorization: Bearer ..." bị hỏng.
-                args: ['-y', 'mcp-remote', `${mcpUrl}?key=${key}`],
-              },
-            },
-          },
-          null,
-          2,
-        ),
+        code: JSON.stringify({ mcpServers: { ftworkspace: { command: 'npx', args: ['-y', 'mcp-remote', url] } } }, null, 2),
       };
     case 'claude-code':
-      return {
-        steps: ['Chạy lệnh dưới trong terminal, sau đó gõ /mcp trong Claude Code để kiểm tra.'],
-        code: `claude mcp add --transport http ftworkspace ${mcpUrl} --header "Authorization: Bearer ${key}"`,
-      };
+      return useKey
+        ? {
+            steps: ['Chạy lệnh dưới trong terminal, sau đó gõ /mcp trong Claude Code để kiểm tra.'],
+            code: `claude mcp add --transport http ftworkspace ${mcpUrl} --header "Authorization: Bearer ${key}"`,
+          }
+        : {
+            steps: ['Chạy lệnh dưới trong terminal.', 'Trong Claude Code gõ /mcp, chọn ftworkspace > Authenticate.', LOGIN_STEP],
+            code: `claude mcp add --transport http ftworkspace ${mcpUrl}`,
+          };
     case 'cursor':
       return {
         steps: [
           'Mở Cursor > Settings > MCP > Add new MCP server (hoặc sửa file ~/.cursor/mcp.json).',
           'Dán đoạn dưới, lưu lại. Với VS Code dùng cùng nội dung trong .vscode/mcp.json, đổi "mcpServers" thành "servers".',
+          useKey ? 'Mã nằm trong header nên không cần đăng nhập.' : `Bấm Connect/Login cạnh ftworkspace. ${LOGIN_STEP}`,
         ],
         code: JSON.stringify(
-          {
-            mcpServers: {
-              ftworkspace: {
-                url: mcpUrl,
-                headers: { Authorization: `Bearer ${key}` },
-              },
-            },
-          },
+          { mcpServers: { ftworkspace: useKey ? { url: mcpUrl, headers: { Authorization: `Bearer ${key}` } } : { url: mcpUrl } } },
           null,
           2,
         ),
@@ -65,28 +59,56 @@ function buildSnippet(client: ClientId, mcpUrl: string, key: string): { steps: s
     default:
       return {
         steps: [
-          'ChatGPT > Settings > Apps & Connectors > Advanced > bật Developer mode.',
-          'Bấm Create, đặt tên "FTWorkspace", dán URL bên dưới, chọn Authentication: No authentication.',
-          'Hoặc dùng Custom GPT Actions với URL OpenAPI ở khung phía trên.',
+          'ChatGPT (web) > Settings > Apps & Connectors > Advanced settings > bật Developer mode.',
+          `Bấm Create, đặt tên "FTWorkspace", dán URL bên dưới, Authentication chọn ${useKey ? 'No authentication' : 'OAuth'}, bấm Create.`,
+          auth,
+          'Trong chat mới: bấm + > Developer mode > bật FTWorkspace rồi hỏi bình thường.',
         ],
-        code: `${mcpUrl}?key=${key}`,
+        code: url,
       };
   }
 }
 
 const CLIENTS: { id: ClientId; label: string }[] = [
+  { id: 'chatgpt', label: 'ChatGPT' },
   { id: 'claude-web', label: 'Claude (web/app)' },
   { id: 'claude-desktop', label: 'Claude Desktop' },
   { id: 'claude-code', label: 'Claude Code' },
   { id: 'cursor', label: 'Cursor / VS Code' },
-  { id: 'chatgpt', label: 'ChatGPT' },
 ];
 
-export default function McpConnectGuide({ mcpUrl, apiKey }: { mcpUrl: string; apiKey: string | null }) {
-  const [client, setClient] = useState<ClientId>('claude-web');
+function formatShort(value: string) {
+  return new Date(value).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+}
+
+export default function McpConnectGuide({ mcpUrl, apiKey, idToken }: { mcpUrl: string; apiKey: string | null; idToken?: string | null }) {
+  const [client, setClient] = useState<ClientId>('chatgpt');
   const [copied, setCopied] = useState<string | null>(null);
+  const [useKey, setUseKey] = useState(false);
+  const [connections, setConnections] = useState<OAuthConnection[]>([]);
   const key = apiKey || KEY_PLACEHOLDER;
-  const { steps, code } = buildSnippet(client, mcpUrl, key);
+  const { steps, code } = buildSnippet(client, mcpUrl, key, useKey);
+
+  const loadConnections = useCallback(async () => {
+    if (!idToken) return;
+    try {
+      const response = await fetch('/api/mcp/oauth-connections', { headers: { Authorization: `Bearer ${idToken}` }, cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && Array.isArray(data.connections)) setConnections(data.connections);
+    } catch {
+      // Danh sách chỉ để xem; lỗi mạng thì giữ danh sách cũ.
+    }
+  }, [idToken]);
+
+  useEffect(() => {
+    void loadConnections();
+  }, [loadConnections]);
+
+  const disconnect = async (id: number) => {
+    if (!idToken) return;
+    await fetch(`/api/mcp/oauth-connections/${id}/revoke`, { method: 'POST', headers: { Authorization: `Bearer ${idToken}` } }).catch(() => undefined);
+    void loadConnections();
+  };
 
   const copy = (text: string, id: string) => {
     if (typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -102,9 +124,9 @@ export default function McpConnectGuide({ mcpUrl, apiKey }: { mcpUrl: string; ap
           <Plug className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-extrabold text-slate-900 text-base">Kết nối MCP với Claude, Cursor, ChatGPT</h3>
+          <h3 className="font-extrabold text-slate-900 text-base">Kết nối MCP với ChatGPT, Claude, Cursor</h3>
           <p className="mt-1 text-xs text-slate-600 leading-relaxed">
-            Bước 1: tạo Mã kết nối AI ở khung trên. Bước 2: chọn ứng dụng bên dưới và làm theo hướng dẫn.
+            Chỉ cần dán URL bên dưới vào ứng dụng AI. Ứng dụng sẽ tự mở trang đăng nhập FTWorkspace, bạn đăng nhập là kết nối xong.
             AI chỉ làm được những việc tài khoản của bạn được phép.
           </p>
         </div>
@@ -159,14 +181,43 @@ export default function McpConnectGuide({ mcpUrl, apiKey }: { mcpUrl: string; ap
         </button>
       </div>
 
-      {!apiKey && (
-        <p className="mt-2 text-[11px] text-amber-700">
+      <label className="mt-3 flex items-center gap-2 text-[11px] text-slate-600">
+        <input type="checkbox" checked={useKey} onChange={event => setUseKey(event.target.checked)} />
+        Ứng dụng không hỗ trợ đăng nhập (OAuth)? Dùng Mã kết nối AI (ft_ai_) ở khung trên thay thế.
+      </label>
+      {useKey && !apiKey && (
+        <p className="mt-1 text-[11px] text-amber-700">
           Thay <span className="font-mono font-bold">{KEY_PLACEHOLDER}</span> bằng mã ft_ai_ bạn đã lưu. Mã vừa tạo sẽ tự điền vào đây.
         </p>
       )}
-      <p className="mt-2 text-[11px] text-slate-500">
-        Giữ kín mã kết nối. Nếu lộ, bấm "Thu hồi" ở khung trên và tạo mã mới.
-      </p>
+
+      {connections.length > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Ứng dụng AI đã đăng nhập
+          </div>
+          <ul className="divide-y divide-slate-100">
+            {connections.map(item => (
+              <li key={item.id} className="flex items-center gap-3 px-3 py-2 text-xs">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-bold text-slate-800">{item.client}</div>
+                  <div className="text-[11px] text-slate-500">
+                    Kết nối {new Date(item.created_at).toLocaleDateString('vi-VN')} ·{' '}
+                    {item.last_used_at ? `dùng gần nhất ${formatShort(item.last_used_at)}` : 'chưa dùng'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void disconnect(item.id)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-800"
+                >
+                  <Unplug className="h-3.5 w-3.5" /> Ngắt kết nối
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
