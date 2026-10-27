@@ -7,6 +7,7 @@
         "dev": "vite",
         "build": "vite build",
         "test:invigilation": "node --test scripts/test-invigilation-reminders.cjs",
+        "test:home": "node --test scripts/test-workspace-home.cjs",
         "prune:frontend": "node scripts/prune-vite-assets.mjs --keep 5",
         "preview": "vite preview",
         "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
