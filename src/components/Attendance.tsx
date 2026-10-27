@@ -523,7 +523,7 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
               <div className="min-w-0 rounded-2xl border bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold uppercase text-emerald-600">Bảng công{selectedEmpName ? ` — ${selectedEmpName}` : ''}</p>
+                    <p className="text-xs font-bold uppercase text-emerald-700 dark:text-emerald-400">Bảng công{selectedEmpName ? ` — ${selectedEmpName}` : ''}</p>
                     <h2 className="mt-1 text-xl font-extrabold">Tháng {fmtMonthLabel(month)}</h2>
                   </div>
                   <label><span className="sr-only">Chọn tháng</span><input type="month" value={month} onChange={e => setMonth(e.target.value)} className="ft-input" /></label>
@@ -644,7 +644,7 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <div className="flex items-center gap-2">
-                                <span className={`text-base font-bold ${weekend ? 'text-rose-600 dark:text-rose-400' : 'text-[#0F1F33] dark:text-slate-100'}`}>
+                                <span className={`text-base font-bold ${weekend ? 'text-rose-700 dark:text-rose-400' : 'text-[#0F1F33] dark:text-slate-100'}`}>
                                   {weekdayName(dateStr)}
                                 </span>
                                 <span className="text-sm font-bold tabular-nums text-[#4A5B70] dark:text-slate-300">
@@ -753,7 +753,7 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
               {/* Fixed right rail: summary and monthly Sheet link stay together. */}
               <div className="space-y-4 xl:sticky xl:top-28 xl:max-h-[calc(100dvh-8rem)] xl:overflow-y-auto">
                 <aside className="rounded-2xl border bg-white p-5 shadow-sm">
-                  <p className="text-xs font-bold uppercase text-emerald-600">Tổng quan{selectedEmpName ? ` — ${selectedEmpName}` : ''}</p>
+                  <p className="text-xs font-bold uppercase text-emerald-700 dark:text-emerald-400">Tổng quan{selectedEmpName ? ` — ${selectedEmpName}` : ''}</p>
                   <h2 className="mt-1 text-xl font-extrabold">Tháng {fmtMonthLabel(month)}</h2>
                   <p className="mt-1 text-sm font-semibold text-slate-500">Tính đến hết {weekdayLongName(summaryCutoff)}, ngày {fmtDate(summaryCutoff)}</p>
                   <div className="mt-5 space-y-5">

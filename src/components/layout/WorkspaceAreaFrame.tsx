@@ -192,7 +192,7 @@ export default function WorkspaceAreaFrame({
       {/* MOBILE BOTTOM TAB BAR (<1024px)                           */}
       {/* ========================================================= */}
       <nav
-        className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex min-h-[64px] items-center justify-around border-t border-[#DDE5EF] bg-white shadow-lg select-none"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex min-h-[64px] items-center justify-around border-t border-[var(--ft-border,#DDE5EF)] bg-[var(--workspace-card,#FFFFFF)] shadow-lg select-none"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         aria-label="Điều hướng tab dưới màn hình"
       >
@@ -205,14 +205,14 @@ export default function WorkspaceAreaFrame({
               onClick={() => handleTabClick(tab)}
               className={`ft-bottom-tab flex flex-1 flex-col items-center justify-center py-1.5 px-1 min-h-[56px] transition-colors cursor-pointer ${
                 tab.isActive
-                  ? 'text-[#0B72CE] font-semibold'
-                  : 'text-slate-500 hover:text-slate-900 font-normal'
+                  ? 'text-[#075CA8] dark:text-[#60A5FA] font-semibold'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-normal'
               }`}
               aria-current={tab.isActive ? 'page' : undefined}
             >
               <Icon
                 className={`h-5 w-5 mb-1 transition-transform ${
-                  tab.isActive ? 'scale-110 text-[#0B72CE]' : 'text-slate-500'
+                  tab.isActive ? 'scale-110 text-[#075CA8] dark:text-[#60A5FA]' : 'text-slate-500 dark:text-slate-400'
                 }`}
                 aria-hidden="true"
               />

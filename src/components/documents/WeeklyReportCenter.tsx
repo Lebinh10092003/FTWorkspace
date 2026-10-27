@@ -501,7 +501,7 @@ export default function WeeklyReportCenter({
           <div className="mb-4 sm:mb-6 flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-sm font-bold text-blue-700">Báo cáo tuần cá nhân · Mẫu chuẩn công ty</p>
-              <p className="mt-1 max-w-2xl text-xs sm:text-sm leading-5 sm:leading-6 text-slate-500">
+              <p className="mt-1 max-w-2xl text-xs sm:text-sm leading-5 sm:leading-6 text-slate-600 dark:text-slate-300">
                 Tổng hợp đầu việc từ Lịch công tác của bạn theo cấu trúc chuẩn. Xem, chỉnh sửa từng dòng và tải file Word để nộp chiều thứ Sáu.
               </p>
             </div>
@@ -670,7 +670,7 @@ export default function WeeklyReportCenter({
                         </div>
                         <span
                           className={`mt-1 block text-xs ${
-                            selected?.id === report.id ? 'text-blue-100' : 'text-slate-500'
+                            selected?.id === report.id ? 'text-white font-medium' : 'text-slate-600 dark:text-slate-300'
                           }`}
                         >
                           Tuần {report.completedWeek} → {report.plannedWeek}

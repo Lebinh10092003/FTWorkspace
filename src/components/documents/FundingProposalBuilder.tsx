@@ -264,7 +264,7 @@ export default function FundingProposalBuilder({
 
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
-          <p role="status" className={`mb-4 text-xs font-semibold ${draftError ? 'text-rose-700' : 'text-slate-500'}`}>
+          <p role="status" className={`mb-4 text-xs font-semibold ${draftError ? 'text-rose-700' : 'text-slate-600 dark:text-slate-300'}`}>
             {draftError ? 'Không thể tự lưu bản nháp trên trình duyệt này.'
               : `Bản nháp tự lưu trên trình duyệt này${savedAt ? ` lúc ${savedAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}.`}
           </p>
@@ -507,7 +507,7 @@ export default function FundingProposalBuilder({
             {/* ---------- Preview ---------- */}
             <div className="min-w-0 xl:sticky xl:top-28">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Xem trước bản in (A4)</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Xem trước bản in (A4)</p>
                 <div className="flex items-center gap-1.5">
                   <button type="button" aria-label="Thu nhỏ" onClick={() => setZoom(z => Math.max(0.3, +(z - 0.08).toFixed(2)))}
                     className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 min-h-[44px] min-w-[44px]"><ZoomOut className="h-4 w-4" /></button>

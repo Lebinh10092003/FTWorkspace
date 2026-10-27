@@ -1067,7 +1067,7 @@ function BoardView({ tasks, selectedDate, setSelectedDate, userEmail, selectedId
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-extrabold text-[#001e40]">Công việc {prettyDate(selectedDate)}</h2>
-          <p className="mt-1 text-sm text-slate-500">Kéo thẻ để đổi trạng thái. Công việc hoàn thành cần quản lý review.</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Kéo thẻ để đổi trạng thái. Công việc hoàn thành cần quản lý review.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" disabled={!tasks.length} onClick={() => setSelectedIds(allSelected ? [] : tasks.map((task) => task.id))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 disabled:opacity-40">
