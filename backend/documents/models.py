@@ -40,9 +40,11 @@ class WeeklyReport(models.Model):
 
     STATUS_SNAPSHOT = "snapshot"
     STATUS_PUBLISHED = "published"
+    STATUS_EDITED = "edited"
     STATUS_CHOICES = [
         (STATUS_SNAPSHOT, "Đã lấy từ lịch công tác"),
         (STATUS_PUBLISHED, "Đã cập nhật từ báo cáo AI"),
+        (STATUS_EDITED, "Đã chỉnh sửa"),
     ]
 
     report_key = models.CharField(max_length=180, unique=True)
@@ -53,6 +55,12 @@ class WeeklyReport(models.Model):
     completed_items = models.JSONField(default=list, blank=True)
     difficulties = models.JSONField(default=list, blank=True)
     planned_items = models.JSONField(default=list, blank=True)
+    completed_groups = models.JSONField(default=list, blank=True)
+    planned_groups = models.JSONField(default=list, blank=True)
+    include_bld_task = models.BooleanField(default=True)
+    edited_by_name = models.CharField(max_length=255, blank=True, default="")
+    edited_by_email = models.EmailField(blank=True, default="")
+    edited_at = models.DateTimeField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_SNAPSHOT)
     google_document_id = models.CharField(max_length=180, blank=True, default="")
     google_tab_id = models.CharField(max_length=180, blank=True, default="")
@@ -69,3 +77,17 @@ class WeeklyReport(models.Model):
 
     def __str__(self):
         return f"Tuần {self.completed_week}/{self.planned_week} · {self.employee_name}"
+
+    def get_completed_groups(self):
+        if self.completed_groups and isinstance(self.completed_groups, list):
+            return self.completed_groups
+        if self.completed_items and isinstance(self.completed_items, list):
+            return [{"name": "Công việc", "items": list(self.completed_items)}]
+        return [{"name": "Công việc", "items": []}]
+
+    def get_planned_groups(self):
+        if self.planned_groups and isinstance(self.planned_groups, list):
+            return self.planned_groups
+        if self.planned_items and isinstance(self.planned_items, list):
+            return [{"name": "Công việc", "items": list(self.planned_items)}]
+        return [{"name": "Công việc", "items": []}]

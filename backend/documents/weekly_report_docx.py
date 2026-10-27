@@ -54,13 +54,8 @@ def _section(document, heading, items):
 
 
 def _filename(report):
-    raw = _safe_text(report.employee_name) or "nhan-vien"
-    normalized = "".join(
-        char for char in unicodedata.normalize("NFD", raw)
-        if unicodedata.category(char) != "Mn"
-    ).replace("Đ", "D").replace("đ", "d")
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", normalized).strip("-").lower() or "nhan-vien"
-    return f"Bao-cao-tuan-{report.completed_week}-ke-hoach-tuan-{report.planned_week}-{slug}.docx"
+    name = _safe_text(report.employee_name) or "Nhân viên"
+    return f"BC KQ tuần {report.completed_week}, NV tuần {report.planned_week} ({name}).docx"
 
 
 def build_weekly_report_docx(report):
@@ -88,9 +83,52 @@ def build_weekly_report_docx(report):
         if index < 2:
             run.add_break()
 
-    _section(document, f"1. Công việc đã thực hiện tuần {report.completed_week}", report.completed_items)
-    _section(document, "2. Tồn tại, khó khăn, vướng mắc", report.difficulties)
-    _section(document, f"3. Nhiệm vụ tuần {report.planned_week}", report.planned_items)
+    # Section I: I. KẾT QUẢ TUẦN {completed_week}
+    _paragraph(document, f"I. KẾT QUẢ TUẦN {report.completed_week}", bold=True, size=13, before=6, after=2)
+
+    completed_groups = report.get_completed_groups() if hasattr(report, "get_completed_groups") else []
+    if not completed_groups:
+        if getattr(report, "completed_items", None):
+            completed_groups = [{"name": "Công việc", "items": report.completed_items}]
+        else:
+            completed_groups = [{"name": "Công việc", "items": ["Không có nội dung được ghi nhận."]}]
+
+    group_num = 1
+    for group in completed_groups:
+        g_name = group.get("name") or "Công việc"
+        _paragraph(document, f"{group_num}. {g_name}", bold=True, size=13, before=4, after=2)
+        group_num += 1
+        items = group.get("items") or ["Không có nội dung được ghi nhận."]
+        for item in items:
+            _paragraph(document, f"- {item}", size=13, after=1)
+
+    # Khó khăn, vướng mắc is the last item of Section I
+    _paragraph(document, f"{group_num}. Khó khăn, vướng mắc", bold=True, size=13, before=4, after=2)
+    diff_items = getattr(report, "difficulties", None) or ["Không có."]
+    for item in diff_items:
+        _paragraph(document, f"- {item}", size=13, after=1)
+
+    # Section II: II. NHIỆM VỤ TUẦN {planned_week}
+    _paragraph(document, f"II. NHIỆM VỤ TUẦN {report.planned_week}", bold=True, size=13, before=8, after=2)
+
+    planned_groups = report.get_planned_groups() if hasattr(report, "get_planned_groups") else []
+    if not planned_groups:
+        if getattr(report, "planned_items", None):
+            planned_groups = [{"name": "Công việc", "items": report.planned_items}]
+        else:
+            planned_groups = [{"name": "Công việc", "items": ["Chưa có nhiệm vụ dự kiến."]}]
+
+    p_num = 1
+    for group in planned_groups:
+        g_name = group.get("name") or "Công việc"
+        _paragraph(document, f"{p_num}. {g_name}", bold=True, size=13, before=4, after=2)
+        p_num += 1
+        items = group.get("items") or ["Chưa có nhiệm vụ dự kiến."]
+        for item in items:
+            _paragraph(document, f"- {item}", size=13, after=1)
+
+    if getattr(report, "include_bld_task", True):
+        _paragraph(document, "- Thực hiện các nhiệm vụ khác theo chỉ đạo của BLĐ.", size=13, after=1)
 
     stream = BytesIO()
     document.save(stream)
