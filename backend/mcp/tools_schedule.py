@@ -186,7 +186,8 @@ def schedule_update_task_progress(
         return {"success": False, "error": f"Không tìm thấy công việc ID {task_id}"}
 
     # Chỉ người được giao hoặc Manager/Admin mới được cập nhật
-    if item.executor_id != ctx["profile"].id and ctx["role"] not in {"ADMIN", "MANAGER"}:
+    user_pk = getattr(ctx["profile"], "pk", None) or getattr(ctx["profile"], "email", None)
+    if item.executor_id != user_pk and ctx["role"] not in {"ADMIN", "MANAGER"}:
         return {"success": False, "error": "Bạn chỉ được cập nhật công việc do chính mình thực hiện."}
 
     updates = []
