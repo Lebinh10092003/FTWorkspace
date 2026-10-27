@@ -136,7 +136,7 @@ export default function ModuleTopNav({ items, activeId, onSelect, ariaLabel = 'Ä
           <button
             type="button"
             onClick={() => scrollByAmount(-220)}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow-md border border-slate-200/90 hover:bg-slate-100 hover:text-slate-900 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 dark:bg-slate-800/95 text-slate-600 dark:text-slate-300 shadow-md border border-slate-200/90 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             aria-label="Cuá»™n sang trÃ¡i"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -146,7 +146,7 @@ export default function ModuleTopNav({ items, activeId, onSelect, ariaLabel = 'Ä
 
       {/* Left Fade Gradient Mask */}
       {canScrollLeft && (
-        <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-9 bg-gradient-to-r from-white via-white/80 to-transparent z-10" />
+        <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-9 bg-gradient-to-r from-[var(--workspace-card,#ffffff)] via-[var(--workspace-card,#ffffff)]/80 to-transparent z-10" />
       )}
 
       {/* Main Scrollable Nav Track */}
@@ -157,7 +157,7 @@ export default function ModuleTopNav({ items, activeId, onSelect, ariaLabel = 'Ä
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', justifyContent: 'safe center' }}
       >
         <nav
-          className="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-100/90 border border-slate-200/80 shadow-2xs shrink-0"
+          className="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs shrink-0"
           aria-label={ariaLabel}
         >
           {items.map(item => {
@@ -178,15 +178,15 @@ export default function ModuleTopNav({ items, activeId, onSelect, ariaLabel = 'Ä
                   onClick={() => choose(item.id)}
                   className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer select-none whitespace-nowrap shrink-0 ${
                     isActive
-                      ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs ring-1 ring-slate-900/5 dark:ring-white/10'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
                   }`}
                   aria-current={isActive ? 'page' : undefined}
                 >
-                  <Icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} aria-hidden="true" />
+                  <Icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} aria-hidden="true" />
                   <span>{item.label}</span>
                   {item.badge ? (
-                    <span className="ml-1 inline-grid place-items-center rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.2 text-[10px] font-bold">
+                    <span className="ml-1 inline-grid place-items-center rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 px-1.5 py-0.2 text-[10px] font-bold">
                       {item.badge}
                     </span>
                   ) : null}
@@ -205,17 +205,17 @@ export default function ModuleTopNav({ items, activeId, onSelect, ariaLabel = 'Ä
                 onClick={() => setOpenId(isOpen ? null : item.id)}
                 className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer select-none whitespace-nowrap shrink-0 ${
                   isActive
-                    ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs ring-1 ring-slate-900/5 dark:ring-white/10'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
                 }`}
                 aria-expanded={isOpen}
                 aria-haspopup="true"
                 aria-current={isActive ? 'page' : undefined}
               >
-                <Icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} aria-hidden="true" />
+                <Icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} aria-hidden="true" />
                 <span>{item.label}</span>
                 {item.badge ? (
-                  <span className="ml-1 inline-grid place-items-center rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.2 text-[10px] font-bold">
+                  <span className="ml-1 inline-grid place-items-center rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 px-1.5 py-0.2 text-[10px] font-bold">
                     {item.badge}
                   </span>
                 ) : null}
@@ -228,7 +228,7 @@ export default function ModuleTopNav({ items, activeId, onSelect, ariaLabel = 'Ä
 
       {/* Right Fade Gradient Mask */}
       {canScrollRight && (
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-9 bg-gradient-to-l from-white via-white/80 to-transparent z-10" />
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-9 bg-gradient-to-l from-[var(--workspace-card,#ffffff)] via-[var(--workspace-card,#ffffff)]/80 to-transparent z-10" />
       )}
 
       {/* Scroll Right Button */}
@@ -237,7 +237,7 @@ export default function ModuleTopNav({ items, activeId, onSelect, ariaLabel = 'Ä
           <button
             type="button"
             onClick={() => scrollByAmount(220)}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow-md border border-slate-200/90 hover:bg-slate-100 hover:text-slate-900 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 dark:bg-slate-800/95 text-slate-600 dark:text-slate-300 shadow-md border border-slate-200/90 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             aria-label="Cuá»™n sang pháº£i"
           >
             <ChevronRight className="h-4 w-4" />
@@ -250,7 +250,7 @@ export default function ModuleTopNav({ items, activeId, onSelect, ariaLabel = 'Ä
         createPortal(
           <div
             ref={menuRef}
-            className="fixed z-60 min-w-[14rem] rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/10 animate-scale-in"
+            className="fixed z-60 min-w-[14rem] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1.5 shadow-xl shadow-slate-900/10 animate-scale-in"
             role="menu"
             style={{ left: menuBox.left, top: menuBox.top }}
           >
@@ -265,14 +265,14 @@ export default function ModuleTopNav({ items, activeId, onSelect, ariaLabel = 'Ä
                   onClick={() => choose(child.id)}
                   className={`flex w-full items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-left transition-colors cursor-pointer ${
                     isChildActive
-                      ? 'bg-blue-50 text-blue-700 font-semibold'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-semibold'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  <ChildIcon className={`h-3.5 w-3.5 shrink-0 ${isChildActive ? 'text-blue-600' : 'text-slate-400'}`} aria-hidden="true" />
+                  <ChildIcon className={`h-3.5 w-3.5 shrink-0 ${isChildActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} aria-hidden="true" />
                   <span className="flex-1 truncate">{child.label}</span>
                   {child.badge ? (
-                    <span className="inline-grid place-items-center rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.2 text-[10px] font-bold">
+                    <span className="inline-grid place-items-center rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 px-1.5 py-0.2 text-[10px] font-bold">
                       {child.badge}
                     </span>
                   ) : null}

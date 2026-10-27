@@ -148,7 +148,7 @@ export default function WorkspaceAppRail({
             onMouseLeave={hideTooltip}
             onFocus={e => showTooltip('FermatTech Workspace', e)}
             onBlur={hideTooltip}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-white shadow-xs mx-auto select-none cursor-pointer transition-transform hover:scale-105"
+            className="ft-logo-plate flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] !bg-white shadow-xs mx-auto select-none cursor-pointer transition-transform hover:scale-105"
             aria-label="FermatTech Workspace"
           >
             <span className="text-sm font-extrabold text-[#0B2A4A] tracking-tighter leading-none select-none">
@@ -157,7 +157,7 @@ export default function WorkspaceAppRail({
           </button>
         ) : (
           <>
-            <div className="flex h-9 shrink-0 items-center justify-center rounded-[10px] bg-white p-1.5 shadow-xs">
+            <div className="ft-logo-plate flex h-9 shrink-0 items-center justify-center rounded-[10px] !bg-white p-1.5 shadow-xs">
               <img src="/logo.png" alt="FermatTech" className="h-6 w-auto object-contain" />
             </div>
             <div className="flex flex-1 items-center justify-between min-w-0">

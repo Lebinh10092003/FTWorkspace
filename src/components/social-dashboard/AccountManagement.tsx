@@ -118,14 +118,14 @@ export default function AccountManagement({ idToken, userRole }: AccountManageme
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
-                <span className="text-slate-400 block font-medium">Phòng ban</span>
-                <span className="font-semibold text-slate-700 truncate block">
+                <span className="text-slate-600 dark:text-slate-400 block font-medium">Phòng ban</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300 truncate block">
                   {user.departments?.length ? user.departments.map(item => item.name).join(', ') : user.department?.name || '—'}
                 </span>
               </div>
               <div>
-                <span className="text-slate-400 block font-medium">Chức danh</span>
-                <span className="font-semibold text-slate-700 truncate block">{user.jobTitle?.name || '—'}</span>
+                <span className="text-slate-600 dark:text-slate-400 block font-medium">Chức danh</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300 truncate block">{user.jobTitle?.name || '—'}</span>
               </div>
             </div>
 

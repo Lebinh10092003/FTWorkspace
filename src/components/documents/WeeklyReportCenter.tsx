@@ -739,9 +739,9 @@ export default function WeeklyReportCenter({
                                 ? 'Dịch vụ AI đang gặp lỗi hệ thống.'
                                 : 'Gemini tự động viết lại bản nháp theo mẫu chuẩn từ dữ liệu lịch công tác'
                             }
-                            className="inline-flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50 transition min-h-[44px]"
+                            className="inline-flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/90 dark:bg-indigo-950/40 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-700 dark:text-indigo-300 shadow-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/60 disabled:opacity-50 transition min-h-[44px]"
                           >
-                            <Sparkles className="h-4 w-4 text-indigo-600 shrink-0" />
+                            <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
                             <span>AI viết lại</span>
                           </button>
                         )}

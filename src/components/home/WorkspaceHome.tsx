@@ -336,22 +336,22 @@ export default function WorkspaceHome({
   }, [canAccessView]);
 
   return (
-    <div className="w-full min-h-dvh flex flex-col bg-[#F3F6FA] text-[#0F1F33]">
+    <div className="w-full min-h-dvh flex flex-col bg-[var(--workspace-background,#F3F6FA)] text-[var(--workspace-text,#0F1F33)] transition-colors">
       {/* ========================================================= */}
       {/* DESKTOP TOP BAR (64px)                                    */}
       {/* ========================================================= */}
-      <header className="hidden lg:flex h-16 w-full items-center justify-between border-b border-[#DDE5EF] bg-white px-8 sticky top-0 z-20">
+      <header className="hidden lg:flex h-16 w-full items-center justify-between border-b border-[var(--ft-border,#DDE5EF)] bg-[var(--workspace-card,#FFFFFF)] text-[var(--workspace-surface-text,#0F1F33)] px-8 sticky top-0 z-20">
         <button
           type="button"
           onClick={onOpenCommandPalette}
-          className="flex items-center justify-between rounded-[10px] border border-slate-200/90 bg-slate-50/80 px-3.5 py-2 text-xs text-slate-400 hover:border-slate-300 hover:bg-slate-100/70 transition-colors cursor-pointer w-80 shadow-2xs"
+          className="flex items-center justify-between rounded-[10px] border border-[var(--ft-border,#e2e8f0)] bg-[var(--ft-surface-2,rgba(255,255,255,0.06))] px-3.5 py-2 text-xs text-[var(--workspace-surface-muted,#64748b)] hover:border-slate-300 transition-colors cursor-pointer w-80 shadow-2xs"
           title="Tìm kiếm nhanh trong Workspace (Ctrl K)"
         >
           <div className="flex items-center gap-2.5 min-w-0">
-            <Search className="h-4 w-4 text-slate-400 shrink-0" />
+            <Search className="h-4 w-4 text-[var(--workspace-surface-muted,#64748b)] shrink-0" />
             <span className="truncate">Tìm kiếm phân hệ, công việc...</span>
           </div>
-          <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-500 shadow-2xs shrink-0">
+          <kbd className="rounded border border-[var(--ft-border,#e2e8f0)] bg-[var(--workspace-card,#FFFFFF)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--workspace-surface-muted,#64748b)] shadow-2xs shrink-0">
             Ctrl K
           </kbd>
         </button>
@@ -376,12 +376,12 @@ export default function WorkspaceHome({
       {/* ========================================================= */}
       <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-32 lg:pb-12 max-w-7xl w-full mx-auto space-y-6">
         {/* 1. Header Greeting & Date */}
-        <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-[#DDE5EF] pb-5">
+        <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-[var(--ft-border,#DDE5EF)] pb-5">
           <div>
-            <h1 className="text-2xl sm:text-[26px] font-bold tracking-tight text-[#0F1F33]">
+            <h1 className="text-2xl sm:text-[26px] font-bold tracking-tight text-[var(--workspace-surface-text,#0F1F33)]">
               {greeting}, {user.displayName || 'bạn'}
             </h1>
-            <p className="text-sm text-[#4A5B70] font-medium mt-0.5">
+            <p className="text-sm text-[var(--workspace-surface-muted,#4A5B70)] font-medium mt-0.5">
               {fullDateText} • <span className="tabular-nums font-semibold">Tuần {isoWeek}</span>
             </p>
           </div>
@@ -389,7 +389,7 @@ export default function WorkspaceHome({
             <button
               type="button"
               onClick={() => onNavigate('work-schedule')}
-              className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#0B72CE] hover:bg-[#075CA8] text-white px-3.5 py-2 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-[10px] bg-[#0B72CE] hover:bg-[#075CA8] text-white px-3.5 py-2 text-xs font-semibold shadow-xs transition-colors cursor-pointer min-h-[44px]"
             >
               <Plus className="h-4 w-4" />
               <span>Thêm lịch làm việc</span>
@@ -402,14 +402,14 @@ export default function WorkspaceHome({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CalendarRange className="h-4 w-4 text-[#0B72CE]" />
-              <h2 className="text-sm sm:text-base font-bold text-[#0F1F33]">
+              <h2 className="text-sm sm:text-base font-bold text-[var(--workspace-surface-text,#0F1F33)]">
                 Lịch công tác tuần này
               </h2>
             </div>
             <button
               type="button"
               onClick={() => onNavigate('work-schedule')}
-              className="text-xs font-semibold text-[#0B72CE] hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-xs font-semibold text-[#0B72CE] hover:underline flex items-center gap-1 cursor-pointer min-h-[44px]"
             >
               <span>Xem chi tiết</span>
               <ChevronRight className="h-3.5 w-3.5" />
@@ -428,23 +428,23 @@ export default function WorkspaceHome({
                   onClick={() => onNavigate('work-schedule')}
                   className={`flex flex-col rounded-[12px] p-3 border transition-all cursor-pointer min-h-[170px] ${
                     isToday
-                      ? 'bg-white border-[#0B72CE] ring-2 ring-[#0B72CE]/20 shadow-xs'
-                      : 'bg-white border-[#DDE5EF] hover:border-slate-300 hover:shadow-xs'
+                      ? 'bg-[var(--workspace-card,#FFFFFF)] border-[#0B72CE] ring-2 ring-[#0B72CE]/20 shadow-xs'
+                      : 'bg-[var(--workspace-card,#FFFFFF)] border-[var(--ft-border,#DDE5EF)] hover:border-slate-300 hover:shadow-xs'
                   }`}
                 >
                   {/* Day header */}
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-[var(--ft-border-soft,#f1f5f9)]">
                     <div className="flex items-center gap-1.5">
                       <span
                         className={`text-xs font-bold ${
-                          isToday ? 'text-[#0B72CE]' : 'text-[#0F1F33]'
+                          isToday ? 'text-[#0B72CE]' : 'text-[var(--workspace-surface-text,#0F1F33)]'
                         }`}
                       >
                         {day.dayOfWeekVN}
                       </span>
                       <span
                         className={`text-xs tabular-nums ${
-                          isToday ? 'font-bold text-[#0B72CE]' : 'text-[#4A5B70]'
+                          isToday ? 'font-bold text-[#0B72CE]' : 'text-[var(--workspace-surface-muted,#4A5B70)]'
                         }`}
                       >
                         {day.dayNumber}/{day.monthNumber}
@@ -455,7 +455,7 @@ export default function WorkspaceHome({
                         className={`text-[10px] tabular-nums font-bold px-1.5 py-0.2 rounded-full ${
                           isToday
                             ? 'bg-[#E5F0FB] text-[#0A5BA5]'
-                            : 'bg-slate-100 text-slate-600'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                         }`}
                       >
                         {dayTasks.length}
@@ -466,7 +466,7 @@ export default function WorkspaceHome({
                   {/* Day tasks list */}
                   <div className="flex-1 space-y-1.5 overflow-hidden">
                     {dayTasks.length === 0 ? (
-                      <p className="text-xs text-[#4A5B70] font-medium pt-2 text-center">
+                      <p className="text-xs text-[var(--workspace-surface-muted,#4A5B70)] font-medium pt-2 text-center">
                         Không có việc
                       </p>
                     ) : (
@@ -476,7 +476,7 @@ export default function WorkspaceHome({
                         return (
                           <div
                             key={task.id}
-                            className="p-1.5 rounded-lg bg-slate-50 border border-slate-100 hover:bg-slate-100 transition-colors text-left"
+                            className="p-1.5 rounded-lg bg-[var(--ft-surface-2,rgba(255,255,255,0.06))] border border-[var(--ft-border-soft,#f1f5f9)] hover:border-slate-300 transition-colors text-left"
                             title={task.title}
                           >
                             {task.startTime && (
@@ -484,7 +484,7 @@ export default function WorkspaceHome({
                                 {task.startTime}{task.endTime ? ` - ${task.endTime}` : ''}
                               </span>
                             )}
-                            <p className="text-xs font-medium text-slate-800 line-clamp-2 leading-snug">
+                            <p className="text-xs font-medium text-[var(--workspace-surface-text,#0F1F33)] line-clamp-2 leading-snug">
                               {clean.cleanTitle}
                             </p>
                           </div>
@@ -498,7 +498,7 @@ export default function WorkspaceHome({
                           e.stopPropagation();
                           onNavigate('work-schedule');
                         }}
-                        className="w-full text-[11px] font-semibold text-[#0B72CE] hover:text-[#075CA8] hover:bg-blue-50/60 rounded py-0.5 text-center transition-colors cursor-pointer"
+                        className="w-full text-[11px] font-semibold text-[#0B72CE] hover:text-[#075CA8] hover:bg-blue-50/60 dark:hover:bg-blue-950/40 rounded py-0.5 text-center transition-colors cursor-pointer"
                         title="Mở Lịch làm việc xem toàn bộ các việc trong ngày"
                       >
                         +{dayTasks.length - 3} việc nữa
@@ -528,13 +528,13 @@ export default function WorkspaceHome({
                       isSelected
                         ? 'bg-[#0B72CE] text-white border-[#0B72CE] shadow-xs'
                         : isToday
-                        ? 'bg-white text-[#0B72CE] border-[#0B72CE] ring-2 ring-[#0B72CE]/40 font-bold'
-                        : 'bg-white text-slate-700 border-[#DDE5EF]'
+                        ? 'bg-[var(--workspace-card,#FFFFFF)] text-[#0B72CE] border-[#0B72CE] ring-2 ring-[#0B72CE]/40 font-bold'
+                        : 'bg-[var(--workspace-card,#FFFFFF)] text-[var(--workspace-surface-text,#0F1F33)] border-[var(--ft-border,#DDE5EF)]'
                     }`}
                   >
                     <span
                       className={`text-[11px] font-semibold uppercase ${
-                        isSelected ? 'text-white/80' : isToday ? 'text-[#0B72CE]' : 'text-slate-400'
+                        isSelected ? 'text-white/80' : isToday ? 'text-[#0B72CE]' : 'text-[var(--workspace-surface-muted,#4A5B70)]'
                       }`}
                     >
                       {day.dayOfWeekVN}
@@ -565,10 +565,10 @@ export default function WorkspaceHome({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-[#0B72CE]" />
-                <h2 className="text-sm sm:text-base font-bold text-[#0F1F33]">
+                <h2 className="text-sm sm:text-base font-bold text-[var(--workspace-surface-text,#0F1F33)]">
                   {selectedMobileDate === todayStr ? 'Nhiệm vụ hôm nay' : `Nhiệm vụ ngày ${selectedMobileDate}`}
                 </h2>
-                <span className="rounded-full bg-blue-50 text-[#0B72CE] border border-blue-200/60 px-2 py-0.2 text-xs font-bold tabular-nums">
+                <span className="rounded-full bg-blue-50 dark:bg-blue-950/60 text-[#0B72CE] border border-blue-200/60 dark:border-blue-800/50 px-2 py-0.2 text-xs font-bold tabular-nums">
                   {displayedTasks.length}
                 </span>
               </div>
@@ -581,10 +581,10 @@ export default function WorkspaceHome({
               </button>
             </div>
 
-            <div className="rounded-[12px] bg-white border border-[#DDE5EF] p-4 shadow-xs space-y-2.5">
+            <div className="rounded-[12px] bg-[var(--workspace-card,#FFFFFF)] border border-[var(--ft-border,#DDE5EF)] p-4 shadow-xs space-y-2.5">
               {displayedTasks.length === 0 ? (
                 <div className="py-8 text-center space-y-2">
-                  <p className="text-xs sm:text-sm text-slate-500">
+                  <p className="text-xs sm:text-sm text-[var(--workspace-surface-muted,#64748b)]">
                     {selectedMobileDate === todayStr
                       ? 'Hôm nay bạn chưa có lịch công tác nào.'
                       : `Ngày ${selectedMobileDate} chưa có lịch công tác nào.`}
@@ -592,7 +592,7 @@ export default function WorkspaceHome({
                   <button
                     type="button"
                     onClick={() => onNavigate('work-schedule')}
-                    className="inline-flex items-center gap-1.5 rounded-[10px] bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 rounded-[10px] bg-[var(--ft-surface-2,rgba(255,255,255,0.08))] hover:bg-slate-200 dark:hover:bg-slate-700 text-[var(--workspace-surface-text,#0F1F33)] px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer min-h-[44px]"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     <span>Tạo công việc mới</span>
@@ -606,7 +606,7 @@ export default function WorkspaceHome({
                     <div
                       key={task.id}
                       onClick={() => onNavigate('work-schedule')}
-                      className="group flex items-start sm:items-center justify-between p-3 rounded-[10px] border border-slate-200/70 bg-slate-50/50 hover:bg-white hover:border-[#0B72CE]/40 hover:shadow-xs transition-all cursor-pointer min-h-[60px] gap-2.5"
+                      className="group flex items-start sm:items-center justify-between p-3 rounded-[10px] border border-[var(--ft-border-soft,#e2e8f0)] bg-[var(--ft-surface-2,rgba(255,255,255,0.05))] hover:border-[#0B72CE]/40 transition-all cursor-pointer min-h-[60px] gap-2.5"
                       title={task.title}
                     >
                       <div className="min-w-0 flex-1">
@@ -616,10 +616,10 @@ export default function WorkspaceHome({
                               {task.startTime}{task.endTime ? ` - ${task.endTime}` : ''}
                             </span>
                           ) : (
-                            <span className="text-xs text-slate-400 shrink-0">Trong ngày</span>
+                            <span className="text-xs text-[var(--workspace-surface-muted,#64748b)] shrink-0">Trong ngày</span>
                           )}
                           <div className="flex items-center gap-2 flex-wrap min-w-0">
-                            <h3 className="text-xs sm:text-sm font-semibold text-[#0F1F33] line-clamp-2 leading-snug group-hover:text-[#0B72CE] transition-colors">
+                            <h3 className="text-xs sm:text-sm font-semibold text-[var(--workspace-surface-text,#0F1F33)] line-clamp-2 leading-snug group-hover:text-[#0B72CE] transition-colors">
                               {clean.cleanTitle}
                             </h3>
                             {clean.hasLinks && clean.links[0] && (
@@ -628,7 +628,7 @@ export default function WorkspaceHome({
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={e => e.stopPropagation()}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#E5F0FB] text-[#0A5BA5] hover:bg-blue-100 transition-colors shrink-0 cursor-pointer"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#E5F0FB] dark:bg-blue-950/70 text-[#0A5BA5] dark:text-blue-300 hover:bg-blue-100 transition-colors shrink-0 cursor-pointer"
                                 title={`Mở liên kết: ${clean.links[0]}`}
                               >
                                 <ExternalLink className="h-3 w-3" />
@@ -655,43 +655,43 @@ export default function WorkspaceHome({
           {/* Cột phải: Báo cáo tuần & Chấm công (5/12) */}
           <div className="lg:col-span-5 space-y-4">
             {/* Thẻ Báo cáo cuối tuần */}
-            <div className="rounded-[12px] bg-white border border-[#DDE5EF] p-4 shadow-xs space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="rounded-[12px] bg-[var(--workspace-card,#FFFFFF)] border border-[var(--ft-border,#DDE5EF)] p-4 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-[var(--ft-border-soft,#f1f5f9)]">
                 <div className="flex items-center gap-2">
                   <ClipboardList className="h-4 w-4 text-[#0B72CE]" />
-                  <h3 className="text-xs sm:text-sm font-bold text-[#0F1F33]">
+                  <h3 className="text-xs sm:text-sm font-bold text-[var(--workspace-surface-text,#0F1F33)]">
                     Báo cáo tuần {isoWeek}
                   </h3>
                 </div>
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/60 px-2 py-0.5 rounded-full">
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-200/60 dark:border-amber-800/40 px-2 py-0.5 rounded-full">
                   <Clock className="h-3 w-3" />
                   <span>Hạn T6 16:45</span>
                 </span>
               </div>
 
-              <p className="text-xs text-[#4A5B70] leading-relaxed">
+              <p className="text-xs text-[var(--workspace-surface-muted,#4A5B70)] leading-relaxed">
                 {deadlineInfo.summaryText}
               </p>
 
               {weeklyReport ? (
-                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/60 text-xs space-y-1">
-                  <div className="flex justify-between text-slate-700">
+                <div className="p-2.5 rounded-lg bg-[var(--ft-surface-2,rgba(255,255,255,0.05))] border border-[var(--ft-border-soft,#e2e8f0)] text-xs space-y-1">
+                  <div className="flex justify-between text-[var(--workspace-surface-text,#334155)]">
                     <span>Đã làm trong tuần:</span>
                     <b className="tabular-nums font-bold">{weeklyReport.completedCount} việc</b>
                   </div>
-                  <div className="flex justify-between text-slate-700">
+                  <div className="flex justify-between text-[var(--workspace-surface-text,#334155)]">
                     <span>Kế hoạch tuần sau:</span>
                     <b className="tabular-nums font-bold">{weeklyReport.plannedCount} việc</b>
                   </div>
                   {weeklyReport.plannedWarning && (
-                    <p className="text-[11px] font-medium text-amber-700 pt-1 flex items-center gap-1.5">
-                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                    <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300 pt-1 flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                       <span>{weeklyReport.plannedWarning}</span>
                     </p>
                   )}
                 </div>
               ) : (
-                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/60 text-xs text-slate-500">
+                <div className="p-2.5 rounded-lg bg-[var(--ft-surface-2,rgba(255,255,255,0.05))] border border-[var(--ft-border-soft,#e2e8f0)] text-xs text-[var(--workspace-surface-muted,#64748b)]">
                   Chưa tạo bản nháp tuần này. Báo cáo tự động tổng hợp lúc 16:45 thứ Sáu.
                 </div>
               )}
@@ -708,7 +708,7 @@ export default function WorkspaceHome({
                 <button
                   type="button"
                   onClick={() => onNavigate('weekly-report')}
-                  className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#0B72CE]/40 bg-blue-50/50 hover:bg-blue-50 text-[#0B72CE] px-3 py-2 text-xs font-semibold transition-colors cursor-pointer min-h-[44px]"
+                  className="hidden sm:inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[#0B72CE]/40 bg-blue-50/50 dark:bg-blue-950/40 hover:bg-blue-50 text-[#0B72CE] dark:text-blue-300 px-3 py-2 text-xs font-semibold transition-colors cursor-pointer min-h-[44px]"
                   title="Nhờ AI viết lại theo văn phong chuẩn công ty"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
@@ -718,20 +718,20 @@ export default function WorkspaceHome({
             </div>
 
             {/* Thẻ Chấm công hôm nay */}
-            <div className="rounded-[12px] bg-white border border-[#DDE5EF] p-4 shadow-xs space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="rounded-[12px] bg-[var(--workspace-card,#FFFFFF)] border border-[var(--ft-border,#DDE5EF)] p-4 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-[var(--ft-border-soft,#f1f5f9)]">
                 <div className="flex items-center gap-2">
                   <CalendarCheck className="h-4 w-4 text-[#0B72CE]" />
-                  <h3 className="text-xs sm:text-sm font-bold text-[#0F1F33]">
+                  <h3 className="text-xs sm:text-sm font-bold text-[var(--workspace-surface-text,#0F1F33)]">
                     Chấm công hôm nay
                   </h3>
                 </div>
                 {attendanceEntry ? (
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#E3F5EC] text-[#0E5A38]">
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#E3F5EC] dark:bg-emerald-950/50 text-[#0E5A38] dark:text-emerald-300">
                     {attendanceEntry.isDayOff ? 'Nghỉ' : 'Đã ghi nhận'}
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#FFF1D6] text-[#7A4300]">
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#FFF1D6] dark:bg-amber-950/50 text-[#7A4300] dark:text-amber-300">
                     Chưa chấm công
                   </span>
                 )}
@@ -739,21 +739,21 @@ export default function WorkspaceHome({
 
               {attendanceEntry ? (
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200/60">
-                    <span className="text-[11px] text-slate-400 block">Giờ vào:</span>
-                    <b className="text-sm font-bold tabular-nums text-slate-800">
+                  <div className="p-2 rounded-lg bg-[var(--ft-surface-2,rgba(255,255,255,0.05))] border border-[var(--ft-border-soft,#e2e8f0)]">
+                    <span className="text-[11px] text-[var(--workspace-surface-muted,#64748b)] block">Giờ vào:</span>
+                    <b className="text-sm font-bold tabular-nums text-[var(--workspace-surface-text,#0F1F33)]">
                       {attendanceEntry.shiftStart || '—'}
                     </b>
                   </div>
-                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200/60">
-                    <span className="text-[11px] text-slate-400 block">Giờ ra:</span>
-                    <b className="text-sm font-bold tabular-nums text-slate-800">
+                  <div className="p-2 rounded-lg bg-[var(--ft-surface-2,rgba(255,255,255,0.05))] border border-[var(--ft-border-soft,#e2e8f0)]">
+                    <span className="text-[11px] text-[var(--workspace-surface-muted,#64748b)] block">Giờ ra:</span>
+                    <b className="text-sm font-bold tabular-nums text-[var(--workspace-surface-text,#0F1F33)]">
                       {attendanceEntry.shiftEnd || '—'}
                     </b>
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-[#4A5B70]">
+                <p className="text-xs text-[var(--workspace-surface-muted,#4A5B70)]">
                   Ghi nhận công ca của bạn đúng giờ để hoàn thành bảng lương tháng.
                 </p>
               )}
@@ -761,7 +761,7 @@ export default function WorkspaceHome({
               <button
                 type="button"
                 onClick={() => onNavigate('attendance')}
-                className="w-full inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 px-3 py-2 text-xs font-semibold transition-colors cursor-pointer min-h-[44px]"
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-[var(--ft-border,#e2e8f0)] bg-[var(--ft-surface-2,rgba(255,255,255,0.06))] hover:bg-slate-100 dark:hover:bg-slate-800 text-[var(--workspace-surface-text,#0F1F33)] px-3 py-2 text-xs font-semibold transition-colors cursor-pointer min-h-[44px]"
               >
                 <span>{attendanceEntry ? 'Xem bảng công tháng' : 'Chấm công ngay'}</span>
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -773,10 +773,10 @@ export default function WorkspaceHome({
         {/* 4. Công cụ & Phân hệ hay dùng */}
         <section className="space-y-3 pt-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm sm:text-base font-bold text-[#0F1F33]">
+            <h2 className="text-sm sm:text-base font-bold text-[var(--workspace-surface-text,#0F1F33)]">
               Phân hệ & Công cụ Workspace
             </h2>
-            <span className="text-xs text-slate-400 font-medium">
+            <span className="text-xs text-[var(--workspace-surface-muted,#64748b)] font-medium">
               {quickTools.length} ứng dụng
             </span>
           </div>
@@ -789,16 +789,16 @@ export default function WorkspaceHome({
                   key={tool.mode}
                   type="button"
                   onClick={() => onNavigate(tool.mode)}
-                  className="group flex items-start gap-3 p-3.5 rounded-[12px] bg-white border border-[#DDE5EF] hover:border-[#0B72CE]/40 hover:shadow-xs transition-all text-left cursor-pointer min-h-[72px]"
+                  className="group flex items-start gap-3 p-3.5 rounded-[12px] bg-[var(--workspace-card,#FFFFFF)] border border-[var(--ft-border,#DDE5EF)] hover:border-[#0B72CE]/40 hover:shadow-xs transition-all text-left cursor-pointer min-h-[72px]"
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-slate-50 border border-slate-200 text-slate-700 group-hover:bg-[#E5F0FB] group-hover:text-[#0B72CE] group-hover:border-[#0B72CE]/30 transition-colors">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[var(--ft-surface-2,rgba(255,255,255,0.06))] border border-[var(--ft-border-soft,#e2e8f0)] text-[var(--workspace-surface-text,#0F1F33)] group-hover:bg-[#E5F0FB] dark:group-hover:bg-blue-950/60 group-hover:text-[#0B72CE] group-hover:border-[#0B72CE]/30 transition-colors">
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-xs sm:text-sm font-semibold text-[#0F1F33] group-hover:text-[#0B72CE] transition-colors leading-tight">
+                    <h3 className="text-xs sm:text-sm font-semibold text-[var(--workspace-surface-text,#0F1F33)] group-hover:text-[#0B72CE] transition-colors leading-tight">
                       {tool.title}
                     </h3>
-                    <p className="text-[11px] text-[#4A5B70] line-clamp-2 leading-relaxed mt-0.5">
+                    <p className="text-[11px] text-[var(--workspace-surface-muted,#4A5B70)] line-clamp-2 leading-relaxed mt-0.5">
                       {tool.description}
                     </p>
                   </div>

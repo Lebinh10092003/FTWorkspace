@@ -149,7 +149,7 @@ export default function WorkspaceAreaFrame({
         <button
           type="button"
           onClick={() => homeArea && onSelect(homeArea)}
-          className="flex items-center gap-2 rounded-lg bg-white px-2 py-1 shadow-xs cursor-pointer"
+          className="ft-logo-plate flex items-center gap-2 rounded-lg !bg-white px-2 py-1 shadow-xs cursor-pointer"
           title="Về Trang chủ"
         >
           <img src="/logo.png" alt="FermatTech" className="h-6 w-auto object-contain" />

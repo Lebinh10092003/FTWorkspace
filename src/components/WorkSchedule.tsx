@@ -1073,7 +1073,7 @@ function BoardView({ tasks, selectedDate, setSelectedDate, userEmail, selectedId
           <button type="button" disabled={!tasks.length} onClick={() => setSelectedIds(allSelected ? [] : tasks.map((task) => task.id))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 disabled:opacity-40">
             {allSelected ? "Bỏ chọn tất cả" : "Chọn tất cả"}
           </button>
-          <button type="button" disabled={isToday} onClick={() => setSelectedDate(iso(new Date()))} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:border-slate-200 disabled:bg-white disabled:text-slate-400">
+          <button type="button" disabled={isToday} onClick={() => setSelectedDate(iso(new Date()))} className="rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 px-3 py-2 text-xs font-bold text-blue-700 dark:text-blue-300 hover:bg-blue-100 disabled:border-slate-200 dark:disabled:border-slate-700 disabled:bg-white dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400">
             Hôm nay
           </button>
           <div className="flex items-center rounded-xl border border-slate-200 bg-white p-1">

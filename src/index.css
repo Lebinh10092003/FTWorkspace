@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=Plus+Jakarta+Sans:wght@600;700;800&family=Roboto:wght@300;400;500;700;900&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *, .dark, .dark *, body.workspace-theme-dark, body.workspace-theme-dark *));
+
 /* ══════════════════════════════════════════════════════════════
    FT Workspace — Design Tokens
    ══════════════════════════════════════════════════════════════ */
@@ -1405,6 +1407,16 @@ body.workspace-app-theme img.ft-module-logo {
   padding: .5rem .75rem;
   box-shadow: var(--ft-logo-plate-shadow);
 }
+/* Luôn giữ ô logo Fermat màu trắng tinh ở mọi chế độ giao diện */
+.ft-logo-plate,
+body.workspace-theme-dark .ft-logo-plate,
+body.workspace-app-theme .ft-logo-plate,
+body.workspace-theme-dark button.ft-logo-plate,
+body.workspace-theme-dark div.ft-logo-plate {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+}
+
 body.workspace-app-theme .ft-sidebar-brand {
   min-height: 6rem;
   border-radius: 0 !important;
@@ -2660,6 +2672,14 @@ body.workspace-theme-dark {
   --ftd-text-5:        #5f7491;  /* slate-300, placeholders */
   --ftd-accent:        #5b9dff;
 
+  --workspace-text:          var(--ftd-text);
+  --workspace-muted:         var(--ftd-text-3);
+  --workspace-surface-text:  var(--ftd-text);
+  --workspace-surface-muted: var(--ftd-text-3);
+  --workspace-card:          var(--ftd-surface);
+  --workspace-panel:         var(--ftd-surface);
+  --workspace-background:    var(--ftd-canvas);
+
   /* Direction A dark tokens */
   --ft-navy:             #091322;
   --ft-navy-text:        #C9D6E6;
@@ -2721,6 +2741,24 @@ body.workspace-theme-dark {
   :where(body.workspace-theme-dark) :where(*, ::before, ::after) {
     border-color: var(--ftd-border);
   }
+}
+
+/* Hardcoded hex overrides in dark mode to guarantee high contrast */
+body.workspace-theme-dark [class*="text-[#0F1F33]"],
+body.workspace-theme-dark [class*="text-[#0f1f33]"] {
+  color: var(--ftd-text) !important;
+}
+body.workspace-theme-dark [class*="text-[#4A5B70]"],
+body.workspace-theme-dark [class*="text-[#4a5b70]"] {
+  color: var(--ftd-text-3) !important;
+}
+body.workspace-theme-dark [class*="bg-[#F3F6FA]"],
+body.workspace-theme-dark [class*="bg-[#f3f6fa]"] {
+  background-color: var(--ftd-canvas) !important;
+}
+body.workspace-theme-dark [class*="border-[#DDE5EF]"],
+body.workspace-theme-dark [class*="border-[#dde5ef]"] {
+  border-color: var(--ftd-border) !important;
 }
 
 /* Tailwind's box-shadow utilities are tuned for light backgrounds. */
@@ -3060,6 +3098,7 @@ body.workspace-theme-dark .bg-amber-100 { background-color: color-mix(in oklab, 
 body.workspace-theme-dark .bg-amber-100\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 17%, var(--ftd-surface)) 60%, transparent); }
 body.workspace-theme-dark .bg-amber-200 { background-color: color-mix(in oklab, oklch(76.9% .188 70.08) 26%, var(--ftd-surface)); }
 body.workspace-theme-dark .bg-amber-50 { background-color: color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)); }
+body.workspace-theme-dark .bg-amber-50\/30 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 30%, transparent); }
 body.workspace-theme-dark .bg-amber-50\/40 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 40%, transparent); }
 body.workspace-theme-dark .bg-amber-50\/60 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 60%, transparent); }
 body.workspace-theme-dark .bg-amber-50\/70 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(76.9% .188 70.08) 10%, var(--ftd-surface)) 70%, transparent); }
@@ -3112,6 +3151,7 @@ body.workspace-theme-dark .bg-sky-50 { background-color: color-mix(in oklab, okl
 body.workspace-theme-dark .bg-sky-50\/50 { background-color: color-mix(in oklab, color-mix(in oklab, oklch(68.5% .169 237.323) 10%, var(--ftd-surface)) 50%, transparent); }
 body.workspace-theme-dark .bg-slate-100 { background-color: var(--ftd-surface-3); }
 body.workspace-theme-dark .bg-slate-100\/80 { background-color: color-mix(in oklab, var(--ftd-surface-3) 80%, transparent); }
+body.workspace-theme-dark .bg-slate-100\/90 { background-color: color-mix(in oklab, var(--ftd-surface-3) 90%, transparent); }
 body.workspace-theme-dark .bg-slate-200 { background-color: var(--ftd-surface-4); }
 body.workspace-theme-dark .bg-slate-200\/50 { background-color: color-mix(in oklab, var(--ftd-surface-4) 50%, transparent); }
 body.workspace-theme-dark .bg-slate-200\/60 { background-color: color-mix(in oklab, var(--ftd-surface-4) 60%, transparent); }

@@ -244,16 +244,16 @@ export default function FundingProposalBuilder({
                 title: 'Làm lại phiếu', confirmText: 'Làm lại', tone: 'danger',
               })) { setValue(blankProposal()); setError(''); setSaveNotice(''); }
             }}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 min-h-[44px]">
-              <RotateCcw className="h-4 w-4" /><span className="hidden sm:inline">Làm lại</span>
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 min-h-[44px] shrink-0">
+              <RotateCcw className="h-4 w-4" /><span>Làm lại</span>
             </button>
             <button type="button" onClick={() => void saveToDrive()} disabled={downloading || savingToDrive}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50 min-h-[44px]">
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm font-bold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-slate-700 disabled:opacity-50 min-h-[44px] shrink-0">
               {savingToDrive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {savingToDrive ? 'Đang lưu…' : 'Lưu vào Drive'}
             </button>
             <button type="button" onClick={() => void download()} disabled={downloading || savingToDrive}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 min-h-[44px]">
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 min-h-[44px] shrink-0">
               {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {downloading ? 'Đang tạo…' : 'Tải file Word'}
             </button>
