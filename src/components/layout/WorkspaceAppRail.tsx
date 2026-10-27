@@ -6,7 +6,6 @@ import {
   LayoutGrid,
   PanelLeftClose,
   PanelLeftOpen,
-  Search,
 } from 'lucide-react';
 import { WORKSPACE_AREAS, WorkspaceArea, WorkspaceAreaId } from '../../config/workspaceNavigation';
 import { DepartmentLayout } from '../../config/departmentLayout';
@@ -148,25 +147,6 @@ export default function WorkspaceAppRail({
           </div>
         )}
       </div>
-
-      {/* 2. Quick Search Bar on Desktop Rail */}
-      {!compact && onOpenSearch && (
-        <div className="pt-3 pb-1">
-          <button
-            type="button"
-            onClick={onOpenSearch}
-            className="flex w-full items-center justify-between rounded-[10px] border border-white/10 bg-white/6 px-2.5 py-1.5 text-xs text-[#8FA6C0] hover:border-white/20 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-          >
-            <div className="flex items-center gap-2">
-              <Search className="h-3.5 w-3.5 text-[#8FA6C0]" />
-              <span>Tìm kiếm nhanh...</span>
-            </div>
-            <kbd className="rounded border border-white/20 bg-white/10 px-1.5 py-0.5 text-[10px] font-mono text-[#C9D6E6]">
-              Ctrl K
-            </kbd>
-          </button>
-        </div>
-      )}
 
       {/* 3. Navigation Groups */}
       <div className="flex-1 overflow-y-auto space-y-3 pt-2 overscroll-contain pr-0.5 scrollbar-thin">
