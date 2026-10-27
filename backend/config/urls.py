@@ -23,6 +23,7 @@ urlpatterns = [
     path("api/", include("work_schedule.urls")),
     path("api/", include("documents.urls")),
     path("api/", include("company_accounts.urls")),
+    path("api/chatbot/", include("chatbot.urls")),
     path("api/", include("mcp.urls")),
     # OAuth 2.1 cho MCP: /.well-known/* va /api/oauth/*
     path("", include("mcp_oauth.urls")),

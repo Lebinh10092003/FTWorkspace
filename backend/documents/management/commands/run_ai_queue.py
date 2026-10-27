@@ -18,9 +18,13 @@ from documents.ai_service import (
 logger = logging.getLogger(__name__)
 
 
-def _worker_wrapper(job_id: int):
+def _worker_wrapper(job_type: str, job_id: int):
     try:
-        process_ai_job(job_id)
+        if job_type == "chat":
+            from chatbot.service import process_chat_job
+            process_chat_job(job_id)
+        else:
+            process_ai_job(job_id)
     finally:
         connections.close_all()
 
@@ -78,8 +82,9 @@ class Command(BaseCommand):
                     job = claim_next_job()
                     if not job:
                         break
-                    self.stdout.write(f"Đã nhận việc #{job.id} cho {job.user.email} (status: running)")
-                    future = executor.submit(_worker_wrapper, job.id)
+                    job_type = getattr(job, "job_type", "report")
+                    self.stdout.write(f"Đã nhận việc [{job_type}] #{job.id} cho {job.user.email} (status: running)")
+                    future = executor.submit(_worker_wrapper, job_type, job.id)
                     active_futures.append(future)
 
                 if run_once:

@@ -710,6 +710,101 @@ def docs_get_weekly_report(ctx: Dict[str, Any], week_number: Optional[int] = Non
 
 
 @register_tool(
+    name="docs_update_weekly_report_draft",
+    description="Cập nhật nội dung bản nháp báo cáo tuần (các nhóm việc đã làm, khó khăn vướng mắc, kế hoạch tuần tới) của nhân sự.",
+    module="documents",
+    min_role="EMPLOYEE",
+    audit_action="Cập nhật bản nháp Báo cáo tuần",
+    parameters={
+        "type": "object",
+        "properties": {
+            "week_number": {
+                "type": "integer",
+                "description": "Tuần báo cáo kết quả (ví dụ 43). Mặc định là báo cáo tuần gần nhất.",
+            },
+            "completed_groups": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "items": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["name", "items"],
+                },
+                "description": "Danh sách nhóm việc đã làm",
+            },
+            "difficulties": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Danh sách các khó khăn, vướng mắc",
+            },
+            "planned_groups": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "items": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["name", "items"],
+                },
+                "description": "Danh sách nhóm việc dự kiến tuần tới",
+            },
+        },
+        "additionalProperties": False,
+    },
+)
+def docs_update_weekly_report_draft(
+    ctx: Dict[str, Any],
+    week_number: Optional[int] = None,
+    completed_groups: Optional[List[Dict[str, Any]]] = None,
+    difficulties: Optional[List[str]] = None,
+    planned_groups: Optional[List[Dict[str, Any]]] = None,
+    **_kwargs,
+) -> Dict[str, Any]:
+    target_email = ctx["email"]
+    qs = WeeklyReport.objects.filter(employee_email__iexact=target_email)
+    if week_number:
+        qs = qs.filter(completed_week=week_number)
+    report = qs.order_by("-completed_week").first()
+    if not report:
+        return {"success": False, "error": f"Không tìm thấy bản nháp báo cáo tuần cho {target_email}."}
+
+    user_name = ctx.get("name") or target_email
+    if completed_groups is not None:
+        report.completed_groups = completed_groups
+        report.completed_items = [
+            str(item).strip()
+            for g in completed_groups if isinstance(g, dict)
+            for item in g.get("items", []) if str(item).strip()
+        ]
+    if difficulties is not None:
+        report.difficulties = [str(d).strip() for d in difficulties if str(d).strip()]
+    if planned_groups is not None:
+        report.planned_groups = planned_groups
+        report.planned_items = [
+            str(item).strip()
+            for g in planned_groups if isinstance(g, dict)
+            for item in g.get("items", []) if str(item).strip()
+        ]
+
+    report.status = WeeklyReport.STATUS_EDITED
+    report.edited_by_name = user_name
+    report.edited_by_email = target_email
+    report.edited_at = timezone.now()
+    report.save()
+
+    return {
+        "success": True,
+        "message": f"Đã cập nhật bản nháp báo cáo tuần {report.completed_week} của {report.employee_name}.",
+        "report_id": report.id,
+        "completed_week": report.completed_week,
+        "planned_week": report.planned_week,
+    }
+
+
+@register_tool(
     name="docs_generate_weekly_report",
     description="Tự động trích xuất các công việc đã hoàn thành và việc kế hoạch từ Lịch công tác để lập bản thảo Báo cáo tuần hoàn chỉnh.",
     module="documents",
