@@ -413,18 +413,49 @@ def expire_stale_jobs(grace_seconds: int = 30) -> int:
         job.completed_at = timezone.now()
         job.save(update_fields=["status", "error_message", "completed_at", "updated_at"])
         count += 1
+
+    try:
+        from chatbot.service import expire_stale_chat_jobs
+        count += expire_stale_chat_jobs(grace_seconds=15)
+    except Exception:
+        pass
+
     return count
 
 
 @transaction.atomic
-def claim_next_job() -> Optional[AiReportJob]:
-    """Atomically claim the next queued job ensuring max concurrency is respected."""
+def claim_next_job() -> Optional[Any]:
+    """Atomically claim the next queued job ensuring max concurrency and chat priority."""
     expire_stale_jobs()
     max_concurrent = get_max_concurrent()
 
     running_count = AiReportJob.objects.filter(status=AiReportJob.STATUS_RUNNING).count()
+    try:
+        from chatbot.models import AiChatJob
+        running_count += AiChatJob.objects.filter(status=AiChatJob.STATUS_RUNNING).count()
+    except Exception:
+        pass
+
     if running_count >= max_concurrent:
         return None
+
+    # CHAT PRIORITY: prioritize interactive chat messages over background report rewrites
+    try:
+        from chatbot.models import AiChatJob
+        next_chat = (
+            AiChatJob.objects.select_for_update()
+            .filter(status=AiChatJob.STATUS_QUEUED)
+            .order_by("created_at", "id")
+            .first()
+        )
+        if next_chat:
+            next_chat.status = AiChatJob.STATUS_RUNNING
+            next_chat.started_at = timezone.now()
+            next_chat.save(update_fields=["status", "started_at", "updated_at"])
+            setattr(next_chat, "job_type", "chat")
+            return next_chat
+    except Exception:
+        pass
 
     next_job = (
         AiReportJob.objects.select_for_update()
@@ -438,6 +469,7 @@ def claim_next_job() -> Optional[AiReportJob]:
     next_job.status = AiReportJob.STATUS_RUNNING
     next_job.started_at = timezone.now()
     next_job.save(update_fields=["status", "started_at", "updated_at"])
+    setattr(next_job, "job_type", "report")
     return next_job
 
 
