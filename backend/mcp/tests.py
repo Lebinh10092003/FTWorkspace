@@ -71,22 +71,37 @@ class MCPFrameworkTests(TestCase):
         self.assertIn("/action/auth_login", data["paths"])
         self.assertIn("/action/crm_search_customers", data["paths"])
 
-    def test_basic_auth_with_system_account(self):
-        """Đăng nhập bằng HTTP Basic Auth với Email và Mật khẩu hệ thống thông thường."""
+    def test_basic_auth_with_account_password_is_rejected(self):
+        """MCP không nhận mật khẩu tài khoản (mật khẩu sẽ nằm lại trong lịch sử chat/AI)."""
         raw_cred = f"staff@fermat.vn:{self.employee_password}"
         b64_cred = base64.b64encode(raw_cred.encode("utf-8")).decode("utf-8")
         self.client.credentials(HTTP_AUTHORIZATION=f"Basic {b64_cred}")
+        response = self.client.post("/api/mcp/action/system_whoami", {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+        self.client.credentials(HTTP_X_USER_EMAIL="staff@fermat.vn", HTTP_X_USER_PASSWORD=self.employee_password)
+        self.assertEqual(self.client.post("/api/mcp/action/system_whoami", {}, format="json").status_code, 401)
+
+        self.client.credentials()
+        response = self.client.post(
+            "/api/mcp/action/system_whoami",
+            {"auth_email": "staff@fermat.vn", "auth_password": self.employee_password},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_basic_auth_with_ai_key(self):
+        """Custom GPT dùng Basic Auth: dán mã ft_ai_ vào ô password."""
+        from .keys import create_ai_key
+        raw_key = create_ai_key("staff@fermat.vn", "Custom GPT")["raw_key"]
+        b64_cred = base64.b64encode(f"staff@fermat.vn:{raw_key}".encode("utf-8")).decode("utf-8")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Basic {b64_cred}")
         response = self.client.post("/api/mcp/action/system_whoami", {}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        body = response.json()
-        self.assertTrue(body["success"])
-        self.assertEqual(body["data"]["email"], "staff@fermat.vn")
-        self.assertEqual(body["data"]["role"], "EMPLOYEE")
+        self.assertEqual(response.json()["data"]["email"], "staff@fermat.vn")
 
-    def test_in_chat_auth_login_tool(self):
-        """Gọi tool auth_login bằng Email và Mật khẩu để lấy session_token trực tiếp."""
-        # Gọi không có bất kỳ header xác thực nào
+    def test_auth_login_only_explains_how_to_connect(self):
+        """auth_login không nhận mật khẩu và không trả token phiên web vào khung chat."""
         self.client.credentials()
         response = self.client.post(
             "/api/mcp/action/auth_login",
@@ -94,32 +109,19 @@ class MCPFrameworkTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        body = response.json()
-        self.assertTrue(body["success"])
-        session_token = body["data"]["session_token"]
-        self.assertTrue(bool(session_token))
-        self.assertEqual(body["data"]["user"]["email"], "staff@fermat.vn")
+        data = response.json()["data"]
+        self.assertFalse(data["success"])
+        self.assertNotIn("session_token", data)
+        self.assertNotIn(self.employee_token.key, response.content.decode("utf-8"))
+        self.assertIn("ft_ai_", " ".join(data["how_to_connect"]))
 
-        # Dùng session_token vừa nhận trong body để gọi công cụ nghiệp vụ
-        search_res = self.client.post(
+        # Token phiên web gửi trong tham số công cụ cũng không được nhận.
+        res = self.client.post(
             "/api/mcp/action/crm_search_customers",
-            {"query": "Thực Nghiệm", "session_token": session_token},
+            {"query": "Thực Nghiệm", "session_token": self.employee_token.key},
             format="json",
         )
-        self.assertEqual(search_res.status_code, status.HTTP_200_OK)
-        self.assertEqual(search_res.json()["data"]["count"], 1)
-
-    def test_in_chat_auth_login_invalid_password(self):
-        """Đăng nhập sai mật khẩu sẽ trả về lỗi rõ ràng."""
-        response = self.client.post(
-            "/api/mcp/action/auth_login",
-            {"email": "staff@fermat.vn", "password": "WrongPassword"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        body = response.json()
-        self.assertFalse(body["data"]["success"])
-        self.assertIn("không chính xác", body["data"]["error"])
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_unauthenticated_protected_tool_rejected(self):
         """Yêu cầu không có thông tin xác thực nào sẽ bị từ chối 401."""
@@ -129,9 +131,7 @@ class MCPFrameworkTests(TestCase):
 
     def test_role_enforcement_blocks_finance_without_permission(self):
         """Nhân viên không có quyền kế toán/admin sẽ bị chặn khi gọi tool tài chính dù đăng nhập Basic Auth."""
-        raw_cred = f"staff@fermat.vn:{self.employee_password}"
-        b64_cred = base64.b64encode(raw_cred.encode("utf-8")).decode("utf-8")
-        self.client.credentials(HTTP_AUTHORIZATION=f"Basic {b64_cred}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.employee_token.key}")
 
         response = self.client.post("/api/mcp/action/finance_get_overview", {}, format="json")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -139,9 +139,7 @@ class MCPFrameworkTests(TestCase):
 
     def test_admin_basic_auth_has_full_permission(self):
         """Admin đăng nhập bằng Basic Auth có quyền gọi mọi tool kể cả tài chính."""
-        raw_cred = f"admin@fermat.vn:{self.admin_password}"
-        b64_cred = base64.b64encode(raw_cred.encode("utf-8")).decode("utf-8")
-        self.client.credentials(HTTP_AUTHORIZATION=f"Basic {b64_cred}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.admin_token.key}")
         response = self.client.post("/api/mcp/action/finance_get_overview", {}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.json()["success"])
@@ -758,13 +756,13 @@ class MCPStreamableHttpTests(TestCase):
 
     def test_bad_arguments_return_readable_tool_error(self):
         res = self.rpc(
-            {"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "auth_login", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "crm_create_ai_account", "arguments": {}}},
             **self.bearer,
         )
         self.assertEqual(res.status_code, 200)
         result = res.json()["result"]
         self.assertTrue(result["isError"])
-        self.assertIn("auth_login", result["content"][0]["text"])
+        self.assertIn("crm_create_ai_account", result["content"][0]["text"])
 
     def test_unknown_tool(self):
         res = self.rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "nope"}}, **self.bearer)

@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from rest_framework.authtoken.models import Token
+from rest_framework.test import APIClient
 from django.utils import timezone
 
 from social.models import Channel
@@ -523,3 +524,39 @@ class ModuleAccessTests(TestCase):
             "/api/auth/users", HTTP_AUTHORIZATION=f"Bearer {token}"
         )
         self.assertEqual(response.status_code, 403)
+
+
+class LoginThrottleTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        User.objects.create_user(username="lock@fermat.vn", email="lock@fermat.vn", password="RightPass123!")
+        UserProfile.objects.create(email="lock@fermat.vn", name="Lock", role="EMPLOYEE")
+        self.client = APIClient()
+
+    def login(self, password, ip="10.0.0.1", email="lock@fermat.vn"):
+        return self.client.post("/api/auth/login", {"email": email, "password": password}, format="json", HTTP_X_REAL_IP=ip)
+
+    def test_email_is_locked_after_ten_failures_even_with_right_password(self):
+        for _ in range(9):
+            self.assertEqual(self.login("sai").status_code, 401)
+        self.assertEqual(self.login("RightPass123!").status_code, 200)  # đúng thì xóa bộ đếm
+        for _ in range(10):
+            self.login("sai")
+        res = self.login("RightPass123!", ip="10.0.0.2")
+        self.assertEqual(res.status_code, 429)
+        self.assertIn("thử lại", res.json()["error"])
+        self.assertTrue(int(res["Retry-After"]) > 0)
+
+    def test_ip_is_locked_after_many_failures_across_emails(self):
+        for i in range(50):
+            self.login("sai", email=f"x{i}@fermat.vn")
+        self.assertEqual(self.login("RightPass123!").status_code, 429)
+        self.assertEqual(self.login("RightPass123!", ip="10.0.0.9").status_code, 200)
+
+    def test_spoofed_forwarded_for_does_not_change_ip(self):
+        from authentication.login_throttle import client_ip
+        from django.test import RequestFactory
+        request = RequestFactory().post("/", HTTP_X_FORWARDED_FOR="1.2.3.4, 9.9.9.9")
+        self.assertEqual(client_ip(request), "9.9.9.9")
+        request = RequestFactory().post("/", HTTP_X_REAL_IP="5.5.5.5", HTTP_X_FORWARDED_FOR="1.2.3.4")
+        self.assertEqual(client_ip(request), "5.5.5.5")

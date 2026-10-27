@@ -1,87 +1,39 @@
 from __future__ import annotations
 
-from typing import Any, Dict
-from rest_framework.authtoken.models import Token
+from typing import Any, Dict, Optional
 
 from authentication.models import UserProfile
 from .registry import register_tool
-from .security import authenticate_by_credentials, resolve_user_context
+from .security import resolve_user_context
 
 
 @register_tool(
     name="auth_login",
-    description="Đăng nhập trực tiếp bằng Email và Mật khẩu tài khoản thông thường của hệ thống FTWorkspace ngay trong cuộc trò chuyện.",
+    title="Hướng dẫn kết nối",
+    description=(
+        "Hướng dẫn kết nối FTWorkspace bằng Mã kết nối AI (ft_ai_...). MCP không nhận mật khẩu tài khoản; "
+        "đừng yêu cầu người dùng gõ mật khẩu vào cuộc trò chuyện."
+    ),
     module="auth",
     min_role="VIEWER",
     requires_auth=False,
-    parameters={
-        "type": "object",
-        "properties": {
-            "email": {
-                "type": "string",
-                "description": "Email tài khoản nhân viên / quản trị viên FTWorkspace",
-            },
-            "password": {
-                "type": "string",
-                "description": "Mật khẩu đăng nhập tài khoản hệ thống",
-            },
-        },
-        "required": ["email", "password"],
-        "additionalProperties": False,
-    },
+    parameters={"type": "object", "properties": {}, "additionalProperties": True},
 )
-def auth_login(ctx: Optional[Dict[str, Any]], email: str, password: str, **_kwargs) -> Dict[str, Any]:
-    django_user = authenticate_by_credentials(email, password)
-    if django_user is None:
+def auth_login(ctx: Optional[Dict[str, Any]], **_kwargs) -> Dict[str, Any]:
+    if ctx:
         return {
-            "success": False,
-            "error": "Tên đăng nhập (email) hoặc mật khẩu hệ thống không chính xác.",
+            "success": True,
+            "message": f"Đã kết nối với tài khoản {ctx.get('name')} ({ctx.get('role')}). Không cần đăng nhập thêm.",
         }
-
-    token, _ = Token.objects.get_or_create(user=django_user)
-    email_clean = (django_user.email or django_user.username or "").strip().lower()
-    profile, _ = UserProfile.objects.get_or_create(
-        email=email_clean,
-        defaults={
-            "name": django_user.get_full_name() or django_user.username or email_clean.split("@", 1)[0],
-            "role": "EMPLOYEE",
-        },
-    )
-
-    role = profile.role or "EMPLOYEE"
-    if django_user.is_superuser:
-        role = "ADMIN"
-
-    access_modules = list(profile.access_modules or [])
-    if role == "ADMIN":
-        access_modules = [
-            "digital-training",
-            "examination",
-            "work-schedule",
-            "attendance",
-            "finance-report",
-            "account-management",
-            "documents",
-            "social-dashboard",
-            "email-builder",
-        ]
-
     return {
-        "success": True,
-        "message": f"Đăng nhập thành công với tài khoản {profile.name} ({role}).",
-        "session_token": token.key,
-        "user": {
-            "name": profile.name,
-            "email": profile.email,
-            "role": role,
-            "department": profile.department.name if profile.department else "",
-            "job_title": profile.job_title.name if profile.job_title else "",
-            "access_modules": access_modules,
-        },
-        "instruction_for_ai": (
-            f"Tài khoản {profile.name} ({role}) đã xác thực thành công. "
-            f"Hãy tự động gắn tham số 'session_token': '{token.key}' vào các công cụ tiếp theo nếu cần thiết."
-        ),
+        "success": False,
+        "error": "Chưa có Mã kết nối AI. MCP không nhận email/mật khẩu.",
+        "how_to_connect": [
+            "Đăng nhập https://workspace.fermat.vn, mở Hồ sơ cá nhân > Trợ lý AI & MCP, tạo mã mới (ft_ai_...).",
+            "claude.ai / ChatGPT / Claude Desktop: dùng URL https://workspace.fermat.vn/mcp?key=ft_ai_...",
+            "Claude Code / Cursor: URL https://workspace.fermat.vn/mcp với header Authorization: Bearer ft_ai_...",
+        ],
+        "instruction_for_ai": "Không hỏi mật khẩu của người dùng. Hướng dẫn họ tạo Mã kết nối AI theo các bước trên.",
     }
 
 

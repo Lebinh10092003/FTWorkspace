@@ -31,6 +31,7 @@ from integrations.google_sheets import (
     initialize_sheets_structure,
 )
 from .auth import get_admin_emails
+from . import login_throttle
 from .models import (
     Department, JobTitle, SystemConfig, UserLogin, UserProfile,
     WorkspaceNotification, WorkspaceNotificationRead,
@@ -578,11 +579,20 @@ def login_view(request):
     if not email or not password:
         return Response({"error": "Vui lòng nhập email và mật khẩu."}, status=status.HTTP_400_BAD_REQUEST)
 
+    ip = login_throttle.client_ip(request)
+    wait = login_throttle.locked_seconds(email, ip)
+    if wait:
+        response = Response({"error": login_throttle.locked_message(wait)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        response["Retry-After"] = str(wait)
+        return response
+
     django_user = authenticate(request=request, username=email, password=password)
     if django_user is None:
         django_user = _bootstrap_admin(email, password)
     if django_user is None:
+        login_throttle.register_failure(email, ip)
         return Response({"error": "Tên đăng nhập hoặc mật khẩu không chính xác."}, status=status.HTTP_401_UNAUTHORIZED)
+    login_throttle.register_success(email)
     if not django_user.is_active:
         return Response({"error": "Tài khoản đã bị khóa."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -654,7 +664,12 @@ def change_password(request):
     django_user = User.objects.filter(username__iexact=profile.email).first()
     if django_user is None:
         return Response({"error": "Không tìm thấy tài khoản đăng nhập tương ứng."}, status=status.HTTP_404_NOT_FOUND)
+    ip = login_throttle.client_ip(request)
+    wait = login_throttle.locked_seconds(profile.email, ip)
+    if wait:
+        return Response({"error": login_throttle.locked_message(wait)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
     if not django_user.check_password(current_password):
+        login_throttle.register_failure(profile.email, ip)
         return Response({"error": "Mật khẩu hiện tại chưa chính xác."}, status=status.HTTP_400_BAD_REQUEST)
     if current_password == new_password:
         return Response({"error": "Mật khẩu mới cần khác mật khẩu hiện tại."}, status=status.HTTP_400_BAD_REQUEST)

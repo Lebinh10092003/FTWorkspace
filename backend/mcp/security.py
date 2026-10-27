@@ -6,14 +6,12 @@ import logging
 import uuid
 from typing import Any, Dict, Optional, Tuple
 
-from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from rest_framework import exceptions
 from rest_framework.authtoken.models import Token
 
 from authentication.auth import DjangoTokenAuthentication, get_admin_emails
 from authentication.models import UserProfile
-from authentication.views import _bootstrap_admin, _normalise_email
 from examination.models import LogNote
 from .keys import verify_ai_key
 from .registry import MCPTool
@@ -36,33 +34,6 @@ class MCPPermissionDenied(Exception):
         self.module = module
 
 
-def authenticate_by_credentials(email: str, password: str, request=None):
-    """Xác thực tài khoản người dùng trực tiếp bằng Email và Mật khẩu của hệ thống FTWorkspace."""
-    clean_email = _normalise_email(email)
-    clean_password = str(password or "")
-    if not clean_email or not clean_password:
-        return None
-
-    http_request = getattr(request, "_request", request)
-    django_user = authenticate(request=http_request, username=clean_email, password=clean_password)
-    if django_user is None:
-        django_user = authenticate(username=clean_email, password=clean_password)
-
-    if django_user is None:
-        user_candidate = User.objects.filter(email__iexact=clean_email).first()
-        if not user_candidate:
-            user_candidate = User.objects.filter(username__iexact=clean_email).first()
-        if user_candidate and user_candidate.check_password(clean_password):
-            django_user = user_candidate
-
-    if django_user is None:
-        django_user = _bootstrap_admin(clean_email, clean_password)
-
-    if django_user and not getattr(django_user, "is_active", True):
-        return None
-    return django_user
-
-
 def _find_or_create_user_by_email(email: str) -> Optional[User]:
     email_clean = email.strip().lower()
     if not email_clean:
@@ -79,14 +50,13 @@ def _find_or_create_user_by_email(email: str) -> Optional[User]:
 
 
 def resolve_user_context(request, body_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Xác thực linh hoạt đa phương thức:
+    """Xác thực MCP. Không bao giờ nhận mật khẩu tài khoản.
 
-    1. AI Access Key (Mã kết nối AI riêng: ft_ai_...)
-    2. HTTP Basic Auth: Authorization: Basic base64(email:password) - Tài khoản mật khẩu hệ thống
-    3. Session Token / Auth Token trong body tham số (phục vụ đăng nhập qua tool auth_login)
-    4. Custom Headers (X-AI-Key, X-User-Email & X-User-Password, X-Auth-Token)
-    5. DRF Token / Bearer Token
-    6. Phiên đăng nhập web Django Session (nếu gọi từ trình duyệt)
+    1. Phiên web đã xác thực sẵn (trình duyệt quản lý mã kết nối).
+    2. Authorization: Bearer ft_ai_... | Basic (mã ft_ai_ ở username/password) | Bearer <token phiên web>.
+    3. Header X-AI-Key / X-API-Key / X-Auth-Token.
+    4. URL ?key=ft_ai_... (claude.ai, ChatGPT chỉ cho nhập URL).
+    5. Tham số session_token / ai_key = ft_ai_... trong lời gọi công cụ.
     """
     django_user = None
 
@@ -115,7 +85,8 @@ def resolve_user_context(request, body_params: Optional[Dict[str, Any]] = None) 
                 if matched_email:
                     django_user = _find_or_create_user_by_email(matched_email)
 
-            # 2b. HTTP Basic Auth (Email & Mật khẩu hệ thống)
+            # 2b. HTTP Basic Auth: chỉ nhận mã ft_ai_ (ở ô username hoặc password).
+            # Không nhận mật khẩu tài khoản qua MCP: mật khẩu sẽ nằm lại trong lịch sử chat/AI.
             elif scheme == "basic" and credential:
                 try:
                     decoded = base64.b64decode(credential).decode("utf-8", errors="ignore")
@@ -127,8 +98,6 @@ def resolve_user_context(request, body_params: Optional[Dict[str, Any]] = None) 
                             matched_email = verify_ai_key(k)
                             if matched_email:
                                 django_user = _find_or_create_user_by_email(matched_email)
-                        if django_user is None:
-                            django_user = authenticate_by_credentials(username, password, request=request)
                 except Exception as exc:
                     logger.debug(f"Lỗi giải mã Basic Auth: {exc}")
 
@@ -138,15 +107,13 @@ def resolve_user_context(request, body_params: Optional[Dict[str, Any]] = None) 
                 if tok and getattr(tok.user, "is_active", True):
                     django_user = tok.user
 
-    # 3. Kiểm tra Custom Headers (X-AI-Key, X-User-Email + X-User-Password hoặc X-Auth-Token)
+    # 3. Kiểm tra Custom Headers (X-AI-Key, X-API-Key hoặc X-Auth-Token)
     if django_user is None and hasattr(request, "META"):
         header_ai_key = (
             request.META.get("HTTP_X_AI_KEY")
             or request.META.get("HTTP_X_API_KEY")
             or request.META.get("HTTP_API_KEY")
         )
-        header_email = request.META.get("HTTP_X_USER_EMAIL")
-        header_pass = request.META.get("HTTP_X_USER_PASSWORD")
         header_token = request.META.get("HTTP_X_AUTH_TOKEN")
 
         if header_ai_key:
@@ -156,8 +123,6 @@ def resolve_user_context(request, body_params: Optional[Dict[str, Any]] = None) 
             matched_email = verify_ai_key(clean_k)
             if matched_email:
                 django_user = _find_or_create_user_by_email(matched_email)
-        elif header_email and header_pass:
-            django_user = authenticate_by_credentials(header_email, header_pass, request=request)
         elif header_token:
             if header_token.startswith("ft_ai_"):
                 matched_email = verify_ai_key(header_token.strip())
@@ -178,30 +143,21 @@ def resolve_user_context(request, body_params: Optional[Dict[str, Any]] = None) 
             if matched_email:
                 django_user = _find_or_create_user_by_email(matched_email)
 
-    # 4. Kiểm tra tham số trong body (auth_email + auth_password hoặc session_token / auth_token)
+    # 4. Kiểm tra tham số trong body (session_token / ai_key = ft_ai_...)
     params = body_params or (request.data if hasattr(request, "data") and isinstance(request.data, dict) else {})
     if django_user is None and isinstance(params, dict):
+        # Chỉ nhận mã ft_ai_ trong tham số; token phiên web và mật khẩu không đi qua khung chat.
         body_token = str(params.get("session_token") or params.get("auth_token") or params.get("ai_key") or "").strip()
-        body_email = params.get("auth_email")
-        body_pass = params.get("auth_password")
-
         if body_token.startswith("ft_ai_"):
             matched_email = verify_ai_key(body_token)
             if matched_email:
                 django_user = _find_or_create_user_by_email(matched_email)
-        elif body_token:
-            tok = Token.objects.select_related("user").filter(key=body_token).first()
-            if tok and getattr(tok.user, "is_active", True):
-                django_user = tok.user
-        elif body_email and body_pass:
-            django_user = authenticate_by_credentials(str(body_email), str(body_pass), request=request)
 
     # Nếu vẫn không xác thực được
     if django_user is None:
         raise exceptions.AuthenticationFailed(
-            "Yêu cầu chưa được xác thực. Bạn có thể dùng Mã kết nối AI (AI Access Key: ft_ai_...), "
-            "tài khoản hệ thống (Email và Mật khẩu) thông qua HTTP Basic Auth, "
-            "hoặc gọi công cụ 'auth_login' ngay trong cuộc trò chuyện."
+            "Yêu cầu chưa được xác thực. Hãy dùng Mã kết nối AI (ft_ai_...): tạo ở Hồ sơ cá nhân > "
+            "Trợ lý AI & MCP, rồi gắn vào header Authorization: Bearer ft_ai_... hoặc URL ?key=ft_ai_..."
         )
 
     # Tài khoản đã bị khóa thì mọi mã kết nối AI / token của tài khoản đó đều không dùng được.

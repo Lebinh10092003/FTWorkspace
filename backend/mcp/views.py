@@ -28,6 +28,7 @@ from . import (  # noqa: F401
     tools_customers,
     tools_documents,
     tools_email,
+    tools_exam_ops,
     tools_examination,
     tools_finance,
     tools_schedule,
@@ -43,7 +44,7 @@ def _cors(response):
     response["Access-Control-Allow-Origin"] = "*"
     response["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, DELETE"
     response["Access-Control-Allow-Headers"] = (
-        "Content-Type, Authorization, X-AI-Key, X-API-Key, X-User-Email, X-User-Password, X-Auth-Token"
+        "Content-Type, Authorization, X-AI-Key, X-API-Key, X-Auth-Token"
     )
     return response
 

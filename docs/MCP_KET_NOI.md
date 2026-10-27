@@ -83,7 +83,8 @@ Hỏi AI: *"Tôi là ai trên FTWorkspace?"*. AI sẽ gọi công cụ `system_w
 ## Lưu ý bảo mật
 
 - Mã đặt trong URL (`?key=`) có thể bị ghi vào nhật ký máy chủ (nginx) và lịch sử của ứng dụng. Chỉ dùng cách này khi ứng dụng không cho nhập header (claude.ai, ChatGPT, Claude Desktop trên Windows). Mỗi ứng dụng dùng một mã riêng để thu hồi được riêng.
-- URL chỉ nhận mã `ft_ai_`, không bao giờ nhận mật khẩu.
+- MCP chỉ nhận mã `ft_ai_` (header, URL, hoặc Basic Auth với mã ở ô password). Không nhận email/mật khẩu tài khoản ở bất kỳ đâu; công cụ `auth_login` chỉ hướng dẫn cách tạo mã.
+- Trang đăng nhập web khóa tạm 15 phút khi một email sai 10 lần, hoặc một IP sai 50 lần trong 15 phút (`authentication/login_throttle.py`).
 - Mật khẩu tài khoản AI của khách hàng bị che khi tra cứu (`crm_list_ai_accounts`); chỉ hiện khi gửi `show_passwords: true`, và mỗi lần hiện hoặc xuất danh sách đều ghi nhật ký.
 - Nhật ký audit MCP tự che mọi trường mật khẩu/token/mã kết nối (`redact_secrets` trong `security.py`).
 - Tài khoản công ty (`company_*`) chỉ Admin dùng được. Xem mật khẩu phải nêu lý do (`company_get_account_password`), được ghi vào nhật ký của tài khoản đó.
@@ -98,6 +99,10 @@ Hỏi AI: *"Tôi là ai trên FTWorkspace?"*. AI sẽ gọi công cụ `system_w
 | `company_list_accounts`, `company_accounts_overview` | Admin | Tra cứu tài khoản công ty, chi phí/tháng, lịch gia hạn |
 | `company_create_account`, `company_update_account`, `company_delete_account` | Admin | Thêm/sửa/xóa (xóa cần `confirm: true`) |
 | `company_get_account_password` | Admin | Lấy mật khẩu, bắt buộc có `reason` |
+| `exam_list_round_results` | Nhân viên Khảo thí | Thí sinh của một vòng: SBD, phòng, điểm, xếp hạng, kết quả; lọc người chưa có điểm |
+| `exam_update_round_results` | Quản lý Khảo thí | Nhập điểm/kết quả theo mã FT vào bản kết quả sẵn có của vòng; tự ghi ra Sheet như web; dòng lỗi chỉ bỏ qua dòng đó |
+| `exam_list_rooms` | Nhân viên Khảo thí | Phòng thi, sức chứa, số thí sinh đã xếp, ca và giám thị (chỉ xem) |
+| `exam_billing_overview` | Có quyền Báo cáo thu chi | Đối soát lệ phí: chờ chuyển khoản, chờ hóa đơn, đã thu (chỉ xem) |
 
 Mỗi công cụ có `annotations` theo đặc tả MCP (`readOnlyHint`, `destructiveHint`) để ứng dụng AI biết khi nào cần hỏi xác nhận.
 

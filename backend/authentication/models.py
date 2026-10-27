@@ -107,3 +107,13 @@ class SystemConfig(models.Model):
 
     def __str__(self):
         return self.key
+
+
+class LoginThrottle(models.Model):
+    """Đếm lần đăng nhập sai theo email hoặc IP để chặn dò mật khẩu."""
+
+    key = models.CharField(max_length=320, unique=True)
+    failures = models.PositiveIntegerField(default=0)
+    window_started_at = models.DateTimeField()
+    locked_until = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)

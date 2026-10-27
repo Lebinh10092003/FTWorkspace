@@ -170,7 +170,7 @@ class ToolRegistry:
             "openapi": "3.1.0",
             "info": {
                 "title": "FTWorkspace Unified MCP & AI Actions API",
-                "description": "Giao tiếp toàn diện với hệ sinh thái FTWorkspace (Khảo thí, CRM Công nghệ, Lịch công tác, Chấm công, Thu chi, Hành chính) dựa trên tài khoản thông thường của hệ thống (HTTP Basic Auth hoặc Đăng nhập trực tiếp).",
+                "description": "Giao tiếp toàn diện với hệ sinh thái FTWorkspace (Khảo thí, CRM Công nghệ, Lịch công tác, Chấm công, Thu chi, Hành chính) xác thực bằng Mã kết nối AI (ft_ai_...).",
                 "version": "1.0.0",
             },
             "servers": [
@@ -185,12 +185,12 @@ class ToolRegistry:
                     "BasicAuth": {
                         "type": "http",
                         "scheme": "basic",
-                        "description": "Đăng nhập bằng Email và Mật khẩu tài khoản thông thường của hệ thống FTWorkspace.",
+                        "description": "Nhập Mã kết nối AI (ft_ai_...) vào ô username hoặc password. Không dùng mật khẩu tài khoản.",
                     },
                     "BearerAuth": {
                         "type": "http",
                         "scheme": "bearer",
-                        "description": "Token của tài khoản người dùng FTWorkspace.",
+                        "description": "Mã kết nối AI ft_ai_... tạo ở Hồ sơ cá nhân > Trợ lý AI & MCP.",
                     },
                 }
             },
