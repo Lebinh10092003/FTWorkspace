@@ -64,7 +64,7 @@ Hỏi AI: *"Tôi là ai trên FTWorkspace?"*. AI sẽ gọi công cụ `system_w
 - Mã `ft_ai_` trong URL có thể nằm trong nhật ký nginx và lịch sử ứng dụng; ưu tiên OAuth.
 - Mật khẩu tài khoản AI của khách hàng bị che khi tra cứu (`crm_list_ai_accounts`); chỉ hiện khi gửi `show_passwords: true`, và mỗi lần hiện hoặc xuất danh sách đều ghi nhật ký.
 - Nhật ký audit MCP tự che mọi trường mật khẩu/token/mã kết nối (`redact_secrets` trong `security.py`).
-- Tài khoản công ty (`company_*`) chỉ Admin dùng được. Xem mật khẩu phải nêu lý do (`company_get_account_password`), được ghi vào nhật ký của tài khoản đó.
+- Bảng Tài khoản nội bộ (Tài nguyên > Tài khoản nội bộ, công cụ `company_*`): mọi nhân viên xem, thêm, sửa; chỉ Admin xóa hẳn. Qua MCP, danh sách không kèm mật khẩu; lấy mật khẩu bằng `company_get_account_password` (bắt buộc nêu lý do, ghi nhật ký). Tài khoản của khách hàng lưu ở Đào tạo số > TK AI (`crm_*_ai_accounts`).
 
 ## Công cụ mới (v1.2)
 
@@ -73,9 +73,10 @@ Hỏi AI: *"Tôi là ai trên FTWorkspace?"*. AI sẽ gọi công cụ `system_w
 | `crm_pipeline_overview` | Nhân viên Đào tạo số | Khách hàng mới theo giai đoạn, dịch vụ sắp/đã hết hạn, tài khoản AI sắp hết hạn |
 | `crm_list_meetings` | Nhân viên Đào tạo số | Lịch gặp khách hàng theo khoảng ngày, khách hàng, nhân viên |
 | `crm_update_customer` | Quản lý | Sửa liên hệ, địa chỉ, trạng thái hợp đồng; thêm đầu mối; nối thêm ghi chú chăm sóc |
-| `company_list_accounts`, `company_accounts_overview` | Admin | Tra cứu tài khoản công ty, chi phí/tháng, lịch gia hạn |
-| `company_create_account`, `company_update_account`, `company_delete_account` | Admin | Thêm/sửa/xóa (xóa cần `confirm: true`) |
-| `company_get_account_password` | Admin | Lấy mật khẩu, bắt buộc có `reason` |
+| `company_list_accounts`, `company_accounts_overview` | Mọi nhân viên | Tra cứu bảng Tài khoản nội bộ, chi phí/tháng, lịch gia hạn |
+| `company_create_account`, `company_update_account` | Mọi nhân viên | Thêm/sửa tài khoản nội bộ |
+| `company_delete_account` | Admin | Xóa hẳn (cần `confirm: true`) |
+| `company_get_account_password` | Mọi nhân viên | Lấy mật khẩu, bắt buộc có `reason` |
 | `exam_list_round_results` | Nhân viên Khảo thí | Thí sinh của một vòng: SBD, phòng, điểm, xếp hạng, kết quả; lọc người chưa có điểm |
 | `exam_update_round_results` | Quản lý Khảo thí | Nhập điểm/kết quả theo mã FT vào bản kết quả sẵn có của vòng; tự ghi ra Sheet như web; dòng lỗi chỉ bỏ qua dòng đó |
 | `exam_list_rooms` | Nhân viên Khảo thí | Phòng thi, sức chứa, số thí sinh đã xếp, ca và giám thị (chỉ xem) |
@@ -90,7 +91,7 @@ ChatGPT tự chặn lệnh gọi công cụ có mật khẩu trong tham số ("b
 | Công cụ | Quyền | Việc |
 |---|---|---|
 | `crm_import_ai_accounts_from_sheet` | Nhân viên Đào tạo số | Tài khoản AI của khách hàng: email, mật khẩu, người nhận, nền tảng; cột Trường (nếu có) để chia theo từng khách hàng |
-| `company_import_accounts_from_sheet` | Admin | Tài khoản công ty: tên dịch vụ, email đăng nhập, mật khẩu (mã hóa khi lưu), 2FA, phụ trách, gói, chi phí, ngày gia hạn |
+| `company_import_accounts_from_sheet` | Mọi nhân viên | Tài khoản nội bộ: tên dịch vụ, email đăng nhập, mật khẩu (mã hóa khi lưu), 2FA, phụ trách, gói, chi phí, ngày gia hạn |
 
 1. Chia sẻ file Sheet (quyền Xem) cho email Service Account của FTWorkspace. Nếu chưa chia sẻ, công cụ báo lỗi kèm đúng email cần chia sẻ.
 2. Nói với AI, ví dụ: *"Nhập tài khoản AI cho THCS Thực Nghiệm từ Sheet <link>, tab 'Tài khoản', chạy thử trước."*

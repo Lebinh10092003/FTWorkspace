@@ -35,6 +35,7 @@ import {
   School,
   Settings,
   ShieldUser,
+  FolderKey,
   Trophy,
   UploadCloud,
   UserCheck,
@@ -60,6 +61,7 @@ export type WorkspaceAreaId =
   | 'social-dashboard'
   | 'communication-tools'
   | 'account-management'
+  | 'resources'
   | 'finance-report'
   | 'attendance'
   | 'weekly-report';
@@ -133,9 +135,17 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     id: 'account-management',
     label: 'Quản lý nhân viên',
     shortLabel: 'Nhân viên',
-    description: 'Tạo, phân quyền thành viên Workspace và quản lý tài khoản dịch vụ của công ty.',
+    description: 'Tạo và phân quyền thành viên Workspace.',
     icon: ShieldUser,
     path: '/account-management',
+  },
+  {
+    id: 'resources',
+    label: 'Tài nguyên',
+    shortLabel: 'Tài nguyên',
+    description: 'Tài khoản phần mềm, công cụ dùng chung trong công việc nội bộ.',
+    icon: FolderKey,
+    path: '/resources',
   },
   {
     id: 'finance-report',
@@ -342,7 +352,11 @@ export const ATTENDANCE_NAV: ModuleNavItem[] = [
 /** Horizontal menu of "Quản lý nhân viên". Ids match the module tabs. */
 export const ACCOUNT_MANAGEMENT_NAV: ModuleNavItem[] = [
   { id: 'employees', label: 'Danh sách nhân viên', icon: Users },
-  { id: 'company-accounts', label: 'Tài khoản công ty', icon: KeyRound },
+];
+
+/** Horizontal menu of "Tài nguyên". Ids match the module tabs. */
+export const RESOURCES_NAV: ModuleNavItem[] = [
+  { id: 'internal-accounts', label: 'Tài khoản nội bộ', icon: KeyRound },
 ];
 
 /** Horizontal menu of "Báo cáo thu chi". */

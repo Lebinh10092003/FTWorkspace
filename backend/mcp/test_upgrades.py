@@ -73,7 +73,7 @@ class MCPUpgradeTests(TestCase):
         self.assertFalse(tools["crm_create_lead"]["annotations"]["destructiveHint"])
         self.assertTrue(tools["crm_delete_ai_account"]["annotations"]["destructiveHint"])
         self.assertTrue(tools["company_delete_account"]["annotations"]["destructiveHint"])
-        self.assertEqual(tools["company_list_accounts"]["title"], "Danh sách tài khoản công ty")
+        self.assertEqual(tools["company_list_accounts"]["title"], "Danh sách tài khoản nội bộ")
 
     # ---------------------------------------------------------------- khách hàng
     def test_update_customer_requires_manager_and_appends_note(self):
@@ -106,9 +106,12 @@ class MCPUpgradeTests(TestCase):
         self.assertEqual(data["leads_by_stage"]["proposal"]["count"], 1)
 
     # ---------------------------------------------------------------- tài khoản công ty
-    def test_company_account_tools_are_admin_only(self):
-        res = self.call(self.manager, "company_list_accounts")
-        self.assertEqual(res.status_code, 403)
+    def test_internal_account_tools_open_to_employees_delete_admin_only(self):
+        self.assertEqual(self.call(self.staff, "company_list_accounts").status_code, 200)
+        created = self.call(self.staff, "company_create_account", {"name": "Zoom", "username": "zoom@fermat.vn"}).json()["data"]
+        self.assertTrue(created["success"], created)
+        denied = self.call(self.staff, "company_delete_account", {"account_id": created["account"]["id"], "confirm": True})
+        self.assertEqual(denied.status_code, 403)
 
     def test_company_account_tools_flow(self):
         created = self.call(self.admin, "company_create_account", {

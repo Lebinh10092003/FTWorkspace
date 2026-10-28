@@ -15,7 +15,7 @@ import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
 import ModuleShellHeader from './components/layout/ModuleShellHeader';
 import CommandPalette from './components/layout/CommandPalette';
 import { groupByDepartment, resolveDepartmentLayout } from './config/departmentLayout';
-import { ACCOUNT_MANAGEMENT_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
+import { ACCOUNT_MANAGEMENT_NAV, RESOURCES_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
 
 const lazyWithRecovery = <T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) => lazy(async () => {
   const retryKey = `ft-workspace-lazy-reload:${window.location.pathname}`;
@@ -62,7 +62,7 @@ const GuestInvigilation = lazyWithRecovery(() => import('./components/examinatio
 const PublicExamRegistration = lazyWithRecovery(() => import('./components/examination/PublicExamRegistration'));
 const ChatbotAssistant = lazyWithRecovery(() => import('./components/chatbot/ChatbotAssistant'));
 
-type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management';
+type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -199,7 +199,12 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/examination')) return 'examination';
   if (path.startsWith('/qr-generator')) return 'qr-generator';
   if (path.startsWith('/attendance')) return 'attendance';
-  if (path.startsWith('/account-management')) return 'account-management';
+  if (path.startsWith('/account-management')) {
+    // Bảng tài khoản công ty cũ (#company-accounts) đã chuyển sang Tài nguyên > Tài khoản nội bộ.
+    if (window.location.hash === '#company-accounts') return 'resources';
+    return 'account-management';
+  }
+  if (path.startsWith('/resources')) return 'resources';
   return 'workspace';
 }
 
@@ -258,7 +263,6 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [accessNotice, setAccessNotice] = useState('');
-  const [accountTab, setAccountTab] = useState<'employees' | 'company-accounts'>(() => (window.location.hash === '#company-accounts' ? 'company-accounts' : 'employees'));
   const [appearance, setAppearance] = useState<WorkspaceAppearance>(readWorkspaceAppearance);
 
   const [viewMode, setViewModeState] = useState<ViewMode>(getInitialViewMode());
@@ -291,7 +295,7 @@ export default function App() {
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
   const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
-  const canAccessView = (mode: ViewMode) => { if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
+  const canAccessView = (mode: ViewMode) => { if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
   useEffect(() => {
     if (isGuest || !idToken) { setUpcomingDuties(0); return; }
@@ -836,6 +840,29 @@ export default function App() {
     );
   }
 
+  if (viewMode === 'resources') {
+    if (isGuest) return null;
+    return (
+      <>
+        <div className="ft-module-shell flex min-h-dvh flex-col font-sans">
+          <ModuleShellHeader
+            eyebrow="Tài nguyên dùng chung"
+            title="Tài nguyên"
+            items={RESOURCES_NAV}
+            activeId="internal-accounts"
+            onSelect={() => undefined}
+            ariaLabel="Điều hướng Tài nguyên"
+            account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />}
+          />
+          <main className="min-w-0 flex-1">
+            <div className="ft-module-content mx-auto p-5 md:p-7"><Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Đang tải...</div>}><CompanyAccounts idToken={idToken || ''} canDelete={userRole === 'ADMIN'} /></Suspense></div>
+          </main>
+        </div>
+        {loginModal}{profileModal}
+      </>
+    );
+  }
+
   if (viewMode === 'account-management') {
     if (userRole !== 'ADMIN') return null;
     return (
@@ -845,13 +872,13 @@ export default function App() {
             eyebrow="Quản trị Workspace"
             title="Quản lý nhân viên"
             items={ACCOUNT_MANAGEMENT_NAV}
-            activeId={accountTab}
-            onSelect={id => { const next = id === 'company-accounts' ? 'company-accounts' : 'employees'; setAccountTab(next); window.history.replaceState(null, '', `/account-management${next === 'company-accounts' ? '#company-accounts' : ''}`); }}
+            activeId="employees"
+            onSelect={() => undefined}
             ariaLabel="Điều hướng Quản lý nhân viên"
             account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />}
           />
           <main className="min-w-0 flex-1">
-            <div className="ft-module-content mx-auto p-5 md:p-7"><Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Đang tải...</div>}>{accountTab === 'company-accounts' ? <CompanyAccounts idToken={idToken || ''} /> : <AccountManagement idToken={idToken || ''} userRole={userRole} />}</Suspense></div>
+            <div className="ft-module-content mx-auto p-5 md:p-7"><Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Đang tải...</div>}><AccountManagement idToken={idToken || ''} userRole={userRole} /></Suspense></div>
           </main>
         </div>
         {loginModal}{profileModal}
@@ -1218,6 +1245,7 @@ export default function App() {
       'attendance': 'attendance',
       'social-dashboard': 'social-dashboard',
       'account-management': 'account-management',
+      'resources': 'resources',
       'finance-report': 'finance-report',
       'examination': 'examination',
       'digital-training': 'digital-training',

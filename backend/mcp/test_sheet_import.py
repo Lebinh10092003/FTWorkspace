@@ -126,9 +126,11 @@ class SheetImportToolTests(TestCase):
         again = self.call(self.admin, "company_import_accounts_from_sheet", args, values).json()["data"]
         self.assertEqual((again["created"], again["updated"]), (0, 2))
 
-    def test_company_import_is_admin_only(self):
-        res = self.staff.post("/api/mcp/action/company_import_accounts_from_sheet", {"spreadsheet_url": SHEET_URL}, format="json")
-        self.assertIn(res.status_code, (401, 403))
+    def test_internal_accounts_import_open_to_every_employee(self):
+        employee = _client("nv@fermat.vn", "EMPLOYEE", [])
+        values = [["Tên dịch vụ", "Email đăng nhập", "Mật khẩu"], ["Zoom", "zoom@fermat.vn", "Zoom#1"]]
+        data = self.call(employee, "company_import_accounts_from_sheet", {"spreadsheet_url": SHEET_URL}, values).json()["data"]
+        self.assertEqual(data["created"], 1)
 
     def test_legacy_import_no_longer_echoes_passwords(self):
         res = self.staff.post("/api/mcp/action/crm_import_ai_accounts", {

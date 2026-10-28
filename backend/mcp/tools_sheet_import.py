@@ -293,16 +293,16 @@ def crm_import_ai_accounts_from_sheet(
 
 @register_tool(
     name="company_import_accounts_from_sheet",
-    title="Nhập tài khoản công ty từ Google Sheet",
+    title="Nhập tài khoản nội bộ từ Google Sheet",
     description=(
-        "Nhập hàng loạt tài khoản dịch vụ của công ty (tên dịch vụ, email đăng nhập, mật khẩu, 2FA, người phụ trách, "
+        "Nhập hàng loạt vào bảng Tài khoản nội bộ (mục Tài nguyên): tài khoản phần mềm, công cụ của công ty (tên dịch vụ, email đăng nhập, mật khẩu, 2FA, người phụ trách, "
         "gói, chi phí, ngày gia hạn) từ một Google Sheet. FTWorkspace tự đọc file nên mật khẩu không đi qua cuộc "
         "trò chuyện; KHÔNG chép mật khẩu vào tham số. Trùng tên dịch vụ + tài khoản thì cập nhật. "
         "Chạy dry_run=true trước. Sheet cần chia sẻ quyền Xem cho Service Account của FTWorkspace."
     ),
-    module="account-management",
-    min_role="ADMIN",
-    audit_action="Nhập tài khoản công ty từ Google Sheet",
+    module="resources",
+    min_role="EMPLOYEE",
+    audit_action="Nhập tài khoản nội bộ từ Google Sheet",
     parameters={
         "type": "object",
         "properties": {
@@ -381,5 +381,5 @@ def company_import_accounts_from_sheet(
     summary["rows_skipped"] = errors[:50]
     return {
         "success": True, **summary, "created": created, "updated": updated,
-        "message": f"Đã thêm {created} tài khoản, cập nhật {updated} tài khoản công ty. Mật khẩu đã được mã hóa.",
+        "message": f"Đã thêm {created} tài khoản, cập nhật {updated} tài khoản nội bộ.",
     }

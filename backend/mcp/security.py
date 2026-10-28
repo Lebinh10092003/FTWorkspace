@@ -251,7 +251,7 @@ def check_tool_permission(ctx: Dict[str, Any], tool: MCPTool) -> None:
     access_modules = ctx.get("access_modules", set())
     # Lịch công tác, chấm công và báo cáo tuần cá nhân mặc định mở cho toàn bộ nhân sự đã xác thực
     is_personal_task = (
-        tool.module in {"work-schedule", "attendance", "system", "auth"}
+        tool.module in {"work-schedule", "attendance", "system", "auth", "resources"}
         or tool.name in {"docs_generate_weekly_report", "docs_get_weekly_report"}
     )
     if not is_personal_task:

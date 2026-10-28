@@ -75,11 +75,24 @@ class CompanyAccountApiTests(TestCase):
         self.assertEqual(res["Cache-Control"], "no-store")
         self.assertTrue(CompanyAccountLog.objects.filter(account_id=account_id, action="reveal", actor_email="boss@fermat.vn").exists())
 
-    def test_only_admin_can_use_api(self):
+    def test_every_employee_can_view_and_edit_but_only_admin_deletes(self):
+        employee = APIClient()
+        employee.credentials(HTTP_AUTHORIZATION=f"Bearer {_user('nv@fermat.vn', 'EMPLOYEE').key}")
         account_id = self._create().json()["id"]
-        self.assertEqual(self.staff.get("/api/company-accounts").status_code, 403)
-        self.assertEqual(self.staff.post(f"/api/company-accounts/{account_id}/reveal").status_code, 403)
-        self.assertEqual(APIClient().get("/api/company-accounts").status_code in (401, 403), True)
+
+        listing = employee.get("/api/company-accounts")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.json()[0]["password"], "S3cret-Pass!")
+        created = employee.post("/api/company-accounts", {"name": "Canva nhóm", "username": "nv@fermat.vn", "password": "Canva#1"}, format="json")
+        self.assertEqual(created.status_code, 201, created.content)
+        edited = employee.patch(f"/api/company-accounts/{account_id}", {"password": "Doi#Pass2"}, format="json")
+        self.assertEqual(edited.json()["password"], "Doi#Pass2")
+
+        self.assertEqual(employee.delete(f"/api/company-accounts/{account_id}").status_code, 403)
+        self.assertTrue(CompanyAccount.objects.filter(pk=account_id).exists())
+        self.assertEqual(self.admin.delete(f"/api/company-accounts/{account_id}").status_code, 204)
+
+        self.assertIn(APIClient().get("/api/company-accounts").status_code, (401, 403))
 
     def test_patch_keeps_password_unless_changed_or_cleared(self):
         account_id = self._create().json()["id"]

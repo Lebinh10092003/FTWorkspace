@@ -2,7 +2,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdmin
+from authentication.permissions import IsAdmin, IsWorkspaceAuthenticated
 from authentication.views import _client_ip
 
 from . import services
@@ -28,7 +28,7 @@ def _int_param(value, default=None, maximum=None):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAdmin])
+@permission_classes([IsWorkspaceAuthenticated])
 def company_accounts(request):
     if request.method == "GET":
         params = request.query_params
@@ -51,7 +51,7 @@ def company_accounts(request):
 
 
 @api_view(["GET", "PATCH", "PUT", "DELETE"])
-@permission_classes([IsAdmin])
+@permission_classes([IsWorkspaceAuthenticated])
 def company_account_detail(request, pk):
     account = CompanyAccount.objects.filter(pk=pk).first()
     if not account:
@@ -59,6 +59,10 @@ def company_account_detail(request, pk):
     if request.method == "GET":
         return _no_store(Response(services.account_payload(account, include_password=True)))
     if request.method == "DELETE":
+        # Mọi nhân viên xem và sửa được; xóa hẳn chỉ Admin (không hoàn tác được).
+        if not IsAdmin().has_permission(request, None):
+            return Response({"error": "Chỉ Admin được xóa tài khoản. Muốn ngừng dùng, đổi trạng thái sang Đã hủy."},
+                            status=status.HTTP_403_FORBIDDEN)
         services.delete_account(account, _actor(request), ip=_client_ip(request))
         return Response(status=status.HTTP_204_NO_CONTENT)
     data = request.data if isinstance(request.data, dict) else {}
@@ -70,7 +74,7 @@ def company_account_detail(request, pk):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdmin])
+@permission_classes([IsWorkspaceAuthenticated])
 def company_account_reveal(request, pk):
     account = CompanyAccount.objects.filter(pk=pk).first()
     if not account:
@@ -87,14 +91,14 @@ def company_account_reveal(request, pk):
 
 
 @api_view(["GET"])
-@permission_classes([IsAdmin])
+@permission_classes([IsWorkspaceAuthenticated])
 def company_accounts_summary(request):
     days = _int_param(request.query_params.get("days"), 30, 365)
     return Response(services.summary(CompanyAccount.objects.all(), days_ahead=days))
 
 
 @api_view(["GET"])
-@permission_classes([IsAdmin])
+@permission_classes([IsWorkspaceAuthenticated])
 def company_account_logs(request):
     qs = CompanyAccountLog.objects.all()
     account_id = _int_param(request.query_params.get("account"))

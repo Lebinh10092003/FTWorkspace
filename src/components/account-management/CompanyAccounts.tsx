@@ -21,6 +21,8 @@ import { appDialog } from '../AppDialog';
 
 interface CompanyAccountsProps {
   idToken: string;
+  /** Mọi nhân viên xem và sửa; chỉ Admin được xóa hẳn. */
+  canDelete?: boolean;
 }
 
 type Category = 'email' | 'ai' | 'design' | 'social' | 'cloud' | 'domain' | 'software' | 'finance' | 'government' | 'other';
@@ -212,7 +214,7 @@ function StatTile({ icon: Icon, label, value, tone = 'text-slate-900', sub }: { 
   );
 }
 
-export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
+export default function CompanyAccounts({ idToken, canDelete = false }: CompanyAccountsProps) {
   const [accounts, setAccounts] = useState<CompanyAccount[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -312,7 +314,7 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
   const remove = async (account: CompanyAccount) => {
     const ok = await appDialog.confirm(
       `Xóa hẳn “${account.name}”? Nếu chỉ ngừng dùng, hãy sửa trạng thái thành “Đã hủy” để giữ lịch sử.`,
-      { title: 'Xóa tài khoản công ty', confirmText: 'Xóa hẳn', tone: 'danger' },
+      { title: 'Xóa tài khoản nội bộ', confirmText: 'Xóa hẳn', tone: 'danger' },
     );
     if (!ok) return;
     try {
@@ -343,10 +345,10 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <p className="text-xs font-bold uppercase tracking-[.14em] text-blue-600">FT Workspace</p>
-          <h2 className="mt-1 text-2xl font-extrabold text-slate-900">Tài khoản công ty</h2>
+          <h2 className="mt-1 text-2xl font-extrabold text-slate-900">Tài khoản nội bộ</h2>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Tài khoản dịch vụ do công ty sở hữu: email, AI, thiết kế, mạng xã hội, tên miền, cổng thuế... Chỉ Admin xem được trang này;
-            mật khẩu được mã hóa khi lưu trên máy chủ.
+            Bảng lưu tài khoản và mật khẩu của các phần mềm, công cụ dùng trong công việc nội bộ: email, AI, thiết kế, mạng xã hội,
+            tên miền, cổng thuế... Tài khoản của khách hàng lưu ở Đào tạo số &gt; TK AI.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -471,7 +473,7 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
                   <div className="flex justify-end gap-1">
                     <button onClick={() => void openLogs(account)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="Nhật ký"><History className="h-4 w-4" /></button>
                     <button onClick={() => openEdit(account)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="Sửa"><Edit3 className="h-4 w-4" /></button>
-                    <button onClick={() => void remove(account)} className="rounded-lg p-2 text-rose-500 hover:bg-rose-50" title="Xóa"><Trash2 className="h-4 w-4" /></button>
+                    {canDelete && <button onClick={() => void remove(account)} className="rounded-lg p-2 text-rose-500 hover:bg-rose-50" title="Xóa"><Trash2 className="h-4 w-4" /></button>}
                   </div>
                 </td>
               </tr>
@@ -482,7 +484,7 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
       </div>
 
       {formOpen && (
-        <Dialog title={editing ? `Sửa “${editing.name}”` : 'Thêm tài khoản công ty'} onClose={closeForm} wide>
+        <Dialog title={editing ? `Sửa “${editing.name}”` : 'Thêm tài khoản nội bộ'} onClose={closeForm} wide>
           <form onSubmit={submit} className="space-y-6 p-6">
             {formErrors._ && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{formErrors._}</div>}
             <section className="grid gap-4 sm:grid-cols-2">
@@ -559,7 +561,7 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
       )}
 
       {logsFor && (
-        <Dialog title={logsFor === 'all' ? 'Nhật ký tài khoản công ty' : `Nhật ký “${logsFor.name}”`} onClose={() => setLogsFor(null)}>
+        <Dialog title={logsFor === 'all' ? 'Nhật ký tài khoản nội bộ' : `Nhật ký “${logsFor.name}”`} onClose={() => setLogsFor(null)}>
           <div className="divide-y divide-slate-100 p-2">
             {logs.length === 0 && <p className="px-4 py-10 text-center text-sm text-slate-500">Chưa có nhật ký.</p>}
             {logs.map(item => (

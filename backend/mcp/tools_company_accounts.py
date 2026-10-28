@@ -1,4 +1,7 @@
-"""Công cụ MCP quản lý tài khoản dịch vụ do công ty sở hữu. Chỉ Admin dùng được."""
+"""Công cụ MCP cho bảng Tài khoản nội bộ (mục Tài nguyên): tài khoản phần mềm, công cụ dùng trong công ty.
+
+Mọi nhân viên xem, thêm, sửa được; xóa hẳn chỉ Admin. Tên công cụ giữ company_* để cấu hình AI cũ không hỏng.
+"""
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
@@ -41,7 +44,7 @@ WRITABLE = set(ACCOUNT_FIELDS)
 def _find(account_id: Optional[int], name: str = "") -> tuple[Optional[CompanyAccount], str]:
     if account_id:
         account = CompanyAccount.objects.filter(pk=account_id).first()
-        return account, "" if account else f"Không có tài khoản công ty ID {account_id}."
+        return account, "" if account else f"Không có tài khoản nội bộ ID {account_id}."
     name = str(name or "").strip()
     if not name:
         return None, "Cần account_id hoặc name."
@@ -49,7 +52,7 @@ def _find(account_id: Optional[int], name: str = "") -> tuple[Optional[CompanyAc
     if len(matches) == 1:
         return matches[0], ""
     if not matches:
-        return None, f"Không tìm thấy tài khoản công ty khớp '{name}'."
+        return None, f"Không tìm thấy tài khoản nội bộ khớp '{name}'."
     listing = "; ".join(f"{a.name} (ID {a.id})" for a in matches[:5])
     return None, f"Có nhiều tài khoản khớp '{name}': {listing}. Hãy dùng account_id."
 
@@ -60,13 +63,13 @@ def _fields(kwargs: Dict[str, Any]) -> Dict[str, Any]:
 
 @register_tool(
     name="company_list_accounts",
-    title="Danh sách tài khoản công ty",
+    title="Danh sách tài khoản nội bộ",
     description=(
-        "Tra cứu các tài khoản dịch vụ do công ty sở hữu (email, AI, thiết kế, mạng xã hội, tên miền, cổng thuế...): "
-        "người phụ trách, gói, chi phí, ngày gia hạn. Không trả về mật khẩu; dùng company_get_account_password nếu cần."
+        "Tra cứu bảng Tài khoản nội bộ: tài khoản phần mềm, công cụ của công ty (email, AI, thiết kế, mạng xã hội, tên miền, cổng thuế...): "
+        "người phụ trách, gói, chi phí, ngày gia hạn. Không trả về mật khẩu; dùng company_get_account_password nếu cần. Tài khoản của khách hàng / trường học không lưu ở đây mà ở TK AI (crm_list_ai_accounts, crm_import_ai_accounts_from_sheet)."
     ),
-    module="account-management",
-    min_role="ADMIN",
+    module="resources",
+    min_role="EMPLOYEE",
     parameters={
         "type": "object",
         "properties": {
@@ -91,13 +94,13 @@ def company_list_accounts(ctx: Dict[str, Any], query: str = "", category: str = 
 
 @register_tool(
     name="company_accounts_overview",
-    title="Tổng quan tài khoản công ty",
+    title="Tổng quan tài khoản nội bộ",
     description=(
-        "Tổng quan tài khoản công ty: số tài khoản theo nhóm, tổng chi phí quy ra mỗi tháng, danh sách sắp/quá hạn gia hạn, "
+        "Tổng quan tài khoản nội bộ: số tài khoản theo nhóm, tổng chi phí quy ra mỗi tháng, danh sách sắp/quá hạn gia hạn, "
         "tài khoản chưa có người phụ trách, mật khẩu lâu chưa đổi (trên 180 ngày)."
     ),
-    module="account-management",
-    min_role="ADMIN",
+    module="resources",
+    min_role="EMPLOYEE",
     parameters={
         "type": "object",
         "properties": {"days_ahead": {"type": "integer", "description": "Số ngày tới để xét sắp gia hạn (mặc định 30)"}},
@@ -111,14 +114,14 @@ def company_accounts_overview(ctx: Dict[str, Any], days_ahead: int = 30, **_kwar
 
 @register_tool(
     name="company_get_account_password",
-    title="Xem mật khẩu tài khoản công ty",
+    title="Xem mật khẩu tài khoản nội bộ",
     description=(
-        "Lấy mật khẩu của một tài khoản công ty. Chỉ gọi khi người dùng yêu cầu rõ ràng. "
+        "Lấy mật khẩu của một tài khoản nội bộ. Chỉ gọi khi người dùng yêu cầu rõ ràng. "
         "Mỗi lần xem được ghi vào nhật ký kèm lý do."
     ),
-    module="account-management",
-    min_role="ADMIN",
-    audit_action="Xem mật khẩu tài khoản công ty",
+    module="resources",
+    min_role="EMPLOYEE",
+    audit_action="Xem mật khẩu tài khoản nội bộ",
     destructive=False,
     parameters={
         "type": "object",
@@ -152,15 +155,16 @@ def company_get_account_password(ctx: Dict[str, Any], reason: str, account_id: O
 
 @register_tool(
     name="company_create_account",
-    title="Thêm tài khoản công ty",
+    title="Thêm tài khoản nội bộ",
     description=(
-        "Thêm một tài khoản dịch vụ của công ty. Mật khẩu được mã hóa khi lưu. Có thể bỏ trống password rồi "
+        "Thêm một dòng vào bảng Tài khoản nội bộ (tài khoản phần mềm, công việc của công ty). "
+        "Tài khoản của khách hàng / trường học không lưu ở đây mà ở TK AI (crm_list_ai_accounts, crm_import_ai_accounts_from_sheet). Có thể bỏ trống password rồi "
         "nhập mật khẩu trên web. Nhập nhiều tài khoản hoặc dữ liệu từ Google Sheet: dùng "
         "company_import_accounts_from_sheet (máy chủ tự đọc Sheet, mật khẩu không đi qua cuộc trò chuyện)."
     ),
-    module="account-management",
-    min_role="ADMIN",
-    audit_action="Thêm tài khoản công ty",
+    module="resources",
+    min_role="EMPLOYEE",
+    audit_action="Thêm tài khoản nội bộ",
     parameters={
         "type": "object",
         "properties": ACCOUNT_FIELDS,
@@ -178,14 +182,14 @@ def company_create_account(ctx: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]
 
 @register_tool(
     name="company_update_account",
-    title="Cập nhật tài khoản công ty",
+    title="Cập nhật tài khoản nội bộ",
     description=(
-        "Cập nhật tài khoản công ty: đổi mật khẩu, người phụ trách, gói, chi phí, ngày gia hạn, trạng thái... "
+        "Cập nhật tài khoản nội bộ: đổi mật khẩu, người phụ trách, gói, chi phí, ngày gia hạn, trạng thái... "
         "Chỉ gửi trường cần đổi."
     ),
-    module="account-management",
-    min_role="ADMIN",
-    audit_action="Cập nhật tài khoản công ty",
+    module="resources",
+    min_role="EMPLOYEE",
+    audit_action="Cập nhật tài khoản nội bộ",
     parameters={
         "type": "object",
         "properties": {
@@ -218,14 +222,14 @@ def company_update_account(ctx: Dict[str, Any], account_id: Optional[int] = None
 
 @register_tool(
     name="company_delete_account",
-    title="Xóa tài khoản công ty",
+    title="Xóa tài khoản nội bộ",
     description=(
-        "Xóa hẳn một tài khoản công ty khỏi danh sách. Nếu chỉ ngừng dùng, hãy dùng company_update_account với "
+        "Xóa hẳn một tài khoản nội bộ khỏi danh sách. Nếu chỉ ngừng dùng, hãy dùng company_update_account với "
         "status='cancelled' để giữ lịch sử. Cần confirm=true."
     ),
-    module="account-management",
+    module="resources",
     min_role="ADMIN",
-    audit_action="Xóa tài khoản công ty",
+    audit_action="Xóa tài khoản nội bộ",
     parameters={
         "type": "object",
         "properties": {
