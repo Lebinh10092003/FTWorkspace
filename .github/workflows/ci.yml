@@ -43,7 +43,15 @@ jobs:
       - run: python backend/manage.py check
       # Chạy toàn bộ test của mọi phân hệ trước khi deploy (trước đây chỉ chạy danh sách chọn tay,
       # nên lỗi ở digital_training, social, chatbot, authentication, mcp có thể lên thẳng production).
-      - run: python backend/manage.py test --noinput
+      # Phải chạy trong thư mục backend: chạy từ gốc repo, Django tìm thấy 0 test mà vẫn báo thành công.
+      # Bước kiểm tra số test để lỗi này không thể lặp lại âm thầm.
+      - name: Run all backend tests
+        working-directory: backend
+        run: |
+          python manage.py test --noinput 2>&1 | tee test-output.log
+          ran=$(grep -oE '^Ran [0-9]+ test' test-output.log | grep -oE '[0-9]+' || echo 0)
+          echo "Backend tests run: $ran"
+          if [ "$ran" -lt 500 ]; then echo "::error::Chỉ chạy $ran test backend (cần >= 500). Kiểm tra lại bước test."; exit 1; fi
       - run: python backend/manage.py makemigrations --check --dry-run
 
   deploy:
