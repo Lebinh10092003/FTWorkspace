@@ -118,33 +118,38 @@ export default function McpConnectGuide({ mcpUrl, apiKey, idToken }: { mcpUrl: s
   };
 
   return (
-    <div className="rounded-2xl border border-violet-200 bg-violet-50/40 p-5">
+    <div className="rounded-2xl border border-violet-200 dark:border-violet-900/60 bg-violet-50/50 dark:bg-violet-950/20 p-4 sm:p-5 text-[var(--ft-text-main)]">
       <div className="flex items-start gap-3">
-        <div className="p-2.5 rounded-xl bg-violet-600 text-white shadow-sm shrink-0">
+        <div className="p-2.5 rounded-xl bg-violet-600 dark:bg-violet-500 text-white shadow-xs shrink-0">
           <Plug className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-extrabold text-slate-900 text-base">Kết nối MCP với ChatGPT, Claude, Cursor</h3>
-          <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+          <h3 className="font-extrabold text-[var(--ft-text-main)] text-base">Kết nối MCP với ChatGPT, Claude, Cursor</h3>
+          <p className="mt-1 text-xs sm:text-sm text-[var(--ft-text-sub)] leading-relaxed">
             Chỉ cần dán URL bên dưới vào ứng dụng AI. Ứng dụng sẽ tự mở trang đăng nhập FTWorkspace, bạn đăng nhập là kết nối xong.
             AI chỉ làm được những việc tài khoản của bạn được phép.
           </p>
         </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-2">
-        <input readOnly value={mcpUrl} className="ft-input w-full min-w-0 bg-white font-mono text-xs text-slate-700" />
+      <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        <input
+          readOnly
+          value={mcpUrl}
+          aria-label="URL máy chủ MCP"
+          className="ft-input w-full min-w-0 bg-[var(--ft-card-bg)] font-mono text-xs text-[var(--ft-text-main)] min-h-[44px] px-3.5 rounded-xl border border-[var(--ft-border)]"
+        />
         <button
           type="button"
           onClick={() => copy(mcpUrl, 'url')}
-          className="ft-primary inline-flex items-center gap-1.5 text-xs whitespace-nowrap shrink-0 py-2.5 px-4"
+          className="ft-primary inline-flex items-center justify-center gap-1.5 text-xs font-bold whitespace-nowrap shrink-0 min-h-[44px] px-4 w-full sm:w-auto rounded-xl cursor-pointer shadow-xs"
         >
-          {copied === 'url' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          {copied === 'url' ? <Check className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
           {copied === 'url' ? 'Đã sao chép' : 'Sao chép URL MCP'}
         </button>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-1.5" role="tablist">
+      <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Chọn ứng dụng AI">
         {CLIENTS.map(item => (
           <button
             key={item.id}
@@ -152,8 +157,10 @@ export default function McpConnectGuide({ mcpUrl, apiKey, idToken }: { mcpUrl: s
             role="tab"
             aria-selected={client === item.id}
             onClick={() => setClient(item.id)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              client === item.id ? 'bg-violet-600 text-white' : 'bg-white text-slate-700 border border-slate-200 hover:bg-violet-50'
+            className={`min-h-[44px] rounded-xl px-3.5 py-2 text-xs font-bold transition cursor-pointer ${
+              client === item.id
+                ? 'bg-violet-600 dark:bg-violet-500 text-white shadow-xs'
+                : 'bg-[var(--ft-card-bg)] text-[var(--ft-text-sub)] border border-[var(--ft-border)] hover:bg-[var(--ft-surface-2)] hover:text-[var(--ft-text-main)]'
             }`}
           >
             {item.label}
@@ -161,47 +168,52 @@ export default function McpConnectGuide({ mcpUrl, apiKey, idToken }: { mcpUrl: s
         ))}
       </div>
 
-      <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-slate-700">
+      <ol className="mt-3.5 list-decimal space-y-1.5 pl-5 text-xs text-[var(--ft-text-sub)] leading-relaxed">
         {steps.map(step => (
           <li key={step}>{step}</li>
         ))}
       </ol>
 
-      <div className="mt-3 relative">
-        <pre className="max-h-60 overflow-auto rounded-xl bg-slate-900 p-3 pr-24 text-[11px] leading-relaxed text-slate-100 whitespace-pre-wrap break-all">
+      <div className="mt-3.5 relative">
+        <pre className="max-h-60 overflow-auto rounded-xl bg-slate-900 dark:bg-slate-950 p-3.5 pr-24 text-xs leading-relaxed text-slate-100 whitespace-pre-wrap break-all border border-slate-800">
           {code}
         </pre>
         <button
           type="button"
           onClick={() => copy(code, 'code')}
-          className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-[11px] font-bold text-white hover:bg-white/20"
+          className="absolute right-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-bold text-white transition cursor-pointer min-h-[36px]"
         >
-          {copied === 'code' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          {copied === 'code' ? 'Đã chép' : 'Chép'}
+          {copied === 'code' ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied === 'code' ? 'Đã chép' : 'Chép mã'}
         </button>
       </div>
 
-      <label className="mt-3 flex items-center gap-2 text-[11px] text-slate-600">
-        <input type="checkbox" checked={useKey} onChange={event => setUseKey(event.target.checked)} />
-        Ứng dụng không hỗ trợ đăng nhập (OAuth)? Dùng Mã kết nối AI (ft_ai_) ở khung trên thay thế.
+      <label className="mt-3.5 flex items-start gap-2.5 text-xs text-[var(--ft-text-sub)] cursor-pointer">
+        <input
+          type="checkbox"
+          checked={useKey}
+          onChange={event => setUseKey(event.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+        />
+        <span>Ứng dụng không hỗ trợ đăng nhập (OAuth)? Dùng Mã kết nối AI (ft_ai_) ở khung trên thay thế.</span>
       </label>
       {useKey && !apiKey && (
-        <p className="mt-1 text-[11px] text-amber-700">
+        <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
           Thay <span className="font-mono font-bold">{KEY_PLACEHOLDER}</span> bằng mã ft_ai_ bạn đã lưu. Mã vừa tạo sẽ tự điền vào đây.
         </p>
       )}
 
       {connections.length > 0 && (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+        <div className="mt-4 rounded-xl border border-[var(--ft-border)] bg-[var(--ft-card-bg)] overflow-hidden">
+          <div className="border-b border-[var(--ft-border)] bg-[var(--ft-surface-2)] px-3.5 py-2.5 text-xs font-bold uppercase tracking-wider text-[var(--ft-text-sub)]">
             Ứng dụng AI đã đăng nhập
           </div>
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-[var(--ft-border)]/60">
             {connections.map(item => (
-              <li key={item.id} className="flex items-center gap-3 px-3 py-2 text-xs">
+              <li key={item.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5 text-xs">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-bold text-slate-800">{item.client}</div>
-                  <div className="text-[11px] text-slate-500">
+                  <div className="truncate font-bold text-[var(--ft-text-main)]">{item.client}</div>
+                  <div className="text-xs text-[var(--ft-text-sub)]">
                     Kết nối {new Date(item.created_at).toLocaleDateString('vi-VN')} ·{' '}
                     {item.last_used_at ? `dùng gần nhất ${formatShort(item.last_used_at)}` : 'chưa dùng'}
                   </div>
@@ -209,9 +221,9 @@ export default function McpConnectGuide({ mcpUrl, apiKey, idToken }: { mcpUrl: s
                 <button
                   type="button"
                   onClick={() => void disconnect(item.id)}
-                  className="inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-800"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 min-h-[44px] cursor-pointer"
                 >
-                  <Unplug className="h-3.5 w-3.5" /> Ngắt kết nối
+                  <Unplug className="h-4 w-4" /> Ngắt kết nối
                 </button>
               </li>
             ))}
