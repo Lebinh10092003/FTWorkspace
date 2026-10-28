@@ -137,7 +137,12 @@ def account_payload(account: CompanyAccount, *, include_password: bool = False) 
         "updatedAt": account.updated_at.isoformat() if account.updated_at else None,
     }
     if include_password:
-        data["password"] = decrypt_password(account.password_encrypted)
+        # Trang quản lý (chỉ Admin) hiện mật khẩu như văn bản thường; trong DB vẫn lưu dạng mã hóa.
+        try:
+            data["password"] = decrypt_password(account.password_encrypted)
+        except ValueError:
+            data["password"] = ""
+            data["passwordError"] = "Không giải mã được mật khẩu đã lưu. Hãy nhập lại."
     return data
 
 

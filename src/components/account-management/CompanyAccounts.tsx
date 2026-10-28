@@ -5,8 +5,6 @@ import {
   Copy,
   Edit3,
   ExternalLink,
-  Eye,
-  EyeOff,
   History,
   KeyRound,
   Plus,
@@ -37,6 +35,9 @@ interface CompanyAccount {
   provider: string;
   loginUrl: string;
   username: string;
+  /** Mật khẩu dạng văn bản thường (API chỉ Admin trả về; trong DB vẫn mã hóa). */
+  password?: string;
+  passwordError?: string;
   hasPassword: boolean;
   passwordChangedAt: string | null;
   twoFactor: string;
@@ -134,7 +135,6 @@ const STATUS_TONE: Record<Status, string> = {
   suspended: 'bg-amber-50 text-amber-700 ring-amber-200',
   cancelled: 'bg-slate-100 text-slate-500 ring-slate-200',
 };
-const REVEAL_SECONDS = 30;
 
 const blankDraft = (): Draft => ({
   name: '', category: 'other', provider: '', loginUrl: '', username: '', password: '', twoFactor: '',
@@ -143,7 +143,7 @@ const blankDraft = (): Draft => ({
 });
 
 const draftFrom = (a: CompanyAccount): Draft => ({
-  name: a.name, category: a.category, provider: a.provider, loginUrl: a.loginUrl, username: a.username, password: '',
+  name: a.name, category: a.category, provider: a.provider, loginUrl: a.loginUrl, username: a.username, password: a.password || '',
   twoFactor: a.twoFactor, recoveryEmail: a.recoveryEmail, recoveryPhone: a.recoveryPhone, ownerEmail: a.ownerEmail,
   department: a.department, users: a.users.join(', '), plan: a.plan, cost: a.cost == null ? '' : String(a.cost),
   billingCycle: a.billingCycle, renewalDate: a.renewalDate || '', autoRenew: a.autoRenew, paymentMethod: a.paymentMethod,
@@ -226,8 +226,6 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
   const [draft, setDraft] = useState<Draft>(blankDraft);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const [showDraftPassword, setShowDraftPassword] = useState(false);
-  const [revealed, setRevealed] = useState<Record<number, string>>({});
   const [logsFor, setLogsFor] = useState<CompanyAccount | 'all' | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
@@ -271,14 +269,6 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
     return () => window.clearTimeout(timer);
   }, [search, category, status, dueOnly, idToken]);
 
-  // Mật khẩu đã hiện tự ẩn lại sau REVEAL_SECONDS giây.
-  useEffect(() => {
-    const ids = Object.keys(revealed);
-    if (!ids.length) return;
-    const timer = window.setTimeout(() => setRevealed({}), REVEAL_SECONDS * 1000);
-    return () => window.clearTimeout(timer);
-  }, [revealed]);
-
   const copy = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -288,35 +278,8 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
     }
   };
 
-  const fetchPassword = async (account: CompanyAccount) => {
-    if (revealed[account.id] !== undefined) return revealed[account.id];
-    const data = await request(`/api/company-accounts/${account.id}/reveal`, { method: 'POST' });
-    return String(data?.password || '');
-  };
-
-  const toggleReveal = async (account: CompanyAccount) => {
-    if (revealed[account.id] !== undefined) {
-      setRevealed(prev => { const next = { ...prev }; delete next[account.id]; return next; });
-      return;
-    }
-    try {
-      const password = await fetchPassword(account);
-      setRevealed(prev => ({ ...prev, [account.id]: password }));
-    } catch (error: any) {
-      setNotice({ type: 'error', text: error.message });
-    }
-  };
-
-  const copyPassword = async (account: CompanyAccount) => {
-    try {
-      await copy(await fetchPassword(account), `mật khẩu ${account.name}`);
-    } catch (error: any) {
-      setNotice({ type: 'error', text: error.message });
-    }
-  };
-
-  const openCreate = () => { setEditing(null); setDraft(blankDraft()); setFormErrors({}); setShowDraftPassword(false); setFormOpen(true); };
-  const openEdit = (account: CompanyAccount) => { setEditing(account); setDraft(draftFrom(account)); setFormErrors({}); setShowDraftPassword(false); setFormOpen(true); };
+  const openCreate = () => { setEditing(null); setDraft(blankDraft()); setFormErrors({}); setFormOpen(true); };
+  const openEdit = (account: CompanyAccount) => { setEditing(account); setDraft(draftFrom(account)); setFormErrors({}); setFormOpen(true); };
   const closeForm = () => { setFormOpen(false); setEditing(null); setDraft(blankDraft()); };
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft(prev => ({ ...prev, [key]: value }));
 
@@ -326,14 +289,17 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
     setSaving(true);
     setFormErrors({});
     const payload: Record<string, unknown> = { ...draft, users: draft.users, tags: draft.tags };
-    if (!draft.password) delete payload.password;
+    // Mật khẩu là văn bản thường: xóa trắng ô khi sửa nghĩa là bỏ mật khẩu đã lưu.
+    if (!draft.password) {
+      delete payload.password;
+      if (editing?.hasPassword) payload.clearPassword = true;
+    }
     try {
       await request(editing ? `/api/company-accounts/${editing.id}` : '/api/company-accounts', {
         method: editing ? 'PATCH' : 'POST',
         body: JSON.stringify(payload),
       });
       setNotice({ type: 'success', text: editing ? `Đã cập nhật “${draft.name}”.` : `Đã thêm “${draft.name}”.` });
-      if (editing) setRevealed(prev => { const next = { ...prev }; delete next[editing.id]; return next; });
       closeForm();
       void load();
     } catch (error: any) {
@@ -379,8 +345,8 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
           <p className="text-xs font-bold uppercase tracking-[.14em] text-blue-600">FT Workspace</p>
           <h2 className="mt-1 text-2xl font-extrabold text-slate-900">Tài khoản công ty</h2>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Tài khoản dịch vụ do công ty sở hữu: email, AI, thiết kế, mạng xã hội, tên miền, cổng thuế... Mật khẩu được mã hóa,
-            mỗi lần xem đều ghi nhật ký.
+            Tài khoản dịch vụ do công ty sở hữu: email, AI, thiết kế, mạng xã hội, tên miền, cổng thuế... Chỉ Admin xem được trang này;
+            mật khẩu được mã hóa khi lưu trên máy chủ.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -471,15 +437,14 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
                       {account.username}<Copy className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100" />
                     </button>
                   ) : <span className="text-slate-400">—</span>}
-                  {account.hasPassword && (
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">{revealed[account.id] ?? '••••••••'}</code>
-                      <button onClick={() => void toggleReveal(account)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title={revealed[account.id] !== undefined ? 'Ẩn' : `Hiện ${REVEAL_SECONDS} giây (ghi nhật ký)`}>
-                        {revealed[account.id] !== undefined ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                      </button>
-                      <button onClick={() => void copyPassword(account)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Sao chép mật khẩu (ghi nhật ký)"><Copy className="h-3.5 w-3.5" /></button>
-                    </div>
-                  )}
+                  {account.password ? (
+                    <button onClick={() => void copy(account.password || '', `mật khẩu ${account.name}`)} className="group mt-1 inline-flex items-center gap-1 text-left" title="Sao chép mật khẩu">
+                      <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700 break-all">{account.password}</code>
+                      <Copy className="h-3.5 w-3.5 shrink-0 text-slate-400 opacity-0 group-hover:opacity-100" />
+                    </button>
+                  ) : account.passwordError ? (
+                    <div className="mt-1 text-xs font-semibold text-rose-600">{account.passwordError}</div>
+                  ) : null}
                   {account.loginUrl && (
                     <a href={account.loginUrl} target="_blank" rel="noreferrer noopener" className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline">
                       Mở trang đăng nhập<ExternalLink className="h-3 w-3" />
@@ -535,13 +500,10 @@ export default function CompanyAccounts({ idToken }: CompanyAccountsProps) {
 
             <section className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:grid-cols-2">
               <Field label="Tên đăng nhập / email"><input value={draft.username} onChange={e => set('username', e.target.value)} autoComplete="off" className={inputClass} /></Field>
-              <Field label="Mật khẩu" hint={editing ? (editing.hasPassword ? 'Để trống để giữ mật khẩu hiện tại.' : 'Chưa lưu mật khẩu.') : 'Được mã hóa khi lưu.'}>
+              <Field label="Mật khẩu" hint={editing?.hasPassword ? 'Xóa trắng ô này để bỏ mật khẩu đã lưu.' : undefined}>
                 <div className="flex gap-2">
-                  <input type={showDraftPassword ? 'text' : 'password'} value={draft.password} onChange={e => set('password', e.target.value)} autoComplete="new-password" className={inputClass} />
-                  <button type="button" onClick={() => setShowDraftPassword(v => !v)} className="rounded-lg border border-slate-200 bg-white px-2.5 text-slate-500 hover:bg-slate-50" title={showDraftPassword ? 'Ẩn' : 'Hiện'}>
-                    {showDraftPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                  <button type="button" onClick={() => { set('password', generatePassword()); setShowDraftPassword(true); }} className="rounded-lg border border-slate-200 bg-white px-2.5 text-slate-500 hover:bg-slate-50" title="Tạo mật khẩu mạnh">
+                  <input type="text" value={draft.password} onChange={e => set('password', e.target.value)} autoComplete="off" spellCheck={false} data-1p-ignore data-lpignore="true" className={inputClass} />
+                  <button type="button" onClick={() => set('password', generatePassword())} className="rounded-lg border border-slate-200 bg-white px-2.5 text-slate-500 hover:bg-slate-50" title="Tạo mật khẩu mạnh">
                     <Wand2 className="h-4 w-4" />
                   </button>
                 </div>

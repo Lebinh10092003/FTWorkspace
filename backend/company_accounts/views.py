@@ -13,6 +13,12 @@ def _actor(request) -> str:
     return str(getattr(request.user, "email", "") or "").strip().lower()
 
 
+def _no_store(response):
+    """Phản hồi có mật khẩu: không cho trình duyệt/proxy lưu cache."""
+    response["Cache-Control"] = "no-store"
+    return response
+
+
 def _int_param(value, default=None, maximum=None):
     try:
         number = int(value)
@@ -34,14 +40,14 @@ def company_accounts(request):
             owner=params.get("owner", ""),
             renewal_within_days=_int_param(params.get("renewalWithin")),
         )
-        return Response([services.account_payload(a) for a in qs])
+        return _no_store(Response([services.account_payload(a, include_password=True) for a in qs]))
 
     data = request.data if isinstance(request.data, dict) else {}
     try:
         account = services.save_account(CompanyAccount(), data, _actor(request), ip=_client_ip(request))
     except services.AccountValidationError as exc:
         return Response({"error": "Dữ liệu chưa hợp lệ.", "errors": exc.errors}, status=status.HTTP_400_BAD_REQUEST)
-    return Response(services.account_payload(account), status=status.HTTP_201_CREATED)
+    return _no_store(Response(services.account_payload(account, include_password=True), status=status.HTTP_201_CREATED))
 
 
 @api_view(["GET", "PATCH", "PUT", "DELETE"])
@@ -51,7 +57,7 @@ def company_account_detail(request, pk):
     if not account:
         return Response({"error": "Không tìm thấy tài khoản."}, status=status.HTTP_404_NOT_FOUND)
     if request.method == "GET":
-        return Response(services.account_payload(account))
+        return _no_store(Response(services.account_payload(account, include_password=True)))
     if request.method == "DELETE":
         services.delete_account(account, _actor(request), ip=_client_ip(request))
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -60,7 +66,7 @@ def company_account_detail(request, pk):
         services.save_account(account, data, _actor(request), ip=_client_ip(request))
     except services.AccountValidationError as exc:
         return Response({"error": "Dữ liệu chưa hợp lệ.", "errors": exc.errors}, status=status.HTTP_400_BAD_REQUEST)
-    return Response(services.account_payload(account))
+    return _no_store(Response(services.account_payload(account, include_password=True)))
 
 
 @api_view(["POST"])

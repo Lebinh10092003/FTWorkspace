@@ -40,21 +40,32 @@ class CompanyAccountApiTests(TestCase):
         }
         return self.admin.post("/api/company-accounts", payload, format="json")
 
-    def test_password_is_encrypted_and_never_listed(self):
+    def test_password_shown_as_text_to_admin_but_encrypted_in_db(self):
         res = self._create()
         self.assertEqual(res.status_code, 201, res.content)
         body = res.json()
-        self.assertNotIn("password", body)
+        self.assertEqual(body["password"], "S3cret-Pass!")
         self.assertTrue(body["hasPassword"])
         self.assertEqual(body["loginUrl"], "https://admin.google.com")
+        self.assertEqual(res["Cache-Control"], "no-store")
 
         stored = CompanyAccount.objects.get(pk=body["id"])
         self.assertTrue(stored.password_encrypted)
         self.assertNotIn("S3cret-Pass!", stored.password_encrypted)
 
-        listing = self.admin.get("/api/company-accounts").json()
-        self.assertEqual(len(listing), 1)
-        self.assertNotIn("S3cret-Pass!", str(listing))
+        listing = self.admin.get("/api/company-accounts")
+        self.assertEqual(listing["Cache-Control"], "no-store")
+        self.assertEqual(listing.json()[0]["username"], stored.username)
+        self.assertEqual(listing.json()[0]["password"], "S3cret-Pass!")
+        self.assertEqual(self.admin.get(f"/api/company-accounts/{body['id']}").json()["password"], "S3cret-Pass!")
+
+    def test_undecryptable_password_does_not_break_list(self):
+        account_id = self._create().json()["id"]
+        CompanyAccount.objects.filter(pk=account_id).update(password_encrypted="hong-giai-ma-duoc")
+        res = self.admin.get("/api/company-accounts")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()[0]["password"], "")
+        self.assertIn("nhập lại", res.json()[0]["passwordError"])
 
     def test_reveal_returns_password_and_is_logged(self):
         account_id = self._create().json()["id"]
