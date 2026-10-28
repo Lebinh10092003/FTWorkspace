@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { appDialog } from "../AppDialog";
 import { matchesSearch } from "../../lib/searchText";
+import AiAccountsManagerModal from "./AiAccountsManagerModal";
 import {
   AlertTriangle,
+  Bot,
   BarChart3,
   Boxes,
   CheckCircle2,
@@ -169,6 +171,8 @@ export default function ProductManagement({
   const [columnPickerOpen, setColumnPickerOpen] = useState(false);
   const [savedColumnIds, setSavedColumnIds] = useState<number[] | null>(null);
   const [otherProductsPartnerId, setOtherProductsPartnerId] = useState<number | null>(null);
+  // Cửa sổ danh sách TK AI dùng chung: null = đóng, "all" = mọi khách hàng, số = một khách hàng.
+  const [aiAccountsFor, setAiAccountsFor] = useState<number | "all" | null>(null);
   const [statusDrilldown, setStatusDrilldown] = useState<"active" | "expiring" | "expired" | null>(null);
   const [productDraft, setProductDraft] = useState({ id: 0, name: "", product_type: "product", description: "", active: true });
   const auth = idToken ? { Authorization: `Bearer ${idToken}` } : {};
@@ -449,6 +453,16 @@ export default function ProductManagement({
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Thêm sản phẩm</span>
+              </button>
+            )}
+            {!isGuest && view === "allocation" && (
+              <button
+                type="button"
+                onClick={() => setAiAccountsFor("all")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3.5 py-2 text-xs font-semibold text-purple-700 shadow-2xs hover:bg-purple-100 transition-colors cursor-pointer"
+              >
+                <Bot className="h-3.5 w-3.5" />
+                <span>Danh sách TK AI</span>
               </button>
             )}
             {!isGuest && view === "allocation" && (
@@ -746,6 +760,7 @@ export default function ProductManagement({
                                   {trainingSessions} buổi tập huấn
                                 </span>
                               ) : item ? (
+                                <div className="space-y-1.5">
                                 <button
                                   type="button"
                                   onClick={(event) => {
@@ -770,6 +785,21 @@ export default function ProductManagement({
                                     Hạn: {showDate(item.expires_at)}
                                   </div>
                                 </button>
+                                {!isGuest && product.code === "ai-dung-chung" && (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setAiAccountsFor(partner.id);
+                                    }}
+                                    className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 text-[11px] font-bold text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer"
+                                    title="Xem danh sách tài khoản và mật khẩu AI của khách hàng này"
+                                  >
+                                    <Bot className="h-3 w-3" />
+                                    Xem TK AI{partner.ai_account_count ? ` (${partner.ai_account_count})` : ""}
+                                  </button>
+                                )}
+                                </div>
                               ) : !product.active ? (
                                 <span className="text-xs font-medium text-slate-400 italic">Ngừng kinh doanh</span>
                               ) : !isGuest ? (
@@ -1440,6 +1470,17 @@ export default function ProductManagement({
           </form>
         </div>
       )}
+      {/* Danh sách TK AI dùng chung (giống trang Theo dõi dịch vụ) */}
+      <AiAccountsManagerModal
+        key={String(aiAccountsFor)}
+        isOpen={aiAccountsFor !== null}
+        onClose={() => setAiAccountsFor(null)}
+        partners={partners}
+        initialPartnerId={typeof aiAccountsFor === "number" ? aiAccountsFor : null}
+        idToken={idToken}
+        isGuest={isGuest}
+        onAccountCountChange={() => void load()}
+      />
     </section>
   );
 }
