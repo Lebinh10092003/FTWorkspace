@@ -1470,7 +1470,11 @@ def crm_delete_ai_account(
 
 @register_tool(
     name="crm_import_ai_accounts",
-    description="Nhập (import) hàng loạt tài khoản & mật khẩu AI cho một khách hàng / trường học từ danh sách structured JSON hoặc chuỗi văn bản copy từ Excel/Notepad. Tự động sinh mật khẩu nếu thiếu và cập nhật số lượng của trường.",
+    description=(
+        "Nhập hàng loạt tài khoản AI cho một khách hàng từ JSON hoặc văn bản dán vào. Tự sinh mật khẩu nếu thiếu. "
+        "Nếu dữ liệu nằm trên Google Sheet hoặc có mật khẩu, dùng crm_import_ai_accounts_from_sheet: "
+        "máy chủ tự đọc Sheet, mật khẩu không đi qua cuộc trò chuyện (ChatGPT chặn lệnh gọi có mật khẩu)."
+    ),
     module="digital-training",
     min_role="EMPLOYEE",
     audit_action="Nhập hàng loạt tài khoản AI",
@@ -1597,10 +1601,11 @@ def crm_import_ai_accounts(
                 "status": "active",
             },
         )
+        # Không trả mật khẩu về cuộc trò chuyện; xem trên web hoặc crm_list_ai_accounts khi cần.
         created_accounts.append({
             "id": acc.id,
             "account_username": acc.account_username,
-            "account_password": acc.account_password,
+            "account_password": _mask_secret(acc.account_password),
             "assigned_to": acc.assigned_to,
             "platform": acc.platform,
         })

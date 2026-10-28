@@ -83,6 +83,23 @@ Hỏi AI: *"Tôi là ai trên FTWorkspace?"*. AI sẽ gọi công cụ `system_w
 
 Mỗi công cụ có `annotations` theo đặc tả MCP (`readOnlyHint`, `destructiveHint`) để ứng dụng AI biết khi nào cần hỏi xác nhận.
 
+## Nhập tài khoản có mật khẩu (ChatGPT chặn lệnh gọi chứa mật khẩu)
+
+ChatGPT tự chặn lệnh gọi công cụ có mật khẩu trong tham số ("bị chặn bởi cơ chế kiểm tra an toàn của OpenAI"). Lệnh đó không tới FTWorkspace. Vì vậy dữ liệu có mật khẩu nhập qua Google Sheet: AI chỉ gửi link và tên cột, máy chủ tự đọc Sheet. Kết quả trả về không chứa mật khẩu.
+
+| Công cụ | Quyền | Việc |
+|---|---|---|
+| `crm_import_ai_accounts_from_sheet` | Nhân viên Đào tạo số | Tài khoản AI của khách hàng: email, mật khẩu, người nhận, nền tảng; cột Trường (nếu có) để chia theo từng khách hàng |
+| `company_import_accounts_from_sheet` | Admin | Tài khoản công ty: tên dịch vụ, email đăng nhập, mật khẩu (mã hóa khi lưu), 2FA, phụ trách, gói, chi phí, ngày gia hạn |
+
+1. Chia sẻ file Sheet (quyền Xem) cho email Service Account của FTWorkspace. Nếu chưa chia sẻ, công cụ báo lỗi kèm đúng email cần chia sẻ.
+2. Nói với AI, ví dụ: *"Nhập tài khoản AI cho THCS Thực Nghiệm từ Sheet <link>, tab 'Tài khoản', chạy thử trước."*
+3. AI chạy `dry_run: true`: xem cột nhận được, số dòng, dòng bị bỏ qua (không ghi gì). Đúng thì AI chạy lại để nhập.
+
+- Tự nhận tên cột tiếng Việt/Anh ("Email", "Mật khẩu", "Họ và tên giáo viên", "Tên dịch vụ"...). Không nhận ra thì truyền `columns`, ví dụ `{"username": "Hộp thư", "password": "Khóa"}`.
+- Dòng lỗi (thiếu email, trường không có trên web, dữ liệu sai) chỉ bỏ qua dòng đó. Trùng tài khoản thì cập nhật; ô mật khẩu trống không xóa mật khẩu đã có (tài khoản AI mới thì tự sinh).
+- `crm_import_ai_accounts` cũ vẫn dùng được cho dữ liệu không có mật khẩu, và không còn trả mật khẩu về khung chat.
+
 ## Cho lập trình viên
 
 - Endpoint chính `/mcp` = `/api/mcp` (nginx chuyển `/mcp` vào Django, route ở `config/urls.py`): `backend/mcp/streamable.py` (Streamable HTTP, stateless, không cấp session). Đường cũ `/api/mcp/rpc`, `/api/mcp/sse`, `/api/mcp/messages` nằm ở `views.py`.

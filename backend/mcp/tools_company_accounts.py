@@ -153,7 +153,11 @@ def company_get_account_password(ctx: Dict[str, Any], reason: str, account_id: O
 @register_tool(
     name="company_create_account",
     title="Thêm tài khoản công ty",
-    description="Thêm một tài khoản dịch vụ của công ty. Mật khẩu được mã hóa khi lưu.",
+    description=(
+        "Thêm một tài khoản dịch vụ của công ty. Mật khẩu được mã hóa khi lưu. Có thể bỏ trống password rồi "
+        "nhập mật khẩu trên web. Nhập nhiều tài khoản hoặc dữ liệu từ Google Sheet: dùng "
+        "company_import_accounts_from_sheet (máy chủ tự đọc Sheet, mật khẩu không đi qua cuộc trò chuyện)."
+    ),
     module="account-management",
     min_role="ADMIN",
     audit_action="Thêm tài khoản công ty",

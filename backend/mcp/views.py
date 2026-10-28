@@ -32,6 +32,7 @@ from . import (  # noqa: F401
     tools_examination,
     tools_finance,
     tools_schedule,
+    tools_sheet_import,
     tools_social,
     tools_system,
     tools_training,
