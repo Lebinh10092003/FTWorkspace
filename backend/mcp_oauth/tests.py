@@ -179,6 +179,19 @@ class OAuthFlowTests(TestCase):
             "code": code, "redirect_uri": REDIRECT, "code_verifier": verifier})
         self.assertEqual(res.status_code, 200)
 
+    def test_url_client_id_with_non_none_auth_method(self):
+        """client_id dạng URL khai private_key_jwt vẫn kết nối được (coi như client công khai + PKCE)."""
+        from unittest import mock
+        client_id = "https://chatgpt.com/oauth/client-metadata.json"
+        doc = {"client_id": client_id, "client_name": "ChatGPT", "redirect_uris": [REDIRECT],
+               "token_endpoint_auth_method": "private_key_jwt"}
+        with mock.patch("mcp_oauth.services._fetch_metadata_document", return_value=doc):
+            verifier, challenge = pkce()
+            code = self.login_and_get_code(client_id, challenge)
+            res = self.exchange(client_id, code, verifier)
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(self.call_mcp(res.json()["access_token"]).status_code, 200)
+
     def test_register_rejects_bad_redirects(self):
         for uri in ("http://evil.example/cb", "javascript:alert(1)", "https://a.example/cb#frag"):
             res = self.client.post("/api/oauth/register", json.dumps({"redirect_uris": [uri]}),

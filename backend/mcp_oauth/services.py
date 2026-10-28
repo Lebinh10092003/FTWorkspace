@@ -237,10 +237,10 @@ def get_client(client_id: str) -> OAuthClient:
     uris = [validate_redirect_uri(u) for u in (doc.get("redirect_uris") or [])[:20]]
     if not uris:
         raise OAuthError("invalid_client", "Tài liệu client_id thiếu redirect_uris.")
-    method = str(doc.get("token_endpoint_auth_method") or "none")
-    if method != "none":
-        raise OAuthError("invalid_client", "client_id dạng URL chỉ hỗ trợ token_endpoint_auth_method=none.")
-    client, _ = OAuthClient.objects.update_or_create(client_id=client_id, defaults={
+    # Một số ứng dụng AI khai private_key_jwt hoặc client_secret_* trong tài liệu client_id.
+    # Ta không có bí mật chung với client dạng URL, nên coi như client công khai:
+    # PKCE (bắt buộc) và redirect_uri khớp chính xác vẫn bảo vệ luồng cấp mã.
+    client, _ =OAuthClient.objects.update_or_create(client_id=client_id, defaults={
         "name": str(doc.get("client_name") or parts_host(client_id))[:200],
         "redirect_uris": uris,
         "token_endpoint_auth_method": "none",
