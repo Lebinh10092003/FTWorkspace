@@ -61,6 +61,7 @@ const CompetitionHub = lazyWithRecovery(() => import('./components/examination/C
 const GuestInvigilation = lazyWithRecovery(() => import('./components/examination/GuestInvigilation'));
 const PublicExamRegistration = lazyWithRecovery(() => import('./components/examination/PublicExamRegistration'));
 const ChatbotAssistant = lazyWithRecovery(() => import('./components/chatbot/ChatbotAssistant'));
+const ItemBag = lazyWithRecovery(() => import('./components/fun/ItemBag'));
 
 type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
 
@@ -1273,6 +1274,7 @@ export default function App() {
         <>
           <InvigilationReminders key={user.email} token={idToken} email={user.email} canPreview={userRole === 'ADMIN' || userRole === 'MANAGER'} />
           <Suspense fallback={null}>
+            <ItemBag />
             <ChatbotAssistant
               token={idToken}
               userName={user.displayName}
