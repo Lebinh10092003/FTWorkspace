@@ -29,7 +29,7 @@ export default function RoomEntryPicker({ sessions, api, value, onChange }: {
         .catch(() => active && setOptions(current => ({ ...current, [session.id]: { rooms: [], occurrences: [] } })));
     });
     return () => { active = false; };
-     
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   const withRooms = sessions.filter(session => options[session.id]?.rooms.length);
   if (!withRooms.length) return null;
