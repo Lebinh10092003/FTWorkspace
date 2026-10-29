@@ -28,7 +28,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions", "django.contrib.messages", "django.contrib.staticfiles",
     "corsheaders", "rest_framework", "rest_framework.authtoken",
     "authentication", "social", "examination", "email_builder", "digital_training", "attendance", "work_schedule",
-    "documents", "company_accounts", "mcp_oauth", "chatbot",
+    "documents", "company_accounts", "mcp_oauth", "chatbot", "news_posts",
 ]
 
 MIDDLEWARE = [

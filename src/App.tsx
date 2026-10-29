@@ -1,6 +1,6 @@
 import React, { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { appDialog } from './components/AppDialog';
-import { CalendarDays, ClipboardList, ContactRound, FileSignature, ReceiptText, Mail, Moon, QrCode, Presentation, TriangleAlert } from 'lucide-react';
+import { CalendarDays, ClipboardList, ContactRound, FileSignature, ReceiptText, Mail, Moon, Newspaper, QrCode, Presentation, TriangleAlert } from 'lucide-react';
 
 import { Channel, UserRole } from './types';
 import LoginModal from './components/LoginModal';
@@ -50,6 +50,7 @@ const Attendance = lazyWithRecovery(() => import('./components/Attendance'));
 const FundingProposalBuilder = lazyWithRecovery(() => import('./components/documents/FundingProposalBuilder'));
 const DocumentNumberGenerator = lazyWithRecovery(() => import('./components/documents/DocumentNumberGenerator'));
 const WeeklyReportCenter = lazyWithRecovery(() => import('./components/documents/WeeklyReportCenter'));
+const NewsPostCenter = lazyWithRecovery(() => import('./components/news-posts/NewsPostCenter'));
 const WorkSchedule = lazyWithRecovery(() => import('./components/WorkSchedule'));
 const CompetitionLandingManager = lazyWithRecovery(() => import('./components/examination/CompetitionLandingManager'));
 const CompetitionLandingPublic = lazyWithRecovery(() => import('./components/examination/CompetitionLandingPublic'));
@@ -61,7 +62,7 @@ const ItemBag = lazyWithRecovery(() => import('./components/fun/ItemBag'));
 // Hồ sơ cá nhân chỉ tải khi người dùng mở, không nằm trong gói tải ban đầu.
 const AccountProfileModal = lazyWithRecovery(() => import('./components/AccountProfileModal'));
 
-type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
+type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'news-posts' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -186,11 +187,13 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/communication-tools/funding-proposal')) return 'funding-proposal';
   if (path.startsWith('/communication-tools/document-number')) return 'document-number';
   if (path.startsWith('/communication-tools/weekly-report')) return 'weekly-report';
+  if (path.startsWith('/communication-tools/news-posts')) return 'news-posts';
   if (path.startsWith('/communication-tools/competition-landing')) return 'competition-landing';
   if (path.startsWith('/communication-tools')) return 'communication-tools';
   if (path === '/funding-proposal' || path === '/funding-proposal/') return 'funding-proposal';
   if (path === '/document-number' || path === '/document-number/') return 'document-number';
   if (path === '/weekly-report' || path === '/weekly-report/') return 'weekly-report';
+  if (path === '/news-posts' || path === '/news-posts/') return 'news-posts';
   if (path === '/competition-landing' || path === '/competition-landing/') return 'competition-landing';
   if (path.startsWith('/finance-report')) return 'finance-report';
   if (path.startsWith('/signature-builder')) return 'signature-builder';
@@ -289,7 +292,7 @@ export default function App() {
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
   const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
-  const canAccessView = (mode: ViewMode) => { if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
+  const canAccessView = (mode: ViewMode) => { if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report' || mode === 'news-posts') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
   useEffect(() => {
     if (isGuest || !idToken) { setUpcomingDuties(0); return; }
@@ -368,6 +371,7 @@ export default function App() {
       'funding-proposal': '/communication-tools/funding-proposal',
       'document-number': '/communication-tools/document-number',
       'weekly-report': '/communication-tools/weekly-report',
+      'news-posts': '/communication-tools/news-posts',
       'competition-landing': '/communication-tools/competition-landing',
     };
     const path = paths[mode] || `/${mode}`;
@@ -758,6 +762,7 @@ export default function App() {
       { mode: 'funding-proposal' as ViewMode, title: 'Phiếu đề xuất kinh phí', description: 'Nhập dự toán, xem trước bản in A4 và tải phiếu Word để trình ký.', icon: ReceiptText, color: 'from-emerald-600 to-teal-500', allowed: canAccessView('funding-proposal') },
       { mode: 'document-number' as ViewMode, title: 'Trình tạo số Công văn', description: 'Lấy số văn bản mới nhất theo loại và ghi thẳng vào sổ trên Google Sheets.', icon: FileSignature, color: 'from-[#0055DA] to-[#00C68D]', allowed: canAccessView('document-number') },
       { mode: 'weekly-report' as ViewMode, title: 'Báo cáo cuối tuần', description: 'Xem báo cáo AI của từng nhân viên, tự làm mới từ Google Docs và tải file Word.', icon: ClipboardList, color: 'from-amber-500 to-orange-600', allowed: canAccessView('weekly-report') },
+      { mode: 'news-posts' as ViewMode, title: 'Đăng tin bài', description: 'Tự động hóa soạn thảo tin bài truyền thông sự kiện, đối tác và đồ họa khảo sát.', icon: Newspaper, color: 'from-blue-700 to-indigo-600', allowed: canAccessView('news-posts') },
       { mode: 'competition-landing' as ViewMode, title: 'Landing page', description: 'Tạo landing page từ mẫu, chỉnh sửa nội dung và công bố qua URL riêng.', icon: Presentation, color: 'from-[#001E40] to-[#0055DA]', allowed: canAccessView('competition-landing') },
     ].filter(tool => tool.allowed);
     return (
@@ -1045,6 +1050,28 @@ export default function App() {
     );
   }
 
+  if (viewMode === 'news-posts' && !canAccessView('news-posts')) return null;
+
+  if (viewMode === 'news-posts') {
+    return (
+      <>
+        <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp mô-đun Đăng tin bài...</div>}>
+          <NewsPostCenter
+            idToken={idToken || ''}
+            userName={user.displayName}
+            userEmail={user.email}
+            userRole={userRole}
+            photoURL={user.photoURL}
+            onAccountClick={openAccount}
+            onLogout={handleLogout}
+            onNavSelect={id => setViewMode(id as ViewMode)}
+          />
+        </Suspense>
+        {loginModal}{profileModal}
+      </>
+    );
+  }
+
   if (viewMode === 'attendance' && isGuest) return null;
 
   if (viewMode === 'attendance') {
@@ -1248,6 +1275,8 @@ export default function App() {
       'digital-training': 'digital-training',
       'communication-tools': 'communication-tools',
       'communication-tools/weekly-report': 'weekly-report',
+      'communication-tools/news-posts': 'news-posts',
+      'news-posts': 'news-posts',
       'communication-tools/email-builder': 'email-builder',
       'communication-tools/signature-builder': 'signature-builder',
       'communication-tools/qr-generator': 'qr-generator',

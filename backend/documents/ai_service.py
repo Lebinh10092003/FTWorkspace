@@ -422,6 +422,25 @@ def expire_stale_jobs(grace_seconds: int = 30) -> int:
     except Exception:
         pass
 
+    try:
+        from news_posts.models import NewsPostJob
+        stale_np_jobs = NewsPostJob.objects.filter(
+            status=NewsPostJob.STATUS_RUNNING,
+            started_at__lt=cutoff,
+        )
+        for j in stale_np_jobs:
+            j.status = NewsPostJob.STATUS_FAILED
+            j.error_message = f"Yêu cầu bị quá hạn thời gian xử lý ({timeout + grace_seconds}s)."
+            j.completed_at = timezone.now()
+            j.save(update_fields=["status", "error_message", "completed_at", "updated_at"])
+            news_p = j.news_post
+            if news_p.status == "generating":
+                news_p.status = "failed"
+                news_p.save(update_fields=["status", "updated_at"])
+            count += 1
+    except Exception:
+        pass
+
     return count
 
 
@@ -435,6 +454,11 @@ def claim_next_job() -> Optional[Any]:
     try:
         from chatbot.models import AiChatJob
         running_count += AiChatJob.objects.filter(status=AiChatJob.STATUS_RUNNING).count()
+    except Exception:
+        pass
+    try:
+        from news_posts.models import NewsPostJob
+        running_count += NewsPostJob.objects.filter(status=NewsPostJob.STATUS_RUNNING).count()
     except Exception:
         pass
 
@@ -459,20 +483,53 @@ def claim_next_job() -> Optional[Any]:
     except Exception:
         pass
 
-    next_job = (
+    # BACKGROUND QUEUE: Compare next AiReportJob vs next NewsPostJob by FIFO
+    next_report = (
         AiReportJob.objects.select_for_update()
         .filter(status=AiReportJob.STATUS_QUEUED)
         .order_by("created_at", "id")
         .first()
     )
-    if not next_job:
-        return None
 
-    next_job.status = AiReportJob.STATUS_RUNNING
-    next_job.started_at = timezone.now()
-    next_job.save(update_fields=["status", "started_at", "updated_at"])
-    setattr(next_job, "job_type", "report")
-    return next_job
+    next_news = None
+    try:
+        from news_posts.models import NewsPostJob
+        next_news = (
+            NewsPostJob.objects.select_for_update()
+            .filter(status=NewsPostJob.STATUS_QUEUED)
+            .order_by("created_at", "id")
+            .first()
+        )
+    except Exception:
+        pass
+
+    if next_report and next_news:
+        if next_news.created_at < next_report.created_at:
+            next_news.status = NewsPostJob.STATUS_RUNNING
+            next_news.started_at = timezone.now()
+            next_news.save(update_fields=["status", "started_at", "updated_at"])
+            setattr(next_news, "job_type", "news_post")
+            return next_news
+        else:
+            next_report.status = AiReportJob.STATUS_RUNNING
+            next_report.started_at = timezone.now()
+            next_report.save(update_fields=["status", "started_at", "updated_at"])
+            setattr(next_report, "job_type", "report")
+            return next_report
+    elif next_news:
+        next_news.status = NewsPostJob.STATUS_RUNNING
+        next_news.started_at = timezone.now()
+        next_news.save(update_fields=["status", "started_at", "updated_at"])
+        setattr(next_news, "job_type", "news_post")
+        return next_news
+    elif next_report:
+        next_report.status = AiReportJob.STATUS_RUNNING
+        next_report.started_at = timezone.now()
+        next_report.save(update_fields=["status", "started_at", "updated_at"])
+        setattr(next_report, "job_type", "report")
+        return next_report
+
+    return None
 
 
 def cancel_ai_job(job: AiReportJob, user: Optional[UserProfile] = None) -> bool:
