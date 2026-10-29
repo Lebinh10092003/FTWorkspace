@@ -552,7 +552,9 @@ def claim_next_job() -> Optional[Any]:
         selected_job.status = getattr(selected_job.__class__, "STATUS_RUNNING", "running")
         selected_job.started_at = timezone.now()
         selected_job.save(update_fields=["status", "started_at", "updated_at"])
-        setattr(selected_job, "job_type", j_type)
+        setattr(selected_job, "job_kind", j_type)
+        if not hasattr(selected_job, "payload"):  # do not overwrite MailJob's own job_type field
+            setattr(selected_job, "job_type", j_type)
         return selected_job
 
     return None

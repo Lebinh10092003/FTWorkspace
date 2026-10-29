@@ -88,9 +88,14 @@ class Command(BaseCommand):
                     job = claim_next_job()
                     if not job:
                         break
-                    job_type = getattr(job, "job_type", "report")
-                    self.stdout.write(f"Đã nhận việc [{job_type}] #{job.id} cho {job.user.email} (status: running)")
-                    future = executor.submit(_worker_wrapper, job_type, job.id)
+                    job_kind = getattr(job, "job_kind", None)
+                    if not job_kind:
+                        if job.__class__.__name__ == "MailJob":
+                            job_kind = "gmail"
+                        else:
+                            job_kind = getattr(job, "job_type", "report")
+                    self.stdout.write(f"Đã nhận việc [{job_kind}] #{job.id} cho {job.user.email} (status: running)")
+                    future = executor.submit(_worker_wrapper, job_kind, job.id)
                     active_futures.append(future)
 
                 if run_once:

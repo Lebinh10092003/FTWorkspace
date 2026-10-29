@@ -157,7 +157,7 @@ export default function GmailAssistantCenter({
     if (!status?.connected) return;
     setLoadingMorning(true);
     try {
-      const res = await fetch('/api/gmail/morning-digest/', { headers: authHeaders });
+      const res = await fetch('/api/gmail/digests/morning/', { headers: authHeaders });
       if (res.ok) {
         const data: MorningDigestResponse = await res.json();
         setMorningDigest(data);
@@ -196,11 +196,11 @@ export default function GmailAssistantCenter({
   const handleStartOAuth = async () => {
     try {
       setErrorMessage(null);
-      const res = await fetch('/api/gmail/oauth/start/', { headers: authHeaders });
+      const res = await fetch('/api/gmail/oauth/authorize-url/', { headers: authHeaders });
       if (res.ok) {
         const data = await res.json();
-        if (data.auth_url) {
-          window.location.href = data.auth_url;
+        if (data.authorize_url) {
+          window.location.href = data.authorize_url;
         } else {
           setErrorMessage('Không nhận được đường dẫn xác thực từ máy chủ.');
         }
@@ -218,7 +218,7 @@ export default function GmailAssistantCenter({
     if (syncing) return;
     setSyncing(true);
     try {
-      const res = await fetch('/api/gmail/sync-now/', {
+      const res = await fetch('/api/gmail/sync/', {
         method: 'POST',
         headers: authHeaders,
       });
@@ -294,24 +294,50 @@ export default function GmailAssistantCenter({
     setGeneratingDraft(true);
     setErrorMessage(null);
     try {
-      const res = await fetch('/api/gmail/draft-reply/generate/', {
+      const res = await fetch(`/api/gmail/digests/${selectedDigest.id}/draft-reply/`, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({
-          digest_id: selectedDigest.id,
-          instructions: replyInstructions.trim(),
+          guidance: replyInstructions.trim(),
         }),
       });
       if (res.ok) {
         const data = await res.json();
-        setDraftContent(data.draft_content || '');
-        showToast('AI đã soạn thảo xong bản nháp!');
+        const jobId = data.job_id;
+        if (!jobId) {
+          throw new Error('Không nhận được mã tiến trình AI.');
+        }
+
+        // Poll job kết quả
+        let attempts = 0;
+        let finished = false;
+        while (attempts < 20 && !finished) {
+          await new Promise(r => setTimeout(r, 600));
+          attempts++;
+          const jobRes = await fetch(`/api/gmail/jobs/${jobId}/`, { headers: authHeaders });
+          if (jobRes.ok) {
+            const jobData = await jobRes.json();
+            if (jobData.status === 'done' || jobData.status === 'COMPLETED') {
+              finished = true;
+              const result = jobData.result || {};
+              const reply = result.reply_body || result.draft || (typeof result === 'string' ? result : '');
+              setDraftContent(reply);
+              showToast('AI đã soạn thảo xong bản nháp!');
+              break;
+            } else if (jobData.status === 'failed' || jobData.status === 'FAILED') {
+              throw new Error(jobData.error_message || 'AI gặp lỗi khi soạn phản hồi.');
+            }
+          }
+        }
+        if (!finished) {
+          throw new Error('AI xử lý quá thời gian chờ, vui lòng thử lại.');
+        }
       } else {
         const err = await res.json().catch(() => ({}));
         await appDialog.alert(err.error || 'Không thể tạo bản nháp với AI.', { tone: 'warning' });
       }
-    } catch {
-      await appDialog.alert('Lỗi kết nối khi gửi yêu cầu AI.', { tone: 'danger' });
+    } catch (err: any) {
+      await appDialog.alert(err.message || 'Lỗi kết nối khi gửi yêu cầu AI.', { tone: 'danger' });
     } finally {
       setGeneratingDraft(false);
     }
@@ -332,7 +358,8 @@ export default function GmailAssistantCenter({
           thread_id: selectedDigest.thread_id,
           to_email: selectedDigest.sender,
           subject: selectedDigest.subject.startsWith('Re:') ? selectedDigest.subject : `Re: ${selectedDigest.subject}`,
-          body: draftContent.trim(),
+          body_text: draftContent.trim(),
+          digest_id: selectedDigest.id,
         }),
       });
       if (res.ok) {
