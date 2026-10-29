@@ -11,6 +11,7 @@ import email
 from email.mime.text import MIMEText
 import html
 import logging
+import os
 import re
 import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
@@ -74,6 +75,10 @@ class GmailClient:
 
     def get_valid_access_token(self) -> str:
         """Return cached access token or refresh it from Google."""
+        if os.environ.get("GMAIL_MOCK_MODE") == "1":
+            self.access_token = "mock_access_token"
+            return self.access_token
+
         if self.access_token:
             return self.access_token
         if not self.refresh_token:
@@ -105,6 +110,9 @@ class GmailClient:
     @staticmethod
     def exchange_code_for_tokens(code: str, redirect_uri: str) -> Dict[str, Any]:
         """Exchange authorization code for access and refresh tokens."""
+        if os.environ.get("GMAIL_MOCK_MODE") == "1":
+            return {"access_token": "mock_access_token_123", "refresh_token": "mock_refresh_token_123", "expires_in": 3600}
+
         creds = get_oauth_credentials()
         client_id = creds["client_id"]
         client_secret = creds["client_secret"]
@@ -128,6 +136,9 @@ class GmailClient:
 
     def revoke_token(self) -> bool:
         """Revoke current refresh or access token at Google."""
+        if os.environ.get("GMAIL_MOCK_MODE") == "1":
+            return True
+
         token_to_revoke = self.refresh_token or self.access_token
         if not token_to_revoke:
             return True
@@ -237,6 +248,15 @@ class GmailClient:
         Create a draft in Gmail thread.
         NOTE: This ONLY creates a draft; it DOES NOT send the email.
         """
+        if os.environ.get("GMAIL_MOCK_MODE") == "1":
+            return {
+                "id": f"r-mock-draft-{thread_id}",
+                "message": {
+                    "id": f"msg-mock-{thread_id}",
+                    "threadId": thread_id,
+                },
+            }
+
         msg = MIMEText(body_text, "plain", "utf-8")
         msg["To"] = to_email
         msg["Subject"] = subject if subject.lower().startswith("re:") else f"Re: {subject}"
