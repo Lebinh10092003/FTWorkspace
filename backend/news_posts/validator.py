@@ -40,13 +40,48 @@ def _format_pct_vn(val: Any) -> str:
     if val is None or val == "":
         return ""
     try:
-        f = float(val)
-        if f.is_integer():
-            return str(int(f))
+        f = float(str(val).replace(",", "."))
+        if f.is_integer() or round(f, 2).is_integer():
+            return str(int(round(f)))
         s = f"{f:.2f}".rstrip("0").rstrip(".")
         return s.replace(".", ",")
     except (ValueError, TypeError):
-        return str(val).replace(".", ",")
+        s = str(val).strip()
+        s = re.sub(r"[,.]0+$", "", s)
+        return s.replace(".", ",")
+
+
+def _normalize_zero_pct(text: str) -> str:
+    """Chuẩn hóa số '100,0%' thành '100%' (bỏ số 0 thừa sau dấu phẩy/chấm) ở mọi chỗ."""
+    if not text:
+        return ""
+    return re.sub(r"(\b\d+)[,.]0+\s*%", r"\1%", text)
+
+
+def split_contact_info_lines(contact_info: Any) -> List[str]:
+    """Tách dòng liên hệ theo dấu | hoặc xuống dòng thành các dòng riêng biệt, mỗi liên hệ 1 dòng."""
+    if not contact_info:
+        return []
+    parts = re.split(r"[|\n]", str(contact_info))
+    return [p.strip() for p in parts if p.strip()]
+
+
+def format_hashtags_string(hashtags: Any) -> str:
+    """Nối danh sách hashtag thành 1 đoạn duy nhất, các thẻ cách nhau đúng 1 dấu cách."""
+    if not hashtags:
+        return ""
+    if isinstance(hashtags, str):
+        tags = hashtags.split()
+    elif isinstance(hashtags, list):
+        tags = [str(t).strip() for t in hashtags if str(t).strip()]
+    else:
+        tags = []
+    cleaned_tags = []
+    for t in tags:
+        if not t.startswith("#"):
+            t = f"#{t}"
+        cleaned_tags.append(t)
+    return " ".join(cleaned_tags)
 
 
 def build_survey_section_from_summary(
@@ -72,8 +107,12 @@ def build_survey_section_from_summary(
         c_name = str(cat.get("name") or "").strip()
         if not c_name:
             continue
+        # Bỏ chữ 'đánh giá' dư ở đầu tên nhóm để tránh câu 'lượt đánh giá đánh giá...'
+        c_name_clean = re.sub(r"^(?:đánh\s+giá|danh\s+gia)\s+", "", c_name, flags=re.IGNORECASE).strip()
+        if not c_name_clean:
+            c_name_clean = c_name
         c_pct = _format_pct_vn(cat.get("good_or_very_good_percent", 0))
-        cat_lines.append(f"{c_pct}% lượt đánh giá {c_name.lower()} đạt Tốt/Rất tốt")
+        cat_lines.append(f"{c_pct}% lượt đánh giá {c_name_clean.lower()} đạt Tốt/Rất tốt")
 
     if cat_lines:
         cat_summary_str = "; ".join(cat_lines)
@@ -82,6 +121,7 @@ def build_survey_section_from_summary(
         cat_summary_str = f"{overall_pct}% lượt đạt Tốt/Rất tốt"
 
     text = f"{total_responses} phiếu khảo sát ghi nhận: {cat_summary_str}."
+    text = _normalize_zero_pct(text)
 
     # Feedback summary from open_feedback_points (anonymized, no PII)
     feedback_points = survey_summary.get("open_feedback_points") or []
@@ -264,7 +304,7 @@ def validate_and_sanitize_news_output(
                         )
                         survey_section = {
                             "heading": s_head or default_heading,
-                            "text": s_text,
+                            "text": _normalize_zero_pct(s_text),
                             "feedback_summary": _strip_pii(s_fb)
                             or (fallback_section.get("feedback_summary", "") if fallback_section else ""),
                         }
@@ -286,9 +326,27 @@ def validate_and_sanitize_news_output(
                     )
                     survey_section = {
                         "heading": s_head or default_heading,
-                        "text": s_text,
+                        "text": _normalize_zero_pct(s_text),
                         "feedback_summary": _strip_pii(s_fb),
                     }
+
+    if survey_section:
+        if survey_section.get("text"):
+            survey_section["text"] = _normalize_zero_pct(survey_section["text"])
+        # Bỏ cảnh báo AI nói 'không có thông tin khảo sát' khi mục khảo sát đã được dựng
+        cleaned_warnings = []
+        for w in warnings:
+            w_lower = w.lower()
+            is_survey_missing = (
+                ("khảo sát" in w_lower or "khao sat" in w_lower)
+                and any(
+                    term in w_lower
+                    for term in ["không có", "chưa có", "thiếu", "ko có", "k có", "không tìm thấy", "chưa tìm thấy", "chưa thu thập"]
+                )
+            )
+            if not is_survey_missing:
+                cleaned_warnings.append(w)
+        warnings = cleaned_warnings
 
     # 5. Closing
     closing = _clean_text(data.get("closing"), max_len=1500)
@@ -373,15 +431,19 @@ def validate_and_sanitize_news_output(
     # Slogan & Contact
     if slogan:
         raw_lines.append(slogan)
-    if contact_info:
-        raw_lines.append(contact_info)
+    contact_lines = split_contact_info_lines(contact_info)
+    if contact_lines:
+        for cl in contact_lines:
+            raw_lines.append(cl)
 
-    # Hashtags
-    if hashtags:
+    # Hashtags (1 đoạn duy nhất căn trái, các thẻ cách nhau đúng 1 dấu cách)
+    hashtag_str = format_hashtags_string(hashtags)
+    if hashtag_str:
         raw_lines.append("")
-        raw_lines.append(" ".join(hashtags))
+        raw_lines.append(hashtag_str)
 
     raw_text = "\n".join(raw_lines).strip()
+    raw_text = _normalize_zero_pct(raw_text)
 
     return {
         "headline": headline,

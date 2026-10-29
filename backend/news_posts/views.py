@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import urllib.parse
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -13,6 +15,7 @@ from authentication.permissions import IsWorkspaceAuthenticated
 from documents.models import AiServiceHealth
 
 from .document_parser import extract_text_from_file, validate_and_truncate_files_total
+from .docx_builder import build_news_post_docx, make_safe_docx_filename
 from .models import NewsPost, NewsPostJob
 from .service import cancel_news_post_job, enqueue_news_post_job, get_news_job_queue_position
 from .survey_parser import merge_survey_summaries, parse_survey_file
@@ -345,3 +348,25 @@ def news_post_cancel(request, pk: int):
 
     cancelled = cancel_news_post_job(active_job, request.user)
     return Response({"success": cancelled, "message": "Đã hủy tác vụ."}, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsWorkspaceAuthenticated])
+def news_post_download_docx(request, pk: int):
+    """Download news post content formatted as standard Word (.docx) document."""
+    news_post = get_object_or_404(NewsPost.objects.select_related("owner"), pk=pk)
+
+    if not _is_owner_or_admin(request, news_post):
+        return Response({"error": "Bạn không có quyền tải bản tin này."}, status=status.HTTP_403_FORBIDDEN)
+
+    docx_buffer = build_news_post_docx(news_post)
+    filename = make_safe_docx_filename(news_post)
+    quoted_filename = urllib.parse.quote(filename.encode("utf-8"))
+
+    response = HttpResponse(
+        docx_buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"; filename*=UTF-8\'\'{quoted_filename}'
+    response["Access-Control-Expose-Headers"] = "Content-Disposition"
+    return response

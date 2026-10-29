@@ -7,6 +7,7 @@ import re
 from typing import Any, Dict, List, Tuple
 
 from .models import NewsPost
+from .validator import _format_pct_vn
 
 
 def build_news_post_prompt(news_post: NewsPost) -> Tuple[str, List[float]]:
@@ -99,11 +100,16 @@ def build_news_post_prompt(news_post: NewsPost) -> Tuple[str, List[float]]:
         n_resp = survey_summary.get("total_responses")
         cat_lines = []
         for cat in survey_summary.get("categories") or []:
-            c_name = cat.get("name")
-            c_pct = str(cat.get("good_or_very_good_percent", "")).replace(".", ",")
-            cat_lines.append(f"{c_pct}% lượt đánh giá {c_name.lower()} đạt Tốt/Rất tốt")
+            c_name = str(cat.get("name") or "").strip()
+            if not c_name:
+                continue
+            c_name_clean = re.sub(r"^(?:đánh\s+giá|danh\s+gia)\s+", "", c_name, flags=re.IGNORECASE).strip()
+            if not c_name_clean:
+                c_name_clean = c_name
+            c_pct = _format_pct_vn(cat.get("good_or_very_good_percent", ""))
+            cat_lines.append(f"{c_pct}% lượt đánh giá {c_name_clean.lower()} đạt Tốt/Rất tốt")
 
-        cat_summary_str = "; ".join(cat_lines) if cat_lines else f"{str(survey_summary.get('overall_good_or_very_good_percent', '')).replace('.', ',')}% lượt đạt Tốt/Rất tốt"
+        cat_summary_str = "; ".join(cat_lines) if cat_lines else f"{_format_pct_vn(survey_summary.get('overall_good_or_very_good_percent', ''))}% lượt đạt Tốt/Rất tốt"
         survey_text_ready = f"{n_resp} phiếu khảo sát ghi nhận: {cat_summary_str}."
 
         feedback_points = survey_summary.get("open_feedback_points") or []
