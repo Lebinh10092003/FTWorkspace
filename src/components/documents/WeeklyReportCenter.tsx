@@ -189,7 +189,7 @@ export default function WeeklyReportCenter({
   const [editCompletedGroups, setEditCompletedGroups] = useState<ReportGroup[]>([]);
   const [editDifficulties, setEditDifficulties] = useState<string[]>([]);
   const [editPlannedGroups, setEditPlannedGroups] = useState<ReportGroup[]>([]);
-  const [editIncludeBldTask, setEditIncludeBldTask] = useState(true);
+  const [editIncludeBldTask, setEditIncludeBldTask] = useState(false);
 
   const selected = useMemo(
     () => reports.find(report => report.id === selectedId) || reports[0] || null,
@@ -198,18 +198,22 @@ export default function WeeklyReportCenter({
 
   const startEditing = () => {
     if (!selected) return;
-    const cGroups =
+    const diffPattern = /(?:khó\s*khăn|vướng\s*mắc|tồn\s*tại)/i;
+    const cGroups = (
       selected.completedGroups && selected.completedGroups.length
-        ? selected.completedGroups.map(g => ({ name: g.name, items: [...(g.items || [])] }))
-        : [{ name: 'Công việc', items: [...(selected.completedItems || [])] }];
+        ? selected.completedGroups
+        : [{ name: 'Công việc', items: [...(selected.completedItems || [])] }]
+    )
+      .filter(g => !diffPattern.test(g.name || ''))
+      .map(g => ({ name: g.name, items: [...(g.items || [])] }));
     const pGroups =
       selected.plannedGroups && selected.plannedGroups.length
         ? selected.plannedGroups.map(g => ({ name: g.name, items: [...(g.items || [])] }))
         : [{ name: 'Công việc', items: [...(selected.plannedItems || [])] }];
-    setEditCompletedGroups(cGroups);
+    setEditCompletedGroups(cGroups.length ? cGroups : [{ name: 'Công việc', items: [] }]);
     setEditDifficulties([...(selected.difficulties || [])]);
     setEditPlannedGroups(pGroups);
-    setEditIncludeBldTask(selected.includeBldTask !== false);
+    setEditIncludeBldTask(false);
     setIsEditing(true);
   };
 
@@ -353,13 +357,17 @@ export default function WeeklyReportCenter({
 
           // Populate editor with AI result
           const result = data.result || {};
-          const cGroups =
+          const diffPattern = /(?:khó\s*khăn|vướng\s*mắc|tồn\s*tại)/i;
+          const rawCGroups =
             Array.isArray(result.completedGroups) && result.completedGroups.length
-              ? result.completedGroups.map((g: any) => ({
-                  name: g.name || 'Công việc',
-                  items: Array.isArray(g.items) ? [...g.items] : [],
-                }))
+              ? result.completedGroups
               : [{ name: 'Công việc', items: [] }];
+          const cGroups = rawCGroups
+            .filter((g: any) => !diffPattern.test(g?.name || ''))
+            .map((g: any) => ({
+              name: g.name || 'Công việc',
+              items: Array.isArray(g.items) ? [...g.items] : [],
+            }));
           const pGroups =
             Array.isArray(result.plannedGroups) && result.plannedGroups.length
               ? result.plannedGroups.map((g: any) => ({
@@ -368,10 +376,10 @@ export default function WeeklyReportCenter({
                 }))
               : [{ name: 'Công việc', items: [] }];
 
-          setEditCompletedGroups(cGroups);
+          setEditCompletedGroups(cGroups.length ? cGroups : [{ name: 'Công việc', items: [] }]);
           setEditDifficulties(Array.isArray(result.difficulties) ? [...result.difficulties] : []);
           setEditPlannedGroups(pGroups);
-          setEditIncludeBldTask(selected?.includeBldTask !== false);
+          setEditIncludeBldTask(false);
           setSuspiciousCompletedItems(
             Array.isArray(result.suspiciousCompletedItems) ? result.suspiciousCompletedItems : [],
           );
@@ -724,9 +732,14 @@ export default function WeeklyReportCenter({
     }
   };
 
-  const displayCompletedGroups = selected?.completedGroups?.length
-    ? selected.completedGroups
-    : [{ name: 'Công việc', items: selected?.completedItems || [] }];
+  const diffPattern = /(?:khó\s*khăn|vướng\s*mắc|tồn\s*tại)/i;
+  const displayCompletedGroups = useMemo(() => {
+    const raw = selected?.completedGroups?.length
+      ? selected.completedGroups
+      : [{ name: 'Công việc', items: selected?.completedItems || [] }];
+    const filtered = raw.filter(g => !diffPattern.test(g.name || ''));
+    return filtered.length ? filtered : [{ name: 'Công việc', items: [] }];
+  }, [selected]);
 
   const displayPlannedGroups = selected?.plannedGroups?.length
     ? selected.plannedGroups
@@ -1862,19 +1875,6 @@ export default function WeeklyReportCenter({
                                   </div>
                                 </div>
                               ))}
-
-                              {/* BLD task toggle */}
-                              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                <label className="flex items-center gap-2 cursor-pointer font-sans text-xs sm:text-sm font-semibold text-slate-700">
-                                  <input
-                                    type="checkbox"
-                                    checked={editIncludeBldTask}
-                                    onChange={e => setEditIncludeBldTask(e.target.checked)}
-                                    className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
-                                  />
-                                  <span>Thêm dòng: “Thực hiện các nhiệm vụ khác theo chỉ đạo của BLĐ.”</span>
-                                </label>
-                              </div>
                             </div>
                           </div>
 
@@ -1956,7 +1956,7 @@ export default function WeeklyReportCenter({
                                     ))}
                                   </div>
                                 ) : (
-                                  <p className="leading-snug">- Không có.</p>
+                                  <p className="leading-snug">- Không có khó khăn, vướng mắc đáng kể.</p>
                                 )}
                               </div>
                             </div>
@@ -1989,12 +1989,6 @@ export default function WeeklyReportCenter({
                                   )}
                                 </div>
                               ))}
-
-                              {selected.includeBldTask !== false && (
-                                <p className="leading-snug pt-1">
-                                  - Thực hiện các nhiệm vụ khác theo chỉ đạo của BLĐ.
-                                </p>
-                              )}
                             </div>
                           </section>
                         </div>
