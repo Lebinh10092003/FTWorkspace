@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { appDialog } from '../AppDialog';
 import {
-  CheckCircle2,
   Copy,
   Download,
   FileUp,
@@ -9,7 +8,7 @@ import {
   Lock,
   Plus,
   Save,
-  X,
+  X
 } from 'lucide-react';
 import type { Competition, ExaminationSession } from './types';
 import FormField from '../ui/FormField';

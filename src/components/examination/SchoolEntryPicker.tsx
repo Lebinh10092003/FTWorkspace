@@ -1,4 +1,3 @@
-import React from 'react';
 import type { Partner } from './Partners';
 
 export type SchoolEntry = { partnerId: string; fee: string };

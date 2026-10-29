@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Minus, Plus, X } from "lucide-react";
 
 export default function AssessmentZoomableImage({ src, alt, className }: { src: string; alt: string; className?: string }) {

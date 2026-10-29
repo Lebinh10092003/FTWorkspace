@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  AlertCircle,
   Bot,
   Camera,
   Check,
@@ -14,7 +13,7 @@ import {
   Sparkles,
   Trash2,
   UserRound,
-  X,
+  X
 } from 'lucide-react';
 import { appDialog } from './AppDialog';
 import McpConnectGuide from './McpConnectGuide';

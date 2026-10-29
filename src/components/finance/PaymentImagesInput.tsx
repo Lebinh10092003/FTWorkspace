@@ -1,4 +1,3 @@
-import React from 'react';
 
 export default function PaymentImagesInput({ files, onChange, onError, disabled = false }: {
   files: File[]; onChange: (files: File[]) => void; onError: (message: string) => void; disabled?: boolean;

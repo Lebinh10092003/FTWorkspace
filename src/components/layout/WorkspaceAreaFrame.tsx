@@ -4,12 +4,10 @@ import {
   CalendarRange,
   ClipboardList,
   Compass,
-  LayoutGrid,
-  Menu,
-  MoreHorizontal,
+  LayoutGrid, MoreHorizontal,
   Search,
   User,
-  X,
+  X
 } from 'lucide-react';
 import WorkspaceAppRail from './WorkspaceAppRail';
 import CommandPalette from './CommandPalette';

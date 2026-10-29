@@ -1,30 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Tag, 
-  Settings, 
-  Layout, 
-  BookOpen, 
-  HelpCircle,
-  FileText,
-  AlertTriangle,
-  Play,
-  ArrowLeft,
-  ContactRound,
-  MailPlus,
+import {
+  Tag,
+  Settings,
+  Layout,
+  BookOpen, MailPlus,
   RotateCcw,
   Upload,
   Info
 } from 'lucide-react';
 
 import { BlockType, EmailBlock, EmailSettings, EmailTemplate, EmailVariable } from '../../types/emailBuilder';
-import { createEmailBlock, getBlockDefinition } from '../../data/emailBlockRegistry';
+import { createEmailBlock } from '../../data/emailBlockRegistry';
 import { matchesSearch } from '../../lib/searchText';
 import { addEmailBlock, addEmailBlockRelative, duplicateEmailBlock, findEmailBlock, moveEmailBlock, moveEmailBlockByDirection, removeEmailBlock, replaceEmailBlock, updateEmailBlock } from '../../lib/emailBlockTree';
-import { 
-  loadTemplates, 
-  saveTemplates, 
-  getActiveTemplateId, 
-  setActiveTemplateId,
+import {
+  loadTemplates,
+  saveTemplates, setActiveTemplateId,
   restoreDefaultTemplates
 } from '../../lib/emailStorage';
 import {
@@ -59,7 +50,6 @@ import VariablePicker from './VariablePicker';
 import EmailBuilderHeader from './EmailBuilderHeader';
 import EmailHtmlImportDialog from './EmailHtmlImportDialog';
 import EmailHtmlSourceDialog from './EmailHtmlSourceDialog';
-import AccountMenu from '../AccountMenu';
 import { EmailBuilderDialogProvider, useEmailBuilderDialog } from './EmailBuilderDialog';
 
 interface EmailTemplateBuilderProps {

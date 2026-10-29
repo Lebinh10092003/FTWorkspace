@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Check, Clipboard, Download, ExternalLink, FileCode, FileImage, Link2, LockKeyhole, QrCode, ShieldCheck, Upload, X } from 'lucide-react';
+import { AlertTriangle, Check, Clipboard, Download, ExternalLink, FileCode, FileImage, Link2, LockKeyhole, QrCode, ShieldCheck, Upload, X } from 'lucide-react';
 import ModuleShellHeader from './layout/ModuleShellHeader';
 import type { ModuleNavItem } from '../config/workspaceNavigation';
 import QRCode from 'qrcode';

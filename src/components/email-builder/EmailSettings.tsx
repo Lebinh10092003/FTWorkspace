@@ -1,4 +1,3 @@
-import React from 'react';
 import { EmailSettings } from '../../types/emailBuilder';
 import ColorField from './ColorField';
 

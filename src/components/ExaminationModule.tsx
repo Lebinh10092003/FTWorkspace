@@ -1,9 +1,9 @@
 import { candidateBelongsToSession } from './examination/candidateMembership';
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BarChart3, Bell, Bot, CalendarDays, Check, ChevronDown, ChevronRight, CircleHelp, ClipboardCheck, GraduationCap, Handshake, LayoutDashboard, Layers3, Link2, Mail, MapPin, Pencil, FileSpreadsheet, FileText, Phone, Plus, Search, RefreshCw, School, Trophy, Trash2, UploadCloud, Users, X } from "lucide-react";
+import { ArrowLeft, BarChart3, CalendarDays, Check, ChevronRight, CircleHelp, Pencil, Plus, Search, RefreshCw, School, Trophy, Trash2, UploadCloud, Users, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { initialCandidates, initialCompetitions, initialSessions, navigationItems as nav } from "./examination/fixtures";
-import type { Candidate, Competition, DraftDate, ExaminationModuleProps as Props, ExaminationPage as Page, ExaminationSession as Session, TrainingClass } from "./examination/types";
+import type { Candidate, Competition, DraftDate, ExaminationModuleProps as Props, ExaminationPage as Page, ExaminationSession as Session } from "./examination/types";
 import ClassDetail from "./examination/ClassDetail";
 import TrainingClasses, { initialTrainingCourses, type TrainingCourse, type TrainingTeacher } from "./examination/TrainingClasses";
 import Partners, { demoPartners, type Partner } from "./examination/Partners";
@@ -15,13 +15,11 @@ import LogNotes, { appendLogNote as saveLogNote, formatChangeLog } from "./exami
 import DetailEditDialogs from "./examination/DetailEditDialogs";
 import SchoolEntryPicker, { emptySchoolEntry, type SchoolEntry } from "./examination/SchoolEntryPicker";
 import { normalizeSearchText } from '../lib/searchText';
-const InvigilationWorkspace = React.lazy(() => import("./examination/InvigilationWorkspace"));
 import RoomEntryPicker, { type RoomChoices } from "./examination/RoomEntryPicker";
 import CandidateProfileDetail from "./examination/CandidateProfileDetail";
 import SessionRoster from "./examination/SessionRoster";
 import RegistrationPageStudio from "./examination/RegistrationPageStudio";
 import ConfirmModal from "./ConfirmModal";
-import AccountMenu from "./AccountMenu";
 import ModuleShellHeader from "./layout/ModuleShellHeader";
 import { EXAMINATION_NAV, EXAMINATION_PAGE_TO_NAV, filterModuleNav } from "../config/workspaceNavigation";
 import SearchableSelect from "./SearchableSelect";
@@ -31,6 +29,7 @@ import { DateBadge, DeadlineLegend as Legend, Metric, SessionsTable, TimeField, 
 import { roundDates, sessionRounds } from "./examination/rounds";
 import { examinationPathFor, examinationRouteFromPath } from "./examination/routes";
 import ResponsiveDataList from "./ui/ResponsiveDataList";
+const InvigilationWorkspace = React.lazy(() => import("./examination/InvigilationWorkspace"));
 const emptyCandidate: Candidate = {
   code: "",
   name: "",

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import AccountMenu from "../AccountMenu";
 import ModuleShellHeader from "../layout/ModuleShellHeader";
 import { FINANCE_NAV, withNavBadges } from "../../config/workspaceNavigation";
 import ContractExpiryReview from "../finance/ContractExpiryReview";

@@ -7,10 +7,7 @@ import {
   Layers,
   GraduationCap,
   Users,
-  Briefcase,
-  ExternalLink,
-  ArrowRight,
-  Sparkles,
+  Briefcase, Sparkles,
   RefreshCw,
   PlusCircle,
   X

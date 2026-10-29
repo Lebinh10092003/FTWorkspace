@@ -1,5 +1,5 @@
 import { ChevronDown, Search, X } from 'lucide-react';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { matchesSearch } from '../lib/searchText';
 
 type Option = { value: string; label: string };

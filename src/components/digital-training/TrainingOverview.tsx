@@ -5,12 +5,7 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronRight,
-  Clock,
-  Layers,
-  Package,
-  PackageCheck,
-  Sparkles,
-  UsersRound,
+  Clock, PackageCheck, UsersRound
 } from "lucide-react";
 
 type OverviewSession = {

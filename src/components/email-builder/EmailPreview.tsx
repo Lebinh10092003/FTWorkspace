@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, Monitor, Smartphone, AlertTriangle } from 'lucide-react';
 import { EmailTemplate, EmailVariable } from '../../types/emailBuilder';
 import { generateEmailHtml } from '../../lib/emailHtmlGenerator';

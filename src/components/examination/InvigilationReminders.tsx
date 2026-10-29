@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BellRing, ChevronDown, Clock3, ExternalLink, X } from 'lucide-react';
 import { cardVisible, dutyDate, dutyTime, reminderDue, reminderKey, roomTitle, ServerClock } from './invigilationTiming';

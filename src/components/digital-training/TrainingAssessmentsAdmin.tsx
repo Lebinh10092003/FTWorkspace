@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import QuestionEditor, { questionTypeLabels, questionTypes } from "./AssessmentQuestionEditor";
+import QuestionEditor, { questionTypeLabels } from "./AssessmentQuestionEditor";
 import AssessmentZoomableImage from "./AssessmentZoomableImage";
 import { appDialog } from "../AppDialog";
 import {
@@ -16,9 +16,7 @@ import {
   ExternalLink,
   FileSpreadsheet,
   FileCheck2,
-  Layers3,
-  Link2,
-  Loader2,
+  Layers3, Loader2,
   MessageSquareText,
   Pencil,
   Plus,
@@ -29,7 +27,7 @@ import {
   Shuffle,
   Trash2,
   Upload,
-  Users,
+  Users
 } from "lucide-react";
 import QRCode from "qrcode";
 import * as XLSX from "xlsx";

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FileSpreadsheet, Link2, Loader2, RefreshCw, Save } from "lucide-react";
 import { normalizeSearchText } from '../../lib/searchText';
 

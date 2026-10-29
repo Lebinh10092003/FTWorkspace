@@ -7,19 +7,12 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
-  Compass,
-  ExternalLink,
-  Layers,
+  Compass, Layers,
   Loader2,
-  MessageSquare,
-  Minus,
-  RefreshCw,
-  Search,
+  MessageSquare, Search,
   Send,
-  Sparkles,
-  Square,
-  Trash2,
-  X,
+  Sparkles, Trash2,
+  X
 } from 'lucide-react';
 import {
   ACCOUNT_MANAGEMENT_NAV,

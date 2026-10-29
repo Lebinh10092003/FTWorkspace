@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { appDialog } from '../AppDialog';
-import { 
-  Settings, FileSpreadsheet, Lock, Users, AlertCircle, CheckCircle2, Shield, Plus, Trash2, Eye, ShieldAlert, KeyRound, ExternalLink, Edit3, EyeOff, FileCode, HelpCircle,
-  Check, Layers, Search, Sparkles, Copy, RefreshCw
+import {
+  Settings, FileSpreadsheet, Lock, Users, AlertCircle, CheckCircle2, Shield, Plus, Trash2, Eye, ShieldAlert, KeyRound, ExternalLink, Edit3, EyeOff, FileCode, HelpCircle, Search, Sparkles, RefreshCw
 } from 'lucide-react';
-import { Channel, SystemConfig, UserProfile, UserRole } from '../../types';
+import { UserProfile, UserRole } from '../../types';
 import ConfirmModal from '../ConfirmModal';
 
 export interface TokenRow {

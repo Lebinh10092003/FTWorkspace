@@ -11,13 +11,11 @@ import {
   FileUp,
   GripVertical,
   Link2,
-  Loader2,
-  ListChecks,
-  PlayCircle,
+  Loader2, PlayCircle,
   Save,
   Send,
   ShieldCheck,
-  Trash2,
+  Trash2
 } from "lucide-react";
 
 type PublicQuestion = {

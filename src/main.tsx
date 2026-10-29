@@ -1,7 +1,7 @@
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
-import {AppDialogProvider} from './components/AppDialog.tsx';
+import { AppDialogProvider } from './components/AppDialog.tsx';
 import './index.css';
 
 const originalFetch = window.fetch.bind(window);

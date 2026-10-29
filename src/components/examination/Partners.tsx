@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { ArrowLeft, Download, Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import LogNotes, { appendLogNote, formatChangeLog } from './LogNotes';

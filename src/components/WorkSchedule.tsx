@@ -1,7 +1,6 @@
 import { createPortal } from "react-dom";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bold, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDot, ClipboardCheck, ExternalLink, FileSpreadsheet, Italic, LayoutDashboard, ListChecks, Pencil, Plus, RefreshCw, Search, Tag, Trash2, UserCheck, X } from "lucide-react";
-import AccountMenu from "./AccountMenu";
+import { Bold, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDot, ClipboardCheck, ExternalLink, FileSpreadsheet, Italic, ListChecks, Plus, RefreshCw, Search, Tag, Trash2, UserCheck, X } from "lucide-react";
 import { appDialog } from "./AppDialog";
 import Time24Input from "./Time24Input";
 import MonthlySheetLinkEditor from "./MonthlySheetLinkEditor";

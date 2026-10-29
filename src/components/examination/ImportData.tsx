@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { CheckCircle2, Download, FileSpreadsheet, RefreshCw, School, UploadCloud, UserRound } from 'lucide-react';
 import type { Candidate, ExaminationSession } from './types';
 import type { Partner } from './Partners';

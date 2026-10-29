@@ -6,7 +6,6 @@ import { appDialog } from './AppDialog';
 import MonthlySheetLinkEditor from './MonthlySheetLinkEditor';
 import ModuleShellHeader from './layout/ModuleShellHeader';
 import SearchableSelect from './SearchableSelect';
-import AccountMenu from './AccountMenu';
 import { filterModuleNav, ATTENDANCE_NAV } from '../config/workspaceNavigation';
 import { pastDateVN, todayVN } from '../lib/vnDate';
 

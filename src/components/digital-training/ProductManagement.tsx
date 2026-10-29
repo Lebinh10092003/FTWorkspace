@@ -4,14 +4,7 @@ import { matchesSearch } from "../../lib/searchText";
 import AiAccountsManagerModal from "./AiAccountsManagerModal";
 import {
   AlertTriangle,
-  Bot,
-  BarChart3,
-  Boxes,
-  CheckCircle2,
-  Clock3,
-  Layers,
-  Mail,
-  Package,
+  Bot, Boxes, Clock3, Package,
   PackagePlus,
   Pencil,
   Phone,
@@ -22,7 +15,7 @@ import {
   Tag,
   Trash2,
   Users,
-  X,
+  X
 } from "lucide-react";
 import { formatDateVN } from '../../lib/format';
 

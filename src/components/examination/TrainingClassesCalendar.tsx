@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react';
 import type { ExaminationSession } from './types';
 import type { TrainingCourse } from './TrainingClasses';

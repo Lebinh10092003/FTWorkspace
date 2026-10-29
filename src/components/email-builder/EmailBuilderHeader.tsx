@@ -1,17 +1,17 @@
 import React, { useRef, useState } from 'react';
-import { 
-  ArrowLeft, 
+import {
+  ArrowLeft,
   Files,
-  Copy, 
-  RotateCcw, 
+  Copy,
+  RotateCcw,
   Undo2,
   Redo2,
-  Download, 
-  Upload, 
+  Download,
+  Upload,
   Code2,
   FileCode2,
-  Trash2, 
-  Eye, 
+  Trash2,
+  Eye,
   Check, Edit2, Share2
 } from 'lucide-react';
 import { EmailTemplate } from '../../types/emailBuilder';

@@ -14,9 +14,7 @@ import {
   FileClock,
   FileSignature,
   FileSpreadsheet,
-  FileText,
-  FolderTree,
-  GraduationCap,
+  FileText, GraduationCap,
   Handshake,
   KeyRound,
   Layers3,
@@ -39,7 +37,7 @@ import {
   Trophy,
   UploadCloud,
   UserCheck,
-  Users,
+  Users
 } from 'lucide-react';
 
 /**

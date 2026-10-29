@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type RoomOption = { id: string; label: string; link: string; location: string; occurrenceId: string; occurrenceLabel: string; date: string; time: string; assignedCount: number; capacity: number | null; invigilators: string[] };
 type Occurrence = { id: string; date: string; time: string; label: string };

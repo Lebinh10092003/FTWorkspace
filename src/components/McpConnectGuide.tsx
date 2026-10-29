@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Check, Copy, Plug, Unplug } from 'lucide-react';
 
 type ClientId = 'claude-web' | 'claude-desktop' | 'claude-code' | 'cursor' | 'chatgpt';

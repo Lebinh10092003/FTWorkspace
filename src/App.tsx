@@ -1,19 +1,16 @@
 import React, { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { appDialog } from './components/AppDialog';
-import { ArrowLeft, BadgeDollarSign, CalendarCheck, CalendarDays, CalendarRange, ChartColumnBig, ClipboardList, ContactRound, FileCheck2, FileSignature, ReceiptText, GraduationCap, Mail, Megaphone, Moon, QrCode, Presentation, Search, ShieldUser, Sparkles, TriangleAlert } from 'lucide-react';
+import { CalendarDays, ClipboardList, ContactRound, FileSignature, ReceiptText, Mail, Moon, QrCode, Presentation, TriangleAlert } from 'lucide-react';
 
 import { Channel, UserRole } from './types';
 import LoginModal from './components/LoginModal';
 import AccountProfileModal from './components/AccountProfileModal';
-import AccountMenu from './components/AccountMenu';
-import WorkspaceNotifications from './components/WorkspaceNotifications';
 import InvigilationReminders from './components/examination/InvigilationReminders';
-import ModuleMobileNav from './components/ModuleMobileNav';
 import WorkspaceHome from './components/home/WorkspaceHome';
 import { readWorkspaceAppearance, WorkspaceAppearance } from './components/AppearanceSettings';
 import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
 import ModuleShellHeader from './components/layout/ModuleShellHeader';
-import { groupByDepartment, resolveDepartmentLayout } from './config/departmentLayout';
+import { resolveDepartmentLayout } from './config/departmentLayout';
 import { ACCOUNT_MANAGEMENT_NAV, RESOURCES_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
 import { normalizeSearchText } from './lib/searchText';
 
@@ -263,7 +260,8 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [accessNotice, setAccessNotice] = useState('');
+  // Trước đây thông báo này được đặt vào state nhưng không còn chỗ hiển thị (từ trang chủ mới), nên bấm vào mô-đun chưa có quyền thì không thấy gì.
+  const setAccessNotice = (message: string) => { void appDialog.alert(message, { title: 'Chưa có quyền truy cập', tone: 'info' }); };
   const [appearance, setAppearance] = useState<WorkspaceAppearance>(readWorkspaceAppearance);
 
   const [viewMode, setViewModeState] = useState<ViewMode>(getInitialViewMode());

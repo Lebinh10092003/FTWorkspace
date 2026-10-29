@@ -19,7 +19,6 @@ import {
   X,
 } from 'lucide-react';
 
-import AccountMenu from '../AccountMenu';
 import ModuleShellHeader from '../layout/ModuleShellHeader';
 import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
 

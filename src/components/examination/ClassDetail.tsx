@@ -1,6 +1,6 @@
-import React,{useState}from 'react';
-import {ArrowLeft,Pencil}from 'lucide-react';
-import type {Candidate}from './types';
+import { useState } from 'react';
+import { ArrowLeft, Pencil } from 'lucide-react';
+import type { Candidate } from './types';
 type Tab='info'|'students'|'attendance';
 export default function ClassDetail({data,candidates,onBack,onCandidate}:{data:{name:string;teacher:string;schedule:string};candidates:Candidate[];onBack:()=>void;onCandidate:(c:Candidate)=>void}){
  const[editing,setEditing]=useState(false),[tab,setTab]=useState<Tab>('info'),[attendance,setAttendance]=useState<Record<string,string>>({});

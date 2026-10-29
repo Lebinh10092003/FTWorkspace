@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Copy, ExternalLink, FileSignature, Loader2, RefreshCw, TriangleAlert } from 'lucide-react';
 import ModuleShellHeader from '../layout/ModuleShellHeader';
-import AccountMenu from '../AccountMenu';
 import SearchableSelect from '../SearchableSelect';
 import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
 import { todayVN } from '../../lib/vnDate';

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -12,17 +12,13 @@ import {
   ExternalLink,
   GraduationCap,
   Layers3,
-  Mail,
-  Megaphone,
-  Plus,
+  Mail, Plus,
   QrCode,
   ReceiptText,
   Search,
   ShieldUser,
   Sparkles,
-  Trophy,
-  User,
-  X,
+  Trophy
 } from 'lucide-react';
 import WorkspaceNotifications from '../WorkspaceNotifications';
 import {
@@ -33,8 +29,7 @@ import {
   getIsoWeekNumber,
   getTimeUntilFridayDeadline,
   getWeekDays,
-  mapTaskStatus,
-  WeekDayInfo,
+  mapTaskStatus
 } from '../../lib/workspaceHomeUtils';
 
 export type WorkspaceHomeProps = {

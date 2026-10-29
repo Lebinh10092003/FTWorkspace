@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { appDialog } from '../AppDialog';
-import { 
-  Search, Radio, Layers, ExternalLink, Download, ArrowUpDown, ChevronLeft, ChevronRight, AlertCircle, FileText, Calendar
+import {
+  Search, ExternalLink, Download, ChevronLeft, ChevronRight, AlertCircle, FileText, Calendar
 } from 'lucide-react';
-import { Channel, Post, Platform } from '../../types';
+import { Channel } from '../../types';
 import SearchableSelect from '../SearchableSelect';
 import { pastDateVN, shiftDateKey, shiftDateKeyMonths, todayVN } from '../../lib/vnDate';
 

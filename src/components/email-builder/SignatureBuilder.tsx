@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowLeft, Check, Copy, Eye, EyeOff, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { createEmailBlock } from '../../data/emailBlockRegistry';
 import { copyEmailToClipboard } from '../../lib/emailClipboard';

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 const HOURS = Array.from({ length: 24 }, (_, value) => String(value).padStart(2, "0"));

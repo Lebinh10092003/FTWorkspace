@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { AlertTriangle, Trash2, HelpCircle, X } from 'lucide-react';
 
 interface ConfirmModalProps {

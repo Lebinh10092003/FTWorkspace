@@ -1,4 +1,3 @@
-import React from "react";
 
 export const questionTypeLabels: Record<string, string> = {
   single_choice: "Trắc nghiệm",

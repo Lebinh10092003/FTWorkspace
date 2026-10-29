@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CheckCircle2, ExternalLink, FileSpreadsheet, Loader2, Pencil, Save, Trash2, X } from 'lucide-react';
 import { appDialog } from './AppDialog';
 

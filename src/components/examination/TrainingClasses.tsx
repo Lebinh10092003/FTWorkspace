@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { CalendarCheck, Check, Download, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Candidate, ExaminationSession } from './types';

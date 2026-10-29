@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import ExamDialog from './ExamDialog';
 import RoomEntryPicker, { type RoomChoices } from './RoomEntryPicker';

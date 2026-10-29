@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Loader2, Plus, RotateCcw, Save, Trash2, TriangleAlert, ZoomIn, ZoomOut } from 'lucide-react';
 import { appDialog } from '../AppDialog';
 import ModuleShellHeader from '../layout/ModuleShellHeader';
-import AccountMenu from '../AccountMenu';
 import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
 import FundingProposalPreview from './FundingProposalPreview';
 import {

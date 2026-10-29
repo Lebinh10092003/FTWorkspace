@@ -1,11 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
-  CalendarCheck,
-  CalendarRange,
-  ClipboardList,
-  LayoutGrid,
   PanelLeftClose,
-  PanelLeftOpen,
+  PanelLeftOpen
 } from 'lucide-react';
 import { WORKSPACE_AREAS, WorkspaceArea, WorkspaceAreaId } from '../../config/workspaceNavigation';
 import { DepartmentLayout } from '../../config/departmentLayout';

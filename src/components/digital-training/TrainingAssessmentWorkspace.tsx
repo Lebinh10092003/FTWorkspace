@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from "react";
-import { ArrowLeft, FileCheck2, GraduationCap, Link2, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 
-import AccountMenu from "../AccountMenu";
 import ModuleShellHeader from "../layout/ModuleShellHeader";
 import { filterModuleNav, TRAINING_ASSESSMENT_NAV } from "../../config/workspaceNavigation";
 import TrainingAssessmentsAdmin from "./TrainingAssessmentsAdmin";

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Edit3, Eye, EyeOff, KeyRound, Lock, Plus, Search, Settings2, Shield, Trash2, Unlock, UserRoundPlus, Users, X } from 'lucide-react';
+import { Edit3, Eye, EyeOff, KeyRound, Lock, Plus, Search, Settings2, Shield, Trash2, Unlock, X } from 'lucide-react';
 import { UserProfile, UserRole } from '../../types';
 import ConfirmModal from '../ConfirmModal';
 import { appDialog } from '../AppDialog';
