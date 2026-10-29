@@ -1,3 +1,4 @@
+from datetime import date, datetime, time, timedelta
 import hmac
 import logging
 import os
@@ -17,11 +18,20 @@ from rest_framework.response import Response
 # These are shared tools, like the QR and signature builders: any signed-in
 # member can draft a document, so they are not scoped to a single module.
 from authentication.permissions import IsWorkspaceAuthenticated
+from work_schedule.models import WorkItem
+from news_posts.document_parser import extract_text_from_file
 
 from .funding_proposal import build_funding_proposal, file_title
 from .funding_archive import save_proposal
 from .funding_numbering import assign_funding_number
-from .models import AiReportJob, AiServiceHealth, FundingProposalRecord, WeeklyReport
+from .models import (
+    AiReportJob,
+    AiServiceHealth,
+    FundingProposalRecord,
+    WeeklyReport,
+    WeeklyReportSchedule,
+    WeeklyReportSupplement,
+)
 from .ai_service import cancel_ai_job, get_job_queue_position
 from .numbering import (
     DOCUMENT_TYPES,
@@ -32,12 +42,14 @@ from .numbering import (
 )
 from .weekly_report_docx import build_weekly_report_docx
 from .weekly_reports import (
+    build_schedule_reports,
     report_document_id,
     report_generation_options,
     report_sheet_id,
     resolve_report_week_start,
     run_weekly_report_pipeline,
     sync_reports_from_google_doc,
+    week_start,
 )
 
 logger = logging.getLogger(__name__)
@@ -495,4 +507,344 @@ def weekly_report_ai_status(request):
         "lastCheckedAt": health.last_checked_at.isoformat() if health.last_checked_at else None,
         "lastReadyAt": health.last_ready_at.isoformat() if health.last_ready_at else None,
     })
+
+
+def _resolve_supplement_week_start(value: Any, today: Optional[date] = None) -> date:
+    """Parse Monday date for a reporting week."""
+    today = today or timezone.localdate()
+    if not value:
+        # Default reporting week: if Thu or earlier, previous week; if Fri or later, current week
+        current_monday = week_start(today)
+        return current_monday - timedelta(days=7) if today.weekday() <= 3 else current_monday
+    try:
+        parsed = date.fromisoformat(str(value).strip())
+    except ValueError as exc:
+        raise ValueError("Ngày đầu tuần không hợp lệ (định dạng YYYY-MM-DD).") from exc
+    return week_start(parsed)
+
+
+@api_view(["GET", "PUT"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_report_supplement(request):
+    """Get or update notes for the current user's reporting week."""
+    try:
+        raw_val = request.query_params.get("weekStart") if request.method == "GET" else request.data.get("weekStart")
+        target_week = _resolve_supplement_week_start(raw_val)
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    supp = WeeklyReportSupplement.objects.filter(user=request.user, week_start=target_week).first()
+
+    if request.method == "PUT":
+        data = request.data if isinstance(request.data, dict) else {}
+        note = str(data.get("note", "") or "")
+        if len(note) > 50_000:
+            return Response({"error": "Ghi chú quá dài (tối đa 50.000 ký tự)."}, status=status.HTTP_400_BAD_REQUEST)
+        if not supp:
+            supp = WeeklyReportSupplement.objects.create(
+                user=request.user,
+                week_start=target_week,
+                note=note,
+                attachments=[],
+            )
+        else:
+            supp.note = note
+            supp.save(update_fields=["note", "updated_at"])
+
+    return Response({
+        "weekStart": target_week.isoformat(),
+        "note": supp.note if supp else "",
+        "attachments": supp.attachments if supp else [],
+        "totalChars": supp.total_text_chars() if supp else 0,
+        "updatedAt": supp.updated_at.isoformat() if supp else None,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_report_supplement_upload(request):
+    """Upload and immediately extract text from a document (.docx, .txt, .md, .csv). Never store raw file."""
+    upload_file = request.FILES.get("file")
+    if not upload_file:
+        return Response({"error": "Vui lòng chọn tệp tin cần tải lên."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if upload_file.size > 5 * 1024 * 1024:
+        return Response({"error": "Kích thước tệp vượt quá giới hạn 5MB."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        target_week = _resolve_supplement_week_start(request.data.get("weekStart"))
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    file_bytes = upload_file.read()
+    try:
+        parsed_doc = extract_text_from_file(file_bytes, upload_file.name)
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    supp, _ = WeeklyReportSupplement.objects.get_or_create(
+        user=request.user,
+        week_start=target_week,
+        defaults={"attachments": [], "note": ""},
+    )
+
+    current_attachments = list(supp.attachments or [])
+    if len(current_attachments) >= 5:
+        return Response({"error": "Mỗi tuần chỉ được đính kèm tối đa 5 tệp tin."}, status=status.HTTP_400_BAD_REQUEST)
+
+    current_chars = supp.total_text_chars()
+    new_chars = len(parsed_doc.get("text", ""))
+    if current_chars + new_chars > 60_000:
+        return Response({
+            "error": f"Tổng dung lượng văn bản của các tệp đính kèm vượt quá 60.000 ký tự (hiện có: {current_chars}, thêm mới: {new_chars}).",
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    # Disambiguate duplicate file names
+    base_name = parsed_doc["name"]
+    fname = base_name
+    counter = 1
+    existing_names = {att.get("name") for att in current_attachments if isinstance(att, dict)}
+    while fname in existing_names:
+        name_part, dot, ext = base_name.rpartition(".")
+        fname = f"{name_part} ({counter}).{ext}" if dot else f"{base_name} ({counter})"
+        counter += 1
+
+    current_attachments.append({
+        "name": fname,
+        "size": parsed_doc["size"],
+        "text": parsed_doc["text"],
+        "charCount": parsed_doc.get("charCount", len(parsed_doc["text"])),
+        "truncated": parsed_doc.get("truncated", False),
+        "uploadedAt": timezone.now().isoformat(),
+    })
+
+    supp.attachments = current_attachments
+    supp.save(update_fields=["attachments", "updated_at"])
+
+    return Response({
+        "weekStart": target_week.isoformat(),
+        "attachments": supp.attachments,
+        "totalChars": supp.total_text_chars(),
+        "note": supp.note,
+        "message": f"Đã tải lên và trích xuất thành công tệp '{fname}'.",
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST", "DELETE"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_report_supplement_delete_attachment(request):
+    """Remove one attachment by filename or index from this week's supplement."""
+    try:
+        raw_val = request.query_params.get("weekStart") if request.method == "DELETE" else request.data.get("weekStart")
+        target_week = _resolve_supplement_week_start(raw_val)
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    supp = WeeklyReportSupplement.objects.filter(user=request.user, week_start=target_week).first()
+    if not supp or not supp.attachments:
+        return Response({"error": "Không tìm thấy tệp đính kèm để xóa."}, status=status.HTTP_404_NOT_FOUND)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    target_name = str(request.query_params.get("filename") or payload.get("filename") or "").strip()
+    target_idx = request.query_params.get("index") or payload.get("index")
+
+    current_attachments = list(supp.attachments or [])
+    new_attachments = []
+    removed = False
+
+    if target_idx is not None:
+        try:
+            idx_int = int(target_idx)
+            if 0 <= idx_int < len(current_attachments):
+                new_attachments = [att for i, att in enumerate(current_attachments) if i != idx_int]
+                removed = True
+        except ValueError:
+            pass
+
+    if not removed and target_name:
+        for att in current_attachments:
+            if isinstance(att, dict) and att.get("name") == target_name and not removed:
+                removed = True
+                continue
+            new_attachments.append(att)
+
+    if not removed:
+        return Response({"error": "Không tìm thấy tệp đính kèm cần xóa."}, status=status.HTTP_404_NOT_FOUND)
+
+    supp.attachments = new_attachments
+    supp.save(update_fields=["attachments", "updated_at"])
+
+    return Response({
+        "weekStart": target_week.isoformat(),
+        "attachments": supp.attachments,
+        "totalChars": supp.total_text_chars(),
+        "note": supp.note,
+        "message": "Đã xóa tệp đính kèm.",
+    })
+
+
+@api_view(["GET", "PUT"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_report_schedule(request):
+    """Retrieve or update weekly auto-run schedule preferences for the current user."""
+    sched, _ = WeeklyReportSchedule.objects.get_or_create(user=request.user)
+
+    if request.method == "PUT":
+        data = request.data if isinstance(request.data, dict) else {}
+        if "enabled" in data:
+            sched.enabled = bool(data.get("enabled"))
+        if "weekday" in data:
+            try:
+                wday = int(data.get("weekday"))
+                if not (0 <= wday <= 6):
+                    raise ValueError
+                sched.weekday = wday
+            except (ValueError, TypeError):
+                return Response({"error": "Thứ trong tuần không hợp lệ (0 = Thứ Hai ... 6 = Chủ Nhật)."}, status=status.HTTP_400_BAD_REQUEST)
+        if "runTime" in data:
+            rt_str = str(data.get("runTime") or "").strip()
+            try:
+                parsed_time = datetime.strptime(rt_str, "%H:%M").time()
+                sched.run_time = parsed_time
+            except ValueError:
+                return Response({"error": "Giờ chạy không hợp lệ (định dạng HH:MM, ví dụ 16:00)."}, status=status.HTTP_400_BAD_REQUEST)
+        if "remindMinutes" in data:
+            try:
+                rm = int(data.get("remindMinutes"))
+                if rm < 0 or rm > 1440:
+                    raise ValueError
+                sched.remind_minutes = rm
+            except (ValueError, TypeError):
+                return Response({"error": "Số phút nhắc trước không hợp lệ (0 - 1440 phút)."}, status=status.HTTP_400_BAD_REQUEST)
+
+        sched.save()
+
+    return Response({
+        "enabled": sched.enabled,
+        "weekday": sched.weekday,
+        "runTime": sched.run_time.strftime("%H:%M") if hasattr(sched.run_time, "strftime") else str(sched.run_time)[:5],
+        "remindMinutes": sched.remind_minutes,
+        "lastRemindedWeek": sched.last_reminded_week,
+        "lastRunWeek": sched.last_run_week,
+        "updatedAt": sched.updated_at.isoformat(),
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_report_work_schedule_summary(request):
+    """Return task counts for the selected reporting week and the upcoming planned week."""
+    try:
+        raw_val = request.query_params.get("weekStart")
+        selected_start = _resolve_supplement_week_start(raw_val)
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    next_start = selected_start + timedelta(days=7)
+    next_end = next_start + timedelta(days=7)
+    completed_week = selected_start.isocalendar().week
+    planned_week = next_start.isocalendar().week
+
+    user_email = str(getattr(request.user, "email", "") or "").strip().lower()
+    c_count = WorkItem.objects.filter(
+        executor__email=user_email,
+        work_date__gte=selected_start,
+        work_date__lt=next_start,
+    ).count()
+
+    p_count = WorkItem.objects.filter(
+        executor__email=user_email,
+        work_date__gte=next_start,
+        work_date__lt=next_end,
+    ).count()
+
+    planned_warning = None
+    if p_count < 5:
+        planned_warning = f"Tuần {planned_week} mới có {p_count} việc, cần đăng ký thêm"
+
+    return Response({
+        "weekStart": selected_start.isoformat(),
+        "completedWeek": completed_week,
+        "plannedWeek": planned_week,
+        "completedCount": c_count,
+        "plannedCount": p_count,
+        "plannedWarning": planned_warning,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_reports_generate_ai(request):
+    """Create or stage a report draft from work schedule and immediately enqueue AI generation with supplement."""
+    user_email = str(getattr(request.user, "email", "") or "").strip().lower()
+    if not user_email:
+        return Response({"error": "Vui lòng đăng nhập để tạo báo cáo tuần."}, status=status.HTTP_403_FORBIDDEN)
+
+    # Health check
+    health = AiServiceHealth.get_current()
+    if health.status == AiServiceHealth.STATUS_AUTH_ERROR:
+        return Response(
+            {"error": "AI tạm ngừng, quản trị viên cần đăng nhập lại."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    # Concurrency limit check
+    active_job = AiReportJob.objects.filter(
+        user=request.user,
+        status__in=[AiReportJob.STATUS_QUEUED, AiReportJob.STATUS_RUNNING],
+    ).first()
+    if active_job:
+        return Response(
+            {
+                "error": "Bạn đã có một yêu cầu đang chờ hoặc đang xử lý. Vui lòng đợi hoặc hủy yêu cầu trước đó.",
+                "activeJobId": active_job.id,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    try:
+        selected_start = resolve_report_week_start(payload.get("weekStart"))
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 1. Stage or refresh the user's WeeklyReport snapshot from work schedule
+    try:
+        reports = build_schedule_reports(
+            report_week_start=selected_start,
+            employee_email=user_email,
+        )
+        if not reports:
+            return Response({"error": "Không thể khởi tạo bản báo cáo tuần cho nhân viên."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        report = reports[0]
+    except Exception as exc:
+        logger.exception("Error building schedule report draft: %s", exc)
+        return Response({"error": f"Lỗi khởi tạo bản nháp từ lịch công tác: {exc}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+    # 2. Capture supplement snapshot
+    supp = WeeklyReportSupplement.objects.filter(user=request.user, week_start=selected_start).first()
+    snapshot = {}
+    if supp:
+        snapshot = {
+            "note": supp.note,
+            "attachments": supp.attachments or [],
+        }
+
+    # 3. Create AI Job carrying the supplement snapshot
+    job = AiReportJob.objects.create(
+        user=request.user,
+        report=report,
+        supplement_snapshot=snapshot,
+        status=AiReportJob.STATUS_QUEUED,
+    )
+
+    return Response({
+        "jobId": job.id,
+        "reportId": report.id,
+        "status": job.status,
+        "queuePosition": get_job_queue_position(job),
+        "createdAt": job.created_at.isoformat(),
+        "completedWeek": report.completed_week,
+        "plannedWeek": report.planned_week,
+    }, status=status.HTTP_201_CREATED)
 

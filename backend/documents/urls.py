@@ -5,7 +5,13 @@ from . import views
 urlpatterns = [
     path("documents/weekly-reports", views.weekly_reports, name="weekly_reports"),
     path("documents/weekly-reports/generation-options", views.weekly_report_generation_options, name="weekly_report_generation_options"),
+    path("documents/weekly-reports/generate-ai", views.weekly_reports_generate_ai, name="weekly_reports_generate_ai"),
     path("documents/weekly-reports/generate", views.weekly_reports_generate, name="weekly_reports_generate"),
+    path("documents/weekly-reports/work-schedule-summary", views.weekly_report_work_schedule_summary, name="weekly_report_work_schedule_summary"),
+    path("documents/weekly-reports/supplement", views.weekly_report_supplement, name="weekly_report_supplement"),
+    path("documents/weekly-reports/supplement/upload", views.weekly_report_supplement_upload, name="weekly_report_supplement_upload"),
+    path("documents/weekly-reports/supplement/attachment", views.weekly_report_supplement_delete_attachment, name="weekly_report_supplement_delete_attachment"),
+    path("documents/weekly-reports/schedule", views.weekly_report_schedule, name="weekly_report_schedule"),
     path("documents/weekly-reports/sync", views.weekly_reports_sync, name="weekly_reports_sync"),
     path("documents/weekly-reports/webhook", views.weekly_report_document_webhook, name="weekly_report_document_webhook"),
     path("documents/weekly-reports/ai-status", views.weekly_report_ai_status, name="weekly_report_ai_status"),
