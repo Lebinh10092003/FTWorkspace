@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { Channel, DashboardData } from '../../types';
 import SearchableSelect from '../SearchableSelect';
+import { VIETNAM_TIME_ZONE, dateKeyVN, shiftDateKey } from '../../lib/vnDate';
 
 const COLORS = ['#2563eb', '#0f766e', '#f59e0b', '#ef4444', '#7c3aed', '#ec4899', '#0891b2', '#ea580c'];
 const DEFAULT_AUTO_SCALE_STEPS = 8;
@@ -145,27 +146,13 @@ const getYAxisScale = (values: number[], divisions: number, includeZero = true):
   return { domain: [0, domainMax], ticks };
 };
 
-const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh';
-const getVietnamDateStr = (date = new Date()) => {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: VIETNAM_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const value = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  return `${value.year}-${value.month}-${value.day}`;
-};
+const getVietnamDateStr = dateKeyVN;
 const getVietnamHour = () => Number(new Intl.DateTimeFormat('en-GB', {
   timeZone: VIETNAM_TIME_ZONE,
   hour: '2-digit',
   hourCycle: 'h23',
 }).format(new Date()));
-const shiftDateStr = (dateString: string, days: number) => {
-  const date = new Date(`${dateString}T12:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-};
+const shiftDateStr = shiftDateKey;
 const getPastDateStr = (days: number) => shiftDateStr(getVietnamDateStr(), -days);
 const getTodayStr = () => getVietnamDateStr();
 const getPresetRange = (preset: Exclude<DatePreset, 'custom'>) => {

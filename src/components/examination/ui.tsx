@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import type { DraftDate, ExaminationSession } from './types';
 import { roundDates, sessionRounds } from './rounds';
+import { dateKeyVN } from '../../lib/vnDate';
 
-/** Local calendar date, avoiding UTC shifts in countdown labels. */
-export const todayIso = (value = new Date()) => {
-  const offset = value.getTimezoneOffset() * 60_000;
-  return new Date(value.getTime() - offset).toISOString().slice(0, 10);
-};
+/** Ngày theo giờ Việt Nam, tránh lệch ngày UTC trong nhãn đếm ngược. */
+export const todayIso = (value = new Date()) => dateKeyVN(value);
 export const emptyDate = (): DraftDate => ({ day: '', month: '', year: '', planned: false, unknown: false });
 export function normaliseBirthDate(value?: string) {
   const raw = String(value || '').trim();

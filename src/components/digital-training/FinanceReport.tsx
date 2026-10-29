@@ -13,6 +13,7 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
+import { todayVN } from '../../lib/vnDate';
 
 export type FinancePartner = { id: number; name: string };
 
@@ -53,7 +54,7 @@ const formatMoney = (value: string | number) =>
 const showDate = (value: string) =>
   value ? new Date(`${value}T00:00:00`).toLocaleDateString("vi-VN") : "—";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = todayVN;
 const monthStart = () => `${today().slice(0, 7)}-01`;
 const blankDraft = () => ({
   id: 0,

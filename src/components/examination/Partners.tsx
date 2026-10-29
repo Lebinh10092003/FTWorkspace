@@ -6,6 +6,7 @@ import ConfirmModal from '../ConfirmModal';
 import SearchableSelect from '../SearchableSelect';
 import { LIST_PAGE_SIZE, TablePagination } from './ui';
 import { matchesSearch } from '../../lib/searchText';
+import { todayVN } from '../../lib/vnDate';
 
 export type PartnerStudentCount = { session: string; count: number };
 export type Partner = {
@@ -87,7 +88,7 @@ export default function Partners({ partners, onPartnersChange, actor, idToken, c
     worksheet['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 18 }, { wch: 32 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 30 }, { wch: 30 }, { wch: 24 }, { wch: 36 }];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Danh sách đối tác');
-    XLSX.writeFile(workbook, `danh_sach_doi_tac_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(workbook, `danh_sach_doi_tac_${todayVN()}.xlsx`);
   };
   const openCreate = () => { setDraft(emptyPartner()); setDraftContests(''); setDraftCounts(''); setError(''); setEditor('create'); };
   const openEdit = () => { if (!selected) return; setDraft({ ...selected, contests: [...selected.contests], studentCounts: [...selected.studentCounts] }); setDraftContests(contestText(selected)); setDraftCounts(countsText(selected)); setError(''); setEditor('edit'); };

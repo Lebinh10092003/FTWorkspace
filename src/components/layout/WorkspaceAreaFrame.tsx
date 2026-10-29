@@ -135,7 +135,6 @@ export default function WorkspaceAreaFrame({
         layout={layout}
         userName={userName}
         userRole={userRole}
-        onOpenSearch={() => setCommandPaletteOpen(true)}
         onAccountClick={onAccountClick}
       />
 

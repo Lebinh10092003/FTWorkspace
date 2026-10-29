@@ -13,7 +13,6 @@ import WorkspaceHome from './components/home/WorkspaceHome';
 import { readWorkspaceAppearance, WorkspaceAppearance } from './components/AppearanceSettings';
 import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
 import ModuleShellHeader from './components/layout/ModuleShellHeader';
-import CommandPalette from './components/layout/CommandPalette';
 import { groupByDepartment, resolveDepartmentLayout } from './config/departmentLayout';
 import { ACCOUNT_MANAGEMENT_NAV, RESOURCES_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
 
@@ -275,13 +274,6 @@ export default function App() {
   const [yesterdayWarning, setYesterdayWarning] = useState<{ show: boolean; date: string }>({ show: false, date: '' });
   const [dismissPermanent, setDismissPermanent] = useState(false);
   const [attendanceEditDate, setAttendanceEditDate] = useState('');
-  const [globalCommandOpen, setGlobalCommandOpen] = useState(false);
-
-  useEffect(() => {
-    const handleToggle = () => setGlobalCommandOpen((prev) => !prev);
-    window.addEventListener('toggle-command-palette', handleToggle);
-    return () => window.removeEventListener('toggle-command-palette', handleToggle);
-  }, []);
 
   const isGuest = !idToken || user.email === GUEST_USER.email;
   const normalisedEmployeeIdentity = [user.jobTitle?.name || '', ...(user.departments || []).map(item => item.name)]
@@ -1218,9 +1210,9 @@ export default function App() {
   );
   };
 
-  // The launcher already lists every application, so it carries no rail; public
-  // landing pages and the session splash stay chrome-free too. Every other
-  // screen gets the shared vertical rail so modules are one click apart.
+  // Public landing pages and the session splash stay chrome-free. Every other
+  // screen (the launcher included) gets the shared rail and the one command
+  // palette that WorkspaceAreaFrame owns.
   const content = renderContent();
   const chromeLessViews: ViewMode[] = ['competition-landing-public', 'competition-hub', 'guest-invigilation', 'public-exam-registration', 'training-assessment-public'];
   const framedContent = authChecking || chromeLessViews.includes(viewMode) ? content : (

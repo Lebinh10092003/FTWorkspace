@@ -27,6 +27,7 @@ import {
 import { appDialog } from "../AppDialog";
 import { matchesSearch } from "../../lib/searchText";
 import { type ProductPartner } from "./ProductManagement";
+import { shiftDateKey, todayVN } from '../../lib/vnDate';
 
 export type PartnerAiAccount = {
   id: number;
@@ -123,7 +124,7 @@ export default function AiAccountsManagerModal({
     account_username: "",
     account_password: "",
     assigned_to: "",
-    starts_at: new Date().toISOString().slice(0, 10),
+    starts_at: todayVN(),
     expires_at: "",
     status: "active",
     notes: "",
@@ -134,7 +135,7 @@ export default function AiAccountsManagerModal({
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [bulkPartner, setBulkPartner] = useState("");
   const [bulkPlatform, setBulkPlatform] = useState("chatgpt_plus");
-  const [bulkStartsAt, setBulkStartsAt] = useState(new Date().toISOString().slice(0, 10));
+  const [bulkStartsAt, setBulkStartsAt] = useState(todayVN());
   const [bulkExpiresAt, setBulkExpiresAt] = useState("");
   const [bulkRawText, setBulkRawText] = useState("");
   const [savingBulk, setSavingBulk] = useState(false);
@@ -400,7 +401,7 @@ export default function AiAccountsManagerModal({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `Danh_sach_Tai_khoan_AI_FermatTech_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `Danh_sach_Tai_khoan_AI_FermatTech_${todayVN()}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -454,8 +455,8 @@ export default function AiAccountsManagerModal({
                       account_username: "",
                       account_password: generateSecurePassword(),
                       assigned_to: "",
-                      starts_at: new Date().toISOString().slice(0, 10),
-                      expires_at: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+                      starts_at: todayVN(),
+                      expires_at: shiftDateKey(todayVN(), 365),
                       status: "active",
                       notes: "",
                     });

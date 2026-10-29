@@ -35,7 +35,6 @@ export type WorkspaceAppRailProps = {
   layout?: DepartmentLayout | null;
   userName?: string;
   userRole?: string;
-  onOpenSearch?: () => void;
   onAccountClick?: () => void;
 };
 
@@ -45,7 +44,6 @@ export default function WorkspaceAppRail({
   onSelect,
   userName = 'Người dùng',
   userRole = 'EMPLOYEE',
-  onOpenSearch,
   onAccountClick,
 }: WorkspaceAppRailProps) {
   const [compact, setCompact] = useState(() => readFlag(COMPACT_STORAGE_KEY));

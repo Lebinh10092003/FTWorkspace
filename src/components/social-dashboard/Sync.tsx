@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { Channel, ApiLog, UserRole } from '../../types';
 import ConfirmModal from '../ConfirmModal';
+import { pastDateVN } from '../../lib/vnDate';
 
 interface SyncProps {
   idToken: string;
@@ -23,11 +24,7 @@ interface FacebookApiUsage {
   reason?: string;
 }
 
-function getDefaultSinceDate(): string {
-  const date = new Date();
-  date.setDate(date.getDate() - 1);
-  return date.toISOString().slice(0, 10);
-}
+const getDefaultSinceDate = (): string => pastDateVN(1);
 
 function readableSyncMessage(log: ApiLog): string {
   const message = String(log.errorMessage || '');

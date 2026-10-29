@@ -1,3 +1,4 @@
+import { todayVN } from '../../lib/vnDate';
 /** Shape of the "Phiếu đề xuất kinh phí" form, shared by the editor and the
  *  A4 preview. The backend renders the .docx from this same payload, so the
  *  preview and the downloaded file are driven by one source. */
@@ -71,10 +72,7 @@ export const newItem = (): ProposalItem => ({
   description: '', unit: '', quantity: '', unitPrice: '',
 });
 
-export const todayIso = () => {
-  const now = new Date();
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-};
+export const todayIso = todayVN;
 
 const newDraftId = () => globalThis.crypto?.randomUUID?.() ||
   'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {

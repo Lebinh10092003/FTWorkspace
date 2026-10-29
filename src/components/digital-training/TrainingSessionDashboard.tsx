@@ -33,6 +33,7 @@ import {
 import { Badge } from "../ui/badge";
 import { matchesSearch } from "../../lib/searchText";
 import { appDialog } from "../AppDialog";
+import { todayVN } from '../../lib/vnDate';
 
 export type SessionStatus = "unscheduled" | "planned" | "completed" | "cancelled";
 
@@ -300,7 +301,7 @@ export default function TrainingSessionDashboard({
 
   // Filtered Sessions for Timeline
   const filteredSessions = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayVN();
     const thisMonth = today.slice(0, 7);
 
     return sessions
@@ -446,7 +447,7 @@ export default function TrainingSessionDashboard({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `Nhat_ky_tap_huan_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute("download", `Nhat_ky_tap_huan_${todayVN()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -463,7 +464,7 @@ export default function TrainingSessionDashboard({
       class_group_id: presetClassId ? String(presetClassId) : partnerClasses[0] ? String(partnerClasses[0].id) : "",
       session_number: nextSessionNum || 1,
       title: `Buổi ${nextSessionNum || 1}: Tập huấn đào tạo số`,
-      date: new Date().toISOString().slice(0, 10),
+      date: todayVN(),
       start_time: "08:30",
       end_time: "11:30",
       instructor_name: employees[0]?.name || "",

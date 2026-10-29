@@ -4,13 +4,14 @@ import { AlertCircle, BarChart3, Download, FileSpreadsheet, RefreshCw, TrendingD
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Channel, Platform } from '../../types';
 import SearchableSelect from '../SearchableSelect';
+import { pastDateVN, todayVN } from '../../lib/vnDate';
 
 interface MediaSummaryRow { id: string; platform: Platform; name: string; externalId: string; lastSyncAt: string | null; lastSyncStatus: 'success' | 'failed' | null; followersCount: number; postsCount: number; views: number; totalEngagement: number; }
 interface TrendPoint { period: string; label: string; views: number; engagement: number; postsCount: number; followers: number; metricSource?: 'daily_insights' | 'unavailable'; startValues?: Record<string, number>; endValues?: Record<string, number>; }
 interface MediaSummaryProps { idToken: string; channels: Channel[]; }
 type PeriodGroup = 'month' | 'quarter' | 'year';
-const getPastDateStr = (days: number) => { const date = new Date(); date.setDate(date.getDate() - days); return date.toISOString().slice(0, 10); };
-const getTodayStr = () => new Date().toISOString().slice(0, 10);
+const getPastDateStr = pastDateVN;
+const getTodayStr = todayVN;
 const percentChange = (current: number, previous?: number) => previous === undefined || previous === 0 ? null : ((current - previous) / previous) * 100;
 const metricRows = [{ key: 'views', label: 'Lượt xem', color: '#0891b2' }, { key: 'engagement', label: 'Lượt tương tác', color: '#2563eb' }, { key: 'postsCount', label: 'Số bài đăng', color: '#10b981' }, { key: 'followers', label: 'Lượt follow', color: '#7c3aed' }] as const;
 

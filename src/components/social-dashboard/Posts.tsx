@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Channel, Post, Platform } from '../../types';
 import SearchableSelect from '../SearchableSelect';
+import { pastDateVN, shiftDateKey, shiftDateKeyMonths, todayVN } from '../../lib/vnDate';
 
 interface PostsProps {
   idToken: string;
@@ -13,15 +14,8 @@ interface PostsProps {
 
 type DatePreset = 'custom' | '7days' | '30days' | '3months' | '6months' | '1year';
 
-function getPastDateStr(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
-}
-
-function getTodayStr(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+const getPastDateStr = pastDateVN;
+const getTodayStr = todayVN;
 export default function Posts({ idToken, channels }: PostsProps) {
   const [posts, setPosts] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
@@ -87,14 +81,15 @@ export default function Posts({ idToken, channels }: PostsProps) {
   const updatePreset = (preset: DatePreset) => {
     setDatePreset(preset);
     if (preset === 'custom') return;
-    const end = new Date();
-    const start = new Date();
-    if (preset === '7days') start.setDate(end.getDate() - 6);
-    if (preset === '30days') start.setDate(end.getDate() - 29);
-    if (preset === '3months') start.setMonth(end.getMonth() - 3);
-    if (preset === '6months') start.setMonth(end.getMonth() - 6); if (preset === '1year') start.setFullYear(end.getFullYear() - 1);
-    setStartDate(start.toISOString().slice(0, 10));
-    setEndDate(end.toISOString().slice(0, 10));
+    const end = todayVN();
+    let start = end;
+    if (preset === '7days') start = shiftDateKey(end, -6);
+    if (preset === '30days') start = shiftDateKey(end, -29);
+    if (preset === '3months') start = shiftDateKeyMonths(end, -3);
+    if (preset === '6months') start = shiftDateKeyMonths(end, -6);
+    if (preset === '1year') start = shiftDateKeyMonths(end, -12);
+    setStartDate(start);
+    setEndDate(end);
     setPage(1);
   };
   const handleExportCSV = () => {

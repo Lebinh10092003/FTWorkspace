@@ -37,6 +37,7 @@ import { matchesSearch } from "../../lib/searchText";
 import { type ProductPartner, type ProductSubscription } from "./ProductManagement";
 import AiAccountsManagerModal from "./AiAccountsManagerModal";
 import SubscriptionSheetConfigModal from "./SubscriptionSheetConfigModal";
+import { todayVN } from '../../lib/vnDate';
 
 type SubscriptionItem = ProductSubscription & {
   created_at?: string;
@@ -330,7 +331,7 @@ export default function CustomerSubscriptionDashboard({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `Danh_sach_dich_vu_khach_hang_FermatTech_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `Danh_sach_dich_vu_khach_hang_FermatTech_${todayVN()}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };

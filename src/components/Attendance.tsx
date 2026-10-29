@@ -8,6 +8,7 @@ import ModuleShellHeader from './layout/ModuleShellHeader';
 import SearchableSelect from './SearchableSelect';
 import AccountMenu from './AccountMenu';
 import { filterModuleNav, ATTENDANCE_NAV } from '../config/workspaceNavigation';
+import { pastDateVN, todayVN } from '../lib/vnDate';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -111,8 +112,8 @@ const WEEKDAYS_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 const WEEKDAYS_VI_LONG = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 const weekdayName = (iso: string) => { const d = new Date(`${iso}T00:00:00`); return WEEKDAYS_VI[d.getDay()]; };
 const weekdayLongName = (iso: string) => { const d = new Date(`${iso}T00:00:00`); return WEEKDAYS_VI_LONG[d.getDay()]; };
-const todayIso = () => new Date().toISOString().slice(0, 10);
-const yesterdayIso = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); };
+const todayIso = todayVN;
+const yesterdayIso = () => pastDateVN(1);
 /** Summaries cover completed days only: up to the end of yesterday, never past the shown month. */
 const summaryCutoffFor = (month: string) => {
   const [y, m] = month.split('-').map(Number);

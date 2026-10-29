@@ -4,6 +4,7 @@ import ModuleShellHeader from '../layout/ModuleShellHeader';
 import AccountMenu from '../AccountMenu';
 import SearchableSelect from '../SearchableSelect';
 import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
+import { todayVN } from '../../lib/vnDate';
 
 type DocumentType = { label: string; code: string };
 type RegisterEntry = {
@@ -26,11 +27,7 @@ type Props = {
   onNavSelect: (id: string) => void;
 };
 
-const todayIso = () => {
-  const now = new Date();
-  const offset = now.getTimezoneOffset();
-  return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10);
-};
+const todayIso = todayVN;
 
 /** Mirrors documents/numbering.py so the preview is right before the register
  *  loads, and stays right if the Sheet cannot be reached. "Công văn" carries no
