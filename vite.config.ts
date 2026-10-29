@@ -12,6 +12,18 @@ export default defineConfig(() => {
       // safely retained the latest frontend releases.
       emptyOutDir: false,
       manifest: true,
+      rollupOptions: {
+        output: {
+          // React hiếm khi đổi giữa các lần deploy: tách riêng để trình duyệt giữ cache.
+          // Không gom react-dom/server (chỉ trình soạn email dùng) để nó vẫn tải khi cần.
+          manualChunks(id) {
+            const file = id.split('\\').join('/');
+            if (file.includes('/node_modules/react-dom/') && /server|static/.test(file.split('/node_modules/react-dom/')[1])) return undefined;
+            if (/\/node_modules\/(react|react-dom|scheduler)\//.test(file)) return 'vendor-react';
+            return undefined;
+          },
+        },
+      },
     },
     resolve: {
       alias: {

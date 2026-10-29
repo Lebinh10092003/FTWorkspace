@@ -4,7 +4,6 @@ import { CalendarDays, ClipboardList, ContactRound, FileSignature, ReceiptText, 
 
 import { Channel, UserRole } from './types';
 import LoginModal from './components/LoginModal';
-import AccountProfileModal from './components/AccountProfileModal';
 import InvigilationReminders from './components/examination/InvigilationReminders';
 import WorkspaceHome from './components/home/WorkspaceHome';
 import { readWorkspaceAppearance, WorkspaceAppearance } from './components/AppearanceSettings';
@@ -59,6 +58,8 @@ const GuestInvigilation = lazyWithRecovery(() => import('./components/examinatio
 const PublicExamRegistration = lazyWithRecovery(() => import('./components/examination/PublicExamRegistration'));
 const ChatbotAssistant = lazyWithRecovery(() => import('./components/chatbot/ChatbotAssistant'));
 const ItemBag = lazyWithRecovery(() => import('./components/fun/ItemBag'));
+// Hồ sơ cá nhân chỉ tải khi người dùng mở, không nằm trong gói tải ban đầu.
+const AccountProfileModal = lazyWithRecovery(() => import('./components/AccountProfileModal'));
 
 type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
 
@@ -663,9 +664,11 @@ export default function App() {
     />
   );
 
-  const profileModal = (
-    <AccountProfileModal open={showProfile} user={user} idToken={idToken} onClose={() => setShowProfile(false)} onSaved={handleProfileSaved} onTokenChanged={handlePasswordChanged}/>
-  );
+  const profileModal = showProfile ? (
+    <Suspense fallback={null}>
+      <AccountProfileModal open={showProfile} user={user} idToken={idToken} onClose={() => setShowProfile(false)} onSaved={handleProfileSaved} onTokenChanged={handlePasswordChanged}/>
+    </Suspense>
+  ) : null;
   const renderContent = (): React.ReactNode => {
   if (authChecking) {
     return (
