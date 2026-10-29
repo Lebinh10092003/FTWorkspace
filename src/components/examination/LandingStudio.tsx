@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Copy, ExternalLink, Eye, EyeOff, Globe, Plus, Save, Trash2 } from 'lucide-react';
 import { appDialog } from '../AppDialog';
 import LandingSiteView, { type LandingContent, type LandingSite } from './LandingSiteView';
+import { slugify } from '../../lib/searchText';
 
 type LandingTemplate = { key: string; name: string; description: string; layout: string; content: LandingContent; isSystem: boolean; updatedAt: string };
 
@@ -20,7 +21,7 @@ function Field({ label, value, onChange, multiline = false, type }: { label: str
 }
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
-const toSlug = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const toSlug = (value: string) => slugify(value);
 export default function LandingStudio({ idToken }: { idToken: string }) {
   const [sites, setSites] = useState<LandingSite[]>([]);
   const [templates, setTemplates] = useState<LandingTemplate[]>([]);

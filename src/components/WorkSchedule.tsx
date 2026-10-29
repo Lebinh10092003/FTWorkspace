@@ -7,6 +7,7 @@ import Time24Input from "./Time24Input";
 import MonthlySheetLinkEditor from "./MonthlySheetLinkEditor";
 import ModuleShellHeader from "./layout/ModuleShellHeader";
 import { WORK_SCHEDULE_NAV, filterModuleNav } from "../config/workspaceNavigation";
+import { bearerHeaders } from '../lib/format';
 
 type WorkStatus = "todo" | "doing" | "completed" | "reviewed";
 type Priority = "low" | "medium" | "high";
@@ -279,10 +280,7 @@ const timesheetDaySummary = (date: string, shifts: TimesheetShift[] | undefined)
   const minutes = timesheetDayMinutes(shifts);
   return minutes > 0 ? `Tổng giờ làm: ${formatWorkHours(minutes)}` : "Ngày nghỉ";
 };
-const authHeaders = (token: string, json = false): HeadersInit => ({
-  Authorization: `Bearer ${token}`,
-  ...(json ? { "Content-Type": "application/json" } : {}),
-});
+const authHeaders = (token: string, json = false): HeadersInit => bearerHeaders(token, json);
 const draftFromTask = (task: WorkTask): WorkDraft => ({
   id: task.id,
   title: task.title,

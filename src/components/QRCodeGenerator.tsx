@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowLeft, Check, Clipboard, Download, ExternalLink, Fil
 import ModuleShellHeader from './layout/ModuleShellHeader';
 import type { ModuleNavItem } from '../config/workspaceNavigation';
 import QRCode from 'qrcode';
+import { slugify } from '../lib/searchText';
 
 type QRCodeGeneratorProps = {
   onBackToWorkspace: () => void;
@@ -47,7 +48,7 @@ function assessUrl(rawValue: string): UrlAssessment {
 }
 
 function safeFilename(value: string) {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 70) || 'ma-qr';
+  return slugify(value, 70) || 'ma-qr';
 }
 
 function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {

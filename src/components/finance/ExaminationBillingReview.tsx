@@ -12,8 +12,9 @@ import examinationBillingService, {
   type ExaminationBillingStats,
 } from './examinationBillingService';
 import Stat from '../ui/StatCard';
+import { formatVND } from '../../lib/format';
 
-const money = (value: number | null) => value === null ? 'Chưa nhập' : `${value.toLocaleString('vi-VN')}đ`;
+const money = (value: number | null) => formatVND(value, 'Chưa nhập');
 
 const dateTime = (value?: string | null) => {
   if (!value) return '—';

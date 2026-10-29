@@ -15,6 +15,7 @@ import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
 import ModuleShellHeader from './components/layout/ModuleShellHeader';
 import { groupByDepartment, resolveDepartmentLayout } from './config/departmentLayout';
 import { ACCOUNT_MANAGEMENT_NAV, RESOURCES_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
+import { normalizeSearchText } from './lib/searchText';
 
 const lazyWithRecovery = <T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) => lazy(async () => {
   const retryKey = `ft-workspace-lazy-reload:${window.location.pathname}`;
@@ -277,8 +278,9 @@ export default function App() {
 
   const isGuest = !idToken || user.email === GUEST_USER.email;
   const normalisedEmployeeIdentity = [user.jobTitle?.name || '', ...(user.departments || []).map(item => item.name)]
-    .join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(new RegExp(String.fromCharCode(273), 'g'), 'd').toLocaleLowerCase('vi-VN');
-  const isAccountant = normalisedEmployeeIdentity.includes('ke toan');
+    .join(' ');
+  const normalisedEmployeeIdentityText = normalizeSearchText(normalisedEmployeeIdentity);
+  const isAccountant = normalisedEmployeeIdentityText.includes('ke toan');
   const communicationModules = ['email-builder', 'signature-builder', 'qr-generator'];
   const hasModuleAccess = (module: string) => userRole === 'ADMIN' || (
     communicationModules.includes(module)

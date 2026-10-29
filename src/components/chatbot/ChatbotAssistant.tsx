@@ -32,6 +32,7 @@ import {
   WORKSPACE_AREAS,
   WORK_SCHEDULE_NAV,
 } from '../../config/workspaceNavigation';
+import { normalizeSearchText } from '../../lib/searchText';
 
 export interface ChatbotAssistantProps {
   token: string;
@@ -77,14 +78,7 @@ interface ToolSearchItem {
 
 const STORAGE_KEY_OPEN = 'ft_workspace_chatbot_open';
 
-function removeVietnameseTones(str: string): string {
-  return str
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'D')
-    .toLowerCase();
-}
+const removeVietnameseTones = (str: string): string => normalizeSearchText(str);
 
 export default function ChatbotAssistant({
   token,

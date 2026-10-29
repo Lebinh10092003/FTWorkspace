@@ -14,6 +14,7 @@ import { BlueprintEditor, BlueprintLibrary } from "./examination/ExamBlueprints"
 import LogNotes, { appendLogNote as saveLogNote, formatChangeLog } from "./examination/LogNotes";
 import DetailEditDialogs from "./examination/DetailEditDialogs";
 import SchoolEntryPicker, { emptySchoolEntry, type SchoolEntry } from "./examination/SchoolEntryPicker";
+import { normalizeSearchText } from '../lib/searchText';
 const InvigilationWorkspace = React.lazy(() => import("./examination/InvigilationWorkspace"));
 import RoomEntryPicker, { type RoomChoices } from "./examination/RoomEntryPicker";
 import CandidateProfileDetail from "./examination/CandidateProfileDetail";
@@ -453,14 +454,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
   const nextScheduledRound = (session: Session) => sortedDatedRounds(session).find((round) => String(round.date) >= today) || null;
   const sessionPriority = (session: Session) => nextScheduledRound(session)?.date || finalRound(session)?.date || "9999-12-31";
   const overviewPhaseKey = (value: string) =>
-    String(value || "")
-      .trim()
-      .toLocaleLowerCase("vi-VN")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/đ/g, "d")
-      .replace(/\s*\/\s*/g, "/")
-      .replace(/\s+/g, " ");
+    normalizeSearchText(value).replace(/\s*\/\s*/g, "/");
   const completedPhase = (session: Session) => overviewPhaseKey(session.phase) === "hoan thanh";
   const trackedPhase = (session: Session) => {
     const phase = overviewPhaseKey(session.phase);

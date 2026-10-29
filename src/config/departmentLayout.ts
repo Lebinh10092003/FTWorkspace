@@ -1,3 +1,4 @@
+import { normalizeSearchText } from '../lib/searchText';
 /**
  * Department-first layout for the Workspace launcher and the vertical rail.
  *
@@ -34,7 +35,7 @@ const LEADERSHIP_KEYWORDS = ['giam doc', 'lanh dao', 'ban giam', 'bgd', 'chu tic
 export const PERSONAL_AREAS = ['work-schedule', 'attendance', 'examination-invigilation'];
 
 export function normaliseDepartment(value: string) {
-  return value.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ').trim();
+  return normalizeSearchText(value);
 }
 
 export function resolveDepartmentLayout(departmentNames: string[], jobTitle = ''): DepartmentLayout | null {

@@ -24,6 +24,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { formatDateVN } from '../../lib/format';
 
 export type ProductView = "catalog" | "allocation" | "statistics";
 
@@ -100,8 +101,7 @@ const statusClass: Record<string, string> = {
   cancelled: "bg-slate-100 text-slate-500",
 };
 
-const showDate = (value?: string | null) =>
-  value ? new Date(value + "T00:00:00").toLocaleDateString("vi-VN") : "Không giới hạn";
+const showDate = (value?: string | null) => formatDateVN(value, "Không giới hạn");
 
 const apiError = async (response: Response) => {
   const body = await response.json().catch(() => ({}));

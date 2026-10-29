@@ -20,6 +20,7 @@ import {
 import { appDialog } from '../AppDialog';
 import Field from '../ui/FormField';
 import Dialog from '../ui/ModalDialog';
+import { formatDateVN, formatVND } from '../../lib/format';
 
 interface CompanyAccountsProps {
   idToken: string;
@@ -154,9 +155,8 @@ const draftFrom = (a: CompanyAccount): Draft => ({
   status: a.status, tags: a.tags.join(', '), notes: a.notes,
 });
 
-const money = (value: number | null | undefined) =>
-  value == null ? '—' : `${new Intl.NumberFormat('vi-VN').format(value)}đ`;
-const dateVN = (iso: string | null) => (iso ? new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('vi-VN') : '—');
+const money = (value: number | null | undefined) => formatVND(value);
+const dateVN = (iso: string | null) => formatDateVN(iso);
 const dateTimeVN = (iso: string) => new Date(iso).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
 
 function generatePassword(length = 16) {

@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { todayVN } from '../../lib/vnDate';
+import { formatDateVN } from '../../lib/format';
 
 export type FinancePartner = { id: number; name: string };
 
@@ -51,8 +52,7 @@ const statusClass: Record<FinanceEntry["status"], string> = {
 const formatMoney = (value: string | number) =>
   `${Number(value || 0).toLocaleString("vi-VN")} VNĐ`;
 
-const showDate = (value: string) =>
-  value ? new Date(`${value}T00:00:00`).toLocaleDateString("vi-VN") : "—";
+const showDate = (value: string) => formatDateVN(value);
 
 const today = todayVN;
 const monthStart = () => `${today().slice(0, 7)}-01`;

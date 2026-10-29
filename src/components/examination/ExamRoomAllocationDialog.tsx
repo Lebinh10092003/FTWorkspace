@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Check, DoorOpen, Link2, MapPin, Plus, Trash2, Users, X } from 'lucide-react';
 import type { Candidate, SessionRound } from './types';
+import { bearerHeaders } from '../../lib/format';
 
 type AllocationStrategy = 'BALANCED' | 'CAPACITY';
 type ExamMode = 'IN_PERSON' | 'ONLINE';
@@ -44,10 +45,7 @@ const newRoom = (): RoomDraft => ({
   examLink: '',
 });
 
-const authHeaders = (idToken?: string | null) => ({
-  'Content-Type': 'application/json',
-  Authorization: `Bearer ${idToken || ''}`,
-});
+const authHeaders = (idToken?: string | null) => bearerHeaders(idToken, true);
 const normalizeOnlineLink = (value: string) => {
   const link = value.trim();
   if (/^https?:\/\/\S+$/i.test(link)) return link;

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, CircleCheck, PauseCircle, Search, TriangleAlert, XCircle } from 'lucide-react';
 import Stat from '../ui/StatCard';
+import { formatDateVN } from '../../lib/format';
 
 /**
  * Hạn hợp đồng — the accounting view of Đào tạo số product subscriptions.
@@ -46,11 +47,7 @@ const STATUS_TONE: Record<ContractSubscription['effective_status'], string> = {
   cancelled: 'bndc-chip-slate',
 };
 
-const showDate = (value?: string | null) => {
-  if (!value) return '—';
-  const parsed = new Date(`${String(value).slice(0, 10)}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleDateString('vi-VN');
-};
+const showDate = (value?: string | null) => formatDateVN(value);
 
 function remainingLabel(item: ContractSubscription) {
   const days = item.days_remaining;

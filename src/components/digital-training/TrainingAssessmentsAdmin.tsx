@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import * as XLSX from "xlsx";
+import { normalizeSearchText } from '../../lib/searchText';
 
 type Assessment = {
   id: number;
@@ -304,7 +305,7 @@ export default function TrainingAssessmentsAdmin({
   const auth = { Authorization: `Bearer ${idToken}` };
   const resultVariants = useMemo(() => Array.from(new Set(results.map((item) => String(item.variant || "")).filter(Boolean))).sort(), [results]);
   const filteredResults = useMemo(() => results.filter((item) => {
-    const normalized = (value: unknown) => String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
+    const normalized = (value: unknown) => normalizeSearchText(value || "");
     const needle = normalized(resultSearch.trim());
     if (needle && ![item.respondent_name, item.email, item.phone].some((value) => normalized(value).includes(needle))) return false;
     if (resultStatus && item.status !== resultStatus) return false;

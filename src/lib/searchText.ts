@@ -7,6 +7,12 @@ export const normalizeSearchText = (value: unknown) => String(value ?? '')
   .replace(/\s+/g, ' ')
   .trim();
 
+/** Chuỗi an toàn cho URL / tên file: "Đào tạo số" → "dao-tao-so". */
+export const slugify = (value: unknown, maxLength?: number) => {
+  const slug = normalizeSearchText(value).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return maxLength ? slug.slice(0, maxLength) : slug;
+};
+
 export const matchesSearch = (value: unknown, query: unknown) => {
   const needle = normalizeSearchText(query);
   const haystack = normalizeSearchText(value);

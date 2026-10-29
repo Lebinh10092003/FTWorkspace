@@ -4,6 +4,7 @@ import { BadgeDollarSign, BookOpen, CalendarDays, ClipboardList, FolderTree, Han
 import { type ProductView } from "./ProductManagement";
 
 import type { Tab, TrainingScheduleDraft, PartnerClassDraft, PartnerDraft, CalendarItem, CalendarLayoutItem, CalendarDetail } from './digitalTrainingTypes';
+import { formatDateVN } from '../../lib/format';
 
 export const calendarMinute = (value?: string | null) => {
   const match = (value || "").match(/^(\d{1,2}):(\d{2})/);
@@ -132,8 +133,7 @@ export const localDateKey = (value: Date) =>
   "-" +
   String(value.getDate()).padStart(2, "0");
 export const today = () => localDateKey(new Date());
-export const showDate = (v?: string | null) =>
-  v ? new Date(`${v}T00:00:00`).toLocaleDateString("vi-VN") : "—";
+export const showDate = (v?: string | null) => formatDateVN(v);
 export const relativeMonthLabel = (offset = 0) => {
   const value = new Date();
   value.setDate(1);

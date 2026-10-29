@@ -19,6 +19,7 @@ import type { CustomerMeeting, Tab, Mode, Modal, TrainingScheduleDraft, PartnerC
 import { newTrainingSchedule, newClassDraft, newPartnerDraft, partnerSubtypeCatalog, localDateKey, today, showDate, relativeMonthLabel, showTime, threeHoursAfter, status, contractStatusClass, currentRoute, pathFor, productPath, calendarDetailPath, menuOpenState, vietnamProvinces, provinceOptions } from './digitalTrainingUtils';
 import { Dialog, Input, FormSection, CreateScheduleMenu, TimePicker, CompactTimePicker, ContentsPicker, ProductSelect, WorkScheduleDetail } from './DigitalTrainingForms';
 import { Calendar } from './DigitalTrainingCalendar';
+import { normalizeSearchText } from '../../lib/searchText';
 
 type DigitalTrainingSnapshot = {
   owner: string;
@@ -82,11 +83,7 @@ export default function DigitalTraining({
   photoURL?: string | null;
   idToken?: string;
 }) {
-  const normalisedJobTitle = [jobTitle || "", ...departmentNames].join(" ")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(new RegExp(String.fromCharCode(273), "g"), "d")
-    .toLocaleLowerCase("vi-VN");
+  const normalisedJobTitle = normalizeSearchText([jobTitle || "", ...departmentNames].join(" "));
   const isAccountant = normalisedJobTitle.includes("ke toan");
   const hasFinanceAccess = userRole === "ADMIN" || accessModules.includes("finance-report");
   const canViewFinance = !isGuest && hasFinanceAccess && (

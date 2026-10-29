@@ -5,6 +5,7 @@ import ConfirmModal from '../ConfirmModal';
 import { appDialog } from '../AppDialog';
 import Field from '../ui/FormField';
 import ModalDialog, { type ModalDialogProps } from '../ui/ModalDialog';
+import { bearerHeaders } from '../../lib/format';
 
 interface AccountManagementProps { idToken: string; userRole: UserRole; }
 type EmploymentStatus = 'ACTIVE' | 'SUSPENDED' | 'TERMINATED' | 'PENDING';
@@ -25,7 +26,7 @@ const moduleLabels: Record<string, string> = {
 const communicationModules = ['email-builder', 'signature-builder', 'qr-generator'];
 const defaultAccessModules = ['work-schedule', 'attendance', 'email-builder', 'signature-builder', 'qr-generator'];
 const blankDraft = (): EmployeeDraft => ({ name: '', employeeCode: '', email: '', phone: '', departmentIds: [], jobTitleId: '', managerEmail: '', startDate: '', role: 'EMPLOYEE', employmentStatus: 'PENDING', accessModules: defaultAccessModules, password: 'Ft@12345' });
-const authHeaders = (token: string) => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` });
+const authHeaders = (token: string) => bearerHeaders(token, true);
 const hasDraftModule = (modules: string[], key: string) => key === 'communication-tools'
   ? communicationModules.some(module => modules.includes(module))
   : modules.includes(key);

@@ -1,4 +1,5 @@
 import { EmailVariable } from '../types/emailBuilder';
+import { normalizeSearchText } from './searchText';
 
 /**
  * Extracts all personalization variables in the format {{variableName}} from text
@@ -104,11 +105,7 @@ export function replaceVariables(
   if (useMock) {
     result = result.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, rawKey: string) => {
       const key = rawKey.trim();
-      const normalized = key
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/đ/g, 'd');
+      const normalized = normalizeSearchText(key);
 
       if (normalized.includes('ho ten') || normalized.includes('ten hoc sinh')) return 'Nguyễn Minh An';
       if (normalized.includes('ngay sinh')) return '15/08/2014';

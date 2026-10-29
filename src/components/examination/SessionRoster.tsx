@@ -9,6 +9,7 @@ import { roundOccurrences, sessionRounds } from './rounds';
 import ExamRoomAllocationDialog, { type SavedRoom } from './ExamRoomAllocationDialog';
 import ExamScheduleApplyDialog from './ExamScheduleApplyDialog';
 import { matchesSearch } from '../../lib/searchText';
+import { normalizeSearchText } from '../../lib/searchText';
 
 type RosterTab = 'info' | 'all' | number;
 type Props = { session: ExaminationSession; candidates: Candidate[]; toolbar?: React.ReactNode; onOpenCandidate: (candidate: Candidate) => void; idToken?: string | null; canEdit?: boolean; onCandidateUpdated?: (candidate: Candidate) => void; onCandidatesUpdated?: (candidates: Candidate[]) => void; onSessionUpdated?: (session: ExaminationSession) => void; tab?: RosterTab; onTabChange?: (tab: RosterTab) => void; hideTabs?: boolean; sessions?: ExaminationSession[]; onTransferred?: (result: { candidate: Candidate; sessions: ExaminationSession[]; message: string }) => void };
@@ -19,7 +20,7 @@ const dash = (value?: string) => value || '—';
 const roundFields: Array<[keyof CandidateExamHistory, string]> = [['eligibility', 'Điều kiện dự thi'], ['sbd', 'Số báo danh'], ['date', 'Ngày thi'], ['time', 'Giờ / ca thi'], ['mode', 'Hình thức'], ['location', 'Địa điểm / phòng'], ['link', 'Link dự thi (Nếu có)'], ['account', 'Tài khoản'], ['password', 'Mật khẩu'], ['attendance', 'Trạng thái dự thi'], ['score', 'Điểm'], ['scoreRate', 'Tỷ lệ điểm'], ['rank', 'Xếp hạng'], ['result', 'Kết quả'], ['note', 'Ghi chú']];
 const registrationFields = [['subject', 'Môn / lĩnh vực'], ['category', 'Bảng thi'], ['registrationMethod', 'Hình thức đăng ký'], ['registrationUnit', 'Đơn vị đăng ký'], ['teamName', 'Đội / nhóm'], ['examLanguage', 'Ngôn ngữ thi'], ['generalNote', 'Ghi chú chung'], ['certificateLink', 'Link chứng nhận']] as const;
 const blankSlot = (): SessionRoundSlot => ({ id: `slot-${Date.now()}-${Math.random().toString(16).slice(2)}`, date: '', time: '', mode: '', link: '', location: '', note: '' });
-const normalizeRosterText = (value?: string) => (value || '').toLocaleLowerCase('vi').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\u0111/g, 'd').replace(/[^a-z0-9]+/g, '');
+const normalizeRosterText = (value?: string) => normalizeSearchText(value).replace(/[^a-z0-9]+/g, '');
 const rosterGrade = (candidate: Candidate) => { const match = String(candidate.grade || candidate.className || '').match(/\d+/); return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER; };
 const rosterNameKey = (candidate: Candidate) => { const words = candidate.name.trim().split(/\s+/).filter(Boolean); const nationality = normalizeRosterText(candidate.nationality); const vietnamese = !nationality || nationality === 'vietnam'; return normalizeRosterText(vietnamese ? words.at(-1) : words[0]); };
 const compareSessionCandidates = (left: Candidate, right: Candidate) => rosterGrade(left) - rosterGrade(right) || rosterNameKey(left).localeCompare(rosterNameKey(right), 'vi', { numeric: true }) || left.name.localeCompare(right.name, 'vi', { numeric: true }) || left.code.localeCompare(right.code, 'en', { numeric: true });

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { FileSpreadsheet, Link2, Loader2, RefreshCw, Save } from "lucide-react";
+import { normalizeSearchText } from '../../lib/searchText';
 
 type QuestionBankSettings = { default_url: string };
 type BankQuestion = { audience_group?: string; category?: string; knowledge_type?: string; difficulty?: string };
@@ -13,7 +14,7 @@ const errorText = async (response: Response) => {
   const first = Object.values(body)[0];
   return Array.isArray(first) ? first.join(" ") : String(first || "Không thể xử lý yêu cầu.");
 };
-const normalized = (value: unknown) => String(value || "").trim().toLocaleLowerCase("vi").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
+const normalized = (value: unknown) => normalizeSearchText(value || "");
 
 export default function QuestionBankSettings({ idToken }: { idToken: string }) {
   const [settings, setSettings] = useState<QuestionBankSettings>({ default_url: "" });
