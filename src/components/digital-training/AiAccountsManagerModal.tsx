@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   AlertCircle,
   Bot,
@@ -142,7 +142,7 @@ export default function AiAccountsManagerModal({
   const authHeader = useMemo(() => (idToken ? { Authorization: `Bearer ${idToken}` } : {}), [idToken]);
 
   // Load accounts
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     setLoading(true);
     try {
       let url = "/api/digital-training/ai-accounts";
@@ -159,7 +159,7 @@ export default function AiAccountsManagerModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedPartnerId, authHeader]);
 
   useEffect(() => {
     if (isOpen) {
@@ -168,7 +168,7 @@ export default function AiAccountsManagerModal({
       }
       void loadAccounts();
     }
-  }, [isOpen, initialPartnerId, selectedPartnerId]);
+  }, [isOpen, initialPartnerId, loadAccounts]);
 
   // Copy to clipboard helper
   const handleCopy = (text: string, identifier: string) => {
@@ -408,8 +408,8 @@ export default function AiAccountsManagerModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-xs">
-      <div className="flex h-full max-h-[92vh] w-full max-w-6xl flex-col rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-3 bg-slate-900/60 backdrop-blur-xs">
+      <div className="flex h-full w-full flex-col rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-4 text-white">
           <div className="flex items-center gap-3">
@@ -608,18 +608,18 @@ export default function AiAccountsManagerModal({
 
         {/* Account Table */}
         <div className="flex-1 overflow-auto">
-          <table className="w-full min-w-[1020px] text-left text-xs border-collapse">
+          <table className="w-full text-left text-xs border-collapse">
             <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase tracking-wider border-b border-slate-200">
               <tr>
                 <th className="py-3 pl-4 pr-2 whitespace-nowrap">STT</th>
-                <th className="py-3 px-3 whitespace-nowrap min-w-[180px]">Trường học / Khách hàng</th>
-                <th className="py-3 px-3 whitespace-nowrap min-w-[130px]">Nền tảng AI</th>
-                <th className="py-3 px-3 whitespace-nowrap min-w-[190px]">Tài khoản (Email / ID)</th>
-                <th className="py-3 px-3 whitespace-nowrap min-w-[180px]">Mật khẩu</th>
-                <th className="py-3 px-3 whitespace-nowrap min-w-[170px]">Người / Bộ môn nhận</th>
-                <th className="py-3 px-3 whitespace-nowrap min-w-[120px]">Hạn sử dụng</th>
-                <th className="py-3 px-3 whitespace-nowrap min-w-[110px]">Trạng thái</th>
-                <th className="py-3 pr-4 pl-3 text-right whitespace-nowrap min-w-[90px]">Thao tác</th>
+                <th className="py-3 px-3">Trường học / Khách hàng</th>
+                <th className="py-3 px-3 whitespace-nowrap">Nền tảng AI</th>
+                <th className="py-3 px-3">Tài khoản (Email / ID)</th>
+                <th className="py-3 px-3 whitespace-nowrap">Mật khẩu</th>
+                <th className="py-3 px-3">Người / Bộ môn nhận</th>
+                <th className="py-3 px-3 whitespace-nowrap">Hạn sử dụng</th>
+                <th className="py-3 px-3 whitespace-nowrap">Trạng thái</th>
+                <th className="py-3 pr-4 pl-3 text-right whitespace-nowrap">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -650,8 +650,8 @@ export default function AiAccountsManagerModal({
                       <td className="py-3 pl-4 pr-2 text-slate-400 font-mono text-[11px] whitespace-nowrap">{idx + 1}</td>
 
                       {/* Partner Name */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <div className="font-semibold text-slate-900 max-w-[200px] truncate" title={acc.partner_name}>
+                      <td className="py-3 px-3">
+                        <div className="font-semibold text-slate-900 break-words" title={acc.partner_name}>
                           {acc.partner_name}
                         </div>
                       </td>
@@ -669,15 +669,15 @@ export default function AiAccountsManagerModal({
                       </td>
 
                       {/* Username + Copy */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      <td className="py-3 px-3">
                         <div className="flex items-center gap-1.5 font-mono text-xs text-slate-800">
-                          <span className="select-all font-medium max-w-[180px] truncate" title={acc.account_username}>
+                          <span className="select-all font-medium break-all" title={acc.account_username}>
                             {acc.account_username}
                           </span>
                           <button
                             type="button"
                             onClick={() => handleCopy(acc.account_username, `user-${acc.id}`)}
-                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
+                            className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
                             title="Sao chép tên đăng nhập"
                           >
                             {isCopiedUser ? (
@@ -693,7 +693,7 @@ export default function AiAccountsManagerModal({
                       <td className="py-3 px-3 whitespace-nowrap">
                         <div className="flex items-center gap-1.5 font-mono text-xs">
                           <span
-                            className={`px-1.5 py-0.5 rounded max-w-[140px] truncate select-all ${
+                            className={`px-1.5 py-0.5 rounded break-all select-all ${
                               isRevealed ? "bg-slate-100 text-slate-900 font-bold" : "text-slate-400 tracking-wider"
                             }`}
                             title={isRevealed ? acc.account_password : "Đã ẩn mật khẩu"}
@@ -724,8 +724,8 @@ export default function AiAccountsManagerModal({
                       </td>
 
                       {/* Assigned to */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <div className="max-w-[170px] truncate text-slate-700 font-medium" title={acc.assigned_to}>
+                      <td className="py-3 px-3">
+                        <div className="break-words text-slate-700 font-medium" title={acc.assigned_to}>
                           {acc.assigned_to || <span className="text-slate-400 italic">Chưa gán</span>}
                         </div>
                       </td>

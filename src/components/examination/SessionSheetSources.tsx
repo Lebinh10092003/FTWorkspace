@@ -3,7 +3,7 @@ import SheetDialog from './SheetDialog';
 import { Clock3, ExternalLink, FileSpreadsheet, Pencil, Plus, RefreshCw, UploadCloud, X } from 'lucide-react';
 
 type SheetSource = { id: string; name?: string; url: string; stage?: string; sheetTab?: string; automationEnabled?: boolean; automationStartDate?: string; automationEndDate?: string; pendingManualImport?: boolean; changeDetectedAt?: string | null; lastError?: string };
-type Props = { sources: SheetSource[]; sessionId: string; sessionLabel: string; idToken?: string | null; canManage: boolean; onImport: () => void; onSourcesChanged: (sources: SheetSource[]) => void };
+type Props = { sources: SheetSource[]; sessionId: string; sessionLabel: string; idToken?: string | null; canManage: boolean; onImport: () => void; onSourcesChanged: (sources: Array<SheetSource & { sessionId: string }>) => void };
 type ExportPreview = { currentFingerprint: string; sheetTab: string; changedCells: number; changedRows: number; matchedRows?: number; appendedRows?: number; appendedCandidates?: { code?: string; name?: string; birth_date?: string; identity?: string; email?: string; phone?: string }[]; unmatchedSheetRows?: number[]; matchConflicts?: { row: number; rowLabel: string; reason: string; sheetIdentity?: string; candidateOptions?: string[] }[]; changes: { cell: string; row?: number; rowLabel?: string; column?: string; field?: string; current: string; next: string }[]; changesTruncated?: boolean };
 type ImportPreview = { source?: { name?: string; id?: string; fingerprint?: string; sheetTab?: string }; summary?: { total?: number; new?: number; matched?: number; changed?: number; unchanged?: number; conflicts?: number; webOnly?: number }; webOnlyRecords?: { code?: string; name?: string; birthDate?: string; identity?: string; email?: string; phone?: string }[]; records: { code?: string; name?: string; _preview?: { sourceRow?: number; status?: 'new' | 'changed' | 'unchanged' | 'conflict'; matchedCode?: string; changedFields?: string[]; changes?: { field: string; label?: string; current?: string; next?: string }[] } }[] };
 const sheetType = (source: SheetSource) => source.stage === 'form-webhook' ? 'Form đăng ký' : source.stage === 'session-output' ? 'Sheet tổng hợp' : 'Sheet đầu vào';
@@ -98,7 +98,7 @@ export default function SessionSheetSources({ sources, sessionId, sessionLabel, 
     finally { setExportingId(null); }
   };
   const selectedUpdateMode: 'add-only' | 'fill-empty' | 'replace-nonempty' = overwriteExistingValues ? 'replace-nonempty' : importEmptyValues ? 'fill-empty' : 'add-only';
-  const selectedChange = (change: { current?: string }) => Boolean(change.current) ? overwriteExistingValues : importEmptyValues;
+  const selectedChange = (change: { current?: string }) => change.current ? overwriteExistingValues : importEmptyValues;
   const isSelectedRecord = (record: ImportPreview['records'][number]) => {
     const status = record._preview?.status;
     if (status === 'new') return importNewRecords;

@@ -361,7 +361,7 @@ export default function WeeklyReportCenter({
     setSources(null);
     void load();
     void fetchAiHealth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [idToken]);
 
   // When changing selected report, exit edit mode and clear AI notices

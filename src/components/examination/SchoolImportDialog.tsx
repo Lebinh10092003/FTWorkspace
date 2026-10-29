@@ -104,7 +104,7 @@ export default function SchoolImportDialog({ idToken, sessions, initialFile = nu
     if (!stale || busy || !file || !partnersLoaded) return;
     const timer = window.setTimeout(() => void run('preview'), 500);
     return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [stale, busy, file, partnersLoaded, partnerId, partner, academicYear, sheet, sessionMapping, candidateMatches]);
   const displayedPartner = partnerId ? partner : { ...(preview?.partner || {}), ...partner };
   const updatePartner = (field: keyof Partner, value: string) => {

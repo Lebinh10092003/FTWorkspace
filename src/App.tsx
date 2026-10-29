@@ -407,7 +407,7 @@ export default function App() {
       ...(userRole === 'ADMIN' ? [() => import('./components/social-dashboard/AccountManagement')] : []),
     ];
     let cancelled = false;
-    let timer = window.setTimeout(async () => {
+    const timer = window.setTimeout(async () => {
       for (const preload of preloaders) {
         if (cancelled) return;
         try { await preload(); } catch { /* The normal lazy loader retains its retry UI. */ }

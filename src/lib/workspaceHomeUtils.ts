@@ -120,7 +120,7 @@ export function getTimeUntilFridayDeadline(now: Date = new Date()): FridayDeadli
 
   // Distance to Friday (5) of current week
   // If currentDay is Fri (5), check if before or after 16:45
-  let diffToFriday = 5 - currentDay;
+  const diffToFriday = 5 - currentDay;
 
   const target = new Date(current.getFullYear(), current.getMonth(), current.getDate() + diffToFriday, 16, 45, 0, 0);
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { candidateBelongsToSession } from './examination/candidateMembership';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, BarChart3, Bell, Bot, CalendarDays, Check, ChevronDown, ChevronRight, CircleHelp, ClipboardCheck, GraduationCap, Handshake, LayoutDashboard, Layers3, Link2, Mail, MapPin, Pencil, FileSpreadsheet, FileText, Phone, Plus, Search, RefreshCw, School, Trophy, Trash2, UploadCloud, Users, X } from "lucide-react";
@@ -156,7 +155,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
           time: emptyDate(),
         },
         { id: "round-international", name: "Vòng Quốc tế", time: emptyDate() },
-      ] as { id: string; name: string; time: DraftDate }[],
+      ] as { id: string; name: string; time: DraftDate; days?: DraftDate[] }[],
     }),
     [editing, setEditing] = useState(false),
     [studentDraft, setStudentDraft] = useState<Candidate>(emptyCandidate),
@@ -499,7 +498,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
   const overviewSourceSessions = useMemo(() => sessions.filter(isOverviewSession).sort(overviewSort), [sessions, today]);
   const overviewCompetitionOptions = useMemo(
     () => [
-      ...new Map(
+      ...new Map<string, { value: string; label: string }>(
         overviewSourceSessions.map((session) => [
           session.code,
           {
@@ -1235,11 +1234,11 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
           </label>
           <label className="min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500">BTC quốc tế</span>
-            <SearchableSelect multiple value={sessionOrganizerFilter} onChange={setSessionOrganizerFilter} options={[...new Set(sessions.map((item) => item.organizer))].map((item) => ({ value: item, label: item }))} placeholder="Tất cả BTC" />
+            <SearchableSelect multiple value={sessionOrganizerFilter} onChange={setSessionOrganizerFilter} options={[...new Set<string>(sessions.map((item) => item.organizer))].map((item) => ({ value: item, label: item }))} placeholder="Tất cả BTC" />
           </label>
           <label className="min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500">Năm</span>
-            <SearchableSelect multiple value={sessionYearFilter} onChange={setSessionYearFilter} options={[...new Set(sessions.map(sessionYear).filter(Boolean))].sort().map((item) => ({ value: item, label: item }))} placeholder="Tất cả năm" />
+            <SearchableSelect multiple value={sessionYearFilter} onChange={setSessionYearFilter} options={[...new Set<string>(sessions.map(sessionYear).filter(Boolean))].sort().map((item) => ({ value: item, label: item }))} placeholder="Tất cả năm" />
           </label>
           <label className="min-w-0">
             <span className="mb-1 block text-xs font-bold text-slate-500">Tháng / năm</span>
@@ -1247,7 +1246,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
               multiple
               value={sessionMonthFilter}
               onChange={setSessionMonthFilter}
-              options={[...new Set(sessions.map(sessionMonthKey).filter(Boolean))].sort().map((item) => ({
+              options={[...new Set<string>(sessions.map(sessionMonthKey).filter(Boolean))].sort().map((item) => ({
                 value: item,
                 label: sessionMonthLabel(item),
               }))}
@@ -1261,7 +1260,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
                 <option value="include">Chứa</option>
                 <option value="exclude">Không chứa</option>
               </select>
-              <SearchableSelect multiple value={sessionPhaseFilter} onChange={setSessionPhaseFilter} options={[...new Set(sessions.map((item) => item.phase))].map((item) => ({ value: item, label: item }))} placeholder="Chọn giai đoạn" className="min-w-0 flex-1" />
+              <SearchableSelect multiple value={sessionPhaseFilter} onChange={setSessionPhaseFilter} options={[...new Set<string>(sessions.map((item) => item.phase))].map((item) => ({ value: item, label: item }))} placeholder="Chọn giai đoạn" className="min-w-0 flex-1" />
             </div>
           </label>
         </div>
@@ -1705,11 +1704,11 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
       <div className="mb-5 mt-3 grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-3">
         <label>
           <span className="mb-1 block text-xs font-bold text-slate-500">Khối lớp</span>
-          <SearchableSelect value={candidateGradeFilter} onChange={setCandidateGradeFilter} multiple options={[{ value: "", label: "Tất cả khối lớp" }, ...[...new Set(candidates.map(gradeOf))].sort().map((grade) => ({ value: grade, label: `Khối ${grade}` }))]} />
+          <SearchableSelect value={candidateGradeFilter} onChange={setCandidateGradeFilter} multiple options={[{ value: "", label: "Tất cả khối lớp" }, ...[...new Set<string>(candidates.map(gradeOf))].sort().map((grade) => ({ value: grade, label: `Khối ${grade}` }))]} />
         </label>
         <label>
           <span className="mb-1 block text-xs font-bold text-slate-500">Trường</span>
-          <SearchableSelect value={candidateSchoolFilter} onChange={setCandidateSchoolFilter} multiple options={[{ value: "", label: "Tất cả trường" }, ...[...new Set(candidates.map((candidate) => candidate.school))].sort().map((school) => ({ value: school, label: school }))]} />
+          <SearchableSelect value={candidateSchoolFilter} onChange={setCandidateSchoolFilter} multiple options={[{ value: "", label: "Tất cả trường" }, ...[...new Set<string>(candidates.map((candidate) => candidate.school))].sort().map((school) => ({ value: school, label: school }))]} />
         </label>
         <label>
           <span className="mb-1 block text-xs font-bold text-slate-500">Cuộc thi đã tham gia</span>
@@ -2179,7 +2178,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         onSelect={(nextPage) => go(nextPage as Page)}
         ariaLabel="Điều hướng Khảo thí"
         actions={
-          <CircleHelp className="hidden h-5 w-5 text-slate-500 sm:block cursor-pointer hover:text-slate-800 transition-colors" title="Trợ giúp Khảo thí" />
+          <CircleHelp className="hidden h-5 w-5 text-slate-500 sm:block cursor-pointer hover:text-slate-800 transition-colors" aria-label="Trợ giúp Khảo thí"><title>Trợ giúp Khảo thí</title></CircleHelp>
         }
         account={<AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar" />}
       />

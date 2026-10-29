@@ -7,7 +7,12 @@ export interface ItemInfo {
   tag: string;
   colorClass: string;
   badgeBg: string;
+  /** Thời gian hiệu ứng hiện trên màn hình (ms). */
+  durationMs: number;
 }
+
+/** Mèo biến mất trong làn khói trong khoảng này ở cuối hiệu ứng. */
+export const CAT_POOF_MS = 700;
 
 export const ITEM_DEFINITIONS: Record<ItemType, ItemInfo> = {
   smoke: {
@@ -17,6 +22,7 @@ export const ITEM_DEFINITIONS: Record<ItemType, ItemInfo> = {
     tag: '5 giây',
     colorClass: 'text-slate-600 dark:text-slate-300',
     badgeBg: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    durationMs: 5000,
   },
   flash: {
     id: 'flash',
@@ -25,6 +31,7 @@ export const ITEM_DEFINITIONS: Record<ItemType, ItemInfo> = {
     tag: 'CS2 5s',
     colorClass: 'text-amber-500 dark:text-amber-400',
     badgeBg: 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
+    durationMs: 5000,
   },
   cat: {
     id: 'cat',
@@ -33,6 +40,7 @@ export const ITEM_DEFINITIONS: Record<ItemType, ItemInfo> = {
     tag: 'Hoạt hình',
     colorClass: 'text-rose-500 dark:text-rose-400',
     badgeBg: 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200',
+    durationMs: 3000,
   },
 };
 

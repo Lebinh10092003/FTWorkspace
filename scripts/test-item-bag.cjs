@@ -1,23 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-// Replicate or require pure functions for unit testing
-function isPointInsideRect(x, y, bounds) {
-  if (!bounds) return false;
-  return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
-}
+const { loadTsModule } = require('./load-ts-module.cjs');
 
-function canTriggerFlashbang(isFlashingNow, lastFlashTimestamp, nowTimestamp) {
-  if (isFlashingNow) return false;
-  if (nowTimestamp - lastFlashTimestamp < 4500) return false;
-  return true;
-}
-
-const ITEM_DEFINITIONS = {
-  smoke: { id: 'smoke', name: 'Bom khói', durationMs: 5000 },
-  flash: { id: 'flash', name: 'Bom choáng', durationMs: 5000 },
-  cat: { id: 'cat', name: 'Mèo', durationMs: 3000 },
-};
+// Test chạy trên chính src/components/fun/itemBagTypes.ts, không chép lại logic.
+const { isPointInsideRect, canTriggerFlashbang, ITEM_DEFINITIONS, CAT_POOF_MS } = loadTsModule('src/components/fun/itemBagTypes.ts');
 
 test('1. Ràng buộc an toàn bom choáng CS2 (WCAG 2.1 - Photosensitive Epilepsy)', async t => {
   await t.test('Không kích hoạt nếu đang trong trạng thái choáng', () => {
@@ -43,10 +30,9 @@ test('1. Ràng buộc an toàn bom choáng CS2 (WCAG 2.1 - Photosensitive Epilep
     assert.equal(canTriggerFlashbang(isFlashingNow, lastFlash, now), true, 'Cho phép ném lần tiếp theo');
   });
 
-  await t.test('Tần suất chớp tối đa không vượt quá 1 lần/4.5s (chuẩn WCAG: <= 3 lần/giây)', () => {
-    // Trong 1 giây không thể có quá 1 lần bùng sáng
-    const flashCountInOneSecond = 1;
-    assert.ok(flashCountInOneSecond <= 3, 'Tuân thủ quy tắc dưới 3 lần chớp/giây của WCAG 2.1 SC 2.3.1');
+  await t.test('Mốc đúng 4.5s được phép ném lại', () => {
+    assert.equal(canTriggerFlashbang(false, 10000, 14499), false);
+    assert.equal(canTriggerFlashbang(false, 10000, 14500), true);
   });
 });
 
@@ -86,4 +72,5 @@ test('3. Kiểm tra danh mục vật phẩm Túi đồ', () => {
   assert.equal(ITEM_DEFINITIONS.smoke.durationMs, 5000, 'Khói xám duy trì 5s');
   assert.equal(ITEM_DEFINITIONS.flash.durationMs, 5000, 'Bom choáng duy trì 5s');
   assert.equal(ITEM_DEFINITIONS.cat.durationMs, 3000, 'Mèo xuất hiện và biến mất sau 3s');
+  assert.ok(CAT_POOF_MS > 0 && CAT_POOF_MS < ITEM_DEFINITIONS.cat.durationMs, 'Mèo biến mất trước khi hết hiệu ứng');
 });

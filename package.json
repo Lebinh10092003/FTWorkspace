@@ -9,13 +9,14 @@
         "test:invigilation": "node --test scripts/test-invigilation-reminders.cjs",
         "test:home": "node --test scripts/test-workspace-home.cjs",
         "test:item-bag": "node --test scripts/test-item-bag.cjs",
+        "test": "node --test scripts/test-*.cjs",
         "prune:frontend": "node scripts/prune-vite-assets.mjs --keep 5",
         "preview": "vite preview",
         "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
         "check:dialogs": "node scripts/check-native-dialogs.mjs",
         "check:email-renderers": "node scripts/check-email-render-contracts.mjs",
         "check:document-types": "node scripts/check-document-type-codes.mjs",
-        "lint": "npm run check:dialogs && npm run check:email-renderers && npm run check:document-types && tsc --noEmit"
+        "lint": "npm run check:dialogs && npm run check:email-renderers && npm run check:document-types && tsc --noEmit && eslint src"
     },
     "dependencies": {
         "@google/genai": "^2.4.0",
@@ -31,12 +32,17 @@
         "xlsx": "^0.18.5"
     },
     "devDependencies": {
+        "@eslint/js": "^9.39.5",
         "@types/node": "^22.14.0",
         "@types/qrcode": "^1.5.6",
         "@types/react": "^19.2.17",
         "@types/react-dom": "^19.2.3",
         "autoprefixer": "^10.4.21",
+        "eslint": "^9.39.5",
+        "eslint-plugin-react-hooks": "^5.2.0",
+        "globals": "^16.5.0",
         "tailwindcss": "^4.1.14",
-        "typescript": "~5.8.2"
+        "typescript": "~5.8.2",
+        "typescript-eslint": "^8.72.1"
     }
 }

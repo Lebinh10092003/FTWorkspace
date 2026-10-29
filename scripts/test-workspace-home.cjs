@@ -1,112 +1,18 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-// Import utilities transpiled or inline logic check
-// Since this is CJS running in Node, let's test the pure logic matching workspaceHomeUtils
-function getIsoWeekNumber(d) {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  return Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-}
+const { loadTsModule } = require('./load-ts-module.cjs');
 
-function formatDateIso(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-const VN_DAY_NAMES = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-
-function getWeekDays(baseDate) {
-  const current = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
-  const todayStr = formatDateIso(new Date());
-
-  const currentDay = current.getDay();
-  const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
-
-  const monday = new Date(current);
-  monday.setDate(current.getDate() + diffToMonday);
-
-  const days = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    const dateStr = formatDateIso(d);
-    const dayOfWeek = d.getDay();
-
-    days.push({
-      date: d,
-      dateStr,
-      dayOfWeekVN: VN_DAY_NAMES[dayOfWeek],
-      dayNumber: d.getDate(),
-      monthNumber: d.getMonth() + 1,
-      isToday: dateStr === todayStr,
-    });
-  }
-  return days;
-}
-
-function getTimeUntilFridayDeadline(now) {
-  const current = new Date(now);
-  const currentDay = current.getDay();
-  const diffToFriday = 5 - currentDay;
-
-  const target = new Date(current.getFullYear(), current.getMonth(), current.getDate() + diffToFriday, 16, 45, 0, 0);
-
-  if (current.getTime() >= target.getTime()) {
-    target.setDate(target.getDate() + 7);
-  }
-
-  const diffMs = Math.max(0, target.getTime() - current.getTime());
-  const totalMinutes = Math.floor(diffMs / (1000 * 60));
-  const daysRemaining = Math.floor(totalMinutes / (24 * 60));
-  const hoursRemaining = Math.floor((totalMinutes % (24 * 60)) / 60);
-  const minutesRemaining = totalMinutes % 60;
-
-  const isToday = formatDateIso(current) === formatDateIso(target);
-
-  let summaryText = '';
-  if (isToday) {
-    if (hoursRemaining === 0) {
-      summaryText = `Hạn nộp hôm nay: còn ${minutesRemaining} phút (16:45)`;
-    } else {
-      summaryText = `Hạn nộp hôm nay: còn ${hoursRemaining} giờ ${minutesRemaining} phút (16:45)`;
-    }
-  } else if (daysRemaining === 1) {
-    summaryText = `Còn 1 ngày ${hoursRemaining} giờ tới hạn nộp (Thứ Sáu 16:45)`;
-  } else {
-    summaryText = `Còn ${daysRemaining} ngày tới hạn nộp (Thứ Sáu 16:45)`;
-  }
-
-  return { targetDate: target, daysRemaining, hoursRemaining, minutesRemaining, isToday, summaryText };
-}
-
-function getGreeting(now) {
-  const hour = now.getHours();
-  if (hour < 12) return 'Chào buổi sáng';
-  if (hour < 18) return 'Chào buổi chiều';
-  return 'Chào buổi tối';
-}
-
-function mapTaskStatus(status, taskDateStr, todayStr) {
-  const normalized = String(status || '').trim().toLowerCase();
-  const today = todayStr || formatDateIso(new Date());
-  const isDueToday = taskDateStr === today && normalized !== 'completed' && normalized !== 'reviewed';
-
-  if (normalized === 'completed' || normalized === 'reviewed' || normalized === 'done') {
-    return { label: 'Đã xong', isDone: true, isDoing: false, isTodo: false, isDueToday: false };
-  }
-  if (normalized === 'doing' || normalized === 'in_progress') {
-    return { label: 'Đang làm', isDone: false, isDoing: true, isTodo: false, isDueToday };
-  }
-  if (isDueToday) {
-    return { label: 'Hạn hôm nay', isDone: false, isDoing: false, isTodo: true, isDueToday: true };
-  }
-  return { label: 'Chưa làm', isDone: false, isDoing: false, isTodo: true, isDueToday: false };
-}
+// Test chạy trên chính src/lib/workspaceHomeUtils.ts, không chép lại logic.
+const {
+  getIsoWeekNumber,
+  formatDateIso,
+  getWeekDays,
+  getTimeUntilFridayDeadline,
+  getGreeting,
+  mapTaskStatus,
+  cleanTaskTitleForDisplay,
+} = loadTsModule('src/lib/workspaceHomeUtils.ts');
 
 test('getWeekDays generates exact 7 days Monday to Sunday', () => {
   // Tuesday 2026-10-27
@@ -168,45 +74,6 @@ test('mapTaskStatus maps statuses to standard labels', () => {
   assert.equal(mapTaskStatus('todo', '2026-10-27', '2026-10-27').label, 'Hạn hôm nay');
   assert.equal(mapTaskStatus('todo', '2026-10-28', '2026-10-27').label, 'Chưa làm');
 });
-
-function cleanTaskTitleForDisplay(title) {
-  const originalTitle = String(title || '').trim();
-  if (!originalTitle) {
-    return {
-      cleanTitle: '',
-      links: [],
-      hasLinks: false,
-      originalTitle: '',
-    };
-  }
-
-  const urlRegex = /(?:https?:\/\/|www\.)[^\s<>"'{}|\\^`]+[^\s<>"'{}|\\^`.,;:?!)]/gi;
-  const rawLinks = originalTitle.match(urlRegex) || [];
-  const links = rawLinks.map(l => (l.startsWith('www.') ? `https://${l}` : l));
-
-  const linkLabelAndUrlRegex = /(?:(?:Meet|Google\s*Meet|Zoom|Link|Liên\s*kết)\s*:\s*)?(?:https?:\/\/|www\.)[^\s<>"'{}|\\^`]+[^\s<>"'{}|\\^`.,;:?!)]/gi;
-  let text = originalTitle.replace(linkLabelAndUrlRegex, '').trim();
-
-  const prefixRegex = /^\s*(?:(?:\d{1,2}(?:[:h]\d{2}|h))(?:\s*[\-\–~]\s*(?:\d{1,2}(?:[:h]\d{2}|h)))?)?\s*(?:\(\s*(?:giờ\s*việt\s*nam|giờ\s*vn|ict|gmt\+7)\s*\))?\s*[:\-\–~]\s*/i;
-
-  let prevText = '';
-  while (text !== prevText) {
-    prevText = text;
-    text = text.replace(prefixRegex, '').trim();
-  }
-
-  text = text.replace(/^\s*\(\s*(?:giờ\s*việt\s*nam|giờ\s*vn|ict|gmt\+7)\s*\)\s*[:\-\–~]?\s*/i, '').trim();
-  text = text.replace(/[\s\-\–:.,;…]+$/, '').trim();
-
-  const cleanTitle = text || originalTitle;
-
-  return {
-    cleanTitle,
-    links,
-    hasLinks: links.length > 0,
-    originalTitle,
-  };
-}
 
 test('cleanTaskTitleForDisplay strips duplicate time prefix "9h30: "', () => {
   const res = cleanTaskTitleForDisplay('9h30: Qua làm việc với đối tác tại cơ sở');

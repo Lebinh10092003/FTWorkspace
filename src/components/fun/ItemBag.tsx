@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Backpack, Cat, CloudFog, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import {
+  CAT_POOF_MS,
   ITEM_DEFINITIONS,
   ItemType,
   canTriggerFlashbang,
@@ -159,16 +160,16 @@ export default function ItemBag() {
         playThrowSound(isMuted);
         effectTimeoutRef.current = setTimeout(() => {
           setActiveEffect(null);
-        }, 5000);
+        }, ITEM_DEFINITIONS[type].durationMs);
       } else if (type === 'flash') {
         playTinnitusSound(isMuted, reducedMotion);
         effectTimeoutRef.current = setTimeout(() => {
           setActiveEffect(null);
-        }, 5000);
+        }, ITEM_DEFINITIONS[type].durationMs);
       } else if (type === 'cat') {
         playMeowSound(isMuted);
 
-        // Sau 2.3s: mèo biến mất trong làn khói
+        // Gần hết thời gian: mèo biến mất trong làn khói
         effectTimeoutRef.current = setTimeout(() => {
           setCatPoofing(true);
           playPoofSound(isMuted);
@@ -176,8 +177,8 @@ export default function ItemBag() {
           effectTimeoutRef.current = setTimeout(() => {
             setActiveEffect(null);
             setCatPoofing(false);
-          }, 700);
-        }, 2300);
+          }, CAT_POOF_MS);
+        }, ITEM_DEFINITIONS.cat.durationMs - CAT_POOF_MS);
       }
     },
     [activeEffect, isMuted, reducedMotion]
