@@ -113,6 +113,7 @@ class AiReportJob(models.Model):
 
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="ai_report_jobs")
     report = models.ForeignKey(WeeklyReport, on_delete=models.CASCADE, related_name="ai_report_jobs")
+    supplement_snapshot = models.JSONField(default=dict, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_QUEUED, db_index=True)
     result = models.JSONField(default=dict, blank=True)
     error_message = models.TextField(blank=True, default="")
@@ -168,4 +169,52 @@ class AiServiceHealth(models.Model):
         end_time = self.last_error_at if self.status == self.STATUS_AUTH_ERROR and self.last_error_at else timezone.now()
         diff = end_time - self.first_ready_at
         return max(0, diff.days)
+
+
+class WeeklyReportSupplement(models.Model):
+    """User-provided notes and parsed document attachments for a specific reporting week."""
+
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="weekly_report_supplements")
+    week_start = models.DateField(db_index=True)  # Monday of the reporting week
+    note = models.TextField(blank=True, default="")
+    attachments = models.JSONField(default=list, blank=True)  # [{"name": str, "size": int, "text": str, "uploaded_at": str}]
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-week_start"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "week_start"],
+                name="unique_user_week_supplement",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Supplement: {self.user.email} · Tuần {self.week_start}"
+
+    def total_text_chars(self) -> int:
+        return sum(len(str(att.get("text", ""))) for att in (self.attachments or []))
+
+
+class WeeklyReportSchedule(models.Model):
+    """Weekly auto-run schedule and reminder settings for a single user."""
+
+    user = models.OneToOneField(UserProfile, on_delete=models.CASCADE, related_name="weekly_report_schedule")
+    enabled = models.BooleanField(default=False)
+    weekday = models.PositiveSmallIntegerField(default=4)  # 0=Monday .. 4=Friday .. 6=Sunday
+    run_time = models.TimeField(default="16:00")
+    remind_minutes = models.PositiveIntegerField(default=60)
+    last_reminded_week = models.PositiveIntegerField(blank=True, null=True)  # e.g. 202643
+    last_run_week = models.PositiveIntegerField(blank=True, null=True)  # e.g. 202643
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["user"]
+
+    def __str__(self):
+        status_str = "Bật" if self.enabled else "Tắt"
+        return f"Schedule: {self.user.email} · Thứ {self.weekday + 2} {self.run_time} ({status_str})"
+
 
