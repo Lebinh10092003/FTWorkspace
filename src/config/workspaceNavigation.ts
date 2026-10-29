@@ -23,6 +23,7 @@ import {
   Link2,
   Mail,
   Megaphone,
+  Newspaper,
   Package,
   PackageSearch,
   Presentation,
@@ -127,7 +128,7 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     description: 'Thiết kế Email, chữ ký, mã QR và trang giới thiệu cuộc thi.',
     icon: Megaphone,
     path: '/communication-tools',
-    relatedViews: ['email-builder', 'signature-builder', 'qr-generator', 'funding-proposal', 'document-number', 'weekly-report', 'competition-landing'],
+    relatedViews: ['email-builder', 'signature-builder', 'qr-generator', 'funding-proposal', 'document-number', 'weekly-report', 'competition-landing', 'news-posts'],
   },
   {
     id: 'account-management',
@@ -270,6 +271,7 @@ export const COMMUNICATION_TOOLS_NAV: ModuleNavItem[] = [
   { id: 'funding-proposal', label: 'Phiếu đề xuất kinh phí', icon: ReceiptText },
   { id: 'document-number', label: 'Trình tạo số Công văn', icon: FileSignature },
   { id: 'weekly-report', label: 'Báo cáo cuối tuần', icon: ClipboardList },
+  { id: 'news-posts', label: 'Đăng tin bài', icon: Newspaper },
   { id: 'competition-landing', label: 'Trang giới thiệu cuộc thi', icon: Presentation },
 ];
 
