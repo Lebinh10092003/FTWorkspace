@@ -88,7 +88,11 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# Django 5.1 bỏ STATICFILES_STORAGE; dùng STORAGES (có từ 4.2).
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 MEDIA_URL = "/uploads/"
 MEDIA_ROOT = PROJECT_ROOT / "uploads"
 # Keep under nginx's 12 MB request cap. Email-builder uploads are optimised in

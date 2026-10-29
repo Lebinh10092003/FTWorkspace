@@ -59,6 +59,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='examinvigilationshift',
-            constraint=models.CheckConstraint(check=models.Q(('ends_at__gt', models.F('starts_at'))), name='invigilation_ends_after_start'),
+            constraint=models.CheckConstraint(condition=models.Q(('ends_at__gt', models.F('starts_at'))), name='invigilation_ends_after_start'),
         ),
     ]

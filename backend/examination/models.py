@@ -148,7 +148,7 @@ class ExaminationBillingRecord(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        constraints = [models.CheckConstraint(check=(models.Q(participation__isnull=False, school_registration__isnull=True) | models.Q(participation__isnull=True, school_registration__isnull=False)), name='billing_has_one_owner')]
+        constraints = [models.CheckConstraint(condition=(models.Q(participation__isnull=False, school_registration__isnull=True) | models.Q(participation__isnull=True, school_registration__isnull=False)), name='billing_has_one_owner')]
 
 
 class UnmatchedTransfer(models.Model):
@@ -185,7 +185,7 @@ class TransferProof(models.Model):
     drive_error = models.TextField(blank=True, default='')
 
     class Meta:
-        constraints = [models.CheckConstraint(check=(models.Q(billing__isnull=False, unmatched__isnull=True) | models.Q(billing__isnull=True, unmatched__isnull=False)), name='proof_has_one_owner')]
+        constraints = [models.CheckConstraint(condition=(models.Q(billing__isnull=False, unmatched__isnull=True) | models.Q(billing__isnull=True, unmatched__isnull=False)), name='proof_has_one_owner')]
 
 
 class FormRegistrationLink(models.Model):
@@ -322,7 +322,7 @@ class ExamInvigilationShift(models.Model):
         ordering = ['starts_at', 'room_number']
         constraints = [
             models.UniqueConstraint(fields=['session', 'occurrence_id', 'room_number'], name='unique_invigilation_shift_room'),
-            models.CheckConstraint(check=models.Q(ends_at__gt=models.F('starts_at')), name='invigilation_ends_after_start'),
+            models.CheckConstraint(condition=models.Q(ends_at__gt=models.F('starts_at')), name='invigilation_ends_after_start'),
         ]
 
 
