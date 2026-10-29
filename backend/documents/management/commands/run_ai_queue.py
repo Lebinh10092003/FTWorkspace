@@ -23,6 +23,9 @@ def _worker_wrapper(job_type: str, job_id: int):
         if job_type == "chat":
             from chatbot.service import process_chat_job
             process_chat_job(job_id)
+        elif job_type == "news_post":
+            from news_posts.service import process_news_post_job
+            process_news_post_job(job_id)
         else:
             process_ai_job(job_id)
     finally:
