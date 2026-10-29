@@ -23,8 +23,8 @@ const DJANGO_PORT = 58082;
 const WEB_PORT = 58744;
 const DIST_DIR = path.resolve(__dirname, '../dist');
 const SCREEN_DIRS = [
-  path.resolve('/home/orcauser/orca/workspaces/ft-workspace/agy5/docs/tasks/013-screens'),
-  path.resolve(__dirname, '../docs/tasks/013-screens'),
+  path.resolve('/home/orcauser/orca/workspaces/ft-workspace/agy5/docs/tasks/014-screens'),
+  path.resolve(__dirname, '../docs/tasks/014-screens'),
 ];
 
 SCREEN_DIRS.forEach(d => {
@@ -109,9 +109,8 @@ async function saveScreenshots(page, baseName) {
 }
 
 async function main() {
-  console.log('=== BẮT ĐẦU E2E BACKEND THẬT: BÁO CÁO TUẦN TỰ ĐỘNG & BỔ SUNG ===');
+  console.log('=== BẮT ĐẦU E2E BACKEND THẬT: BÁO CÁO TUẦN BỔ SUNG TRÊN TRANG (VIỆC 014) ===');
 
-  // Chuẩn bị mock AI CLI script và file docx bổ sung
   const MOCK_AGY_CODE = `import sys
 import json
 
@@ -120,15 +119,15 @@ result = {
         {
             "name": "Công nghệ và đào tạo",
             "items": [
-                "Nghiên cứu sử dụng tính năng lên lịch tự động làm báo cáo.",
-                "Hoàn thiện hệ thống báo cáo tuần và tối ưu giao diện di động (23/10).",
+                "Nghiên cứu sử dụng tính năng lên lịch tự động làm báo cáo tuần trực tiếp trên trang.",
+                "Hoàn thiện thẻ chuẩn bị công việc ở đầu trang và tối ưu giao diện di động (29/10).",
                 "Hỗ trợ kỹ thuật cho giáo viên các trường đối tác."
             ]
         },
         {
-            "name": "Công tác chung",
+            "name": "Khó khăn, vướng mắc",
             "items": [
-                "Tham gia cuộc họp rà soát công việc cơ quan lúc 9h30 ngày 23/10."
+                "Không có khó khăn, vướng mắc đáng kể."
             ]
         }
     ],
@@ -138,13 +137,8 @@ result = {
             "name": "Công nghệ",
             "items": [
                 "Hoàn thiện tính năng tự động theo lịch, xong trong thứ 4.",
-                "Triển khai tính năng đính kèm tệp cho báo cáo tuần."
-            ]
-        },
-        {
-            "name": "Đào tạo",
-            "items": [
-                "Tiếp tục hỗ trợ kỹ thuật cho các đơn vị, xong trong ngày 30/10."
+                "Triển khai tính năng đính kèm tệp cho báo cáo tuần.",
+                "Tích cực cập nhật các công việc liên quan phát sinh (nếu có)."
             ]
         }
     ]
@@ -153,24 +147,23 @@ result = {
 print(json.dumps(result, ensure_ascii=False))
 `;
 
-  fs.writeFileSync('/tmp/mock_agy_013.py', MOCK_AGY_CODE, 'utf8');
+  fs.writeFileSync('/tmp/mock_agy_014.py', MOCK_AGY_CODE, 'utf8');
 
-  // Tạo file docx giả lập bằng python
   const venvPython = path.resolve(__dirname, '../.venv/bin/python');
   const managePy = path.resolve(__dirname, '../backend/manage.py');
 
   const makeDocxCode = `from docx import Document
 doc = Document()
 doc.add_paragraph('Noi dung tai lieu cong viec bo sung tuan 43:')
-doc.add_paragraph('- Hoan thien tich hop AI cho mo-dun bao cao tuan.')
+doc.add_paragraph('- Hoan thien dua the bo sung truc tiep ra dau trang khong qua popup.')
 doc.add_paragraph('- Dang ky ke hoach tuan 44 day du cac ngay.')
-doc.save('/tmp/e2e_supplement_013.docx')
+doc.save('/tmp/e2e_supplement_014.docx')
 `;
   execSync(`${venvPython} -c "${makeDocxCode}"`);
-  console.log('[Setup] Đã tạo tệp docx kiểm thử tại /tmp/e2e_supplement_013.docx');
+  console.log('[Setup] Đã tạo tệp docx kiểm thử tại /tmp/e2e_supplement_014.docx');
 
   const srcDb = path.resolve(__dirname, '../backend/db.sqlite3');
-  const testDb = '/tmp/ft_013_test.sqlite3';
+  const testDb = '/tmp/ft_014_test.sqlite3';
   if (fs.existsSync(srcDb)) {
     fs.copyFileSync(srcDb, testDb);
     console.log('[Setup] Đã sao chép database mẫu sang ' + testDb);
@@ -179,7 +172,7 @@ doc.save('/tmp/e2e_supplement_013.docx')
   const djangoEnv = {
     ...process.env,
     DJANGO_DB_PATH: testDb,
-    AI_AGY_COMMAND: `${venvPython} /tmp/mock_agy_013.py`,
+    AI_AGY_COMMAND: `${venvPython} /tmp/mock_agy_014.py`,
     PYTHONUNBUFFERED: '1',
   };
 
@@ -205,7 +198,7 @@ from documents.weekly_reports import week_start
 u, _ = User.objects.get_or_create(username='tien@fermat.vn', email='tien@fermat.vn', defaults={'is_superuser': True})
 u.is_superuser = True
 u.save()
-Token.objects.update_or_create(user=u, defaults={'key': 'e2e-token-agy5-013-secret'})
+Token.objects.update_or_create(user=u, defaults={'key': 'e2e-token-agy5-014-secret'})
 p, _ = UserProfile.objects.get_or_create(email='tien@fermat.vn', defaults={'name': 'Nguyễn Văn Tiến', 'role': 'ADMIN', 'employment_status': 'ACTIVE'})
 p.role = 'ADMIN'
 p.employment_status = 'ACTIVE'
@@ -216,22 +209,20 @@ monday = week_start(today)
 next_monday = monday + timedelta(days=7)
 
 WorkItem.objects.filter(executor=p).delete()
-WorkItem.objects.create(creator=p, executor=p, work_date=monday, title="Nghiên cứu tính năng lên lịch tự động", status="COMPLETED")
-WorkItem.objects.create(creator=p, executor=p, work_date=monday + timedelta(days=2), title="Họp kỹ thuật dự án", status="COMPLETED")
+WorkItem.objects.create(creator=p, executor=p, work_date=monday, title="Nghiên cứu đưa thẻ bổ sung ra đầu trang", status="COMPLETED")
+WorkItem.objects.create(creator=p, executor=p, work_date=monday + timedelta(days=2), title="Họp kỹ thuật dự án và rà soát giao diện", status="COMPLETED")
 WorkItem.objects.create(creator=p, executor=p, work_date=next_monday, title="Hoàn thiện tính năng tự động theo lịch", status="ASSIGNED")
 WorkItem.objects.create(creator=p, executor=p, work_date=next_monday + timedelta(days=1), title="Hỗ trợ kỹ thuật các đơn vị", status="ASSIGNED")
 WorkItem.objects.create(creator=p, executor=p, work_date=next_monday + timedelta(days=2), title="Kiểm thử hệ thống toàn diện", status="ASSIGNED")
-WorkItem.objects.create(creator=p, executor=p, work_date=next_monday + timedelta(days=3), title="Rà soát tài liệu hướng dẫn", status="ASSIGNED")
-WorkItem.objects.create(creator=p, executor=p, work_date=next_monday + timedelta(days=4), title="Bàn giao phiên bản mới", status="ASSIGNED")
 print("Seed data successfully injected")
 `;
-  fs.writeFileSync('/tmp/seed_e2e_013.py', seedScript, 'utf8');
+  fs.writeFileSync('/tmp/seed_e2e_014.py', seedScript, 'utf8');
 
   try {
     execSync(`${venvPython} ${managePy} migrate`, { env: djangoEnv, stdio: 'pipe' });
     console.log('[Setup] Đã migrate database kiểm thử.');
 
-    execSync(`${venvPython} /tmp/seed_e2e_013.py`, { env: djangoEnv, stdio: 'pipe', cwd: path.resolve(__dirname, '../backend') });
+    execSync(`${venvPython} /tmp/seed_e2e_014.py`, { env: djangoEnv, stdio: 'pipe', cwd: path.resolve(__dirname, '../backend') });
     console.log('[Setup] Đã nạp seed data người dùng và công việc Lịch công tác.');
   } catch (err) {
     console.error('[Setup] Lỗi thiết lập:', err.message);
@@ -260,7 +251,6 @@ print("Seed data successfully injected")
     process.stdout.write(`[Worker Log] ${d.toString()}`);
   });
 
-  // Chờ Django sẵn sàng
   await new Promise(r => setTimeout(r, 2000));
 
   const webServer = await startWebServer();
@@ -283,20 +273,20 @@ print("Seed data successfully injected")
 
     await desktopPage.addInitScript(() => {
       const mockUser = {
-        uid: 'uid-test-agy5-013',
+        uid: 'uid-test-agy5-014',
         email: 'tien@fermat.vn',
         displayName: 'Nguyễn Văn Tiến',
         photoURL: null,
         role: 'ADMIN',
         accessModules: ['communication-tools', 'weekly-report'],
       };
-      localStorage.setItem('ft_token', 'e2e-token-agy5-013-secret');
+      localStorage.setItem('ft_token', 'e2e-token-agy5-014-secret');
       localStorage.setItem('ft_user_email', 'tien@fermat.vn');
       localStorage.setItem('ft_user_name', 'Nguyễn Văn Tiến');
       localStorage.setItem('ft_user_role', 'ADMIN');
       localStorage.setItem(
         'ft_auth_session',
-        JSON.stringify({ token: 'e2e-token-agy5-013-secret', user: mockUser, role: 'ADMIN' })
+        JSON.stringify({ token: 'e2e-token-agy5-014-secret', user: mockUser, role: 'ADMIN' })
       );
     });
 
@@ -304,46 +294,43 @@ print("Seed data successfully injected")
       waitUntil: 'networkidle',
     });
     console.log('[E2E Desktop] Đã mở trang Báo cáo tuần.');
+
+    // Chờ thẻ cố định ở đầu trang xuất hiện
+    await desktopPage.waitForSelector('#weekly-report-supplement-card-title');
     await saveScreenshots(desktopPage, '01-desktop-initial-light');
 
-    // 1. Mở Dialog Lịch tự động
-    console.log('[E2E Desktop] Mở Dialog Lịch tự động...');
-    await desktopPage.click('header button[title*="Cài đặt lịch tự động"]:visible');
-    await desktopPage.waitForSelector('#weekly-report-schedule-title');
-    await saveScreenshots(desktopPage, '02-desktop-schedule-dialog-light');
+    // 1. Nhập ghi chú bổ sung
+    console.log('[E2E Desktop] Nhập ghi chú bổ sung...');
+    await desktopPage.fill(
+      '#weekly-report-supplement-note',
+      'Ghi chú bổ sung: Hoàn thành kiểm thử và đào tạo hệ thống tuần 43 trực tiếp trên trang.'
+    );
+    await desktopPage.click('button:has-text("Lưu ghi chú")');
+    await desktopPage.waitForTimeout(500);
 
-    // Bật công tắc lịch tự động và lưu
-    const checkbox = await desktopPage.$('input[type="checkbox"]');
-    if (checkbox) {
-      await checkbox.check();
-    }
-    await desktopPage.click('button:has-text("Lưu cài đặt")');
-    await desktopPage.waitForTimeout(1000);
-    console.log('[E2E Desktop] Đã lưu thành công cài đặt Lịch tự động.');
-
-    // 2. Mở Dialog Tạo báo cáo tuần
-    console.log('[E2E Desktop] Mở Dialog Tạo báo cáo tuần...');
-    await desktopPage.click('header button:has-text("Tạo báo cáo"):visible');
-    await desktopPage.waitForSelector('#weekly-report-create-title');
-
-    // Nhập ghi chú bổ sung
-    const textarea = await desktopPage.$('textarea');
-    if (textarea) {
-      await textarea.fill('Ghi chú bổ sung: Hoàn thành kiểm thử và đào tạo hệ thống tuần 43.');
-    }
-
-    // Tải lên tệp đính kèm docx
+    // 2. Tải lên tệp đính kèm docx
     console.log('[E2E Desktop] Tải lên tệp đính kèm docx...');
     const fileInput = await desktopPage.$('input[type="file"]');
     if (fileInput) {
-      await fileInput.setInputFiles('/tmp/e2e_supplement_013.docx');
+      await fileInput.setInputFiles('/tmp/e2e_supplement_014.docx');
       await desktopPage.waitForTimeout(1500);
     }
-    await saveScreenshots(desktopPage, '03-desktop-create-dialog-with-files');
 
-    // Bấm nút "Tạo báo cáo" bên trong modal
-    console.log('[E2E Desktop] Bấm nút Tạo báo cáo trong modal...');
-    await desktopPage.click('section[aria-labelledby="weekly-report-create-title"] footer button:has-text("Tạo báo cáo")');
+    // 3. Bật công tắc lịch tự động trong thẻ
+    console.log('[E2E Desktop] Bật công tắc Lịch tự động trong thẻ...');
+    const autoCheckbox = await desktopPage.$('input[type="checkbox"]');
+    if (autoCheckbox) {
+      const isChecked = await autoCheckbox.isChecked();
+      if (!isChecked) {
+        await autoCheckbox.check();
+        await desktopPage.waitForTimeout(1000);
+      }
+    }
+    await saveScreenshots(desktopPage, '02-desktop-card-configured-light');
+
+    // 4. Bấm nút "Tạo báo cáo tuần" ngay trên thẻ
+    console.log('[E2E Desktop] Bấm nút Tạo báo cáo tuần trên thẻ...');
+    await desktopPage.click('button:has-text("Tạo báo cáo tuần"):visible');
 
     // Chờ AI worker xử lý xong và nạp vào editor
     console.log('[E2E Desktop] Đang đợi AI xử lý qua hàng chờ...');
@@ -351,12 +338,12 @@ print("Seed data successfully injected")
     await desktopPage.waitForTimeout(1000);
     console.log('[E2E Desktop] AI đã xử lý xong và nạp kết quả vào Editor!');
 
-    await saveScreenshots(desktopPage, '04-desktop-editor-populated-light');
+    await saveScreenshots(desktopPage, '03-desktop-editor-populated-light');
 
-    // Chuyển sang dark mode
+    // Chuyển sang dark mode trên desktop
     await desktopPage.evaluate(() => document.documentElement.classList.add('dark'));
     await desktopPage.waitForTimeout(500);
-    await saveScreenshots(desktopPage, '05-desktop-editor-populated-dark');
+    await saveScreenshots(desktopPage, '04-desktop-editor-populated-dark');
     await desktopPage.evaluate(() => document.documentElement.classList.remove('dark'));
 
     await desktopContext.close();
@@ -375,20 +362,20 @@ print("Seed data successfully injected")
 
     await mobilePage.addInitScript(() => {
       const mockUser = {
-        uid: 'uid-test-agy5-013',
+        uid: 'uid-test-agy5-014',
         email: 'tien@fermat.vn',
         displayName: 'Nguyễn Văn Tiến',
         photoURL: null,
         role: 'ADMIN',
         accessModules: ['communication-tools', 'weekly-report'],
       };
-      localStorage.setItem('ft_token', 'e2e-token-agy5-013-secret');
+      localStorage.setItem('ft_token', 'e2e-token-agy5-014-secret');
       localStorage.setItem('ft_user_email', 'tien@fermat.vn');
       localStorage.setItem('ft_user_name', 'Nguyễn Văn Tiến');
       localStorage.setItem('ft_user_role', 'ADMIN');
       localStorage.setItem(
         'ft_auth_session',
-        JSON.stringify({ token: 'e2e-token-agy5-013-secret', user: mockUser, role: 'ADMIN' })
+        JSON.stringify({ token: 'e2e-token-agy5-014-secret', user: mockUser, role: 'ADMIN' })
       );
     });
 
@@ -396,46 +383,29 @@ print("Seed data successfully injected")
       waitUntil: 'networkidle',
     });
     console.log('[E2E Mobile] Đã mở trang Báo cáo tuần trên Mobile 390px.');
-    await saveScreenshots(mobilePage, '06-mobile-editor-light');
+
+    // Chờ thẻ cố định ở đầu trang xuất hiện trên Mobile
+    await mobilePage.waitForSelector('#weekly-report-supplement-card-title');
+    await saveScreenshots(mobilePage, '05-mobile-initial-light');
 
     // Chụp dark mode trên mobile
     await mobilePage.evaluate(() => document.documentElement.classList.add('dark'));
     await mobilePage.waitForTimeout(500);
-    await saveScreenshots(mobilePage, '07-mobile-editor-dark');
+    await saveScreenshots(mobilePage, '06-mobile-initial-dark');
     await mobilePage.evaluate(() => document.documentElement.classList.remove('dark'));
 
-    // Mở Dialog Tạo báo cáo trên mobile
-    console.log('[E2E Mobile] Mở Dialog Tạo báo cáo trên mobile...');
-    await mobilePage.click('header button:has-text("Tạo báo cáo"):visible');
-    await mobilePage.waitForSelector('#weekly-report-create-title');
-    await saveScreenshots(mobilePage, '08-mobile-create-dialog-light');
-
-    // Mở dark mode Dialog
-    await mobilePage.evaluate(() => document.documentElement.classList.add('dark'));
-    await mobilePage.waitForTimeout(500);
-    await saveScreenshots(mobilePage, '09-mobile-create-dialog-dark');
-    await mobilePage.evaluate(() => document.documentElement.classList.remove('dark'));
-
-    await mobilePage.click('section[aria-labelledby="weekly-report-create-title"] footer button:has-text("Hủy")');
-    await mobilePage.waitForTimeout(500);
-
-    // Mở Dialog Lịch tự động trên mobile
-    console.log('[E2E Mobile] Mở Dialog Lịch tự động trên mobile...');
-    await mobilePage.click('header button[title*="Cài đặt lịch tự động"]:visible');
-    await mobilePage.waitForSelector('#weekly-report-schedule-title');
-    await saveScreenshots(mobilePage, '10-mobile-schedule-dialog-light');
-
-    await mobilePage.evaluate(() => document.documentElement.classList.add('dark'));
-    await mobilePage.waitForTimeout(500);
-    await saveScreenshots(mobilePage, '11-mobile-schedule-dialog-dark');
-    await mobilePage.evaluate(() => document.documentElement.classList.remove('dark'));
-
-    await mobilePage.click('section[aria-labelledby="weekly-report-schedule-title"] footer button:has-text("Hủy")');
-    await mobilePage.waitForTimeout(500);
+    // Thử truy cập qua link thông báo nhắc nhở kèm query param ?week_start=
+    const currentWeekStart = await mobilePage.$eval('#weekly-report-week-select', el => el.value);
+    console.log(`[E2E Mobile] Kiểm tra deeplink thông báo nhắc với week_start=${currentWeekStart}...`);
+    await mobilePage.goto(`http://127.0.0.1:${WEB_PORT}/communication-tools/weekly-report?week_start=${encodeURIComponent(currentWeekStart)}`, {
+      waitUntil: 'networkidle',
+    });
+    await mobilePage.waitForSelector('#weekly-report-supplement-card-title');
+    await saveScreenshots(mobilePage, '07-mobile-reminder-deeplink-light');
 
     await mobileContext.close();
 
-    console.log('\n=== E2E BACKEND THẬT HOÀN TẤT THÀNH CÔNG 100%! ===');
+    console.log('\n=== E2E VIỆC 014 BACKEND THẬT HOÀN TẤT THÀNH CÔNG 100%! ===');
   } catch (err) {
     console.error('\n[E2E Lỗi]', err);
     process.exitCode = 1;
