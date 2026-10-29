@@ -18,6 +18,8 @@ import {
   X,
 } from 'lucide-react';
 import { appDialog } from '../AppDialog';
+import Field from '../ui/FormField';
+import Dialog from '../ui/ModalDialog';
 
 interface CompanyAccountsProps {
   idToken: string;
@@ -179,30 +181,6 @@ function renewalBadge(a: CompanyAccount) {
   );
 }
 
-function Field({ label, hint, children, wide = false }: { label: string; hint?: string; children: React.ReactNode; wide?: boolean }) {
-  return (
-    <label className={`block text-sm font-semibold text-slate-700 ${wide ? 'sm:col-span-2' : ''}`}>
-      <span className="mb-1.5 block">{label}</span>
-      {children}
-      {hint && <span className="mt-1 block text-xs font-normal text-slate-500">{hint}</span>}
-    </label>
-  );
-}
-
-function Dialog({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-      <button aria-label="Đóng" onClick={onClose} className="absolute inset-0 cursor-default bg-slate-950/45 backdrop-blur-sm" />
-      <section role="dialog" aria-modal="true" className={`relative max-h-[92vh] w-full overflow-y-auto rounded-2xl bg-white shadow-2xl ${wide ? 'max-w-4xl' : 'max-w-2xl'}`}>
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4">
-          <h3 className="text-lg font-extrabold text-slate-900">{title}</h3>
-          <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
-        </header>
-        {children}
-      </section>
-    </div>
-  );
-}
 
 function StatTile({ icon: Icon, label, value, tone = 'text-slate-900', sub }: { icon: React.ElementType; label: string; value: React.ReactNode; tone?: string; sub?: string }) {
   return (

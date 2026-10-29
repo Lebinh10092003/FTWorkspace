@@ -11,6 +11,7 @@ import examinationBillingService, {
   type ExaminationBillingRecord,
   type ExaminationBillingStats,
 } from './examinationBillingService';
+import Stat from '../ui/StatCard';
 
 const money = (value: number | null) => value === null ? 'Chưa nhập' : `${value.toLocaleString('vi-VN')}đ`;
 
@@ -21,17 +22,6 @@ const dateTime = (value?: string | null) => {
   return parsed.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-function Stat({ label, value, icon: Icon, tone }: { label: string; value: string; icon: React.ElementType; tone: string }) {
-  return (
-    <div className="bndc-stat">
-      <span className="bndc-stat-head">
-        <span>{label}</span>
-        <Icon className={tone} aria-hidden="true" />
-      </span>
-      <b>{value}</b>
-    </div>
-  );
-}
 
 function TransferChip({ status }: { status: BillingTransferStatus }) {
   const tone: Record<BillingTransferStatus, string> = {

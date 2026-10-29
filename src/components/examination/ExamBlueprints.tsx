@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Competition, ExaminationSession } from './types';
+import FormField from '../ui/FormField';
 
 type Slot = {
   id?: string;
@@ -137,18 +138,7 @@ function apiFactory(token?: string | null) {
     return body as any;
   };
 }
-const Field = ({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) => (
-  <label className="block text-sm font-bold text-[#001e40]">
-    <span className="mb-1 block">{label}</span>
-    {children}
-  </label>
-);
+const Field = (props: { label: string; children: React.ReactNode }) => <FormField tone="brand" {...props} />;
 const Notice = ({ value, onClose }: { value: string; onClose: () => void }) => (
   <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-xl border border-blue-200 bg-white p-4 text-sm font-semibold text-[#001e40] shadow-xl">
     {value}

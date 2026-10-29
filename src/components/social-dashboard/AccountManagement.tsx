@@ -3,6 +3,8 @@ import { CheckCircle2, Edit3, Eye, EyeOff, KeyRound, Lock, Plus, Search, Setting
 import { UserProfile, UserRole } from '../../types';
 import ConfirmModal from '../ConfirmModal';
 import { appDialog } from '../AppDialog';
+import Field from '../ui/FormField';
+import ModalDialog, { type ModalDialogProps } from '../ui/ModalDialog';
 
 interface AccountManagementProps { idToken: string; userRole: UserRole; }
 type EmploymentStatus = 'ACTIVE' | 'SUSPENDED' | 'TERMINATED' | 'PENDING';
@@ -32,8 +34,7 @@ const toggleDraftModule = (modules: string[], key: string, checked: boolean) => 
   return checked ? Array.from(new Set([...modules, ...keys])) : modules.filter(module => !keys.includes(module));
 };
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-sm font-semibold text-slate-700"><span className="mb-1.5 block">{label}</span>{children}</label>; }
-function Dialog({ title, children, onClose, wide = false }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) { return <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4"><button aria-label="Đóng" onClick={onClose} className="absolute inset-0 cursor-default bg-slate-950/45 backdrop-blur-sm"/><section role="dialog" aria-modal="true" className={`relative max-h-[92vh] w-full overflow-y-auto rounded-2xl bg-white shadow-2xl ${wide ? 'max-w-5xl' : 'max-w-2xl'}`}><header className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4"><h3 className="text-lg font-extrabold text-slate-900">{title}</h3><button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5"/></button></header>{children}</section></div>; }
+const Dialog = (props: ModalDialogProps) => <ModalDialog wideClassName="max-w-5xl" {...props} />;
 
 export default function AccountManagement({ idToken, userRole }: AccountManagementProps) {
   const [users, setUsers] = useState<UserProfile[]>([]);

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, CircleCheck, PauseCircle, Search, TriangleAlert, XCircle } from 'lucide-react';
+import Stat from '../ui/StatCard';
 
 /**
  * Hạn hợp đồng — the accounting view of Đào tạo số product subscriptions.
@@ -67,17 +68,6 @@ function remainingTone(item: ContractSubscription) {
   return 'text-slate-600';
 }
 
-function Stat({ label, value, icon: Icon, tone }: { label: string; value: number; icon: React.ElementType; tone: string }) {
-  return (
-    <div className="bndc-stat">
-      <span className="bndc-stat-head">
-        <span>{label}</span>
-        <Icon className={tone} aria-hidden="true" />
-      </span>
-      <b>{value.toLocaleString('vi-VN')}</b>
-    </div>
-  );
-}
 
 export type ContractExpiryReviewProps = {
   idToken: string;
