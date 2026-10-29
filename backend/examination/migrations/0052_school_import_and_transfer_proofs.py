@@ -55,7 +55,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='examinationbillingrecord',
-            constraint=models.CheckConstraint(check=models.Q(models.Q(('participation__isnull', False), ('school_registration__isnull', True)), models.Q(('participation__isnull', True), ('school_registration__isnull', False)), _connector='OR'), name='billing_has_one_owner'),
+            constraint=models.CheckConstraint(condition=models.Q(models.Q(('participation__isnull', False), ('school_registration__isnull', True)), models.Q(('participation__isnull', True), ('school_registration__isnull', False)), _connector='OR'), name='billing_has_one_owner'),
         ),
         migrations.AddField(
             model_name='transferproof',
@@ -78,6 +78,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='transferproof',
-            constraint=models.CheckConstraint(check=models.Q(models.Q(('billing__isnull', False), ('unmatched__isnull', True)), models.Q(('billing__isnull', True), ('unmatched__isnull', False)), _connector='OR'), name='proof_has_one_owner'),
+            constraint=models.CheckConstraint(condition=models.Q(models.Q(('billing__isnull', False), ('unmatched__isnull', True)), models.Q(('billing__isnull', True), ('unmatched__isnull', False)), _connector='OR'), name='proof_has_one_owner'),
         ),
     ]
