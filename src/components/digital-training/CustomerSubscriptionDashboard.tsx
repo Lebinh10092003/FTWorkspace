@@ -451,7 +451,7 @@ export default function CustomerSubscriptionDashboard({
       if (provinceFilter !== "all" && s.partner_province !== provinceFilter) return false;
       if (searchQuery.trim()) {
         const text = `${s.partner_name} ${s.product_name} ${s.partner_province || ""} ${s.notes || ""}`;
-        if (!matchesSearch(searchQuery, text)) return false;
+        if (!matchesSearch(text, searchQuery)) return false;
       }
       return true;
     });

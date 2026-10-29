@@ -285,7 +285,10 @@ def crm_create_lead(
 
 @register_tool(
     name="crm_update_lead_stage",
-    description="Cập nhật giai đoạn phễu bán hàng (stage) hoặc bổ sung ghi chú cho khách hàng tiềm năng (Lead).",
+    description=(
+        "Cập nhật giai đoạn phễu bán hàng (stage) hoặc bổ sung ghi chú cho khách hàng tiềm năng (Lead). "
+        "KHÔNG dùng để ghi doanh thu/thu chi: dùng finance_create_entry (Báo cáo thu chi)."
+    ),
     module="digital-training",
     min_role="EMPLOYEE",
     audit_action="Cập nhật tiến trình Lead",
@@ -298,13 +301,28 @@ def crm_create_lead(
                 "enum": ["discussion", "meeting", "proposal", "negotiation", "on_hold", "lost"],
                 "description": "Giai đoạn mới",
             },
-            "notes": {"type": "string", "description": "Nội dung ghi chú bổ sung"},
+            "notes": {"type": "string", "description": "Nội dung ghi chú bổ sung (không dùng cho doanh thu/thu chi)"},
+            "not_finance_record": {
+                "type": "boolean",
+                "description": "true chỉ khi người dùng nói rõ ghi chú có số tiền này KHÔNG phải khoản thu chi",
+            },
         },
         "required": ["lead_id"],
         "additionalProperties": False,
     },
 )
-def crm_update_lead_stage(ctx: Dict[str, Any], lead_id: int, stage: Optional[str] = None, notes: Optional[str] = None, **_kwargs) -> Dict[str, Any]:
+def crm_update_lead_stage(
+    ctx: Dict[str, Any],
+    lead_id: int,
+    stage: Optional[str] = None,
+    notes: Optional[str] = None,
+    not_finance_record: bool = False,
+    **_kwargs,
+) -> Dict[str, Any]:
+    from digital_training.finance_division import FINANCE_NOTE_REDIRECT, looks_like_finance_record
+
+    if notes and not not_finance_record and looks_like_finance_record(notes):
+        return {"success": False, "error": FINANCE_NOTE_REDIRECT, "use_tool": "finance_create_entry"}
     lead = TrainingLead.objects.filter(pk=lead_id).first()
     if not lead:
         return {"success": False, "error": f"Không tìm thấy Lead ID {lead_id}"}

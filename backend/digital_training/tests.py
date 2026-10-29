@@ -997,6 +997,7 @@ class TrainingFinancePermissionTests(TestCase):
         return {
             "transaction_date": "2026-08-01",
             "entry_type": "income",
+            "division": "digital_training",
             "category": "Hop dong",
             "description": "Thu dot 1",
             "amount": 15000000,

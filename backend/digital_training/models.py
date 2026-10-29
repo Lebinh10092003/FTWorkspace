@@ -144,8 +144,15 @@ class TrainingFinanceEntry(models.Model):
         ("cancelled", "Cancelled"),
     ]
 
+    DIVISION_CHOICES = [
+        ("examination", "Khảo thí"),
+        ("digital_training", "Công nghệ số & Đào tạo"),
+    ]
+
     transaction_date = models.DateField()
     entry_type = models.CharField(max_length=20, choices=ENTRY_TYPE_CHOICES)
+    # Sổ trước đây chỉ có thu chi Đào tạo số, nên dòng cũ mặc định thuộc CNS&ĐT.
+    division = models.CharField(max_length=30, choices=DIVISION_CHOICES, default="digital_training", db_index=True)
     category = models.CharField(max_length=150)
     description = models.CharField(max_length=500)
     amount = models.DecimalField(max_digits=16, decimal_places=0)

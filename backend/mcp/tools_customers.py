@@ -17,6 +17,8 @@ from digital_training.models import (
 )
 from digital_training.serializers import TrainingPartnerSerializer
 
+from digital_training.finance_division import FINANCE_NOTE_REDIRECT, looks_like_finance_record
+
 from .lookups import find_partner
 from .registry import register_tool
 
@@ -47,7 +49,9 @@ def _parse_date(value: Any) -> Optional[datetime.date]:
     description=(
         "Cập nhật thông tin liên hệ, địa chỉ, trạng thái hợp đồng của khách hàng hiện tại; thêm đầu mối liên hệ "
         "hoặc thêm ghi chú chăm sóc (ghi chú được nối thêm kèm ngày và người ghi, không ghi đè ghi chú cũ). "
-        "Chỉ gửi những trường cần đổi; trường để trống không bị xóa."
+        "Chỉ gửi những trường cần đổi; trường để trống không bị xóa. "
+        "KHÔNG dùng để ghi doanh thu, khoản thu, chi phí hay thanh toán: những việc đó dùng finance_create_entry "
+        "(Báo cáo thu chi /finance-report)."
     ),
     module="digital-training",
     min_role="MANAGER",
@@ -78,7 +82,14 @@ def _parse_date(value: Any) -> Optional[datetime.date]:
                 },
                 "additionalProperties": False,
             },
-            "append_note": {"type": "string", "description": "Ghi chú chăm sóc khách hàng cần nối thêm"},
+            "append_note": {
+                "type": "string",
+                "description": "Ghi chú chăm sóc khách hàng cần nối thêm. Không dùng cho doanh thu/thu chi.",
+            },
+            "not_finance_record": {
+                "type": "boolean",
+                "description": "true chỉ khi người dùng nói rõ ghi chú có số tiền này KHÔNG phải khoản thu chi",
+            },
         },
         "additionalProperties": False,
     },
@@ -89,8 +100,12 @@ def crm_update_customer(
     partner_name: str = "",
     add_contact: Optional[Dict[str, Any]] = None,
     append_note: str = "",
+    not_finance_record: bool = False,
     **fields: Any,
 ) -> Dict[str, Any]:
+    if append_note and not not_finance_record and looks_like_finance_record(append_note):
+        return {"success": False, "error": FINANCE_NOTE_REDIRECT, "use_tool": "finance_create_entry"}
+
     partner, error = find_partner(partner_id, partner_name)
     if not partner:
         return {"success": False, "error": error}

@@ -209,15 +209,18 @@ class TrainingProductSubscriptionSerializer(serializers.ModelSerializer):
 
 class TrainingFinanceEntrySerializer(serializers.ModelSerializer):
     partner_name = serializers.CharField(source="partner.name", read_only=True)
+    division_label = serializers.CharField(source="get_division_display", read_only=True)
 
     class Meta:
         model = TrainingFinanceEntry
         fields = [
-            "id", "transaction_date", "entry_type", "category", "description",
+            "id", "transaction_date", "entry_type", "division", "division_label", "category", "description",
             "amount", "partner", "partner_name", "status", "payment_method",
             "reference_code", "notes", "created_by", "updated_by", "created_at", "updated_at",
         ]
         read_only_fields = ["created_by", "updated_by", "created_at", "updated_at"]
+        # Khoản mới phải chọn mảng; không ngầm gán Khảo thí hay CNS&ĐT.
+        extra_kwargs = {"division": {"required": True}}
 
     def validate_amount(self, value):
         if value <= 0:

@@ -519,6 +519,9 @@ def training_finance_entries(request):
     entry_status = str(request.query_params.get("status") or "").strip()
     partner = str(request.query_params.get("partner") or "").strip()
     search = str(request.query_params.get("search") or "").strip()
+    division = str(request.query_params.get("division") or "").strip()
+    if division in {"examination", "digital_training"}:
+        queryset = queryset.filter(division=division)
     if date_from:
         queryset = queryset.filter(transaction_date__gte=date_from)
     if date_to:
