@@ -104,7 +104,7 @@ def build_weekly_report_docx(report):
 
     # Khó khăn, vướng mắc is the last item of Section I
     _paragraph(document, f"{group_num}. Khó khăn, vướng mắc", bold=True, size=13, before=4, after=2)
-    diff_items = getattr(report, "difficulties", None) or ["Không có."]
+    diff_items = getattr(report, "difficulties", None) or ["Không có khó khăn, vướng mắc đáng kể."]
     for item in diff_items:
         _paragraph(document, f"- {item}", size=13, after=1)
 
@@ -129,6 +129,8 @@ def build_weekly_report_docx(report):
 
     if getattr(report, "include_bld_task", True):
         _paragraph(document, "- Thực hiện các nhiệm vụ khác theo chỉ đạo của BLĐ.", size=13, after=1)
+
+    _paragraph(document, "- Tích cực cập nhật các công việc liên quan phát sinh (nếu có).", size=13, after=1)
 
     stream = BytesIO()
     document.save(stream)

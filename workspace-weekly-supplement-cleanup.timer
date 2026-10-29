@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily cleanup of expired weekly report supplements at 00:10 ICT
+
+[Timer]
+OnCalendar=*-*-* 00:10:00 Asia/Ho_Chi_Minh
+Persistent=true
+Unit=workspace-weekly-supplement-cleanup.service
+
+[Install]
+WantedBy=timers.target

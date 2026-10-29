@@ -2,20 +2,24 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  CalendarClock,
   CalendarPlus,
   CheckCircle2,
+  Clock,
   Download,
   Edit3,
   ExternalLink,
   FileSpreadsheet,
   FileText,
   Loader2,
+  Paperclip,
   Plus,
   RotateCcw,
   Save,
   Sparkles,
   Trash2,
   TriangleAlert,
+  UploadCloud,
   X,
 } from 'lucide-react';
 
@@ -57,6 +61,34 @@ type WeekOption = {
   plannedYear: number;
   label: string;
   isDefault: boolean;
+};
+
+type SupplementAttachment = {
+  name: string;
+  size: number;
+  text: string;
+  charCount?: number;
+  truncated?: boolean;
+  uploadedAt?: string;
+};
+
+type ScheduleSettings = {
+  enabled: boolean;
+  weekday: number;
+  runTime: string;
+  remindMinutes: number;
+  lastRemindedWeek?: number | null;
+  lastRunWeek?: number | null;
+  updatedAt?: string;
+};
+
+type WorkScheduleSummary = {
+  weekStart: string;
+  completedWeek: number;
+  plannedWeek: number;
+  completedCount: number;
+  plannedCount: number;
+  plannedWarning?: string | null;
 };
 
 type ReportSources = {
@@ -122,6 +154,24 @@ export default function WeeklyReportCenter({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const canCreate = Boolean(idToken);
+
+  // Supplement state in Create Modal
+  const [supplementNote, setSupplementNote] = useState('');
+  const [supplementAttachments, setSupplementAttachments] = useState<SupplementAttachment[]>([]);
+  const [supplementTotalChars, setSupplementTotalChars] = useState(0);
+  const [supplementLoading, setSupplementLoading] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [scheduleSummary, setScheduleSummary] = useState<WorkScheduleSummary | null>(null);
+
+  // Schedule modal state
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [schedule, setSchedule] = useState<ScheduleSettings>({
+    enabled: false,
+    weekday: 4,
+    runTime: '16:00',
+    remindMinutes: 60,
+  });
+  const [scheduleSaving, setScheduleSaving] = useState(false);
 
   // AI Rewrite state
   const [aiHealth, setAiHealth] = useState<AiHealthStatus | null>(null);
@@ -360,8 +410,179 @@ export default function WeeklyReportCenter({
     setSources(null);
     void load();
     void fetchAiHealth();
+    void loadSchedule();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idToken]);
+
+  const loadSupplement = async (week: string) => {
+    if (!week) return;
+    setSupplementLoading(true);
+    try {
+      const res = await fetch(`/api/documents/weekly-reports/supplement?weekStart=${encodeURIComponent(week)}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSupplementNote(data.note || '');
+        setSupplementAttachments(data.attachments || []);
+        setSupplementTotalChars(data.totalChars || 0);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setSupplementLoading(false);
+    }
+  };
+
+  const loadScheduleSummary = async (week: string) => {
+    if (!week) return;
+    try {
+      const res = await fetch(`/api/documents/weekly-reports/work-schedule-summary?weekStart=${encodeURIComponent(week)}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setScheduleSummary(data);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const loadSchedule = async () => {
+    try {
+      const res = await fetch('/api/documents/weekly-reports/schedule', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSchedule(data);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const saveSchedule = async (updated: Partial<ScheduleSettings>) => {
+    setScheduleSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/documents/weekly-reports/schedule', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ...schedule, ...updated }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không thể lưu cài đặt lịch tự động.');
+      setSchedule(data);
+      setNotice('Đã lưu cài đặt lịch tự động báo cáo tuần thành công.');
+      setScheduleModalOpen(false);
+    } catch (cause: any) {
+      setError(cause.message || 'Lỗi khi lưu cài đặt lịch.');
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || !files.length || !weekStart) return;
+    setUploadingFile(true);
+    setError('');
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.size > 5 * 1024 * 1024) {
+          throw new Error(`Tệp "${file.name}" vượt quá kích thước 5MB.`);
+        }
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('weekStart', weekStart);
+        const res = await fetch('/api/documents/weekly-reports/supplement/upload', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${idToken}` },
+          body: formData,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Lỗi tải lên tệp ${file.name}`);
+        setSupplementAttachments(data.attachments || []);
+        setSupplementTotalChars(data.totalChars || 0);
+      }
+    } catch (cause: any) {
+      setError(cause.message || 'Không thể tải lên tệp tin.');
+    } finally {
+      setUploadingFile(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleDeleteAttachment = async (filename: string) => {
+    if (!weekStart) return;
+    setError('');
+    try {
+      const res = await fetch('/api/documents/weekly-reports/supplement/attachment', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ weekStart, filename }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Lỗi khi xóa tệp.');
+      setSupplementAttachments(data.attachments || []);
+      setSupplementTotalChars(data.totalChars || 0);
+    } catch (cause: any) {
+      setError(cause.message || 'Không thể xóa tệp.');
+    }
+  };
+
+  const generateReportWithAi = async () => {
+    if (!weekStart || creating) return;
+    setCreating(true);
+    setError('');
+    try {
+      // 1. Save supplement note if any
+      await fetch('/api/documents/weekly-reports/supplement', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ weekStart, note: supplementNote }),
+      });
+
+      // 2. Trigger generate AI
+      const res = await fetch('/api/documents/weekly-reports/generate-ai', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ weekStart }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không thể khởi tạo yêu cầu tạo báo cáo.');
+
+      setCreateOpen(false);
+      await load(true);
+      if (data.reportId) {
+        setSelectedId(data.reportId);
+      }
+      setAiJobId(data.jobId);
+      setAiJobStatus(data.status);
+      setAiQueuePosition(data.queuePosition || 1);
+      setAiLoading(true);
+      setAiNotice('Hệ thống đang tổng hợp dữ liệu và dùng AI viết báo cáo theo mẫu chuẩn công ty...');
+    } catch (cause: any) {
+      setError(cause.message || 'Không thể tạo báo cáo.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   // When changing selected report, exit edit mode and clear AI notices
   useEffect(() => {
@@ -418,7 +639,12 @@ export default function WeeklyReportCenter({
       if (!response.ok) throw new Error(payload.error || 'Không thể lấy danh sách tuần báo cáo.');
       const next = Array.isArray(payload.options) ? (payload.options as WeekOption[]) : [];
       setWeekOptions(next);
-      setWeekStart(next.find(option => option.isDefault)?.weekStart || next[0]?.weekStart || '');
+      const def = next.find(option => option.isDefault)?.weekStart || next[0]?.weekStart || '';
+      setWeekStart(def);
+      if (def) {
+        void loadSupplement(def);
+        void loadScheduleSummary(def);
+      }
     } catch (cause: any) {
       setError(cause.message || 'Không thể lấy danh sách tuần báo cáo.');
     } finally {
@@ -470,15 +696,29 @@ export default function WeeklyReportCenter({
         actions={
           <>
             {canCreate && (
-              <button
-                type="button"
-                onClick={() => void openCreate()}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-blue-700 active:scale-95 transition"
-              >
-                <CalendarPlus className="h-4 w-4 shrink-0" />
-                <span className="hidden sm:inline">Tạo báo cáo tuần</span>
-                <span className="sm:hidden">Tạo báo cáo</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setScheduleModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition"
+                  title="Cài đặt lịch tự động tạo báo cáo tuần"
+                >
+                  <CalendarClock className="h-4 w-4 shrink-0 text-indigo-600" />
+                  <span className="hidden sm:inline">Lịch tự động</span>
+                  {schedule.enabled && (
+                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" title="Đang bật" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openCreate()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-sm hover:bg-blue-700 active:scale-95 transition"
+                >
+                  <CalendarPlus className="h-4 w-4 shrink-0" />
+                  <span className="hidden sm:inline">Tạo báo cáo tuần</span>
+                  <span className="sm:hidden">Tạo báo cáo</span>
+                </button>
+              </>
             )}
           </>
         }
@@ -1399,7 +1639,7 @@ export default function WeeklyReportCenter({
       {/* Manual Creation Dialog */}
       {createOpen && (
         <div
-          className="fixed inset-0 z-[12000] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[12000] grid place-items-center bg-slate-950/55 p-3 sm:p-4 backdrop-blur-sm overflow-y-auto"
           onMouseDown={event => {
             if (event.target === event.currentTarget && !creating) setCreateOpen(false);
           }}
@@ -1408,7 +1648,7 @@ export default function WeeklyReportCenter({
             role="dialog"
             aria-modal="true"
             aria-labelledby="weekly-report-create-title"
-            className="w-full max-w-md rounded-2xl border border-white/60 bg-white p-5 shadow-2xl"
+            className="w-full max-w-lg rounded-2xl border border-white/60 bg-white p-4 sm:p-6 shadow-2xl max-h-[92vh] overflow-y-auto"
           >
             <header className="flex items-start gap-3">
               <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700">
@@ -1418,8 +1658,8 @@ export default function WeeklyReportCenter({
                 <h2 id="weekly-report-create-title" className="text-base font-extrabold text-slate-900">
                   Tạo báo cáo tuần của tôi
                 </h2>
-                <p className="mt-1 text-sm leading-5 text-slate-600">
-                  Chọn tuần cần tổng hợp. Hệ thống sẽ lấy các công việc trong Lịch công tác của bạn để dựng bản báo cáo chuẩn.
+                <p className="mt-1 text-xs sm:text-sm leading-5 text-slate-600">
+                  Dữ liệu tự động lấy từ Lịch công tác. Bạn có thể bổ sung ghi chú và tệp đính kèm bên dưới để AI tổng hợp theo đúng mẫu chuẩn.
                 </p>
               </div>
               <button
@@ -1432,57 +1672,323 @@ export default function WeeklyReportCenter({
                 <X className="h-4 w-4" />
               </button>
             </header>
-            <div className="mt-5 space-y-2">
-              {optionsLoading ? (
-                <div className="grid min-h-24 place-items-center text-sm text-slate-500">
-                  <Loader2 className="h-5 w-5 animate-spin" />
+
+            <div className="mt-4 space-y-4">
+              {/* Step 1: Select week */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  1. Chọn tuần báo cáo:
+                </label>
+                {optionsLoading ? (
+                  <div className="grid min-h-20 place-items-center text-sm text-slate-500">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {weekOptions.map(option => (
+                      <label
+                        key={option.weekStart}
+                        className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-2.5 transition ${
+                          weekStart === option.weekStart
+                            ? 'border-blue-500 bg-blue-50/80 shadow-sm'
+                            : 'border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="weekly-report-week"
+                          value={option.weekStart}
+                          checked={weekStart === option.weekStart}
+                          onChange={() => {
+                            setWeekStart(option.weekStart);
+                            void loadSupplement(option.weekStart);
+                            void loadScheduleSummary(option.weekStart);
+                          }}
+                          className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <span className="block text-xs sm:text-sm font-extrabold text-slate-800 truncate">
+                            {option.label}
+                          </span>
+                          <span className="block text-[11px] text-slate-500">
+                            Báo cáo tuần {option.completedWeek} · Kế hoạch tuần {option.plannedWeek}
+                            {option.isDefault ? ' · (Mặc định)' : ''}
+                          </span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Work schedule summary */}
+              {scheduleSummary && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-xs leading-5 text-blue-950">
+                  <div className="flex items-center justify-between font-bold">
+                    <span>Lịch công tác ghi nhận:</span>
+                    <span className="text-blue-700">Tuần {scheduleSummary.completedWeek} → {scheduleSummary.plannedWeek}</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-3 text-slate-700">
+                    <span>Tuần {scheduleSummary.completedWeek}: <strong className="text-blue-700">{scheduleSummary.completedCount} việc</strong></span>
+                    <span>Tuần {scheduleSummary.plannedWeek}: <strong className="text-indigo-700">{scheduleSummary.plannedCount} việc</strong></span>
+                  </div>
+                  {scheduleSummary.plannedWarning && (
+                    <div className="mt-2 flex items-center gap-1.5 text-amber-800 font-semibold bg-amber-50 p-2 rounded-lg border border-amber-200">
+                      <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600" />
+                      <span>{scheduleSummary.plannedWarning}</span>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                weekOptions.map(option => (
-                  <label
-                    key={option.weekStart}
-                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
-                      weekStart === option.weekStart
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="weekly-report-week"
-                      value={option.weekStart}
-                      checked={weekStart === option.weekStart}
-                      onChange={() => setWeekStart(option.weekStart)}
-                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span>
-                      <span className="block text-sm font-extrabold text-slate-800">{option.label}</span>
-                      <span className="mt-0.5 block text-xs text-slate-500">
-                        Báo cáo tuần {option.completedWeek} · Kế hoạch tuần {option.plannedWeek}
-                        {option.isDefault ? ' · Mặc định' : ''}
-                      </span>
-                    </span>
-                  </label>
-                ))
               )}
+
+              {/* Step 2: Note supplement */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  2. Ghi chú bổ sung (tùy chọn):
+                </label>
+                <textarea
+                  rows={3}
+                  value={supplementNote}
+                  onChange={e => setSupplementNote(e.target.value)}
+                  placeholder="Nhập bổ sung kết quả công việc, khó khăn hoặc việc tuần tới chưa có trên lịch..."
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Step 3: Attachments */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    3. Đính kèm tệp bổ sung (tối đa 5 tệp, mỗi tệp ≤5MB):
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    {supplementTotalChars.toLocaleString('vi-VN')} / 60.000 ký tự
+                  </span>
+                </div>
+
+                {supplementLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Đang tải thông tin tệp bổ sung…</span>
+                  </div>
+                ) : (
+                  <>
+                    {supplementAttachments.length > 0 && (
+                      <div className="mb-2 space-y-1.5">
+                        {supplementAttachments.map((att, idx) => (
+                          <div
+                            key={`att-${idx}`}
+                            className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Paperclip className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                              <span className="font-semibold text-slate-800 truncate" title={att.name}>
+                                {att.name}
+                              </span>
+                              <span className="text-slate-400 shrink-0 text-[11px]">
+                                ({(att.size / 1024).toFixed(1)} KB · {att.charCount || att.text?.length || 0} ký tự)
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteAttachment(att.name)}
+                              className="text-rose-600 hover:text-rose-800 p-1"
+                              title="Xóa tệp này"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {supplementAttachments.length < 5 && (
+                      <div>
+                        <label
+                          className={`inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer transition min-h-[40px] ${
+                            uploadingFile ? 'opacity-50 pointer-events-none' : ''
+                          }`}
+                        >
+                          {uploadingFile ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+                          ) : (
+                            <UploadCloud className="h-3.5 w-3.5 text-blue-600" />
+                          )}
+                          <span>
+                            {uploadingFile ? 'Đang trích xuất tệp…' : 'Chọn tệp bổ sung (.docx, .txt, .md, .csv)'}
+                          </span>
+                          <input
+                            type="file"
+                            multiple
+                            accept=".docx,.txt,.md,.csv"
+                            onChange={handleFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <p className="mt-1.5 text-[11px] text-slate-500 italic">
+                  Ghi chú và file chỉ dùng cho tuần này, tự xóa khi hết tuần.
+                </p>
+              </div>
             </div>
-            <footer className="mt-5 flex justify-end gap-2">
+
+            <footer className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-3">
               <button
                 type="button"
                 onClick={() => setCreateOpen(false)}
                 disabled={creating}
-                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 min-h-[44px]"
               >
                 Hủy
               </button>
               <button
                 type="button"
-                onClick={() => void createReport()}
+                onClick={() => void generateReportWithAi()}
                 disabled={!weekStart || optionsLoading || creating}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs sm:text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50 min-h-[44px] shadow-sm"
               >
-                {creating && <Loader2 className="h-4 w-4 animate-spin" />}
-                {creating ? 'Đang tạo…' : 'Tạo báo cáo'}
+                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {creating ? 'Đang tạo báo cáo…' : 'Tạo báo cáo'}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {/* Weekly Report Auto Schedule Dialog */}
+      {scheduleModalOpen && (
+        <div
+          className="fixed inset-0 z-[12000] grid place-items-center bg-slate-950/55 p-3 sm:p-4 backdrop-blur-sm overflow-y-auto"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget && !scheduleSaving) setScheduleModalOpen(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="weekly-report-schedule-title"
+            className="w-full max-w-md rounded-2xl border border-white/60 bg-white p-4 sm:p-6 shadow-2xl"
+          >
+            <header className="flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-700">
+                <CalendarClock className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 id="weekly-report-schedule-title" className="text-base font-extrabold text-slate-900">
+                  Lịch tự động theo tuần
+                </h2>
+                <p className="mt-1 text-xs sm:text-sm leading-5 text-slate-600">
+                  Cài đặt để hệ thống tự động tổng hợp báo cáo tuần của bạn theo lịch cố định mà không cần bấm thủ công.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScheduleModalOpen(false)}
+                disabled={scheduleSaving}
+                aria-label="Đóng"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </header>
+
+            <div className="mt-4 space-y-3.5">
+              {/* Toggle Enabled */}
+              <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50">
+                <div>
+                  <p className="text-xs sm:text-sm font-bold text-slate-800">Bật tự động tạo báo cáo</p>
+                  <p className="text-[11px] text-slate-500">Tự động xếp hàng AI tạo báo cáo tuần</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={schedule.enabled}
+                  onChange={e => setSchedule(prev => ({ ...prev, enabled: e.target.checked }))}
+                  className="h-5 w-5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+              </div>
+
+              {/* Day of Week */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Thứ trong tuần:
+                </label>
+                <select
+                  value={schedule.weekday}
+                  onChange={e => setSchedule(prev => ({ ...prev, weekday: Number(e.target.value) }))}
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs sm:text-sm font-semibold text-slate-800 bg-white focus:border-blue-500 focus:outline-none min-h-[44px]"
+                >
+                  <option value={0}>Thứ Hai</option>
+                  <option value={1}>Thứ Ba</option>
+                  <option value={2}>Thứ Tư</option>
+                  <option value={3}>Thứ Năm</option>
+                  <option value={4}>Thứ Sáu (Mặc định)</option>
+                  <option value={5}>Thứ Bảy</option>
+                  <option value={6}>Chủ Nhật</option>
+                </select>
+              </div>
+
+              {/* Run Time */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Giờ tạo báo cáo:
+                </label>
+                <div className="relative">
+                  <input
+                    type="time"
+                    value={schedule.runTime}
+                    onChange={e => setSchedule(prev => ({ ...prev, runTime: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-300 p-2.5 text-xs sm:text-sm font-semibold text-slate-800 bg-white focus:border-blue-500 focus:outline-none min-h-[44px]"
+                  />
+                  <Clock className="absolute right-3 top-3 h-4 w-4 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Remind Minutes */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Gửi thông báo nhắc trước:
+                </label>
+                <select
+                  value={schedule.remindMinutes}
+                  onChange={e => setSchedule(prev => ({ ...prev, remindMinutes: Number(e.target.value) }))}
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs sm:text-sm font-semibold text-slate-800 bg-white focus:border-blue-500 focus:outline-none min-h-[44px]"
+                >
+                  <option value={30}>30 phút trước</option>
+                  <option value={60}>60 phút trước (Mặc định)</option>
+                  <option value={90}>90 phút trước</option>
+                  <option value={120}>2 giờ trước</option>
+                </select>
+              </div>
+
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 text-xs leading-5 text-indigo-950">
+                <span className="font-bold">Cách hoạt động: </span>
+                <span>
+                  Trước giờ tạo ({schedule.remindMinutes} phút), hệ thống sẽ gửi thông báo trong Workspace để bạn bổ sung ghi chú hoặc file nếu cần. Đến {schedule.runTime}, AI sẽ tự động tạo báo cáo từ Lịch công tác và các dữ liệu bạn đã bổ sung.
+                </span>
+              </div>
+            </div>
+
+            <footer className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setScheduleModalOpen(false)}
+                disabled={scheduleSaving}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 min-h-[44px]"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveSchedule(schedule)}
+                disabled={scheduleSaving}
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50 min-h-[44px] shadow-sm"
+              >
+                {scheduleSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {scheduleSaving ? 'Đang lưu…' : 'Lưu cài đặt'}
               </button>
             </footer>
           </section>

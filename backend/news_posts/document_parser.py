@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import io
 import logging
 import os
@@ -73,12 +74,29 @@ def _extract_text_from_plain_bytes(data: bytes) -> str:
     return data.decode("utf-8", errors="replace").strip()
 
 
+def _extract_text_from_csv_bytes(data: bytes) -> str:
+    """Parse CSV data into readable text lines separated by |."""
+    plain_text = _extract_text_from_plain_bytes(data)
+    if not plain_text:
+        return ""
+    try:
+        reader = csv.reader(io.StringIO(plain_text))
+        lines: List[str] = []
+        for row in reader:
+            cleaned_row = [cell.strip() for cell in row if cell.strip()]
+            if cleaned_row:
+                lines.append(" | ".join(cleaned_row))
+        return "\n".join(lines).strip()
+    except Exception:
+        return plain_text
+
+
 def extract_text_from_file(
     file_bytes: bytes,
     filename: str,
     file_type: str = "agenda",
 ) -> Dict[str, Any]:
-    """Validate, parse and truncate text from a single uploaded document file (.docx, .txt, .md)."""
+    """Validate, parse and truncate text from a single uploaded document file (.docx, .txt, .md, .csv)."""
     if not file_bytes:
         raise ValueError("Tệp tin tải lên rỗng (0 bytes).")
 
@@ -95,8 +113,10 @@ def extract_text_from_file(
         raw_text = _extract_text_from_docx_bytes(file_bytes)
     elif fname_lower.endswith(".txt") or fname_lower.endswith(".md"):
         raw_text = _extract_text_from_plain_bytes(file_bytes)
+    elif fname_lower.endswith(".csv"):
+        raw_text = _extract_text_from_csv_bytes(file_bytes)
     else:
-        raise ValueError(f"Định dạng tệp không được hỗ trợ: '{fname}'. Chỉ chấp nhận .docx, .txt, .md.")
+        raise ValueError(f"Định dạng tệp không được hỗ trợ: '{fname}'. Chỉ chấp nhận .docx, .txt, .md, .csv.")
 
     truncated = False
     if len(raw_text) > MAX_CHARS_PER_FILE:
