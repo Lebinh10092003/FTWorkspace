@@ -119,6 +119,10 @@ fi
 sudo systemctl enable --now "$DB_BACKUP_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_REPORT_TIMER_NAME"
 sudo systemctl restart "$SERVICE_NAME"
+if systemctl list-unit-files workspace-ai-queue.service --no-legend | grep -q workspace-ai-queue; then
+  # worker AI giữ mã cũ trong bộ nhớ; phải nạp lại sau mỗi lần triển khai (chỉ một worker)
+  sudo systemctl restart workspace-ai-queue.service
+fi
 sudo systemctl start "$ASSESSMENT_LIFECYCLE_SERVICE_NAME"
 sudo systemctl restart "$ASSESSMENT_CLOSING_SERVICE_NAME"
 if ! sudo systemctl is-active --quiet "$ASSESSMENT_CLOSING_SERVICE_NAME"; then

@@ -32,3 +32,4 @@ backend/.env
 
 # Worktree tạm của Claude Code, không đưa vào repo
 .claude/worktrees/
+docs/tasks/*-screens/
