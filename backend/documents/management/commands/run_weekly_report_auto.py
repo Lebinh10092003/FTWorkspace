@@ -34,6 +34,7 @@ class Command(BaseCommand):
         current_weekday = now.weekday()  # 0=Monday .. 6=Sunday
 
         schedules = WeeklyReportSchedule.objects.select_related("user").filter(enabled=True)
+        current_monday = week_start(now.date())
         remind_count = 0
         run_count = 0
 
@@ -71,7 +72,7 @@ class Command(BaseCommand):
                                 ),
                                 severity="normal",
                                 category="weekly-report",
-                                action_url="/communication-tools/weekly-report",
+                                action_url=f"/communication-tools/weekly-report?week_start={current_monday.isoformat()}",
                                 target_users=[user],
                             )
                             sched.last_reminded_week = week_id
