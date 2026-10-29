@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Eye,
   FileCheck2,
+  FileDown,
   FileSpreadsheet,
   FileText,
   HelpCircle,
@@ -32,6 +33,7 @@ import {
 
 import ModuleShellHeader from '../layout/ModuleShellHeader';
 import { appDialog } from '../AppDialog';
+import { splitContactInfo, normalizeHashtags } from './newsPostUtils';
 import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
 import {
   NewsPostItem,
@@ -113,6 +115,7 @@ export default function NewsPostCenter({
   const [editedSlogan, setEditedSlogan] = useState<string>('');
   const [editedContactInfo, setEditedContactInfo] = useState<string>('');
   const [editedHashtags, setEditedHashtags] = useState<string>('');
+  const [downloadingDocx, setDownloadingDocx] = useState<boolean>(false);
 
   // Fetch list of posts
   const fetchPosts = useCallback(async () => {
@@ -154,8 +157,9 @@ export default function NewsPostCenter({
     setEditedSurveyFeedback(cp.survey_section?.feedback_summary || '');
     setEditedClosing(cp.closing || '');
     setEditedSlogan(cp.slogan || 'FERMATTECH – ĐỒNG HÀNH CHUYỂN ĐỔI SỐ THỰC CHẤT VÀ HIỆU QUẢ!');
-    setEditedContactInfo(cp.contact_info || '🌐 www.fermat.vn | ✉ contact@fermat.vn | ☎ 0969 627 162');
-    setEditedHashtags((cp.hashtags || []).join(' '));
+    const rawContact = cp.contact_info || '🌐 www.fermat.vn | ✉ contact@fermat.vn | ☎ 0969 627 162';
+    setEditedContactInfo(splitContactInfo(rawContact).join('\n'));
+    setEditedHashtags(normalizeHashtags(cp.hashtags || []));
   }, []);
 
   // Open editor for a new post or existing post
@@ -548,9 +552,19 @@ export default function NewsPostCenter({
     }
 
     if (editedClosing) lines.push('', editedClosing);
-    if (editedSlogan) lines.push('', editedSlogan);
-    if (editedContactInfo) lines.push('', editedContactInfo);
-    if (editedHashtags) lines.push('', editedHashtags);
+
+    // Bài báo (press_article) không chứa slogan, liên hệ hay hashtag
+    if (activePost?.postType !== 'press_article') {
+      if (editedSlogan) lines.push('', editedSlogan);
+      if (editedContactInfo) {
+        const contactLines = splitContactInfo(editedContactInfo);
+        contactLines.forEach(cl => lines.push(cl));
+      }
+      if (editedHashtags) {
+        const tagStr = normalizeHashtags(editedHashtags);
+        if (tagStr) lines.push('', tagStr);
+      }
+    }
 
     return lines.join('\n');
   }, [
@@ -581,11 +595,12 @@ export default function NewsPostCenter({
   };
 
   // Save edited article
-  const handleSaveArticle = async () => {
-    if (!activePostId) return;
+  const handleSaveArticle = async (): Promise<boolean> => {
+    if (!activePostId) return false;
     setSavingArticle(true);
     setError('');
 
+    const isPress = activePost?.postType === 'press_article';
     const newContentPayload: ContentPayload = {
       headline: editedHeadline,
       lead_in: editedLeadIn,
@@ -598,9 +613,9 @@ export default function NewsPostCenter({
           }
         : null,
       closing: editedClosing,
-      slogan: editedSlogan,
-      contact_info: editedContactInfo,
-      hashtags: editedHashtags.split(/\s+/).filter(Boolean),
+      slogan: isPress ? '' : editedSlogan,
+      contact_info: isPress ? '' : editedContactInfo,
+      hashtags: isPress ? [] : normalizeHashtags(editedHashtags).split(/\s+/).filter(Boolean),
       raw_text: buildCurrentRawText(),
     };
 
@@ -620,14 +635,75 @@ export default function NewsPostCenter({
         const data = await res.json();
         setActivePost(data.post);
         setNotice('Đã lưu bài viết thành công.');
+        return true;
       } else {
         const err = await res.json().catch(() => ({}));
         setError(err.error || 'Không thể lưu bài viết.');
+        return false;
       }
     } catch {
       setError('Lỗi kết nối khi lưu bài viết.');
+      return false;
     } finally {
       setSavingArticle(false);
+    }
+  };
+
+  // Download article as Word (.docx) file
+  const handleDownloadDocx = async () => {
+    if (!activePostId) return;
+    setDownloadingDocx(true);
+    setError('');
+
+    try {
+      // 1. Tự động lưu bản chỉnh sửa trên trang trước khi tải
+      const saved = await handleSaveArticle();
+      if (!saved) {
+        throw new Error('Vui lòng kiểm tra và lưu thay đổi trước khi tải file Word.');
+      }
+
+      // 2. Tải file Word qua API endpoint
+      const res = await fetch(`/api/news-posts/${activePostId}/download-docx/`, {
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Không thể tải file Word (.docx).');
+      }
+
+      // Đọc tên file từ header Content-Disposition
+      let filename = `Tin-bai-${activePostId}.docx`;
+      const disposition = res.headers.get('Content-Disposition');
+      if (disposition) {
+        const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+        if (utf8Match && utf8Match[1]) {
+          filename = decodeURIComponent(utf8Match[1]);
+        } else {
+          const match = disposition.match(/filename="?([^";]+)"?/i);
+          if (match && match[1]) {
+            filename = match[1];
+          }
+        }
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      setNotice('Đã tải thành công file Word (.docx).');
+    } catch (err: any) {
+      setError(err?.message || 'Lỗi khi tải file Word (.docx).');
+    } finally {
+      setDownloadingDocx(false);
     }
   };
 
@@ -1469,6 +1545,20 @@ export default function NewsPostCenter({
 
                   <button
                     type="button"
+                    onClick={handleDownloadDocx}
+                    disabled={downloadingDocx}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500 bg-blue-50 dark:bg-blue-950/40 text-[#0B72CE] dark:text-[#60A5FA] hover:bg-blue-100 dark:hover:bg-blue-900/50 px-4 py-2 text-xs font-bold shadow-xs transition cursor-pointer min-h-[44px] disabled:opacity-50"
+                  >
+                    {downloadingDocx ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-[#0B72CE]" />
+                    ) : (
+                      <FileDown className="h-4 w-4 text-[#0B72CE] dark:text-[#60A5FA]" />
+                    )}
+                    <span>{downloadingDocx ? 'Đang xuất Word...' : 'Tải Word (.docx)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleSaveArticle}
                     disabled={savingArticle}
                     className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B72CE] hover:bg-[#075CA8] text-white px-4 py-2 text-xs font-bold shadow-xs transition cursor-pointer min-h-[44px]"
@@ -1686,45 +1776,62 @@ export default function NewsPostCenter({
                       />
                     </div>
 
-                    {/* Slogan & Liên hệ */}
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-[11px] font-extrabold text-slate-500 uppercase mb-1">
-                          Khẩu hiệu (Slogan)
-                        </label>
-                        <input
-                          type="text"
-                          value={editedSlogan}
-                          onChange={e => setEditedSlogan(e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white min-h-[44px]"
-                        />
-                      </div>
+                    {/* Slogan & Liên hệ & Hashtags (Ẩn đối với bài báo) */}
+                    {activePost.postType !== 'press_article' && (
+                      <>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="block text-[11px] font-extrabold text-slate-500 uppercase mb-1">
+                              Khẩu hiệu (Slogan)
+                            </label>
+                            <input
+                              type="text"
+                              value={editedSlogan}
+                              onChange={e => setEditedSlogan(e.target.value)}
+                              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white min-h-[44px]"
+                            />
+                          </div>
 
-                      <div>
-                        <label className="block text-[11px] font-extrabold text-slate-500 uppercase mb-1">
-                          Thông tin liên hệ
-                        </label>
-                        <input
-                          type="text"
-                          value={editedContactInfo}
-                          onChange={e => setEditedContactInfo(e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white min-h-[44px]"
-                        />
-                      </div>
-                    </div>
+                          <div>
+                            <label className="block text-[11px] font-extrabold text-slate-500 uppercase mb-1">
+                              Thông tin liên hệ (mỗi liên hệ 1 dòng)
+                            </label>
+                            <textarea
+                              rows={3}
+                              value={editedContactInfo}
+                              onChange={e => setEditedContactInfo(e.target.value)}
+                              placeholder={"🌐 www.fermat.vn\n✉ contact@fermat.vn\n☎ 0969 627 162"}
+                              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 text-xs text-slate-900 dark:text-white min-h-[44px] leading-relaxed"
+                            />
+                            {splitContactInfo(editedContactInfo).length > 0 && (
+                              <div className="mt-1 space-y-0.5 text-[11px] text-slate-600 dark:text-slate-300 font-medium pl-2 border-l-2 border-blue-500">
+                                {splitContactInfo(editedContactInfo).map((line, idx) => (
+                                  <div key={idx}>{line}</div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
-                    {/* Hashtags */}
-                    <div>
-                      <label className="block text-[11px] font-extrabold text-slate-500 uppercase mb-1">
-                        Hashtags
-                      </label>
-                      <input
-                        type="text"
-                        value={editedHashtags}
-                        onChange={e => setEditedHashtags(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-mono text-[#0B72CE] dark:text-[#60A5FA] min-h-[44px]"
-                      />
-                    </div>
+                        {/* Hashtags */}
+                        <div>
+                          <label className="block text-[11px] font-extrabold text-slate-500 uppercase mb-1">
+                            Hashtags (1 đoạn, căn trái, cách nhau 1 dấu cách)
+                          </label>
+                          <input
+                            type="text"
+                            value={editedHashtags}
+                            onChange={e => setEditedHashtags(e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-mono text-[#0B72CE] dark:text-[#60A5FA] min-h-[44px] text-left"
+                          />
+                          {normalizeHashtags(editedHashtags) && (
+                            <p className="mt-1 text-xs text-left text-[#0B72CE] dark:text-[#60A5FA] font-mono break-words">
+                              {normalizeHashtags(editedHashtags)}
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
