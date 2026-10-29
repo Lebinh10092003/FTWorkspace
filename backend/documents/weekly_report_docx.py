@@ -103,7 +103,7 @@ def build_weekly_report_docx(report):
             _paragraph(document, f"- {item}", size=13, after=1)
 
     # Khó khăn, vướng mắc is the last item of Section I
-    _paragraph(document, f"{group_num}. Tồn tại, khó khăn, đề xuất", bold=True, size=13, before=4, after=2)
+    _paragraph(document, f"{group_num}. Khó khăn, vướng mắc", bold=True, size=13, before=4, after=2)
     diff_items = getattr(report, "difficulties", None) or ["Không có khó khăn, vướng mắc đáng kể."]
     for item in diff_items:
         _paragraph(document, f"- {item}", size=13, after=1)

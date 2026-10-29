@@ -44,7 +44,7 @@ class Command(BaseCommand):
 
         for sched in schedules:
             user = sched.user
-            if not user or not user.is_active:
+            if not user or user.employment_status != "ACTIVE":
                 continue
 
             run_time = sched.run_time
@@ -63,7 +63,7 @@ class Command(BaseCommand):
                         time_str = run_time.strftime("%H:%M")
                         try:
                             notify_workspace(
-                                event_key=f"weekly-report-remind-{user.id}-{week_id}",
+                                event_key=f"weekly-report-remind-{user.pk}-{week_id}",
                                 title="Báo cáo tuần: Chuẩn bị nội dung",
                                 message=(
                                     f"Báo cáo tuần của bạn sẽ được tạo tự động lúc {time_str}. "
@@ -130,7 +130,7 @@ class Command(BaseCommand):
                         self.stdout.write(f"  [Job enqueued] AI Job #{job.id} for {user.email} (Report #{report.id})")
 
                         notify_workspace(
-                            event_key=f"weekly-report-autorun-{user.id}-{week_id}",
+                            event_key=f"weekly-report-autorun-{user.pk}-{week_id}",
                             title="Báo cáo tuần: Đang tạo tự động",
                             message=(
                                 f"Hệ thống đang tự động tổng hợp báo cáo tuần {report.completed_week} cho bạn. "
