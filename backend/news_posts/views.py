@@ -94,6 +94,14 @@ def news_posts_list_create(request):
 
     title = str(payload.get("title") or "").strip()
     input_payload = payload.get("inputPayload") or payload.get("input_payload") or {}
+    if not input_payload:
+        direct_input = {}
+        for k in ["notes", "unit_name", "unitName", "agenda_files", "agendaFiles", "material_files", "materialFiles", "sessions"]:
+            if k in payload:
+                direct_input[k] = payload[k]
+        if direct_input:
+            input_payload = direct_input
+
     survey_summary = payload.get("surveySummary") or payload.get("survey_summary") or {}
 
     # Chặn việc tạo bản nháp rỗng

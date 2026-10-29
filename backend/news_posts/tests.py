@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import zipfile
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -17,10 +18,17 @@ from authentication.models import UserProfile
 from documents.ai_service import claim_next_job, expire_stale_jobs
 from documents.models import AiReportJob, WeeklyReport
 
+from .document_parser import (
+    MAX_CHARS_PER_FILE,
+    MAX_DOC_SIZE_BYTES,
+    MAX_TOTAL_CHARS,
+    extract_text_from_file,
+    validate_and_truncate_files_total,
+)
 from .models import NewsPost, NewsPostJob
 from .prompts import build_news_post_prompt
 from .service import cancel_news_post_job, enqueue_news_post_job, process_news_post_job
-from .survey_parser import parse_survey_file
+from .survey_parser import merge_survey_summaries, parse_survey_file
 from .validator import validate_and_sanitize_news_output
 
 
@@ -394,3 +402,190 @@ class NewsPostAPITests(TestCase):
         self.assertEqual(claimed.id, job.id)
         self.assertEqual(getattr(claimed, "job_type", None), "news_post")
         self.assertEqual(claimed.status, NewsPostJob.STATUS_RUNNING)
+
+    def test_reject_empty_draft_creation(self):
+        """Kiểm tra API từ chối tạo bản nháp rỗng khi không có đầu vào hợp lệ."""
+        self.client.force_authenticate(user=self.user_a)
+
+        # 1. Payload hoàn toàn rỗng
+        resp1 = self.client.post("/api/news-posts/", {}, format="json")
+        self.assertEqual(resp1.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", resp1.data)
+
+        # 2. Payload chỉ có title rỗng và input_payload rỗng
+        resp2 = self.client.post("/api/news-posts/", {
+            "title": "   ",
+            "post_type": "fb_training",
+            "input_payload": {},
+            "survey_summary": {"has_survey": False},
+        }, format="json")
+        self.assertEqual(resp2.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 3. Payload có nội dung hợp lệ (notes) -> Thành công
+        resp3 = self.client.post("/api/news-posts/", {
+            "notes": "Buổi làm việc trao đổi chuyên môn",
+        }, format="json")
+        self.assertEqual(resp3.status_code, status.HTTP_201_CREATED)
+        self.assertIn("post", resp3.data)
+        self.assertEqual(resp3.data["post"]["status"], "draft")
+
+    def test_parse_document_api_endpoint(self):
+        """Kiểm tra upload tài liệu qua endpoint /api/news-posts/parse-document/."""
+        self.client.force_authenticate(user=self.user_a)
+
+        # Gửi file text
+        txt_content = "Tiến trình buổi tập huấn phần mềm Fermat".encode("utf-8")
+        txt_file = io.BytesIO(txt_content)
+        txt_file.name = "tientrinh.txt"
+
+        resp = self.client.post("/api/news-posts/parse-document/", {"file": txt_file, "file_type": "agenda"}, format="multipart")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertTrue(resp.data["success"])
+        self.assertEqual(resp.data["file"]["name"], "tientrinh.txt")
+        self.assertIn("Fermat", resp.data["file"]["text"])
+
+        # Gửi file không hợp lệ (.exe)
+        bad_file = io.BytesIO(b"binary data")
+        bad_file.name = "program.exe"
+        bad_resp = self.client.post("/api/news-posts/parse-document/", {"file": bad_file}, format="multipart")
+        self.assertEqual(bad_resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class DocumentParserTests(TestCase):
+    """Tests for document parsing (.docx, .txt, .md), truncation, and safety."""
+
+    @staticmethod
+    def _create_docx(paragraphs: list[str], table_rows: list[list[str]] = None) -> bytes:
+        bio = io.BytesIO()
+        with zipfile.ZipFile(bio, "w") as zf:
+            p_xml = "".join([f"<w:p><w:r><w:t>{p}</w:t></w:r></w:p>" for p in paragraphs])
+            tbl_xml = ""
+            if table_rows:
+                rows_xml = ""
+                for row in table_rows:
+                    cells_xml = "".join([f"<w:tc><w:p><w:r><w:t>{cell}</w:t></w:r></w:p></w:tc>" for cell in row])
+                    rows_xml += f"<w:tr>{cells_xml}</w:tr>"
+                tbl_xml = f"<w:tbl>{rows_xml}</w:tbl>"
+            doc_xml = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    {p_xml}
+    {tbl_xml}
+  </w:body>
+</w:document>"""
+            zf.writestr("word/document.xml", doc_xml.encode("utf-8"))
+        return bio.getvalue()
+
+    def test_extract_docx_with_paragraphs_and_table(self):
+        """Trích xuất đúng cả đoạn văn bản và nội dung bảng từ file docx chuẩn."""
+        docx_bytes = self._create_docx(
+            paragraphs=["Kế hoạch tổ chức buổi họp", "Thành phần tham dự gồm BGH"],
+            table_rows=[
+                ["Thời gian", "Nội dung", "Người phụ trách"],
+                ["08:00 - 09:00", "Khai mạc và giới thiệu", "Thầy Hiệu trưởng"],
+                ["09:00 - 11:30", "Thực hành triển khai", "Đoàn FermatTech"],
+            ],
+        )
+
+        res = extract_text_from_file(docx_bytes, "kehoach.docx", file_type="agenda")
+        self.assertEqual(res["name"], "kehoach.docx")
+        self.assertEqual(res["fileType"], "agenda")
+        self.assertIn("Kế hoạch tổ chức buổi họp", res["text"])
+        self.assertIn("08:00 - 09:00 | Khai mạc và giới thiệu | Thầy Hiệu trưởng", res["text"])
+        self.assertFalse(res["truncated"])
+
+    def test_extract_plain_text_and_markdown(self):
+        """Trích xuất đúng văn bản từ .txt và .md với mã UTF-8."""
+        txt_bytes = "Nội dung tài liệu hướng dẫn chuyển đổi số giáo dục 2026.".encode("utf-8")
+        res_txt = extract_text_from_file(txt_bytes, "tailieu.txt", file_type="material")
+        self.assertEqual(res_txt["text"], "Nội dung tài liệu hướng dẫn chuyển đổi số giáo dục 2026.")
+
+        md_bytes = "# Tiêu đề\n- Gạch đầu dòng 1\n- Gạch đầu dòng 2".encode("utf-8")
+        res_md = extract_text_from_file(md_bytes, "notes.md", file_type="agenda")
+        self.assertIn("# Tiêu đề", res_md["text"])
+
+    def test_reject_unsupported_file_types(self):
+        """Từ chối các định dạng tệp không được hỗ trợ (PDF, JPG, EXE)."""
+        with self.assertRaises(ValueError) as ctx:
+            extract_text_from_file(b"%PDF-1.4...", "tailieu.pdf")
+        self.assertIn("Chỉ chấp nhận .docx, .txt, .md", str(ctx.exception))
+
+        with self.assertRaises(ValueError) as ctx:
+            extract_text_from_file(b"", "empty.txt")
+        self.assertIn("rỗng", str(ctx.exception))
+
+    def test_file_truncation_per_file_and_total(self):
+        """Kiểm tra cắt ngắn khi văn bản vượt quá 20.000 ký tự/tệp và 60.000 ký tự tổng."""
+        # 1 tệp vượt quá 20.000 ký tự
+        long_str = "A" * 25_000
+        res = extract_text_from_file(long_str.encode("utf-8"), "dai.txt")
+        self.assertTrue(res["truncated"])
+        self.assertIn("[...Đã cắt bớt vì vượt quá giới hạn 20.000 ký tự...]", res["text"])
+
+        # Kiểm tra tổng các tệp không vượt quá 60.000 ký tự
+        files = [
+            {"name": f"file_{i}.txt", "text": "B" * 15_000, "charCount": 15_000, "truncated": False}
+            for i in range(5)
+        ]  # Tổng 75.000 ký tự
+        truncated_files = validate_and_truncate_files_total(files)
+        total_len = sum(len(f["text"]) for f in truncated_files)
+        self.assertLessEqual(total_len, 65_000)
+        self.assertTrue(truncated_files[-1]["truncated"])
+
+
+class SurveyMergeTests(TestCase):
+    """Tests for merging multiple survey files into a unified report."""
+
+    def test_merge_two_survey_summaries(self):
+        """Gộp 2 kết quả khảo sát từ 2 buổi khác nhau thành 1 bảng tổng hợp."""
+        s1 = {
+            "has_survey": True,
+            "source_filename": "khao_sat_buoi_1.xlsx",
+            "total_responses": 10,
+            "total_ratings": 10,
+            "overall_satisfaction_percent": 90.0,
+            "overall_good_or_very_good_percent": 100.0,
+            "categories": [
+                {
+                    "name": "Nội dung",
+                    "total_ratings": 10,
+                    "good_or_very_good_count": 10,
+                    "satisfaction_score": 90.0,
+                    "detail_counts": {"Rất tốt": 5, "Tốt": 5},
+                }
+            ],
+            "open_feedback_points": ["Tập huấn rất bổ ích"],
+            "allowed_numbers": [10, 90.0, 100.0],
+        }
+
+        s2 = {
+            "has_survey": True,
+            "source_filename": "khao_sat_buoi_2.xlsx",
+            "total_responses": 20,
+            "total_ratings": 20,
+            "overall_satisfaction_percent": 100.0,
+            "overall_good_or_very_good_percent": 100.0,
+            "categories": [
+                {
+                    "name": "Nội dung",
+                    "total_ratings": 20,
+                    "good_or_very_good_count": 20,
+                    "satisfaction_score": 100.0,
+                    "detail_counts": {"Rất tốt": 20},
+                }
+            ],
+            "open_feedback_points": ["Cần thêm thời gian thực hành"],
+            "allowed_numbers": [20, 100.0],
+        }
+
+        merged = merge_survey_summaries([s1, s2])
+        self.assertTrue(merged["has_survey"])
+        self.assertEqual(merged["total_responses"], 30)
+        self.assertEqual(merged["total_ratings"], 30)
+        self.assertEqual(len(merged["source_files"]), 2)
+        # Weighted score: (90*10 + 100*20) / 30 = 2900 / 30 = 96.67
+        self.assertEqual(merged["overall_satisfaction_percent"], 96.67)
+        self.assertEqual(merged["overall_good_or_very_good_percent"], 100.0)
+        self.assertIn("Tập huấn rất bổ ích", merged["open_feedback_points"])
+        self.assertIn("Cần thêm thời gian thực hành", merged["open_feedback_points"])
+
