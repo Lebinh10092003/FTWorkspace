@@ -56,104 +56,6 @@ type Props = {
   onNavSelect: (id: string) => void;
 };
 
-// Dữ liệu mẫu khởi tạo nhanh cho người dùng trải nghiệm
-const SAMPLE_TRAINING_POST: Partial<NewsPostItem> = {
-  title: 'Tập huấn Chuyển đổi số và AI tại Xã Hòa Phú',
-  postType: 'fb_training',
-  inputPayload: {
-    unit_name: 'Xã Hòa Phú',
-    notes: 'Tập huấn nâng cao năng lực ứng dụng Gemini AI và Bộ nhớ dùng chung cho cán bộ xã.',
-    sessions: [
-      {
-        sessionId: 'session-1',
-        sessionName: 'Buổi 1: Giới thiệu Bộ nhớ dùng chung và Gemini AI',
-        sessionDate: '2026-10-24',
-        timeFrame: '08:00 - 11:30',
-        location: 'Hội trường UBND Xã Hòa Phú',
-        fermatParticipants: ['Nguyễn Văn Tiến', 'Đặng Vũ Hiệp'],
-        unitParticipants: ['Lãnh đạo Đảng ủy', 'UBND', 'Cán bộ công chức các ban ngành'],
-        agendaContent: `1/ Bối cảnh: Đẩy mạnh chuyển đổi số trong công tác quản lý nhà nước tại địa phương.
-2/ Nội dung đã thực hiện:
-- Hướng dẫn thiết lập và phân quyền thư mục trên Bộ nhớ dùng chung.
-- Hướng dẫn đăng nhập và sử dụng Trợ lý Gemini AI hỗ trợ soạn thảo văn bản, tóm tắt báo cáo.
-- Thực hành xây dựng kế hoạch công tác tuần và lập biên bản họp bằng AI.
-3/ Kết quả: 100% cán bộ tham gia thực hành thành công trên máy tính.`,
-      },
-    ],
-  },
-  surveySummary: {
-    has_survey: true,
-    total_responses: 188,
-    total_ratings: 1880,
-    overall_satisfaction_percent: 91.58,
-    overall_good_or_very_good_percent: 100,
-    top_rated_criterion: 'Kiến thức chuyên môn & sự nhiệt tình giải đáp của giảng viên',
-    notable_criterion: 'Bộ nhớ dùng chung (lưu trữ & khai thác dữ liệu)',
-    open_feedback_points: [
-      'Mong muốn tiếp tục được hỗ trợ, giải đáp vướng mắc khi thực hành thực tế.',
-      'Đề xuất tổ chức thêm các buổi hướng dẫn nâng cao về Gemini AI cho từng vị trí chuyên môn.',
-    ],
-    categories: [
-      { name: 'Trình độ, kiến thức chuyên môn của giảng viên', total_ratings: 188, good_or_very_good_count: 188, good_or_very_good_percent: 100, satisfaction_score: 93.68, detail_counts: { 'Rất tốt': 128, 'Tốt': 60 } },
-      { name: 'Khả năng truyền đạt, phong thái sư phạm', total_ratings: 188, good_or_very_good_count: 188, good_or_very_good_percent: 100, satisfaction_score: 91.11, detail_counts: { 'Rất tốt': 104, 'Tốt': 84 } },
-      { name: 'Tính thực tiễn của ví dụ và hướng dẫn', total_ratings: 188, good_or_very_good_count: 188, good_or_very_good_percent: 100, satisfaction_score: 91.58, detail_counts: { 'Rất tốt': 109, 'Tốt': 79 } },
-      { name: 'Sự nhiệt tình, sẵn sàng giải đáp thắc mắc', total_ratings: 188, good_or_very_good_count: 188, good_or_very_good_percent: 100, satisfaction_score: 93.68, detail_counts: { 'Rất tốt': 128, 'Tốt': 60 } },
-      { name: 'Khả năng quản lý, kiểm soát thời gian', total_ratings: 188, good_or_very_good_count: 188, good_or_very_good_percent: 100, satisfaction_score: 91.11, detail_counts: { 'Rất tốt': 104, 'Tốt': 84 } },
-      { name: 'Bộ nhớ dùng chung – Lưu trữ tài liệu', total_ratings: 188, good_or_very_good_count: 188, good_or_very_good_percent: 100, satisfaction_score: 88.42, detail_counts: { 'Rất tốt': 79, 'Tốt': 109 } },
-      { name: 'Bộ nhớ dùng chung – Khai thác dữ liệu', total_ratings: 188, good_or_very_good_count: 188, good_or_very_good_percent: 100, satisfaction_score: 88.42, detail_counts: { 'Rất tốt': 79, 'Tốt': 109 } },
-      { name: 'Gemini AI – Sử dụng trợ lý Gem', total_ratings: 188, good_or_very_good_count: 188, good_or_very_good_percent: 100, satisfaction_score: 89.47, detail_counts: { 'Rất tốt': 89, 'Tốt': 99 } },
-      { name: 'Gemini AI – Soạn thảo, tóm tắt văn bản', total_ratings: 188, good_or_very_good_count: 188, good_or_very_good_percent: 100, satisfaction_score: 89.47, detail_counts: { 'Rất tốt': 89, 'Tốt': 99 } },
-      { name: 'Gemini AI – Tạo hình ảnh, slide', total_ratings: 188, good_or_very_good_count: 188, good_or_very_good_percent: 100, satisfaction_score: 89.47, detail_counts: { 'Rất tốt': 89, 'Tốt': 99 } },
-    ],
-  },
-  contentPayload: {
-    headline: 'TẬP HUẤN ỨNG DỤNG BỘ NHỚ DÙNG CHUNG VÀ GEMINI AI TRONG CÔNG TÁC TẠI XÃ HÒA PHÚ',
-    lead_in: 'Nhằm đẩy mạnh chuyển đổi số và nâng cao hiệu quả công việc, FermatTech đã phối hợp cùng UBND Xã Hòa Phú tổ chức chương trình tập huấn ứng dụng Bộ nhớ dùng chung và Trợ lý Gemini AI cho toàn thể cán bộ, công chức trên địa bàn xã.',
-    sections: [
-      {
-        heading: 'NỘI DUNG TẬP HUẤN TRỌNG TÂM',
-        body: 'Buổi làm việc diễn ra trong không khí sôi nổi, thực chất với các nội dung bám sát công việc hàng ngày của từng cán bộ:',
-        bullets: [
-          'Thiết lập, phân quyền và chuẩn hóa cấu trúc lưu trữ trên Bộ nhớ dùng chung giúp dữ liệu an toàn, tìm kiếm tức thì.',
-          'Khai thác trợ lý Gemini AI để tóm tắt văn bản chỉ đạo, dự thảo báo cáo tuần và lập biên bản họp nhanh chóng.',
-          'Xây dựng các câu lệnh (prompts) mẫu theo vị trí việc làm: văn phòng, địa chính, tài chính - kế toán, tư pháp.',
-        ],
-      },
-    ],
-    survey_section: {
-      heading: '📊 PHẢN HỒI SAU TẬP HUẤN',
-      text: 'Khảo sát sau buổi tập huấn ghi nhận 188 lượt cán bộ tham gia đánh giá với 100% lượt đánh giá đạt loại Tốt và Rất tốt. Mức hài lòng bình quân đạt 91,58%. Giảng viên FermatTech được đánh giá cao nhất về chuyên môn và sự nhiệt tình (93,68%).',
-      feedback_summary: 'Học viên mong muốn tiếp tục được đồng hành, hướng dẫn thực hành sâu hơn theo từng chuyên đề công việc cụ thể.',
-    },
-    closing: 'FermatTech xin trân trọng cảm ơn sự quan tâm, chỉ đạo sát sao của Đảng ủy, HĐND, UBND Xã Hòa Phú và sự tham gia nhiệt tình, trách nhiệm của các đồng chí cán bộ, công chức xã.',
-    slogan: 'FERMATTECH – ĐỒNG HÀNH CHUYỂN ĐỔI SỐ THỰC CHẤT VÀ HIỆU QUẢ!',
-    contact_info: '🌐 www.fermat.vn | ✉ contact@fermat.vn | ☎ 0969 627 162',
-    hashtags: ['#FermatTech', '#ChuyenDoiSo', '#GeminiAI', '#BoNhoDungChung', '#TapHuanAI', '#XaHoaPhu'],
-    raw_text: `🌟 TẬP HUẤN ỨNG DỤNG BỘ NHỚ DÙNG CHUNG VÀ GEMINI AI TRONG CÔNG TÁC TẠI XÃ HÒA PHÚ
-
-Nhằm đẩy mạnh chuyển đổi số và nâng cao hiệu quả công việc, FermatTech đã phối hợp cùng UBND Xã Hòa Phú tổ chức chương trình tập huấn ứng dụng Bộ nhớ dùng chung và Trợ lý Gemini AI cho toàn thể cán bộ, công chức trên địa bàn xã.
-
-NỘI DUNG TẬP HUẤN TRỌNG TÂM
-Buổi làm việc diễn ra trong không khí sôi nổi, thực chất với các nội dung bám sát công việc hàng ngày của từng cán bộ:
-✅ Thiết lập, phân quyền và chuẩn hóa cấu trúc lưu trữ trên Bộ nhớ dùng chung giúp dữ liệu an toàn, tìm kiếm tức thì.
-✅ Khai thác trợ lý Gemini AI để tóm tắt văn bản chỉ đạo, dự thảo báo cáo tuần và lập biên bản họp nhanh chóng.
-✅ Xây dựng các câu lệnh (prompts) mẫu theo vị trí việc làm: văn phòng, địa chính, tài chính - kế toán, tư pháp.
-
-📊 PHẢN HỒI SAU TẬP HUẤN
-Khảo sát sau buổi tập huấn ghi nhận 188 lượt cán bộ tham gia đánh giá với 100% lượt đánh giá đạt loại Tốt và Rất tốt. Mức hài lòng bình quân đạt 91,58%. Giảng viên FermatTech được đánh giá cao nhất về chuyên môn và sự nhiệt tình (93,68%).
-Học viên mong muốn tiếp tục được đồng hành, hướng dẫn thực hành sâu hơn theo từng chuyên đề công việc cụ thể.
-
-FermatTech xin trân trọng cảm ơn sự quan tâm, chỉ đạo sát sao của Đảng ủy, HĐND, UBND Xã Hòa Phú và sự tham gia nhiệt tình, trách nhiệm của các đồng chí cán bộ, công chức xã.
-
-FERMATTECH – ĐỒNG HÀNH CHUYỂN ĐỔI SỐ THỰC CHẤT VÀ HIỆU QUẢ!
-
-🌐 www.fermat.vn | ✉ contact@fermat.vn | ☎ 0969 627 162
-
-#FermatTech #ChuyenDoiSo #GeminiAI #BoNhoDungChung #TapHuanAI #XaHoaPhu`,
-  },
-  status: 'completed',
-};
-
 export default function NewsPostCenter({
   idToken,
   userName,
@@ -226,12 +128,10 @@ export default function NewsPostCenter({
         const postList = data.posts || data.items || [];
         setPosts(postList);
       } else {
-        // Fallback demo posts if offline or empty
-        setPosts([SAMPLE_TRAINING_POST as NewsPostItem]);
+        setPosts([]);
       }
     } catch {
-      // Local fallback
-      setPosts([SAMPLE_TRAINING_POST as NewsPostItem]);
+      setPosts([]);
     } finally {
       setLoading(false);
     }
@@ -284,44 +184,6 @@ export default function NewsPostCenter({
       setFormSurveySummary(null);
     }
     setViewState('editor');
-  };
-
-  // Nạp dữ liệu mẫu nhanh để kiểm tra
-  const loadQuickSample = () => {
-    setFormPostType(SAMPLE_TRAINING_POST.postType || 'fb_training');
-    setFormTitle(SAMPLE_TRAINING_POST.title || '');
-    setFormUnitName(SAMPLE_TRAINING_POST.inputPayload?.unit_name || 'Xã Hòa Phú');
-    setFormNotes('Tập huấn nâng cao năng lực ứng dụng Gemini AI và Bộ nhớ dùng chung cho cán bộ xã. Chú trọng tinh thần thực chiến, tạo thói quen số hóa tài liệu.');
-    setFormAgendaFiles([
-      {
-        name: 'Tien_trinh_buoi_Hoa_Phu.docx',
-        fileType: 'agenda',
-        size: 14200,
-        text: `Tiến trình buổi tập huấn tại UBND Xã Hòa Phú:
-1/ Khai mạc: Lãnh đạo Đảng ủy và UBND xã phát biểu chỉ đạo mục tiêu chuyển đổi số.
-2/ Hướng dẫn thiết lập và phân quyền thư mục trên Bộ nhớ dùng chung (BNDC).
-3/ Thực hành ứng dụng Trợ lý Gemini AI trong soạn thảo công văn, tóm tắt chỉ đạo.
-4/ Giải đáp vướng mắc trực tiếp tại các bàn máy tính. Toàn bộ cán bộ thao tác thành công.`,
-        charCount: 395,
-        truncated: false,
-      },
-    ]);
-    setFormMaterialFiles([
-      {
-        name: 'Tai_lieu_huong_dan_Gemini.md',
-        fileType: 'material',
-        size: 8500,
-        text: `Tài liệu hướng dẫn:
-- Cấu trúc thư mục chuẩn cho cấp xã: Văn phòng, Địa chính, Tư pháp, Kế toán.
-- Nguyên tắc bảo mật dữ liệu nội bộ.
-- Mẫu câu lệnh (prompt) chuẩn giao việc cho Trợ lý AI.`,
-        charCount: 220,
-        truncated: false,
-      },
-    ]);
-    setFormSessions([]);
-    setFormSurveySummary(SAMPLE_TRAINING_POST.surveySummary || null);
-    setNotice('Đã nạp dữ liệu mẫu Hòa Phú thành công.');
   };
 
   // Upload document files (.docx, .txt, .md)
@@ -845,7 +707,7 @@ export default function NewsPostCenter({
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs cursor-pointer min-h-[44px]"
               >
                 <ArrowLeft className="h-4 w-4" />
-                <span>Danh sách bài</span>
+                <span>Quay lại danh sách</span>
               </button>
             ) : (
               <button
@@ -876,17 +738,6 @@ export default function NewsPostCenter({
                 Tự động hóa soạn thảo tin bài Facebook và bài báo từ biên bản làm việc, tích hợp xuất ảnh đồ họa báo cáo khảo sát.
               </p>
             </div>
-
-            {viewState === 'list' && (
-              <button
-                type="button"
-                onClick={loadQuickSample}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/40 px-3.5 py-2 text-xs font-bold text-[#0B72CE] dark:text-[#60A5FA] hover:bg-blue-100 dark:hover:bg-blue-900/40 transition cursor-pointer min-h-[44px]"
-              >
-                <Sparkles className="h-4 w-4" />
-                <span>Nạp bài mẫu trải nghiệm</span>
-              </button>
-            )}
           </div>
 
           {/* Alerts: Error & Notice */}
@@ -1028,14 +879,6 @@ export default function NewsPostCenter({
                       <Plus className="h-4 w-4" />
                       <span>Tạo tin bài mới</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={loadQuickSample}
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 cursor-pointer min-h-[44px]"
-                    >
-                      <Sparkles className="h-4 w-4 text-[#0B72CE]" />
-                      <span>Nạp mẫu Xã Hòa Phú</span>
-                    </button>
                   </div>
                 </div>
               ) : (
@@ -1144,26 +987,6 @@ export default function NewsPostCenter({
               ══════════════════════════════════════════════════════════ */}
           {viewState === 'editor' && (
             <div className="space-y-6">
-              {/* Back to list & Quick Sample */}
-              <div className="flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => setViewState('list')}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer min-h-[44px]"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  <span>Quay lại danh sách</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={loadQuickSample}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer min-h-[44px]"
-                >
-                  <Sparkles className="h-4 w-4 text-[#0B72CE]" />
-                  <span>Điền nhanh mẫu Hòa Phú</span>
-                </button>
-              </div>
-
               {/* 1. Chọn kiểu bài viết */}
               <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-xs">
                 <h2 className="text-sm font-extrabold text-slate-900 dark:text-white mb-1">
@@ -1231,20 +1054,20 @@ export default function NewsPostCenter({
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Tên đơn vị / Trường học / Đối tác (Tùy chọn)
+                      Tên đơn vị / Cơ quan / Đối tác <span className="font-normal text-slate-500">(Tùy chọn - AI tự nhận diện nếu để trống)</span>
                     </label>
                     <input
                       type="text"
                       value={formUnitName}
                       onChange={e => setFormUnitName(e.target.value)}
-                      placeholder="Ví dụ: THCS Giảng Võ, UBND Xã Hòa Phú (hoặc để AI tự nhận)"
+                      placeholder="Ví dụ: Trường THCS Ban Mai, UBND Phường... (hoặc để trống)"
                       className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none min-h-[44px]"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      Tiêu đề bản tin (Tùy chọn)
+                      Tiêu đề bản tin <span className="font-normal text-slate-500">(Tùy chọn - AI tự sinh nếu để trống)</span>
                     </label>
                     <input
                       type="text"
@@ -1612,16 +1435,18 @@ export default function NewsPostCenter({
               ══════════════════════════════════════════════════════════ */}
           {viewState === 'detail' && activePost && (
             <div className="space-y-6">
-              {/* Back to list & Actions */}
+              {/* Actions Header */}
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => setViewState('list')}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer min-h-[44px]"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  <span>Quay lại danh sách</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className={`rounded-md px-2.5 py-1 text-xs font-bold ${getPostTypeBadge(activePost.postType).color}`}>
+                    {getPostTypeBadge(activePost.postType).label}
+                  </span>
+                  {activePost.id ? (
+                    <span className="text-xs font-semibold text-slate-400">
+                      #{activePost.id}
+                    </span>
+                  ) : null}
+                </div>
 
                 <div className="flex flex-wrap items-center gap-2">
                   <button

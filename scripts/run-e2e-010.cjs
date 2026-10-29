@@ -1,7 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 
 if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
   process.env.PLAYWRIGHT_BROWSERS_PATH = '/home/orcauser/.cache/ms-playwright';
@@ -113,16 +113,87 @@ async function saveScreenshots(page, baseName) {
 async function main() {
   console.log('=== BẮT ĐẦU E2E BACKEND THẬT: SOẠN BẢN TIN BẰNG AI ===');
 
+  // Chuẩn bị mock agy script và dữ liệu tệp kiểm thử
+  const MOCK_AGY_CODE = `import sys
+import json
+
+result = {
+    "headline": "TẬP HUẤN ỨNG DỤNG BỘ NHỚ DÙNG CHUNG VÀ TRỢ LÝ AI TRONG CÔNG TÁC GIÁO DỤC",
+    "lead_in": "Nhằm đẩy mạnh ứng dụng công nghệ thông tin và chuyển đổi số trong quản lý dạy học, FermatTech đã phối hợp cùng đơn vị tổ chức chương trình tập huấn thực chiến Bộ nhớ dùng chung và Trợ lý Gemini AI.",
+    "sections": [
+        {
+            "heading": "NỘI DUNG TẬP HUẤN THỰC TIỄN",
+            "body": "Chương trình diễn ra với tinh thần nghiêm túc, tập trung vào các tình huống thực tế:",
+            "bullets": [
+                "Chuẩn hóa cấu trúc thư mục và phân quyền khai thác tài liệu trên Bộ nhớ dùng chung.",
+                "Ứng dụng Trợ lý Gemini AI hỗ trợ soạn giáo án, biên soạn đề kiểm tra và tóm tắt biên bản họp.",
+                "Thực hành trực tiếp trên máy tính với sự hướng dẫn của đội ngũ chuyên gia công nghệ."
+            ]
+        }
+    ],
+    "survey_section": {
+        "heading": "📊 PHẢN HỒI SAU TẬP HUẤN",
+        "text": "Khảo sát sau buổi tập huấn ghi nhận phản hồi tích cực từ cán bộ, giáo viên tham gia.",
+        "feedback_summary": "100% học viên đánh giá cao tính thực tiễn và phong thái truyền đạt của giảng viên."
+    },
+    "closing": "FermatTech xin trân trọng cảm ơn sự quan tâm, chỉ đạo của Ban Giám hiệu và tinh thần học tập trách nhiệm của quý thầy cô.",
+    "slogan": "FERMATTECH – ĐỒNG HÀNH CHUYỂN ĐỔI SỐ THỰC CHẤT VÀ HIỆU QUẢ!",
+    "contact_info": "🌐 www.fermat.vn | ✉ contact@fermat.vn | ☎ 0969 627 162",
+    "hashtags": ["#FermatTech", "#ChuyenDoiSo", "#GeminiAI", "#GiaoDucSo"]
+}
+
+print(json.dumps(result, ensure_ascii=False))
+`;
+
+  const MOCK_AGENDA_TEXT = `Tiến trình buổi tập huấn tại Trường THCS Ban Mai:
+1/ Khai mạc: Ban Giám hiệu phát biểu chỉ đạo mục tiêu chuyển đổi số giáo dục.
+2/ Hướng dẫn thiết lập phân quyền thư mục trên Bộ nhớ dùng chung.
+3/ Thực hành ứng dụng Trợ lý Gemini AI trong soạn bài giảng và xử lý tài liệu.
+4/ Giải đáp vướng mắc trực tiếp tại phòng máy. 100% cán bộ, giáo viên thao tác thành công.`;
+
+  const MOCK_SURVEY_CSV = `Dấu thời gian,Họ và tên,Nội dung chuyên môn,Kỹ năng truyền đạt,Tính thực tiễn ứng dụng,Ý kiến đóng góp
+2026/10/24 11:30:00,Học viên 1,Rất tốt,Rất tốt,Rất tốt,Mong muốn tiếp tục được hỗ trợ các buổi nâng cao.
+2026/10/24 11:31:00,Học viên 2,Tốt,Rất tốt,Tốt,Buổi tập huấn rất bổ ích và thực tế.
+2026/10/24 11:32:00,Học viên 3,Rất tốt,Tốt,Rất tốt,Nên tổ chức thường xuyên hơn.`;
+
+  fs.writeFileSync('/tmp/mock_agy.py', MOCK_AGY_CODE, 'utf8');
+  fs.writeFileSync('/tmp/e2e_agenda.txt', MOCK_AGENDA_TEXT, 'utf8');
+  fs.writeFileSync('/tmp/e2e_survey.csv', MOCK_SURVEY_CSV, 'utf8');
+
   // Khởi động Django server
   const venvPython = path.resolve(__dirname, '../.venv/bin/python');
   const managePy = path.resolve(__dirname, '../backend/manage.py');
 
+  const srcDb = path.resolve(__dirname, '../backend/db.sqlite3');
+  const testDb = '/tmp/ft_010_test.sqlite3';
+  if (fs.existsSync(srcDb)) {
+    fs.copyFileSync(srcDb, testDb);
+    console.log('[Setup] Đã sao chép database mẫu sang ' + testDb);
+  }
+
   const djangoEnv = {
     ...process.env,
-    DJANGO_DB_PATH: '/tmp/ft_010_test.sqlite3',
+    DJANGO_DB_PATH: testDb,
     AI_AGY_COMMAND: `${venvPython} /tmp/mock_agy.py`,
     PYTHONUNBUFFERED: '1',
   };
+
+  try {
+    execSync(`${venvPython} ${managePy} migrate`, {
+      env: djangoEnv,
+      stdio: 'pipe',
+    });
+    console.log('[Setup] Đã migrate thành công database kiểm thử.');
+
+    const createTokenCode = "from django.contrib.auth.models import User; from rest_framework.authtoken.models import Token; from authentication.models import UserProfile; u, _ = User.objects.get_or_create(username='tien@fermat.vn', email='tien@fermat.vn', defaults={'is_superuser': True, 'first_name': 'Tiến', 'last_name': 'Nguyễn Văn'}); u.is_superuser = True; u.save(); Token.objects.update_or_create(user=u, defaults={'key': 'e2e-token-agy5-010-secret'}); p, _ = UserProfile.objects.get_or_create(email='tien@fermat.vn', defaults={'name': 'Nguyễn Văn Tiến', 'role': 'ADMIN'}); p.role = 'ADMIN'; p.save();";
+    execSync(`${venvPython} ${managePy} shell -c "${createTokenCode}"`, {
+      env: djangoEnv,
+      stdio: 'pipe',
+    });
+    console.log('[Setup] Đã tạo phiên người dùng và token test thành công.');
+  } catch (err) {
+    console.error('[Setup] Lỗi thiết lập database:', err.message);
+  }
 
   console.log('[Django] Starting backend on 127.0.0.1:' + DJANGO_PORT);
   const djangoProc = spawn(venvPython, [managePy, 'runserver', `127.0.0.1:${DJANGO_PORT}`, '--noreload'], {
@@ -219,10 +290,22 @@ async function main() {
     await page.evaluate(() => document.documentElement.classList.remove('dark'));
     await page.waitForTimeout(300);
 
-    // 2. Điền dữ liệu mẫu hoặc nhập thông tin
-    console.log('[Playwright] Bấm Điền nhanh mẫu Hòa Phú');
-    await page.click('button:has-text("Điền nhanh mẫu Hòa Phú")');
-    await page.waitForTimeout(500);
+    // 2. Điền thông tin đầu vào trung tính và tải tệp
+    console.log('[Playwright] Nhập tên đơn vị, tiêu đề và ghi chú trung tính');
+    await page.fill('input[placeholder*="Trường THCS Ban Mai"]', 'Trường THCS Ban Mai');
+    await page.fill('input[placeholder*="Để trống AI"]', 'Tập huấn Chuyển đổi số và AI trong Giáo dục');
+    await page.fill(
+      'textarea[placeholder*="Buổi tập huấn diễn ra"]',
+      'Tập huấn nâng cao năng lực ứng dụng Gemini AI và Bộ nhớ dùng chung cho cán bộ giáo viên nhà trường. Buổi làm việc diễn ra sôi nổi, 100% giáo viên hoàn thành bài thực hành.'
+    );
+
+    console.log('[Playwright] Nạp tệp tiến trình và khảo sát thật qua setInputFiles');
+    const agendaInput = page.locator('label:has-text("Chọn tệp tiến trình") input[type="file"]');
+    await agendaInput.setInputFiles('/tmp/e2e_agenda.txt');
+
+    const surveyInput = page.locator('label:has-text("Chọn tệp khảo sát") input[type="file"]');
+    await surveyInput.setInputFiles('/tmp/e2e_survey.csv');
+    await page.waitForTimeout(1000);
 
     // Kiểm tra nút Soạn tin đã enabled
     const btnSoanEnabled = !(await page.locator('button:has-text("Soạn tin bài (AI)")').isDisabled());
@@ -302,9 +385,21 @@ async function main() {
     await mobilePage.evaluate(() => document.documentElement.classList.remove('dark'));
     await mobilePage.waitForTimeout(300);
 
-    // Điền mẫu và soạn tin trên mobile
-    await mobilePage.click('button:has-text("Điền nhanh mẫu Hòa Phú"):visible');
-    await mobilePage.waitForTimeout(500);
+    // Điền dữ liệu và nạp tệp trên mobile
+    console.log('[Playwright Mobile] Nhập thông tin và tải tệp trên mobile');
+    await mobilePage.fill('input[placeholder*="Trường THCS Ban Mai"]:visible', 'Trường THCS Ban Mai');
+    await mobilePage.fill(
+      'textarea[placeholder*="Buổi tập huấn diễn ra"]:visible',
+      'Tập huấn nâng cao năng lực ứng dụng Gemini AI và Bộ nhớ dùng chung cho cán bộ giáo viên.'
+    );
+
+    const mobileAgendaInput = mobilePage.locator('label:has-text("Chọn tệp tiến trình") input[type="file"]');
+    await mobileAgendaInput.setInputFiles('/tmp/e2e_agenda.txt');
+
+    const mobileSurveyInput = mobilePage.locator('label:has-text("Chọn tệp khảo sát") input[type="file"]');
+    await mobileSurveyInput.setInputFiles('/tmp/e2e_survey.csv');
+    await mobilePage.waitForTimeout(1000);
+
     await mobilePage.click('button:has-text("Soạn tin bài (AI)"):visible');
 
     await mobilePage.waitForSelector('button:has-text("Sao chép toàn bộ bài")', { timeout: 25000 });
