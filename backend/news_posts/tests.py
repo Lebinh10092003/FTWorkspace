@@ -257,6 +257,216 @@ class PromptAndValidatorTests(TestCase):
         self.assertTrue(len(res["warnings"]) > 0)
         self.assertIn("87,5%", res["warnings"][0])
 
+    def test_survey_section_auto_generated_when_ai_returns_null(self):
+        """Khi có khảo sát nhưng AI trả survey_section = null, mã tự dựng mục khảo sát từ survey_summary."""
+        sample_json = json.dumps({
+            "headline": "💻 FERMATTECH TẬP HUẤN TẠI TRƯỜNG THCS",
+            "lead_in": "Buổi tập huấn kết thúc thành công tốt đẹp.",
+            "sections": [],
+            "survey_section": None,  # AI bỏ sót mục khảo sát
+            "closing": "Trân trọng cảm ơn quý thầy cô.",
+            "slogan": "",
+            "contact_info": "",
+            "hashtags": [],
+        })
+
+        survey_summary = {
+            "has_survey": True,
+            "total_responses": 3,
+            "categories": [
+                {
+                    "name": "Nội dung hướng dẫn",
+                    "good_or_very_good_percent": 100.0,
+                },
+                {
+                    "name": "Công tác tổ chức",
+                    "good_or_very_good_percent": 66.7,
+                },
+            ],
+            "open_feedback_points": [
+                "Nội dung tập huấn rất thực tế, dễ áp dụng.",
+                "Cần thêm thời gian thực hành.",
+            ],
+            "allowed_numbers": [3, 100.0, 66.7],
+        }
+
+        res = validate_and_sanitize_news_output(
+            sample_json,
+            allowed_numbers=[3, 100.0, 66.7],
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            has_survey=True,
+            survey_summary=survey_summary,
+        )
+
+        survey = res.get("survey_section")
+        self.assertIsNotNone(survey, "survey_section phải được tự động dựng khi AI trả null")
+        self.assertEqual(survey["heading"], "📊 PHẢN HỒI SAU TẬP HUẤN")
+        expected_text = "3 phiếu khảo sát ghi nhận: 100% lượt đánh giá nội dung hướng dẫn đạt Tốt/Rất tốt; 66,7% lượt đánh giá công tác tổ chức đạt Tốt/Rất tốt."
+        self.assertEqual(survey["text"], expected_text)
+        self.assertIn("Nội dung tập huấn rất thực tế", survey["feedback_summary"])
+        self.assertIn("Cần thêm thời gian thực hành", survey["feedback_summary"])
+        self.assertIn("📊 PHẢN HỒI SAU TẬP HUẤN", res["raw_text"])
+        self.assertIn(expected_text, res["raw_text"])
+
+    def test_survey_section_heading_for_non_training_post(self):
+        """Khi loại bài không phải tập huấn (meeting), heading tự dựng là PHẢN HỒI SAU BUỔI LÀM VIỆC."""
+        sample_json = json.dumps({
+            "headline": "FERMATTECH LÀM VIỆC CÙNG ĐỐI TÁC",
+            "lead_in": "Trao đổi phương án triển khai.",
+            "sections": [],
+            "survey_section": None,
+            "closing": "Cảm ơn đối tác.",
+        })
+
+        survey_summary = {
+            "has_survey": True,
+            "total_responses": 5,
+            "categories": [],
+            "overall_good_or_very_good_percent": 95.0,
+            "open_feedback_points": ["Đồng thuận cao."],
+            "allowed_numbers": [5, 95.0],
+        }
+
+        res = validate_and_sanitize_news_output(
+            sample_json,
+            allowed_numbers=[5, 95.0],
+            post_type=NewsPost.TYPE_FB_MEETING,
+            has_survey=True,
+            survey_summary=survey_summary,
+        )
+
+        survey = res.get("survey_section")
+        self.assertIsNotNone(survey)
+        self.assertEqual(survey["heading"], "PHẢN HỒI SAU BUỔI LÀM VIỆC")
+        self.assertEqual(survey["text"], "5 phiếu khảo sát ghi nhận: 95% lượt đạt Tốt/Rất tốt.")
+        self.assertIn("PHẢN HỒI SAU BUỔI LÀM VIỆC", res["raw_text"])
+
+    def test_survey_section_replaces_hallucinated_percentage(self):
+        """Khi AI trả survey_section nhưng tự bịa con số % lạ không có trong allowed_numbers, mã thay bằng bản dựng chuẩn."""
+        sample_json = json.dumps({
+            "headline": "💻 TẬP HUẤN CÔNG NGHỆ",
+            "lead_in": "Mở đầu.",
+            "sections": [],
+            "survey_section": {
+                "heading": "📊 PHẢN HỒI SAU TẬP HUẤN",
+                "text": "3 phiếu khảo sát ghi nhận: 85% người tham gia hài lòng.",  # 85% là số bịa!
+                "feedback_summary": "Ý kiến tốt.",
+            },
+            "closing": "Kết thúc.",
+        })
+
+        survey_summary = {
+            "has_survey": True,
+            "total_responses": 3,
+            "categories": [
+                {
+                    "name": "Nội dung hướng dẫn",
+                    "good_or_very_good_percent": 100.0,
+                }
+            ],
+            "open_feedback_points": ["Rất tốt."],
+            "allowed_numbers": [3, 100.0],
+        }
+
+        res = validate_and_sanitize_news_output(
+            sample_json,
+            allowed_numbers=[3, 100.0],
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            has_survey=True,
+            survey_summary=survey_summary,
+        )
+
+        survey = res.get("survey_section")
+        self.assertIsNotNone(survey)
+        # Số 85% bịa phải bị thay thế bởi số chuẩn 100% từ survey_summary
+        self.assertNotIn("85%", survey["text"])
+        self.assertIn("100%", survey["text"])
+        self.assertEqual(survey["text"], "3 phiếu khảo sát ghi nhận: 100% lượt đánh giá nội dung hướng dẫn đạt Tốt/Rất tốt.")
+        self.assertTrue(any("85%" in w for w in res["warnings"]))
+
+    def test_survey_section_no_pii_allowed(self):
+        """Đảm bảo tuyệt đối không có thông tin định danh cá nhân (PII như email, SĐT, nhãn tên) lọt vào survey_section."""
+        sample_json = json.dumps({
+            "headline": "💻 TẬP HUẤN CÔNG NGHỆ",
+            "lead_in": "Mở đầu.",
+            "sections": [],
+            "survey_section": {
+                "heading": "📊 PHẢN HỒI SAU TẬP HUẤN",
+                "text": "3 phiếu khảo sát ghi nhận: 100% đánh giá tốt.",
+                "feedback_summary": "Họ và tên: Nguyễn Văn A (email: teacher.a@school.edu.vn, SĐT: 0912345678) khen rất hay.",
+            },
+            "closing": "Kết thúc.",
+        })
+
+        survey_summary = {
+            "has_survey": True,
+            "total_responses": 3,
+            "categories": [{"name": "Nội dung hướng dẫn", "good_or_very_good_percent": 100.0}],
+            "open_feedback_points": [
+                "Nội dung hay và dễ hiểu (liên hệ nguyenvana@fermat.vn để trao đổi thêm).",
+            ],
+            "allowed_numbers": [3, 100.0],
+        }
+
+        res = validate_and_sanitize_news_output(
+            sample_json,
+            allowed_numbers=[3, 100.0],
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            has_survey=True,
+            survey_summary=survey_summary,
+        )
+
+        survey = res.get("survey_section")
+        self.assertIsNotNone(survey)
+        # Kiểm tra không chứa email, số điện thoại hay họ tên định danh trong cả survey_section và raw_text
+        self.assertNotIn("teacher.a@school.edu.vn", survey["feedback_summary"])
+        self.assertNotIn("0912345678", survey["feedback_summary"])
+        self.assertNotIn("nguyenvana@fermat.vn", survey["feedback_summary"])
+        self.assertNotIn("teacher.a@school.edu.vn", res["raw_text"])
+        self.assertNotIn("0912345678", res["raw_text"])
+        self.assertNotIn("nguyenvana@fermat.vn", res["raw_text"])
+
+    def test_survey_section_is_none_when_no_survey(self):
+        """Khi không có khảo sát (has_survey=False hoặc total_responses=0), survey_section luôn là null kể cả khi AI tự bịa."""
+        sample_json = json.dumps({
+            "headline": "💻 TẬP HUẤN CÔNG NGHỆ",
+            "lead_in": "Mở đầu.",
+            "sections": [],
+            "survey_section": {
+                "heading": "📊 PHẢN HỒI SAU TẬP HUẤN",
+                "text": "10 phiếu khảo sát ghi nhận: 100% giáo viên hào hứng.",
+                "feedback_summary": "Phản hồi tích cực.",
+            },
+            "closing": "Kết thúc.",
+        })
+
+        # Trường hợp 1: has_survey=False, survey_summary=None
+        res1 = validate_and_sanitize_news_output(
+            sample_json,
+            allowed_numbers=[10, 100.0],
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            has_survey=False,
+            survey_summary=None,
+        )
+        self.assertIsNone(res1.get("survey_section"))
+        self.assertNotIn("phiếu khảo sát", res1["raw_text"])
+
+        # Trường hợp 2: survey_summary có total_responses = 0
+        empty_summary = {
+            "has_survey": False,
+            "total_responses": 0,
+            "categories": [],
+        }
+        res2 = validate_and_sanitize_news_output(
+            sample_json,
+            allowed_numbers=[10, 100.0],
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            has_survey=False,
+            survey_summary=empty_summary,
+        )
+        self.assertIsNone(res2.get("survey_section"))
+        self.assertNotIn("phiếu khảo sát", res2["raw_text"])
+
 
 class NewsPostAPITests(TestCase):
     """Tests for API endpoints, strict ownership checks, and background queue integration."""

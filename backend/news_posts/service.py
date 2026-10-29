@@ -101,6 +101,7 @@ def process_news_post_job(job_id: int) -> None:
             allowed_numbers=allowed_numbers,
             post_type=news_post.post_type,
             has_survey=has_survey,
+            survey_summary=news_post.survey_summary,
         )
 
         duration = time.monotonic() - start_time
