@@ -8,6 +8,8 @@ import json
 import zipfile
 from unittest.mock import patch
 
+import docx
+
 from django.test import TestCase
 from django.utils import timezone
 from openpyxl import Workbook
@@ -29,7 +31,11 @@ from .models import NewsPost, NewsPostJob
 from .prompts import build_news_post_prompt
 from .service import cancel_news_post_job, enqueue_news_post_job, process_news_post_job
 from .survey_parser import merge_survey_summaries, parse_survey_file
-from .validator import validate_and_sanitize_news_output
+from .validator import (
+    format_hashtags_string,
+    split_contact_info_lines,
+    validate_and_sanitize_news_output,
+)
 
 
 class SurveyParserTests(TestCase):
@@ -798,4 +804,202 @@ class SurveyMergeTests(TestCase):
         self.assertEqual(merged["overall_good_or_very_good_percent"], 100.0)
         self.assertIn("Tập huấn rất bổ ích", merged["open_feedback_points"])
         self.assertIn("Cần thêm thời gian thực hành", merged["open_feedback_points"])
+
+
+class DocxExportAndFormattingTests(TestCase):
+    """Tests for Word (.docx) export endpoint, styling, ownership, and small bug fixes."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user_a = UserProfile.objects.create(
+            email="usera_docx@fermat.vn",
+            name="User A",
+            role="EMPLOYEE",
+        )
+        self.user_b = UserProfile.objects.create(
+            email="userb_docx@fermat.vn",
+            name="User B",
+            role="EMPLOYEE",
+        )
+        self.admin_user = UserProfile.objects.create(
+            email="admin_docx@fermat.vn",
+            name="Admin User",
+            role="ADMIN",
+        )
+
+        self.sample_payload = {
+            "headline": "💻 FERMATTECH ĐỒNG HÀNH CÙNG TRƯỜNG THCS LÝ THƯỜNG KIỆT",
+            "lead_in": "Ngày 10/10/2026, FermatTech phối hợp tổ chức tập huấn số.",
+            "sections": [
+                {
+                    "heading": "THAY ĐỔI CÁCH TỔ CHỨC DỮ LIỆU",
+                    "body": "Đoạn văn mô tả chi tiết.",
+                    "bullets": ["Cài đặt Không gian dùng chung;", "Phân cấp dữ liệu;"],
+                }
+            ],
+            "survey_section": {
+                "heading": "📊 PHẢN HỒI SAU TẬP HUẤN",
+                "text": "59 phiếu khảo sát ghi nhận: 100% lượt đánh giá nội dung đạt Tốt/Rất tốt.",
+                "feedback_summary": "Giáo viên hào hứng đề xuất tiếp tục.",
+            },
+            "closing": "FermatTech trân trọng cảm ơn quý thầy cô.",
+            "slogan": "FERMATTECH – Đồng hành chuyển đổi số thực chất.",
+            "contact_info": "🌐 www.fermat.vn  |  ✉ contact@fermat.vn  |  ☎ 0969 627 162",
+            "hashtags": ["#FermatTech", "#LyThuongKiet", "#NangLucSo"],
+        }
+
+    def test_download_docx_success_and_valid(self):
+        """Kiểm tra tải file .docx thành công, mở được bằng zipfile và docx, có 3 dòng liên hệ riêng, hashtag căn trái."""
+        post = NewsPost.objects.create(
+            owner=self.user_a,
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            title="Tập huấn Lý Thường Kiệt",
+            input_payload={"unit_name": "THCS Lý Thường Kiệt"},
+            content_payload=self.sample_payload,
+            status=NewsPost.STATUS_COMPLETED,
+        )
+
+        self.client.force_authenticate(user=self.user_a)
+        response = self.client.get(f"/api/news-posts/{post.id}/download-docx/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        self.assertIn("Tin-bai-thcs-ly-thuong-kiet", response["Content-Disposition"])
+
+        # 1. Kiểm tra mở bằng zipfile
+        zf = zipfile.ZipFile(io.BytesIO(response.content))
+        self.assertIn("word/document.xml", zf.namelist())
+
+        # 2. Kiểm tra mở bằng python-docx và các paragraph
+        doc = docx.Document(io.BytesIO(response.content))
+        p_texts = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+
+        # Kiểm tra tiêu đề in hoa đậm
+        self.assertIn("💻 FERMATTECH ĐỒNG HÀNH CÙNG TRƯỜNG THCS LÝ THƯỜNG KIỆT", p_texts)
+
+        # Kiểm tra có 3 đoạn liên hệ riêng biệt tách dọc
+        self.assertIn("🌐 www.fermat.vn", p_texts)
+        self.assertIn("✉ contact@fermat.vn", p_texts)
+        self.assertIn("☎ 0969 627 162", p_texts)
+
+        # Kiểm tra đoạn hashtag là 1 đoạn căn trái, các tag cách nhau đúng 1 dấu cách
+        hashtag_p = [p for p in doc.paragraphs if "#FermatTech" in p.text]
+        self.assertEqual(len(hashtag_p), 1)
+        self.assertEqual(hashtag_p[0].text.strip(), "#FermatTech #LyThuongKiet #NangLucSo")
+        # Alignment phải là LEFT (0) hoặc None (default left), không phải JUSTIFY (3)
+        self.assertNotEqual(hashtag_p[0].alignment, docx.enum.text.WD_ALIGN_PARAGRAPH.JUSTIFY)
+
+    def test_download_docx_ownership_check(self):
+        """Chỉ chủ sở hữu hoặc quản trị viên (Admin) mới được tải file docx, người khác bị 403."""
+        post = NewsPost.objects.create(
+            owner=self.user_a,
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            title="Bài của User A",
+            content_payload=self.sample_payload,
+            status=NewsPost.STATUS_COMPLETED,
+        )
+
+        # User B truy cập bài của User A -> 403
+        self.client.force_authenticate(user=self.user_b)
+        res_b = self.client.get(f"/api/news-posts/{post.id}/download-docx/")
+        self.assertEqual(res_b.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Admin truy cập bài của User A -> 200 OK
+        self.client.force_authenticate(user=self.admin_user)
+        res_admin = self.client.get(f"/api/news-posts/{post.id}/download-docx/")
+        self.assertEqual(res_admin.status_code, status.HTTP_200_OK)
+
+    def test_download_docx_press_article_has_no_promo(self):
+        """Bài báo (press_article) xuất Word tuyệt đối không có khẩu hiệu, liên hệ, hashtag."""
+        post = NewsPost.objects.create(
+            owner=self.user_a,
+            post_type=NewsPost.TYPE_PRESS_ARTICLE,
+            title="Bài báo Giảng Võ",
+            content_payload={
+                "headline": "THCS GIẢNG VÕ ỨNG DỤNG AI TRONG QUẢN TRỊ",
+                "lead_in": "Từ những công việc tốn thời gian hằng ngày.",
+                "sections": [{"heading": "GIẢI PHÁP THỰC TẾ", "body": "Nội dung bài báo."}],
+                "closing": "Kết thúc bài báo.",
+                "slogan": "FERMATTECH – Không nên xuất hiện",
+                "contact_info": "🌐 www.fermat.vn | ✉ contact@fermat.vn | ☎ 0969 627 162",
+                "hashtags": ["#BaoChi", "#GiangVo"],
+            },
+            status=NewsPost.STATUS_COMPLETED,
+        )
+
+        self.client.force_authenticate(user=self.user_a)
+        res = self.client.get(f"/api/news-posts/{post.id}/download-docx/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        doc = docx.Document(io.BytesIO(res.content))
+        full_text = " ".join([p.text for p in doc.paragraphs])
+
+        # Không chứa slogan, liên hệ hay hashtag
+        self.assertNotIn("Không nên xuất hiện", full_text)
+        self.assertNotIn("www.fermat.vn", full_text)
+        self.assertNotIn("0969 627 162", full_text)
+        self.assertNotIn("#BaoChi", full_text)
+
+    def test_survey_section_dedup_danh_gia_and_format_100_pct(self):
+        """Bỏ chữ 'đánh giá' dư ở đầu tên nhóm để không bị lặp, chuẩn hóa 100,0% thành 100%, bỏ cảnh báo thiếu khảo sát khi đã dựng."""
+        sample_json = json.dumps({
+            "headline": "💻 BÀI TẬP HUẤN",
+            "lead_in": "Mở đầu.",
+            "sections": [],
+            "survey_section": None,
+            "closing": "Kết.",
+            "warnings": ["Chưa có thông tin khảo sát thực tế từ nhà trường."],
+        })
+
+        survey_summary = {
+            "has_survey": True,
+            "total_responses": 5,
+            "categories": [
+                {
+                    "name": "Đánh giá giảng viên",  # Có chữ 'Đánh giá' ở đầu
+                    "good_or_very_good_percent": 100.0,  # 100.0% phải thành 100%
+                }
+            ],
+            "open_feedback_points": ["Tốt."],
+            "allowed_numbers": [5, 100.0],
+        }
+
+        res = validate_and_sanitize_news_output(
+            sample_json,
+            allowed_numbers=[5, 100.0],
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            has_survey=True,
+            survey_summary=survey_summary,
+        )
+
+        survey = res.get("survey_section")
+        self.assertIsNotNone(survey)
+        # 1. Không bị lặp 'đánh giá đánh giá'
+        self.assertNotIn("đánh giá đánh giá", survey["text"])
+        self.assertEqual(survey["text"], "5 phiếu khảo sát ghi nhận: 100% lượt đánh giá giảng viên đạt Tốt/Rất tốt.")
+
+        # 2. 100,0% thành 100%
+        self.assertNotIn("100,0%", survey["text"])
+        self.assertNotIn("100.0%", survey["text"])
+        self.assertIn("100%", survey["text"])
+
+        # 3. Cảnh báo thiếu thông tin khảo sát của AI bị dọn sạch
+        self.assertFalse(any("khảo sát" in w.lower() for w in res["warnings"]))
+
+    def test_split_contact_info_and_normalize_hashtags(self):
+        """Hàm dùng chung tách liên hệ theo dấu | và chuẩn hóa hashtag nối 1 dấu cách."""
+        raw_contact = "🌐 www.fermat.vn  |  ✉ contact@fermat.vn  |  ☎ 0969 627 162"
+        lines = split_contact_info_lines(raw_contact)
+        self.assertEqual(len(lines), 3)
+        self.assertEqual(lines[0], "🌐 www.fermat.vn")
+        self.assertEqual(lines[1], "✉ contact@fermat.vn")
+        self.assertEqual(lines[2], "☎ 0969 627 162")
+
+        # Hashtags
+        raw_tags = ["FermatTech", "#LyThuongKiet", "  ChuyenDoiSo  "]
+        formatted = format_hashtags_string(raw_tags)
+        self.assertEqual(formatted, "#FermatTech #LyThuongKiet #ChuyenDoiSo")
+
 

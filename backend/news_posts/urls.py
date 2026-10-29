@@ -11,4 +11,5 @@ urlpatterns = [
     path("<int:pk>/generate/", views.news_post_generate, name="news_post_generate"),
     path("<int:pk>/status/", views.news_post_status, name="news_post_status"),
     path("<int:pk>/cancel/", views.news_post_cancel, name="news_post_cancel"),
+    path("<int:pk>/download-docx/", views.news_post_download_docx, name="news_post_download_docx"),
 ]
