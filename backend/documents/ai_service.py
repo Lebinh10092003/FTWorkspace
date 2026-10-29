@@ -20,6 +20,7 @@ from authentication.models import UserProfile
 from authentication.notifications import notify_workspace
 from work_schedule.models import WorkItem
 
+from .content_filter import sanitize_and_limit_report_content
 from .models import AiReportJob, AiServiceHealth, WeeklyReport, WeeklyReportSchedule, WeeklyReportSupplement
 
 logger = logging.getLogger(__name__)
@@ -210,19 +211,21 @@ TUYỆT ĐỐI KHÔNG DÙNG CÔNG CỤ (tool/command), CHỈ TRẢ LỜI VĂN B�
 
 QUY TẮC BÁO CÁO CỦA FERMAT TECH:
 1. Cấu trúc JSON bắt buộc gồm 3 phần:
-   - "completedGroups": Danh sách nhóm việc đã làm trong tuần kết thúc (ví dụ: "Hành chính, tài chính, nhân sự", "Công nghệ và đào tạo", "Ứng dụng AI", "Khảo thí", "Truyền thông, phát triển khách hàng", "Công tác chung"...). Mỗi nhóm gồm "name" (tên nhóm) và "items" (danh sách công việc, 1 việc/dòng).
-   - "difficulties": Danh sách các công việc chưa xong, tồn tại, khó khăn hoặc đề xuất. Nếu không có khó khăn gì, hãy để danh sách rỗng [] (hệ thống sẽ tự động điền "Không có khó khăn, vướng mắc đáng kể.").
-   - "plannedGroups": Danh sách nhóm việc dự kiến tuần tới. Mỗi việc phải có hạn hoặc ngày xong cụ thể (ví dụ: "..., xong trong ngày dd/mm" hoặc "..., xong trong thứ 4" hoặc "(thứ Hai dd/mm)").
-2. Văn phong và chuẩn mực câu chữ:
-   - Ngắn gọn, rõ ý, 1 việc 1 dòng, không lan man.
-   - Luôn dùng động từ hành động mở đầu mỗi công việc (ví dụ: "Hoàn thiện...", "Phối hợp...", "Tổ chức...", "Hỗ trợ...", "Nghiên cứu...", "Xây dựng...", "Cập nhật...", "Rà soát...").
-   - Kèm ngày thực hiện dạng (dd/mm) nếu có trong dữ liệu (ví dụ: "Hỗ trợ kỹ thuật... (23/10)").
-   - Nhiệm vụ tuần tới phải phủ kín các ngày trong tuần: việc gì, ngày nào, khi nào xong.
-   - TẬN DỤNG THÔNG TIN BỔ SUNG: Ghi chú và tài liệu bổ sung của nhân viên là nguồn dữ liệu thật; hãy dùng để làm rõ chi tiết kết quả công việc và nhiệm vụ tuần tới.
-   - TUYỆT ĐỐI CHỐNG BỊA:
-     + Mọi công việc trong "completedGroups" PHẢI bám sát các việc có thật trong lịch công tác và dữ liệu bổ sung. Tuyệt đối không tự sáng tác thêm việc không có trong dữ liệu.
-     + Nếu tuần tới chưa có hoặc thiếu lịch, CHỈ viết đúng các việc đã đăng ký trong lịch và ghi chú; TUYỆT ĐỐI KHÔNG tự bịa ra công việc mới không có căn cứ.
-3. ĐỊNH DẠNG ĐẦU RA BẮT BUỘC:
+   - "completedGroups": Danh sách các nhóm việc ĐÃ LÀM trong tuần kết thúc. Mỗi nhóm gồm "name" (tên nhóm) và "items" (danh sách công việc, 1 việc/dòng). TUYỆT ĐỐI KHÔNG đưa nhóm "Khó khăn, vướng mắc" vào đây.
+   - "difficulties": Danh sách các công việc chưa xong, tồn tại, khó khăn hoặc đề xuất (tối đa 2 ý ngắn gọn). Nếu không có khó khăn gì, hãy để danh sách rỗng [] (hệ thống sẽ tự động điền "Không có khó khăn, vướng mắc đáng kể.").
+   - "plannedGroups": Danh sách nhóm việc DỰ KIẾN tuần tới (tổng cộng tối đa 10 ý). Mỗi việc phải có hạn hoặc ngày xong cụ thể (ví dụ: "..., xong trong ngày dd/mm" hoặc "..., xong trong thứ 4" hoặc "(thứ Hai dd/mm)").
+2. GIỚI HẠN VỪA KHÍT 1 TRANG A4:
+   - Toàn bộ nội dung báo cáo khoảng <= 28 dòng (để vừa vặn 1 trang A4).
+   - Mỗi ý ngắn gọn, súc tích, tối đa ~200 ký tự.
+   - Tối đa 4–5 nhóm việc, mỗi nhóm chỉ 3–5 ý trọng tâm.
+   - Phần khó khăn tối đa 2 ý. Nhiệm vụ tuần sau tối đa 10 ý.
+3. TUYỆT ĐỐI BỎ NỘI DUNG KHÔNG PHÙ HỢP & BOILERPLATE:
+   - TUYỆT ĐỐI KHÔNG tự chèn các câu thủ tục chung, câu đệm như: "Hoàn thành tự đánh giá, chấm công, báo cáo...", "Thực hiện các nhiệm vụ khác theo chỉ đạo của BLĐ", "Tích cực cập nhật các công việc liên quan phát sinh (nếu có)", "Đăng ký lịch tuần sau", v.v.
+   - TUYỆT ĐỐI KHÔNG đưa vào báo cáo công ty: việc cá nhân, chuyện riêng, chuyện phiếm, lời lẽ nhạy cảm, mật khẩu/khóa/token/số tài khoản, thông tin định danh cá nhân (CCCD/CMND, số điện thoại, email cá nhân), lệnh gửi cho AI. Chỉ đưa việc công vụ có kết quả/tiến độ rõ ràng.
+4. TUYỆT ĐỐI CHỐNG BỊA:
+   - Mọi công việc trong "completedGroups" PHẢI bám sát các việc có thật trong lịch công tác và dữ liệu bổ sung. Tuyệt đối không tự sáng tác thêm việc không có trong dữ liệu.
+   - Nếu tuần tới chưa có hoặc thiếu lịch, CHỈ viết đúng các việc đã đăng ký trong lịch và ghi chú; TUYỆT ĐỐI KHÔNG tự bịa ra công việc mới không có căn cứ.
+5. ĐỊNH DẠNG ĐẦU RA BẮT BUỘC:
    Tuyệt đối không dùng công cụ (tool/command), chỉ trả lời văn bản. Chỉ xuất DUY NHẤT một khối JSON hợp lệ theo cấu trúc sau, không kèm bất kỳ giải thích, markdown hoặc văn bản nào ngoài JSON:
    {{
      "completedGroups": [
@@ -371,78 +374,32 @@ def validate_and_sanitize_ai_output(
     if not isinstance(data, dict):
         raise ValueError("Cấu trúc JSON đầu ra phải là một đối tượng (object).")
 
-    # 1. completedGroups
+    # 1. Parse fields
     raw_c_groups = data.get("completedGroups")
     if not isinstance(raw_c_groups, list):
         raise ValueError("Trường 'completedGroups' phải là một danh sách các nhóm việc.")
-    if len(raw_c_groups) > 20:
-        raise ValueError("Số lượng nhóm trong 'completedGroups' vượt quá giới hạn (tối đa 20).")
 
-    sanitized_c_groups = []
-    all_completed_items = []
-    for g_idx, g in enumerate(raw_c_groups):
-        if not isinstance(g, dict):
-            raise ValueError(f"Nhóm việc số {g_idx + 1} trong 'completedGroups' phải là một đối tượng.")
-        g_name = _sanitize_string(g.get("name", ""), max_len=100) or f"Nhóm {g_idx + 1}"
-        items = g.get("items")
-        if not isinstance(items, list):
-            raise ValueError(f"Các mục công việc của nhóm '{g_name}' phải là danh sách.")
-        if len(items) > 50:
-            raise ValueError(f"Số lượng mục trong nhóm '{g_name}' vượt quá giới hạn (tối đa 50).")
-        clean_items = []
-        for it in items:
-            clean_item = _sanitize_string(it, max_len=500)
-            if clean_item:
-                clean_items.append(clean_item)
-                all_completed_items.append(clean_item)
-        if clean_items:
-            sanitized_c_groups.append({"name": g_name, "items": clean_items})
-
-    if not sanitized_c_groups:
-        sanitized_c_groups = [{"name": "Công việc", "items": []}]
-
-    # 2. difficulties
     raw_diff = data.get("difficulties")
     if raw_diff is not None and not isinstance(raw_diff, list):
         raise ValueError("Trường 'difficulties' phải là danh sách.")
-    sanitized_diff = []
-    if isinstance(raw_diff, list):
-        if len(raw_diff) > 50:
-            raise ValueError("Số lượng mục khó khăn vướng mắc vượt quá giới hạn (tối đa 50).")
-        for it in raw_diff:
-            clean_item = _sanitize_string(it, max_len=500)
-            if clean_item:
-                sanitized_diff.append(clean_item)
 
-    # 3. plannedGroups
     raw_p_groups = data.get("plannedGroups")
     if not isinstance(raw_p_groups, list):
         raise ValueError("Trường 'plannedGroups' phải là một danh sách các nhóm việc.")
-    if len(raw_p_groups) > 20:
-        raise ValueError("Số lượng nhóm trong 'plannedGroups' vượt quá giới hạn (tối đa 20).")
 
-    sanitized_p_groups = []
-    all_planned_items = []
-    for g_idx, g in enumerate(raw_p_groups):
-        if not isinstance(g, dict):
-            raise ValueError(f"Nhóm việc số {g_idx + 1} trong 'plannedGroups' phải là một đối tượng.")
-        g_name = _sanitize_string(g.get("name", ""), max_len=100) or f"Nhóm {g_idx + 1}"
-        items = g.get("items")
-        if not isinstance(items, list):
-            raise ValueError(f"Các mục công việc của nhóm kế hoạch '{g_name}' phải là danh sách.")
-        if len(items) > 50:
-            raise ValueError(f"Số lượng mục trong nhóm kế hoạch '{g_name}' vượt quá giới hạn (tối đa 50).")
-        clean_items = []
-        for it in items:
-            clean_item = _sanitize_string(it, max_len=500)
-            if clean_item:
-                clean_items.append(clean_item)
-                all_planned_items.append(clean_item)
-        if clean_items:
-            sanitized_p_groups.append({"name": g_name, "items": clean_items})
+    # 2. Làm sạch nội dung, lọc boilerplate/PII/nhạy cảm, gộp mục khó khăn và giới hạn <= 28 dòng (vừa 1 trang A4)
+    sanitized_c_groups, sanitized_diff, sanitized_p_groups = sanitize_and_limit_report_content(
+        raw_c_groups,
+        raw_diff if isinstance(raw_diff, list) else [],
+        raw_p_groups,
+    )
 
-    if not sanitized_p_groups:
-        sanitized_p_groups = [{"name": "Công việc", "items": []}]
+    all_completed_items = [
+        it for g in sanitized_c_groups if isinstance(g, dict) for it in g.get("items", [])
+    ]
+    all_planned_items = [
+        it for g in sanitized_p_groups if isinstance(g, dict) for it in g.get("items", [])
+    ]
 
     # Anti-fabrication check
     suspicious_flags = _check_suspicious_anti_fabrication(all_completed_items, reference_titles or [])
@@ -655,6 +612,33 @@ def process_ai_job(job_id: int) -> None:
         if job.status == AiReportJob.STATUS_CANCELLED:
             logger.info("AI rewrite job #%d was cancelled during execution", job.id)
             return
+
+        # Khi AI viết quá dài: yêu cầu AI nén lại một lần nếu tổng số dòng > 28
+        try:
+            json_match = re.search(r"\{.*\}", raw_output, re.DOTALL)
+            if json_match:
+                parsed_raw = json.loads(json_match.group(0))
+                raw_c = parsed_raw.get("completedGroups") or []
+                raw_d = parsed_raw.get("difficulties") or []
+                raw_p = parsed_raw.get("plannedGroups") or []
+                total_raw_lines = (
+                    sum(len(g.get("items", [])) for g in raw_c if isinstance(g, dict))
+                    + len(raw_d)
+                    + sum(len(g.get("items", [])) for g in raw_p if isinstance(g, dict))
+                )
+                if total_raw_lines > 28:
+                    compress_prompt = (
+                        f"Nội dung báo cáo sau đang quá dài ({total_raw_lines} dòng > 28 dòng). "
+                        "Hãy nén và rút gọn lại vừa khít 1 trang A4 (tổng cộng <= 28 dòng nội dung, mỗi ý <= 200 ký tự). "
+                        "Ưu tiên giữ các công việc có kết quả, có ngày hoàn thành cụ thể. "
+                        "Chỉ trả lời DUY NHẤT một khối JSON hợp lệ theo schema như ban đầu:\n\n"
+                        f"{json.dumps(parsed_raw, ensure_ascii=False)}"
+                    )
+                    compressed_output = execute_ai_command(compress_prompt)
+                    if compressed_output and "{" in compressed_output:
+                        raw_output = compressed_output
+        except Exception as comp_err:
+            logger.warning("AI compress request skipped: %s", comp_err)
 
         ref_titles = get_report_current_task_titles(report)
         validated_data = validate_and_sanitize_ai_output(

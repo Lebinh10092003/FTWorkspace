@@ -207,7 +207,8 @@ class WeeklyReportPipelineTests(TestCase):
         self.assertIn("II. NHIỆM VỤ TUẦN 40", document_xml)
         self.assertIn("1. Công nghệ thông tin", document_xml)
         self.assertIn("- Họp triển khai, xong trong ngày 29/09.", document_xml)
-        self.assertIn("- Thực hiện các nhiệm vụ khác theo chỉ đạo của BLĐ.", document_xml)
+        self.assertNotIn("- Thực hiện các nhiệm vụ khác theo chỉ đạo của BLĐ.", document_xml)
+        self.assertNotIn("- Tích cực cập nhật các công việc liên quan phát sinh", document_xml)
         # Verify no Word automatic bullets
         self.assertNotIn("<w:numPr>", document_xml)
 

@@ -17,6 +17,7 @@ from authentication.notifications import notify_workspace
 from integrations.google_sheets import build_docs_service, build_sheets_service
 from work_schedule.models import WorkItem
 
+from .content_filter import clean_report_item, sanitize_and_limit_report_content
 from .models import WeeklyReport
 
 
@@ -281,14 +282,36 @@ def build_schedule_reports(*, today=None, report_week_start=None, employee_email
             report.completed_week = current_week
             report.planned_week = planned_week
 
-            completed_pairs = [(item.label, format_completed_task(item)) for item in current_items if item.status in DONE_STATUSES]
-            completed_groups = _group_items_by_label(completed_pairs)
+            completed_pairs = []
+            for item in current_items:
+                if item.status in DONE_STATUSES:
+                    txt = clean_report_item(format_completed_task(item))
+                    if txt:
+                        completed_pairs.append((item.label, txt))
+            raw_c_groups = _group_items_by_label(completed_pairs)
+
+            raw_diffs = []
+            for item in current_items:
+                if item.status not in DONE_STATUSES:
+                    txt = clean_report_item(format_difficulty_task(item))
+                    if txt:
+                        raw_diffs.append(txt)
+            raw_difficulties = _dedup(raw_diffs)
+
+            planned_pairs = []
+            for item in future_items:
+                txt = clean_report_item(format_planned_task(item))
+                if txt:
+                    planned_pairs.append((item.label, txt))
+            raw_p_groups = _group_items_by_label(planned_pairs)
+
+            # Làm sạch, loại boilerplate/PII, tách mục khó khăn và giới hạn <= 28 dòng
+            completed_groups, difficulties, planned_groups = sanitize_and_limit_report_content(
+                raw_c_groups,
+                raw_difficulties,
+                raw_p_groups,
+            )
             completed_items = [t for g in completed_groups for t in g["items"]]
-
-            difficulties = _dedup([format_difficulty_task(item) for item in current_items if item.status not in DONE_STATUSES])
-
-            planned_pairs = [(item.label, format_planned_task(item)) for item in future_items]
-            planned_groups = _group_items_by_label(planned_pairs)
             planned_items = [t for g in planned_groups for t in g["items"]]
 
             report.completed_groups = completed_groups
@@ -296,7 +319,7 @@ def build_schedule_reports(*, today=None, report_week_start=None, employee_email
             report.difficulties = difficulties
             report.planned_groups = planned_groups
             report.planned_items = planned_items
-            report.include_bld_task = True
+            report.include_bld_task = False
             report.status = WeeklyReport.STATUS_SNAPSHOT
             report.save()
         reports.append(report)
