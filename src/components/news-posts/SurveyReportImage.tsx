@@ -19,6 +19,23 @@ export default function SurveyReportImage({
   const [downloading, setDownloading] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
 
+  // Editable header fields
+  const [customUnit, setCustomUnit] = useState<string>(unitName || '');
+  const [customTitle, setCustomTitle] = useState<string>(sessionTitle || '');
+  const [customDate, setCustomDate] = useState<string>(sessionDate || '');
+
+  React.useEffect(() => {
+    if (unitName && !customUnit) setCustomUnit(unitName);
+  }, [unitName, customUnit]);
+
+  React.useEffect(() => {
+    if (sessionTitle && !customTitle) setCustomTitle(sessionTitle);
+  }, [sessionTitle, customTitle]);
+
+  React.useEffect(() => {
+    if (sessionDate && !customDate) setCustomDate(sessionDate);
+  }, [sessionDate, customDate]);
+
   // Chuẩn bị số liệu
   const totalResponses = surveySummary.total_responses || 0;
   const totalRatings = surveySummary.total_ratings || 0;
@@ -97,7 +114,7 @@ export default function SurveyReportImage({
         if (ctx) {
           ctx.drawImage(image, 0, 0);
           const pngUrl = canvas.toDataURL('image/png');
-          const cleanUnit = (unitName || 'don-vi').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          const cleanUnit = (customUnit || unitName || 'don-vi').toLowerCase().replace(/[^a-z0-9]+/g, '-');
           const downloadLink = document.createElement('a');
           downloadLink.href = pngUrl;
           downloadLink.download = `Phieu-bao-cao-danh-gia-${cleanUnit}.png`;
@@ -119,7 +136,7 @@ export default function SurveyReportImage({
     }
   }, [unitName]);
 
-  const displayUnit = unitName ? unitName.toUpperCase() : 'XÃ HÒA PHÚ';
+  const displayUnit = (customUnit || unitName || 'ĐƠN VỊ ĐỐI TÁC').toUpperCase();
 
   return (
     <div className="flex flex-col gap-3">
@@ -152,6 +169,46 @@ export default function SurveyReportImage({
             </>
           )}
         </button>
+      </div>
+
+      {/* Khu vực tùy chỉnh tiêu đề ảnh khảo sát */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 rounded-xl border border-[var(--ft-border)] bg-[var(--ft-bg-subtle)] p-3">
+        <div>
+          <label className="block text-xs font-medium text-[var(--ft-text-subtle)] mb-1">
+            Tên đơn vị trên ảnh
+          </label>
+          <input
+            type="text"
+            value={customUnit}
+            onChange={(e) => setCustomUnit(e.target.value)}
+            placeholder="Tên đơn vị / Trường học..."
+            className="w-full rounded-lg border border-[var(--ft-border)] bg-[var(--ft-input-bg)] px-2.5 py-1.5 text-xs text-[var(--ft-text-main)] outline-none focus:border-[#0B72CE]"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-[var(--ft-text-subtle)] mb-1">
+            Chủ đề / Dòng phụ
+          </label>
+          <input
+            type="text"
+            value={customTitle}
+            onChange={(e) => setCustomTitle(e.target.value)}
+            placeholder="Chủ đề buổi làm việc..."
+            className="w-full rounded-lg border border-[var(--ft-border)] bg-[var(--ft-input-bg)] px-2.5 py-1.5 text-xs text-[var(--ft-text-main)] outline-none focus:border-[#0B72CE]"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-[var(--ft-text-subtle)] mb-1">
+            Thời gian khảo sát
+          </label>
+          <input
+            type="text"
+            value={customDate}
+            onChange={(e) => setCustomDate(e.target.value)}
+            placeholder="Ví dụ: Tháng 10/2026..."
+            className="w-full rounded-lg border border-[var(--ft-border)] bg-[var(--ft-input-bg)] px-2.5 py-1.5 text-xs text-[var(--ft-text-main)] outline-none focus:border-[#0B72CE]"
+          />
+        </div>
       </div>
 
       {/* Khung xem trước SVG Responsive */}
@@ -204,7 +261,7 @@ export default function SurveyReportImage({
             fontWeight="500"
             fill="#475569"
           >
-            {`${sessionTitle} · Khảo sát ${sessionDate}`}
+            {`${customTitle || sessionTitle} · ${customDate || sessionDate}`}
           </text>
 
           {/* ══════════════════════════════════════════════════════════

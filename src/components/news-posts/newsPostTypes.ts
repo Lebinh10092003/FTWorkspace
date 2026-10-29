@@ -12,6 +12,20 @@ export interface SessionItem {
   agendaContent: string;
 }
 
+export interface UploadedDocFile {
+  name: string;
+  fileType: 'agenda' | 'material';
+  size: number;
+  text: string;
+  charCount?: number;
+  truncated?: boolean;
+}
+
+export interface SurveySourceFile {
+  name: string;
+  responses: number;
+}
+
 export interface SurveyCategory {
   name: string;
   total_ratings: number;
@@ -23,6 +37,8 @@ export interface SurveyCategory {
 
 export interface SurveySummary {
   has_survey: boolean;
+  source_filename?: string;
+  source_files?: SurveySourceFile[];
   total_responses: number;
   total_ratings: number;
   categories: SurveyCategory[];
@@ -61,8 +77,13 @@ export interface ContentPayload {
 
 export interface InputPayload {
   unit_name?: string;
-  sessions?: SessionItem[];
+  unitName?: string;
   notes?: string;
+  agenda_files?: UploadedDocFile[];
+  agendaFiles?: UploadedDocFile[];
+  material_files?: UploadedDocFile[];
+  materialFiles?: UploadedDocFile[];
+  sessions?: SessionItem[];
 }
 
 export interface NewsPostItem {
