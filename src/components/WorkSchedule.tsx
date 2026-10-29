@@ -1985,34 +1985,72 @@ function ImportantWorkContentEditor({ value, formatRuns, className, onChange, on
     )}
   </>;
 }
-const resizeGridEditor = (element: HTMLElement | null) => {
-  if (!element) return;
+// Đo lại chiều cao ô phải đặt tạm `height: auto`. Nếu để hàng co lại, trang ngắn đi và
+// trình duyệt kéo vị trí cuộn lên, nên bảng "trôi" mỗi lần gõ. Vì vậy: giữ chiều cao hàng
+// trong lúc đo, và trả lại vị trí cuộn của trang và các khung cuộn chứa bảng.
+const keepScrollPosition = (anchor: Element | null, measure: () => void) => {
+  const scrollers: Array<[Element, number, number]> = [];
+  for (let node = anchor?.parentElement || null; node; node = node.parentElement) {
+    if (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth) scrollers.push([node, node.scrollTop, node.scrollLeft]);
+  }
+  const { scrollX, scrollY } = window;
+  measure();
+  scrollers.forEach(([node, top, left]) => {
+    if (node.scrollTop !== top) node.scrollTop = top;
+    if (node.scrollLeft !== left) node.scrollLeft = left;
+  });
+  if (window.scrollX !== scrollX || window.scrollY !== scrollY) window.scrollTo(scrollX, scrollY);
+};
+const withRowHeightLocked = (row: HTMLTableRowElement | null, measure: () => void) => {
+  if (!row) return measure();
+  const previous = row.style.height;
+  row.style.height = `${row.offsetHeight}px`;
+  try {
+    measure();
+  } finally {
+    row.style.height = previous;
+  }
+};
+const resizeGridEditorRow = (element: HTMLElement) => {
   const row = element.closest("tr");
   const editors = row ? Array.from(row.querySelectorAll<HTMLElement>("[data-grid-editor]")) : [element];
   const textareas = row ? Array.from(row.querySelectorAll<HTMLTextAreaElement>("textarea")) : [];
-  [...editors, ...textareas].forEach((editor) => { editor.style.height = "auto"; });
-  const height = Math.max(80, ...editors.map((editor) => editor.scrollHeight), ...textareas.map((editor) => editor.scrollHeight));
-  [...editors, ...textareas].forEach((editor) => { editor.style.height = `${height}px`; });
+  withRowHeightLocked(row, () => {
+    [...editors, ...textareas].forEach((editor) => { editor.style.height = "auto"; });
+    const height = Math.max(80, ...editors.map((editor) => editor.scrollHeight), ...textareas.map((editor) => editor.scrollHeight));
+    [...editors, ...textareas].forEach((editor) => { editor.style.height = `${height}px`; });
+  });
+};
+const resizeGridTextareaRow = (element: HTMLTextAreaElement) => {
+  const row = element.closest("tr");
+  const editors = row ? Array.from(row.querySelectorAll<HTMLTextAreaElement>("textarea")) : [element];
+  const renderedContent = row ? Array.from(row.querySelectorAll<HTMLElement>("[data-grid-cell-measure]")) : [];
+  withRowHeightLocked(row, () => {
+    editors.forEach((editor) => { editor.style.height = "auto"; });
+    const height = Math.max(80, ...editors.map((editor) => editor.scrollHeight), ...renderedContent.map((content) => content.scrollHeight));
+    editors.forEach((editor) => { editor.style.height = `${height}px`; });
+  });
+};
+const resizeGridEditor = (element: HTMLElement | null) => {
+  if (!element) return;
+  keepScrollPosition(element, () => resizeGridEditorRow(element));
 };
 const resizeGridTextarea = (element: HTMLTextAreaElement | null) => {
   if (!element) return;
-  const row = element.closest("tr");
-  const editors = row ? Array.from(row.querySelectorAll<HTMLTextAreaElement>("textarea")) : [element];
-  editors.forEach((editor) => { editor.style.height = "auto"; });
-  const renderedContent = row ? Array.from(row.querySelectorAll<HTMLElement>("[data-grid-cell-measure]")) : [];
-  const height = Math.max(80, ...editors.map((editor) => editor.scrollHeight), ...renderedContent.map((content) => content.scrollHeight));
-  editors.forEach((editor) => { editor.style.height = `${height}px`; });
+  keepScrollPosition(element, () => resizeGridTextareaRow(element));
 };
 
 const resizeAllGridRows = (table: HTMLTableElement | null) => {
   if (!table) return;
-  table.querySelectorAll<HTMLTableRowElement>("tbody tr").forEach((row) => {
-    const richEditor = row.querySelector<HTMLElement>("[data-grid-editor]");
-    if (richEditor) resizeGridEditor(richEditor);
-    else {
-      const editor = row.querySelector<HTMLTextAreaElement>("textarea");
-      if (editor) resizeGridTextarea(editor);
-    }
+  keepScrollPosition(table, () => {
+    table.querySelectorAll<HTMLTableRowElement>("tbody tr").forEach((row) => {
+      const richEditor = row.querySelector<HTMLElement>("[data-grid-editor]");
+      if (richEditor) resizeGridEditorRow(richEditor);
+      else {
+        const editor = row.querySelector<HTMLTextAreaElement>("textarea");
+        if (editor) resizeGridTextareaRow(editor);
+      }
+    });
   });
 };
 
