@@ -2410,17 +2410,6 @@ export default function DigitalTraining({
         activeId={moduleNavActiveId}
         onSelect={selectModuleNav}
         ariaLabel="Điều hướng Công nghệ & đào tạo số"
-        account={
-          <AccountMenu
-            userName={userName}
-            userRole={userRole}
-            photoURL={photoURL}
-            isGuest={isGuest}
-            onAccountClick={onAccountClick}
-            onLogout={onLogout}
-            variant="avatar"
-          />
-        }
       />
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">

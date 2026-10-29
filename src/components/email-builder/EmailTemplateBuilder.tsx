@@ -944,7 +944,6 @@ function EmailTemplateBuilderContent({ onBackToWorkspace, backLabel = 'Quay lạ
                 <button type="button" onClick={handleRestoreDefaults} className="ft-btn ft-btn-secondary text-xs" title="Khôi phục mẫu gốc"><RotateCcw className="h-4 w-4" /></button>
               </>
             )}
-            account={<AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar"/>}
           />
           <input
             ref={listImportRef}

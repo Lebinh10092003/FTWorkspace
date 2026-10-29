@@ -12,7 +12,15 @@ export type AccountMenuProps = {
   onLogout?: () => void;
   onLogin?: () => void;
   variant?: 'sidebar' | 'header' | 'avatar';
+  /** Nút mở menu tự vẽ (vd trên thanh điều hướng tối màu); khi có thì bỏ qua `variant`. */
+  trigger?: (state: { toggle: () => void; isOpen: boolean }) => React.ReactNode;
+  /** Hướng mở menu khi dùng `trigger`. */
+  placement?: 'above' | 'right' | 'below-right';
+  wrapperClassName?: string;
 };
+
+/** Thông tin tài khoản truyền xuống khung trang (rail, thanh trên mobile). */
+export type AccountMenuOptions = Omit<AccountMenuProps, 'variant' | 'trigger' | 'placement' | 'wrapperClassName'>;
 
 function accountLabels(userName?: string | null, userRole?: string | null) {
   const normalizedName = String(userName || '').trim().toLocaleLowerCase('vi-VN');
@@ -21,7 +29,7 @@ function accountLabels(userName?: string | null, userRole?: string | null) {
   return { role: roleMap[String(userRole || '').toUpperCase()] || 'TÀI KHOẢN WORKSPACE', job: 'Chưa phân công chức vụ' };
 }
 
-export default function AccountMenu({ userName, photoURL, userRole, isGuest, onAccountClick, onLogout, onLogin, variant = 'sidebar' }: AccountMenuProps) {
+export default function AccountMenu({ userName, photoURL, userRole, isGuest, onAccountClick, onLogout, onLogin, variant = 'sidebar', trigger, placement = 'above', wrapperClassName = '' }: AccountMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showAppearance, setShowAppearance] = useState(false);
   const [appearance, setAppearance] = useState(readWorkspaceAppearance);
@@ -79,6 +87,23 @@ export default function AccountMenu({ userName, photoURL, userRole, isGuest, onA
   const menuClass = variant === 'sidebar'
     ? 'absolute bottom-[calc(100%+0.5rem)] left-0 z-50 w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl'
     : 'absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[210px] overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl';
+
+  if (trigger) {
+    const placementClass = placement === 'right'
+      ? 'left-[calc(100%+0.5rem)] bottom-0'
+      : placement === 'below-right'
+        ? 'right-0 top-[calc(100%+0.5rem)]'
+        : 'left-0 bottom-[calc(100%+0.5rem)]';
+    return (
+      <>
+        <div ref={rootRef} className={`relative ${wrapperClassName}`}>
+          {trigger({ toggle: () => setIsOpen(value => !value), isOpen })}
+          {isOpen && <div className={`absolute z-50 w-[230px] overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ${placementClass}`} role="menu">{actionItems}</div>}
+        </div>
+        {appearanceDialog}
+      </>
+    );
+  }
 
   if (variant === 'avatar') {
     return <><div ref={rootRef} className="relative shrink-0"><button type="button" onClick={() => setIsOpen(value => !value)} className="grid h-9 w-9 place-items-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-sm font-bold text-slate-700 shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2" aria-label="Mở menu tài khoản" aria-expanded={isOpen} aria-haspopup="menu">{photoURL && !isGuest ? <img src={photoURL} alt={name} className="h-full w-full object-cover"/> : initials}</button>{isOpen && <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[230px] overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl" role="menu">{actionItems}</div>}</div>{appearanceDialog}</>;

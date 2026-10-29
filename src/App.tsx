@@ -739,12 +739,6 @@ export default function App() {
           onOpenCommandPalette={() => {
             window.dispatchEvent(new CustomEvent('toggle-command-palette'));
           }}
-          onLogin={() => {
-            setAuthError('');
-            setShowLoginModal(true);
-          }}
-          onAccountClick={openAccount}
-          onLogout={handleLogout}
         />
         {loginModal}{profileModal}{yesterdayWarningModal}
       </>
@@ -771,7 +765,6 @@ export default function App() {
           activeId="communication-tools"
           onSelect={id => setViewMode(id as ViewMode)}
           ariaLabel="Điều hướng bộ công cụ FermatTech"
-          account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />}
         />
         <main className="min-w-0 flex-1">
           <div className="ft-module-content mx-auto p-5 md:p-8">
@@ -845,7 +838,6 @@ export default function App() {
             activeId="internal-accounts"
             onSelect={() => undefined}
             ariaLabel="Điều hướng Tài nguyên"
-            account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />}
           />
           <main className="min-w-0 flex-1">
             <div className="ft-module-content mx-auto p-5 md:p-7"><Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Đang tải...</div>}><CompanyAccounts idToken={idToken || ''} canDelete={userRole === 'ADMIN'} /></Suspense></div>
@@ -868,7 +860,6 @@ export default function App() {
             activeId="employees"
             onSelect={() => undefined}
             ariaLabel="Điều hướng Quản lý nhân viên"
-            account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />}
           />
           <main className="min-w-0 flex-1">
             <div className="ft-module-content mx-auto p-5 md:p-7"><Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">Đang tải...</div>}><AccountManagement idToken={idToken || ''} userRole={userRole} /></Suspense></div>
@@ -963,7 +954,6 @@ export default function App() {
           activeId="competition-landing"
           onSelect={id => setViewMode(id as ViewMode)}
           ariaLabel="Điều hướng bộ công cụ FermatTech"
-          account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogout={handleLogout} variant="avatar" />}
         />
         <main className="ft-module-content mx-auto max-w-7xl p-5 md:p-8">
           <Suspense fallback={<div className="py-16 text-center text-sm font-semibold text-slate-500">Đang nạp công cụ...</div>}>
@@ -1167,7 +1157,6 @@ export default function App() {
         activeId={activeTab}
         onSelect={setSocialTab}
         ariaLabel="Điều hướng Truyền thông"
-        account={<AccountMenu userName={user.displayName} userRole={userRole} photoURL={user.photoURL} isGuest={isGuest} onAccountClick={openAccount} onLogin={() => { setAuthError(''); setShowLoginModal(true); }} onLogout={handleLogout} variant="avatar" />}
       />
       <main className="flex-1 overflow-y-auto"><div className="ft-module-content px-5 py-6 md:px-7 md:py-7">
         {loading ? (
@@ -1224,6 +1213,18 @@ export default function App() {
       userName={user.displayName}
       userRole={userRole}
       onAccountClick={openAccount}
+      account={{
+        userName: user.displayName,
+        userRole,
+        photoURL: user.photoURL,
+        isGuest,
+        onAccountClick: openAccount,
+        onLogout: handleLogout,
+        onLogin: () => {
+          setAuthError('');
+          setShowLoginModal(true);
+        },
+      }}
     >
       {content}
     </WorkspaceAreaFrame>

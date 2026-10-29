@@ -2180,7 +2180,6 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         actions={
           <CircleHelp className="hidden h-5 w-5 text-slate-500 sm:block cursor-pointer hover:text-slate-800 transition-colors" aria-label="Trợ giúp Khảo thí"><title>Trợ giúp Khảo thí</title></CircleHelp>
         }
-        account={<AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar" />}
       />
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-8">

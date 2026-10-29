@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { WORKSPACE_AREAS, WorkspaceArea, WorkspaceAreaId } from '../../config/workspaceNavigation';
 import { DepartmentLayout } from '../../config/departmentLayout';
+import AccountMenu, { type AccountMenuOptions } from '../AccountMenu';
 
 const COMPACT_STORAGE_KEY = 'ft-workspace-rail-compact';
 
@@ -36,6 +37,8 @@ export type WorkspaceAppRailProps = {
   userName?: string;
   userRole?: string;
   onAccountClick?: () => void;
+  /** Có thì nút tài khoản mở menu đầy đủ (hồ sơ, giao diện, đăng xuất / đăng nhập). */
+  account?: AccountMenuOptions;
 };
 
 export default function WorkspaceAppRail({
@@ -45,7 +48,15 @@ export default function WorkspaceAppRail({
   userName = 'Người dùng',
   userRole = 'EMPLOYEE',
   onAccountClick,
+  account,
 }: WorkspaceAppRailProps) {
+  const withAccountMenu = (
+    placement: 'above' | 'right',
+    wrapperClassName: string,
+    button: (onClick: () => void, isOpen: boolean) => React.ReactNode,
+  ) => account
+    ? <AccountMenu {...account} placement={placement} wrapperClassName={wrapperClassName} trigger={({ toggle, isOpen }) => button(toggle, isOpen)} />
+    : button(() => onAccountClick?.(), false);
   const [compact, setCompact] = useState(() => readFlag(COMPACT_STORAGE_KEY));
   const [activeTooltip, setActiveTooltip] = useState<{ label: string; top: number } | null>(null);
   const visibleAreas = WORKSPACE_AREAS.filter(canAccess);
@@ -219,11 +230,13 @@ export default function WorkspaceAppRail({
       <div className="pt-2 border-t border-white/10 space-y-2 mt-auto">
         {!compact ? (
           <div className="flex items-center justify-between rounded-[10px] bg-white/6 p-2 border border-white/10">
+            {withAccountMenu('above', 'min-w-0 flex-1', (onClick, isOpen) => (
             <button
               type="button"
-              onClick={onAccountClick}
-              className="flex items-center gap-2.5 min-w-0 text-left cursor-pointer flex-1 group"
-              title="Thông tin tài khoản"
+              onClick={onClick}
+              aria-expanded={isOpen}
+              className="flex w-full items-center gap-2.5 min-w-0 text-left cursor-pointer flex-1 group"
+              title="Tài khoản"
               aria-label={`Tài khoản: ${userName} (${userRole})`}
             >
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#0B72CE] text-white font-bold text-xs shadow-xs">
@@ -238,6 +251,7 @@ export default function WorkspaceAppRail({
                 </p>
               </div>
             </button>
+            ))}
             <button
               type="button"
               onClick={() => setCompact(true)}
@@ -251,9 +265,11 @@ export default function WorkspaceAppRail({
         ) : (
           <div className="flex flex-col items-center gap-1.5">
             {/* User Avatar Button (48x48 touch target) */}
+            {withAccountMenu('right', '', (onClick, isOpen) => (
             <button
               type="button"
-              onClick={onAccountClick}
+              onClick={onClick}
+              aria-expanded={isOpen}
               onMouseEnter={e => showTooltip(`${userName} (${userRole})`, e)}
               onMouseLeave={hideTooltip}
               onFocus={e => showTooltip(`${userName} (${userRole})`, e)}
@@ -265,6 +281,7 @@ export default function WorkspaceAppRail({
                 {userName.charAt(0).toUpperCase()}
               </div>
             </button>
+            ))}
 
             {/* Rail Expand Button (48x48 touch target) */}
             <button

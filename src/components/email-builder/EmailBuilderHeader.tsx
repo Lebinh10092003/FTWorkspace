@@ -15,7 +15,6 @@ import {
   Check, Edit2, Share2
 } from 'lucide-react';
 import { EmailTemplate } from '../../types/emailBuilder';
-import AccountMenu from '../AccountMenu';
 import { useEmailBuilderDialog } from './EmailBuilderDialog';
 
 interface EmailBuilderHeaderProps {
@@ -312,9 +311,6 @@ export default function EmailBuilderHeader({
         </button>
       </div>
 
-      <div className="email-builder-account col-start-2 row-start-1 xl:col-start-3">
-        <AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={isGuest} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar"/>
-      </div>
 
     </header>
   );

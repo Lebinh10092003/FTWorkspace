@@ -166,7 +166,6 @@ export default function DocumentNumberGenerator({
             <span className="hidden sm:inline">Tải lại sổ</span>
           </button>
         )}
-        account={<AccountMenu userName={userName} userRole={userRole} photoURL={photoURL} isGuest={false} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar" />}
       />
 
       <main className="min-w-0 flex-1">

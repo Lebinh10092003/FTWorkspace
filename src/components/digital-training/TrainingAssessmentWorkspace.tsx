@@ -76,17 +76,6 @@ export default function TrainingAssessmentWorkspace({
           else setActiveTab(id as "assessments" | "bank-settings");
         }}
         ariaLabel="Điều hướng Bài kiểm tra cuối khóa"
-        account={(
-          <AccountMenu
-            userName={userName}
-            userRole={userRole}
-            photoURL={photoURL}
-            isGuest={false}
-            onAccountClick={onAccountClick}
-            onLogout={onLogout}
-            variant="avatar"
-          />
-        )}
       />
       <main className="min-w-0 flex-1">
         <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">

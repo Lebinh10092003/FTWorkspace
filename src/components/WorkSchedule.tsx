@@ -909,6 +909,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
         activeId={view}
         onSelect={(nextView) => openScheduleSection(nextView as View)}
         ariaLabel="Điều hướng Lịch làm việc"
+        quickSearch={view === "team"}
         actions={view !== "team" ? (
           <>
             <label className="relative hidden md:block">
@@ -921,7 +922,6 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
             </button>
           </>
         ) : null}
-        account={<AccountMenu userName={userName} photoURL={photoURL} userRole={userRole} isGuest={false} onAccountClick={onAccountClick} onLogout={onLogout} variant="avatar" />}
       />
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto max-w-[1680px] p-4 sm:p-6 lg:p-8">

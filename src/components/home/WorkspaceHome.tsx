@@ -25,7 +25,6 @@ import {
   X,
 } from 'lucide-react';
 import WorkspaceNotifications from '../WorkspaceNotifications';
-import AccountMenu from '../AccountMenu';
 import {
   cleanTaskTitleForDisplay,
   formatDateIso,
@@ -51,9 +50,6 @@ export type WorkspaceHomeProps = {
   canAccessView: (mode: any) => boolean;
   onNavigate: (mode: any, tab?: string) => void;
   onOpenCommandPalette: () => void;
-  onLogin: () => void;
-  onAccountClick?: () => void;
-  onLogout?: () => void;
 };
 
 type ScheduleItem = {
@@ -95,9 +91,6 @@ export default function WorkspaceHome({
   canAccessView,
   onNavigate,
   onOpenCommandPalette,
-  onLogin,
-  onAccountClick,
-  onLogout,
 }: WorkspaceHomeProps) {
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
@@ -356,18 +349,9 @@ export default function WorkspaceHome({
           </kbd>
         </button>
 
-        <div className="flex items-center gap-3">
+        {/* Tài khoản nằm ở thanh điều hướng; trên mobile thanh trên cùng đã có chuông thông báo. */}
+        <div className="hidden lg:flex items-center gap-3">
           <WorkspaceNotifications />
-          <AccountMenu
-            userName={user.displayName}
-            photoURL={user.photoURL}
-            userRole={userRole}
-            isGuest={isGuest}
-            onAccountClick={onAccountClick || (() => {})}
-            onLogout={onLogout}
-            onLogin={onLogin}
-            variant="header"
-          />
         </div>
       </header>
 

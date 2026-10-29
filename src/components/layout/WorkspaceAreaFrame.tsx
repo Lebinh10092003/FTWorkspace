@@ -14,6 +14,7 @@ import {
 import WorkspaceAppRail from './WorkspaceAppRail';
 import CommandPalette from './CommandPalette';
 import WorkspaceNotifications from '../WorkspaceNotifications';
+import AccountMenu, { type AccountMenuOptions } from '../AccountMenu';
 import {
   WORKSPACE_AREAS,
   WorkspaceArea,
@@ -29,6 +30,8 @@ export type WorkspaceAreaFrameProps = {
   userName?: string;
   userRole?: string;
   onAccountClick?: () => void;
+  /** Menu tài khoản duy nhất của khung trang (rail trên máy tính, thanh trên cùng trên mobile). */
+  account?: AccountMenuOptions;
   children: React.ReactNode;
 };
 
@@ -45,6 +48,7 @@ export default function WorkspaceAreaFrame({
   userName = 'Người dùng',
   userRole = 'EMPLOYEE',
   onAccountClick,
+  account,
   children,
 }: WorkspaceAreaFrameProps) {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -136,6 +140,7 @@ export default function WorkspaceAreaFrame({
         userName={userName}
         userRole={userRole}
         onAccountClick={onAccountClick}
+        account={account}
       />
 
       {/* ========================================================= */}
@@ -167,7 +172,23 @@ export default function WorkspaceAreaFrame({
 
           <WorkspaceNotifications />
 
-          {onAccountClick && (
+          {account ? (
+            <AccountMenu
+              {...account}
+              placement="below-right"
+              trigger={({ toggle, isOpen }) => (
+                <button
+                  type="button"
+                  onClick={toggle}
+                  aria-expanded={isOpen}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B72CE] text-white font-bold text-xs ml-1 cursor-pointer shadow-xs"
+                  title="Tài khoản"
+                >
+                  {userName.charAt(0).toUpperCase()}
+                </button>
+              )}
+            />
+          ) : onAccountClick && (
             <button
               type="button"
               onClick={onAccountClick}

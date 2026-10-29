@@ -13,9 +13,10 @@ export type ModuleShellHeaderProps = {
   activeId: string;
   onSelect: (id: string) => void;
   ariaLabel?: string;
-  /** Module-specific controls (search, "new" buttons) placed before the account menu. */
+  /** Module-specific controls (search, "new" buttons). */
   actions?: React.ReactNode;
-  account?: React.ReactNode;
+  /** Ẩn nút "Tìm nhanh" khi trang đã có ô tìm riêng trên thanh này (Ctrl K vẫn dùng được). */
+  quickSearch?: boolean;
 };
 
 export default function ModuleShellHeader({
@@ -26,7 +27,7 @@ export default function ModuleShellHeader({
   onSelect,
   ariaLabel,
   actions,
-  account,
+  quickSearch = true,
 }: ModuleShellHeaderProps) {
   const handleOpenSearch = () => {
     window.dispatchEvent(new CustomEvent('toggle-command-palette'));
@@ -57,6 +58,7 @@ export default function ModuleShellHeader({
 
         {/* Right: Search, Actions & User Avatar */}
         <div className="flex items-center gap-2 shrink-0">
+          {quickSearch && (
           <button
             type="button"
             onClick={handleOpenSearch}
@@ -71,16 +73,13 @@ export default function ModuleShellHeader({
               Ctrl K
             </kbd>
           </button>
+          )}
 
           {actions && <div className="hidden sm:flex items-center gap-2">{actions}</div>}
-          {account && (
-            <div className="flex items-center gap-2 pl-1">
-              <div className="hidden lg:block">
-                <WorkspaceNotifications />
-              </div>
-              {account}
-            </div>
-          )}
+          {/* Tài khoản nằm ở thanh điều hướng (rail / thanh trên mobile); ở đây chỉ còn thông báo trên máy tính. */}
+          <div className="hidden lg:block pl-1">
+            <WorkspaceNotifications />
+          </div>
         </div>
       </div>
 
