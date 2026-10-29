@@ -22,6 +22,10 @@ DB_BACKUP_SERVICE_NAME="${DB_BACKUP_SERVICE_NAME:-workspace-db-backup.service}"
 DB_BACKUP_TIMER_NAME="${DB_BACKUP_TIMER_NAME:-workspace-db-backup.timer}"
 WEEKLY_REPORT_SERVICE_NAME="${WEEKLY_REPORT_SERVICE_NAME:-workspace-weekly-report.service}"
 WEEKLY_REPORT_TIMER_NAME="${WEEKLY_REPORT_TIMER_NAME:-workspace-weekly-report.timer}"
+WEEKLY_REPORT_AUTO_SERVICE_NAME="${WEEKLY_REPORT_AUTO_SERVICE_NAME:-workspace-weekly-report-auto.service}"
+WEEKLY_REPORT_AUTO_TIMER_NAME="${WEEKLY_REPORT_AUTO_TIMER_NAME:-workspace-weekly-report-auto.timer}"
+WEEKLY_SUPPLEMENT_CLEANUP_SERVICE_NAME="${WEEKLY_SUPPLEMENT_CLEANUP_SERVICE_NAME:-workspace-weekly-supplement-cleanup.service}"
+WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME="${WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME:-workspace-weekly-supplement-cleanup.timer}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8001/api/health/}"
 HEALTH_HOST="${HEALTH_HOST:-workspace.fermat.vn}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
@@ -90,6 +94,10 @@ sudo install -m 0644 workspace-db-backup.service "/etc/systemd/system/$DB_BACKUP
 sudo install -m 0644 workspace-db-backup.timer "/etc/systemd/system/$DB_BACKUP_TIMER_NAME"
 sudo install -m 0644 workspace-weekly-report.service "/etc/systemd/system/$WEEKLY_REPORT_SERVICE_NAME"
 sudo install -m 0644 workspace-weekly-report.timer "/etc/systemd/system/$WEEKLY_REPORT_TIMER_NAME"
+sudo install -m 0644 workspace-weekly-report-auto.service "/etc/systemd/system/$WEEKLY_REPORT_AUTO_SERVICE_NAME"
+sudo install -m 0644 workspace-weekly-report-auto.timer "/etc/systemd/system/$WEEKLY_REPORT_AUTO_TIMER_NAME"
+sudo install -m 0644 workspace-weekly-supplement-cleanup.service "/etc/systemd/system/$WEEKLY_SUPPLEMENT_CLEANUP_SERVICE_NAME"
+sudo install -m 0644 workspace-weekly-supplement-cleanup.timer "/etc/systemd/system/$WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME"
 sudo systemctl daemon-reload
 sudo systemctl disable --now workspace-assessment-closing.timer 2>/dev/null || true
 sudo systemctl enable --now workspace-schedule-sync.timer
@@ -118,6 +126,8 @@ if ! "$VENV_DIR/bin/python" backend/manage.py sync_examination_candidate_queue; 
 fi
 sudo systemctl enable --now "$DB_BACKUP_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_REPORT_TIMER_NAME"
+sudo systemctl enable --now "$WEEKLY_REPORT_AUTO_TIMER_NAME"
+sudo systemctl enable --now "$WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 if systemctl list-unit-files workspace-ai-queue.service --no-legend | grep -q workspace-ai-queue; then
   # worker AI giữ mã cũ trong bộ nhớ; phải nạp lại sau mỗi lần triển khai (chỉ một worker)

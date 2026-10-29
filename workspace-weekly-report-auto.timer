@@ -1,0 +1,10 @@
+[Unit]
+Description=Check weekly report schedules every 10 minutes
+
+[Timer]
+OnCalendar=*:0/10
+Persistent=true
+Unit=workspace-weekly-report-auto.service
+
+[Install]
+WantedBy=timers.target
