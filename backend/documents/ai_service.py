@@ -479,6 +479,11 @@ def claim_next_job() -> Optional[Any]:
         running_count += NewsPostJob.objects.filter(status=NewsPostJob.STATUS_RUNNING).count()
     except Exception:
         pass
+    try:
+        from gmail_assistant.models import MailJob
+        running_count += MailJob.objects.filter(status=MailJob.STATUS_RUNNING).count()
+    except Exception:
+        pass
 
     if running_count >= max_concurrent:
         return None
@@ -501,7 +506,7 @@ def claim_next_job() -> Optional[Any]:
     except Exception:
         pass
 
-    # BACKGROUND QUEUE: Compare next AiReportJob vs next NewsPostJob by FIFO
+    # BACKGROUND QUEUE: Compare next jobs across apps by FIFO (earliest created_at)
     next_report = (
         AiReportJob.objects.select_for_update()
         .filter(status=AiReportJob.STATUS_QUEUED)
@@ -521,31 +526,34 @@ def claim_next_job() -> Optional[Any]:
     except Exception:
         pass
 
-    if next_report and next_news:
-        if next_news.created_at < next_report.created_at:
-            next_news.status = NewsPostJob.STATUS_RUNNING
-            next_news.started_at = timezone.now()
-            next_news.save(update_fields=["status", "started_at", "updated_at"])
-            setattr(next_news, "job_type", "news_post")
-            return next_news
-        else:
-            next_report.status = AiReportJob.STATUS_RUNNING
-            next_report.started_at = timezone.now()
-            next_report.save(update_fields=["status", "started_at", "updated_at"])
-            setattr(next_report, "job_type", "report")
-            return next_report
-    elif next_news:
-        next_news.status = NewsPostJob.STATUS_RUNNING
-        next_news.started_at = timezone.now()
-        next_news.save(update_fields=["status", "started_at", "updated_at"])
-        setattr(next_news, "job_type", "news_post")
-        return next_news
-    elif next_report:
-        next_report.status = AiReportJob.STATUS_RUNNING
-        next_report.started_at = timezone.now()
-        next_report.save(update_fields=["status", "started_at", "updated_at"])
-        setattr(next_report, "job_type", "report")
-        return next_report
+    next_mail = None
+    try:
+        from gmail_assistant.models import MailJob
+        next_mail = (
+            MailJob.objects.select_for_update()
+            .filter(status=MailJob.STATUS_QUEUED)
+            .order_by("created_at", "id")
+            .first()
+        )
+    except Exception:
+        pass
+
+    candidates = []
+    if next_report:
+        candidates.append((next_report.created_at, "report", next_report))
+    if next_news:
+        candidates.append((next_news.created_at, "news_post", next_news))
+    if next_mail:
+        candidates.append((next_mail.created_at, "gmail", next_mail))
+
+    if candidates:
+        candidates.sort(key=lambda c: c[0])
+        _, j_type, selected_job = candidates[0]
+        selected_job.status = getattr(selected_job.__class__, "STATUS_RUNNING", "running")
+        selected_job.started_at = timezone.now()
+        selected_job.save(update_fields=["status", "started_at", "updated_at"])
+        setattr(selected_job, "job_type", j_type)
+        return selected_job
 
     return None
 

@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "corsheaders", "rest_framework", "rest_framework.authtoken",
     "authentication", "social", "examination", "email_builder", "digital_training", "attendance", "work_schedule",
     "documents", "company_accounts", "mcp_oauth", "chatbot", "news_posts",
+    "gmail_assistant",
 ]
 
 MIDDLEWARE = [

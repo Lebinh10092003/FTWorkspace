@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Gmail morning scan every 10 minutes
+
+[Timer]
+OnCalendar=*:0/10
+Persistent=true
+Unit=workspace-gmail-morning-scan.service
+
+[Install]
+WantedBy=timers.target
