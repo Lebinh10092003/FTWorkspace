@@ -357,6 +357,7 @@ def parse_survey_file(file_bytes: bytes, filename: str) -> Dict[str, Any]:
 
     return {
         "has_survey": True,
+        "source_filename": filename,
         "total_responses": total_responses,
         "total_ratings": total_ratings_count,
         "categories": categories_list,
@@ -365,5 +366,123 @@ def parse_survey_file(file_bytes: bytes, filename: str) -> Dict[str, Any]:
         "top_rated_criterion": top_rated_criterion,
         "notable_criterion": notable_criterion,
         "open_feedback_points": open_feedback_list[:10],
+        "allowed_numbers": sorted(list(allowed_numbers)),
+    }
+
+
+def merge_survey_summaries(summaries: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge multiple survey summaries into a single unified survey summary."""
+    valid_summaries = [s for s in summaries if isinstance(s, dict) and s.get("has_survey")]
+    if not valid_summaries:
+        return {"has_survey": False}
+    if len(valid_summaries) == 1:
+        s = valid_summaries[0]
+        if "source_files" not in s:
+            s["source_files"] = [{
+                "name": s.get("source_filename") or "Khảo sát",
+                "responses": s.get("total_responses", 0),
+            }]
+        return s
+
+    total_responses = sum(s.get("total_responses", 0) for s in valid_summaries)
+    total_ratings = sum(s.get("total_ratings", 0) for s in valid_summaries)
+
+    source_files = []
+    for idx, s in enumerate(valid_summaries, 1):
+        source_files.append({
+            "name": s.get("source_filename") or f"Khảo sát đợt {idx}",
+            "responses": s.get("total_responses", 0),
+        })
+
+    merged_categories: Dict[str, Dict[str, Any]] = {}
+    total_rating_points = 0.0
+    total_good_ratings = 0
+    allowed_numbers: set[float] = set()
+
+    for s in valid_summaries:
+        for num in s.get("allowed_numbers") or []:
+            try:
+                allowed_numbers.add(float(num))
+            except (ValueError, TypeError):
+                pass
+
+        for cat in s.get("categories") or []:
+            c_name = cat.get("name") or ""
+            key = c_name.strip().casefold()
+            if not key:
+                continue
+
+            c_ratings = cat.get("total_ratings", 0)
+            c_good = cat.get("good_or_very_good_count", 0)
+            c_score = cat.get("satisfaction_score", 0.0)
+
+            total_rating_points += (c_score * c_ratings)
+            total_good_ratings += c_good
+
+            if key not in merged_categories:
+                merged_categories[key] = {
+                    "name": c_name,
+                    "total_ratings": 0,
+                    "good_or_very_good_count": 0,
+                    "detail_counts": {},
+                    "weighted_points": 0.0,
+                }
+
+            entry = merged_categories[key]
+            entry["total_ratings"] += c_ratings
+            entry["good_or_very_good_count"] += c_good
+            entry["weighted_points"] += (c_score * c_ratings)
+
+            for d_label, d_count in (cat.get("detail_counts") or {}).items():
+                entry["detail_counts"][d_label] = entry["detail_counts"].get(d_label, 0) + d_count
+
+    final_categories = []
+    for key, entry in merged_categories.items():
+        n = entry["total_ratings"]
+        avg_score = round(entry["weighted_points"] / n, 2) if n > 0 else 0.0
+        pct_good = round((entry["good_or_very_good_count"] / n) * 100, 2) if n > 0 else 0.0
+        allowed_numbers.add(float(avg_score))
+        allowed_numbers.add(float(pct_good))
+
+        final_categories.append({
+            "name": entry["name"],
+            "total_ratings": n,
+            "good_or_very_good_count": entry["good_or_very_good_count"],
+            "good_or_very_good_percent": pct_good,
+            "satisfaction_score": avg_score,
+            "detail_counts": entry["detail_counts"],
+        })
+
+    overall_satisfaction = round(total_rating_points / total_ratings, 2) if total_ratings > 0 else 0.0
+    overall_good_pct = round((total_good_ratings / total_ratings) * 100, 1) if total_ratings > 0 else 0.0
+    allowed_numbers.add(float(overall_satisfaction))
+    allowed_numbers.add(float(overall_good_pct))
+    allowed_numbers.add(float(total_responses))
+
+    top_rated_criterion = ""
+    notable_criterion = ""
+    if final_categories:
+        sorted_cats = sorted(final_categories, key=lambda x: (x["satisfaction_score"], x["total_ratings"]), reverse=True)
+        top_rated_criterion = sorted_cats[0]["name"]
+        notable_criterion = sorted_cats[-1]["name"]
+
+    all_feedbacks: List[str] = []
+    for s in valid_summaries:
+        for fb in s.get("open_feedback_points") or []:
+            fb_str = str(fb).strip()
+            if fb_str and fb_str not in all_feedbacks:
+                all_feedbacks.append(fb_str)
+
+    return {
+        "has_survey": True,
+        "total_responses": total_responses,
+        "total_ratings": total_ratings,
+        "source_files": source_files,
+        "categories": final_categories,
+        "overall_satisfaction_percent": overall_satisfaction,
+        "overall_good_or_very_good_percent": overall_good_pct,
+        "top_rated_criterion": top_rated_criterion,
+        "notable_criterion": notable_criterion,
+        "open_feedback_points": all_feedbacks[:15],
         "allowed_numbers": sorted(list(allowed_numbers)),
     }

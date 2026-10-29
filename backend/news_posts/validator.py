@@ -133,6 +133,13 @@ def validate_and_sanitize_news_output(
     pct_matches = re.findall(r"(\d+(?:[.,]\d+)?)\s*%", full_text_to_check)
     warnings = []
 
+    raw_ai_warnings = data.get("warnings") or []
+    if isinstance(raw_ai_warnings, list):
+        for w in raw_ai_warnings:
+            cw = _clean_text(w, max_len=300)
+            if cw and cw not in warnings:
+                warnings.append(cw)
+
     if allowed_numbers is not None:
         allowed_floats = {float(n) for n in allowed_numbers}
         for pct_str in pct_matches:
