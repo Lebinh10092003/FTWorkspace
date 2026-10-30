@@ -26,6 +26,9 @@ def _worker_wrapper(job_type: str, job_id: int):
         elif job_type == "news_post":
             from news_posts.service import process_news_post_job
             process_news_post_job(job_id)
+        elif job_type == "gmail":
+            from gmail_assistant.ai_service import process_mail_job
+            process_mail_job(job_id)
         else:
             process_ai_job(job_id)
     finally:
@@ -85,9 +88,14 @@ class Command(BaseCommand):
                     job = claim_next_job()
                     if not job:
                         break
-                    job_type = getattr(job, "job_type", "report")
-                    self.stdout.write(f"Đã nhận việc [{job_type}] #{job.id} cho {job.user.email} (status: running)")
-                    future = executor.submit(_worker_wrapper, job_type, job.id)
+                    job_kind = getattr(job, "job_kind", None)
+                    if not job_kind:
+                        if job.__class__.__name__ == "MailJob":
+                            job_kind = "gmail"
+                        else:
+                            job_kind = getattr(job, "job_type", "report")
+                    self.stdout.write(f"Đã nhận việc [{job_kind}] #{job.id} cho {job.user.email} (status: running)")
+                    future = executor.submit(_worker_wrapper, job_kind, job.id)
                     active_futures.append(future)
 
                 if run_once:

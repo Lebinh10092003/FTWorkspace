@@ -98,6 +98,12 @@ sudo install -m 0644 workspace-weekly-report-auto.service "/etc/systemd/system/$
 sudo install -m 0644 workspace-weekly-report-auto.timer "/etc/systemd/system/$WEEKLY_REPORT_AUTO_TIMER_NAME"
 sudo install -m 0644 workspace-weekly-supplement-cleanup.service "/etc/systemd/system/$WEEKLY_SUPPLEMENT_CLEANUP_SERVICE_NAME"
 sudo install -m 0644 workspace-weekly-supplement-cleanup.timer "/etc/systemd/system/$WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME"
+sudo install -m 0644 workspace-gmail-sync.service /etc/systemd/system/workspace-gmail-sync.service
+sudo install -m 0644 workspace-gmail-sync.timer /etc/systemd/system/workspace-gmail-sync.timer
+sudo install -m 0644 workspace-gmail-morning-scan.service /etc/systemd/system/workspace-gmail-morning-scan.service
+sudo install -m 0644 workspace-gmail-morning-scan.timer /etc/systemd/system/workspace-gmail-morning-scan.timer
+sudo install -m 0644 workspace-gmail-cleanup.service /etc/systemd/system/workspace-gmail-cleanup.service
+sudo install -m 0644 workspace-gmail-cleanup.timer /etc/systemd/system/workspace-gmail-cleanup.timer
 sudo systemctl daemon-reload
 sudo systemctl disable --now workspace-assessment-closing.timer 2>/dev/null || true
 sudo systemctl enable --now workspace-schedule-sync.timer
@@ -128,6 +134,9 @@ sudo systemctl enable --now "$DB_BACKUP_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_REPORT_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_REPORT_AUTO_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME"
+sudo systemctl enable --now workspace-gmail-sync.timer
+sudo systemctl enable --now workspace-gmail-morning-scan.timer
+sudo systemctl enable --now workspace-gmail-cleanup.timer
 sudo systemctl restart "$SERVICE_NAME"
 if systemctl list-unit-files workspace-ai-queue.service --no-legend | grep -q workspace-ai-queue; then
   # worker AI giữ mã cũ trong bộ nhớ; phải nạp lại sau mỗi lần triển khai (chỉ một worker)

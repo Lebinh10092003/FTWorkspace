@@ -51,6 +51,7 @@ const FundingProposalBuilder = lazyWithRecovery(() => import('./components/docum
 const DocumentNumberGenerator = lazyWithRecovery(() => import('./components/documents/DocumentNumberGenerator'));
 const WeeklyReportCenter = lazyWithRecovery(() => import('./components/documents/WeeklyReportCenter'));
 const NewsPostCenter = lazyWithRecovery(() => import('./components/news-posts/NewsPostCenter'));
+const GmailAssistantCenter = lazyWithRecovery(() => import('./components/gmail/GmailAssistantCenter'));
 const WorkSchedule = lazyWithRecovery(() => import('./components/WorkSchedule'));
 const CompetitionLandingManager = lazyWithRecovery(() => import('./components/examination/CompetitionLandingManager'));
 const CompetitionLandingPublic = lazyWithRecovery(() => import('./components/examination/CompetitionLandingPublic'));
@@ -62,7 +63,7 @@ const ItemBag = lazyWithRecovery(() => import('./components/fun/ItemBag'));
 // Hồ sơ cá nhân chỉ tải khi người dùng mở, không nằm trong gói tải ban đầu.
 const AccountProfileModal = lazyWithRecovery(() => import('./components/AccountProfileModal'));
 
-type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'news-posts' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
+type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'news-posts' | 'gmail-assistant' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -188,12 +189,14 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/communication-tools/document-number')) return 'document-number';
   if (path.startsWith('/communication-tools/weekly-report')) return 'weekly-report';
   if (path.startsWith('/communication-tools/news-posts')) return 'news-posts';
+  if (path.startsWith('/communication-tools/gmail')) return 'gmail-assistant';
   if (path.startsWith('/communication-tools/competition-landing')) return 'competition-landing';
   if (path.startsWith('/communication-tools')) return 'communication-tools';
   if (path === '/funding-proposal' || path === '/funding-proposal/') return 'funding-proposal';
   if (path === '/document-number' || path === '/document-number/') return 'document-number';
   if (path === '/weekly-report' || path === '/weekly-report/') return 'weekly-report';
   if (path === '/news-posts' || path === '/news-posts/') return 'news-posts';
+  if (path === '/gmail' || path === '/gmail/') return 'gmail-assistant';
   if (path === '/competition-landing' || path === '/competition-landing/') return 'competition-landing';
   if (path.startsWith('/finance-report')) return 'finance-report';
   if (path.startsWith('/signature-builder')) return 'signature-builder';
@@ -292,7 +295,7 @@ export default function App() {
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
   const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
-  const canAccessView = (mode: ViewMode) => { if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report' || mode === 'news-posts') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
+  const canAccessView = (mode: ViewMode) => { if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report' || mode === 'news-posts' || mode === 'gmail-assistant') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
   useEffect(() => {
     if (isGuest || !idToken) { setUpcomingDuties(0); return; }
@@ -372,6 +375,7 @@ export default function App() {
       'document-number': '/communication-tools/document-number',
       'weekly-report': '/communication-tools/weekly-report',
       'news-posts': '/communication-tools/news-posts',
+      'gmail-assistant': '/communication-tools/gmail',
       'competition-landing': '/communication-tools/competition-landing',
     };
     const path = paths[mode] || `/${mode}`;
@@ -763,6 +767,7 @@ export default function App() {
       { mode: 'document-number' as ViewMode, title: 'Trình tạo số Công văn', description: 'Lấy số văn bản mới nhất theo loại và ghi thẳng vào sổ trên Google Sheets.', icon: FileSignature, color: 'from-[#0055DA] to-[#00C68D]', allowed: canAccessView('document-number') },
       { mode: 'weekly-report' as ViewMode, title: 'Báo cáo cuối tuần', description: 'Xem báo cáo AI của từng nhân viên, tự làm mới từ Google Docs và tải file Word.', icon: ClipboardList, color: 'from-amber-500 to-orange-600', allowed: canAccessView('weekly-report') },
       { mode: 'news-posts' as ViewMode, title: 'Đăng tin bài', description: 'Tự động hóa soạn thảo tin bài truyền thông sự kiện, đối tác và đồ họa khảo sát.', icon: Newspaper, color: 'from-blue-700 to-indigo-600', allowed: canAccessView('news-posts') },
+      { mode: 'gmail-assistant' as ViewMode, title: 'Hộp thư AI', description: 'Nối Gmail cá nhân, tự động tóm tắt phân tích thư, nhắc việc và tạo bản nháp phản hồi.', icon: Mail, color: 'from-rose-500 to-red-600', allowed: canAccessView('gmail-assistant') },
       { mode: 'competition-landing' as ViewMode, title: 'Landing page', description: 'Tạo landing page từ mẫu, chỉnh sửa nội dung và công bố qua URL riêng.', icon: Presentation, color: 'from-[#001E40] to-[#0055DA]', allowed: canAccessView('competition-landing') },
     ].filter(tool => tool.allowed);
     return (
@@ -1072,6 +1077,28 @@ export default function App() {
     );
   }
 
+  if (viewMode === 'gmail-assistant' && !canAccessView('gmail-assistant')) return null;
+
+  if (viewMode === 'gmail-assistant') {
+    return (
+      <>
+        <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300">Đang nạp Hộp thư AI...</div>}>
+          <GmailAssistantCenter
+            idToken={idToken || ''}
+            userName={user.displayName}
+            userEmail={user.email}
+            userRole={userRole}
+            photoURL={user.photoURL}
+            onAccountClick={openAccount}
+            onLogout={handleLogout}
+            onNavSelect={id => setViewMode(id as ViewMode)}
+          />
+        </Suspense>
+        {loginModal}{profileModal}
+      </>
+    );
+  }
+
   if (viewMode === 'attendance' && isGuest) return null;
 
   if (viewMode === 'attendance') {
@@ -1277,6 +1304,8 @@ export default function App() {
       'communication-tools/weekly-report': 'weekly-report',
       'communication-tools/news-posts': 'news-posts',
       'news-posts': 'news-posts',
+      'communication-tools/gmail': 'gmail-assistant',
+      'gmail': 'gmail-assistant',
       'communication-tools/email-builder': 'email-builder',
       'communication-tools/signature-builder': 'signature-builder',
       'communication-tools/qr-generator': 'qr-generator',
