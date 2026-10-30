@@ -68,6 +68,7 @@ def gmail_status_view(request):
         "notify_new": conn.notify_new if conn else True,
         "morning_scan_enabled": conn.morning_scan_enabled if conn else True,
         "morning_time": conn.morning_time if conn else "08:00",
+        "superior_contacts": conn.superior_contacts if conn else [],
         "last_sync_at": conn.last_sync_at.isoformat() if conn and conn.last_sync_at else None,
         "allowed_domains": get_allowed_domains(),
     }
@@ -228,6 +229,11 @@ def update_settings_view(request):
         raw_time = str(data["morning_time"]).strip()
         if re.match(r"^\d{1,2}:\d{2}$", raw_time):
             conn.morning_time = raw_time
+    if "superior_contacts" in data:
+        raw_contacts = data["superior_contacts"]
+        if isinstance(raw_contacts, list):
+            clean_contacts = [str(c).strip() for c in raw_contacts if str(c).strip()]
+            conn.superior_contacts = clean_contacts
 
     conn.save()
     return Response({
@@ -235,6 +241,7 @@ def update_settings_view(request):
         "notify_new": conn.notify_new,
         "morning_scan_enabled": conn.morning_scan_enabled,
         "morning_time": conn.morning_time,
+        "superior_contacts": conn.superior_contacts,
     })
 
 
@@ -243,20 +250,50 @@ def update_settings_view(request):
 def list_digests_view(request):
     """
     List email digests with filtering and sorting:
-    - filter: 'needs_reply', 'new_today', 'all'
+    - tab/filter: 'all', 'needs_reply', 'cc', 'new_today', 'today', 'unhandled', 'handled'
+    - status: 'all', 'unhandled', 'handled', 'new', 'replied', 'ignored'
     - priority: 'high', 'normal', 'low'
     - search: keyword search in subject or sender
     """
     user = request.user
-    queryset = MailDigest.objects.filter(user=user)
+    base_queryset = MailDigest.objects.filter(user=user)
 
+    now_ict = timezone.now().astimezone(ICT_TZ)
+    start_of_today = now_ict.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(dt_timezone.utc)
+
+    # Compute tab counts for badges
+    counts = {
+        "all": base_queryset.count(),
+        "needs_reply": base_queryset.filter(needs_reply=True, status=MailDigest.STATUS_NEW).count(),
+        "cc": base_queryset.filter(recipient_role=MailDigest.RECIPIENT_ROLE_CC).count(),
+        "today": base_queryset.filter(received_at__gte=start_of_today).count(),
+        "unhandled": base_queryset.filter(status=MailDigest.STATUS_NEW).count(),
+        "handled": base_queryset.filter(status__in=[MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED]).count(),
+    }
+
+    queryset = base_queryset
+
+    # Tab / main filter
     filter_type = request.query_params.get("filter") or request.query_params.get("tab") or "all"
     if filter_type == "needs_reply":
         queryset = queryset.filter(needs_reply=True, status=MailDigest.STATUS_NEW)
+    elif filter_type == "cc":
+        queryset = queryset.filter(recipient_role=MailDigest.RECIPIENT_ROLE_CC)
     elif filter_type in ("new_today", "today"):
-        now_ict = timezone.now().astimezone(ICT_TZ)
-        start_of_today = now_ict.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(dt_timezone.utc)
         queryset = queryset.filter(received_at__gte=start_of_today)
+    elif filter_type == "unhandled":
+        queryset = queryset.filter(status=MailDigest.STATUS_NEW)
+    elif filter_type == "handled":
+        queryset = queryset.filter(status__in=[MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED])
+
+    # Status secondary filter
+    status_param = request.query_params.get("status")
+    if status_param == "unhandled":
+        queryset = queryset.filter(status=MailDigest.STATUS_NEW)
+    elif status_param == "handled":
+        queryset = queryset.filter(status__in=[MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED])
+    elif status_param in {MailDigest.STATUS_NEW, MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED}:
+        queryset = queryset.filter(status=status_param)
 
     priority = request.query_params.get("priority")
     if priority in {MailDigest.PRIORITY_HIGH, MailDigest.PRIORITY_NORMAL, MailDigest.PRIORITY_LOW}:
@@ -297,6 +334,9 @@ def list_digests_view(request):
             "sender_email": d.sender_email,
             "subject": d.subject,
             "received_at": d.received_at.isoformat(),
+            "recipient_role": d.recipient_role,
+            "addressed_by_name": d.addressed_by_name,
+            "match_reason": d.match_reason,
             "priority": d.priority,
             "needs_reply": d.needs_reply,
             "reply_by": d.reply_by,
@@ -310,6 +350,7 @@ def list_digests_view(request):
         "total": total,
         "page": page,
         "page_size": page_size,
+        "counts": counts,
         "results": results,
     })
 
@@ -404,10 +445,24 @@ def update_digest_status_view(request, digest_id):
 def draft_reply_ai_view(request, digest_id):
     """
     Queue AI drafting of response for an email digest.
+    Applies superior tone if sender matches superior contacts list.
     Returns queued MailJob ID or result if synchronous.
     """
     digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
     guidance = request.data.get("guidance", "").strip()
+
+    conn = GmailConnection.objects.filter(user=request.user).first()
+    is_superior = bool(request.data.get("is_superior", False))
+    if not is_superior and conn and conn.superior_contacts:
+        sender_lower = (digest.sender or "").lower()
+        sender_email_lower = (digest.sender_email or "").lower()
+        for contact in conn.superior_contacts:
+            c = str(contact).strip().lower()
+            if c and (c in sender_lower or c in sender_email_lower):
+                is_superior = True
+                break
+
+    user_name = (getattr(request.user, "name", "") or request.user.username or "").strip()
 
     try:
         job = enqueue_mail_job(
@@ -419,11 +474,96 @@ def draft_reply_ai_view(request, digest_id):
                 "sender": digest.sender,
                 "summary": digest.summary,
                 "guidance": guidance,
+                "user_name": user_name,
+                "is_superior": is_superior,
+                "actions": digest.actions or [],
             },
         )
         return Response({"job_id": job.id, "status": job.status})
     except ValueError as val_err:
         return Response({"error": str(val_err)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def toggle_action_view(request, digest_id):
+    """
+    Toggle completion status of a specific action item within a MailDigest.
+    Payload: {"action_index": 0, "completed": true|false}
+    """
+    digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
+    action_index = request.data.get("action_index")
+    if action_index is None:
+        return Response({"error": "Thiếu chỉ số công việc (action_index)."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        idx = int(action_index)
+    except ValueError:
+        return Response({"error": "action_index không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
+
+    actions = digest.actions or []
+    if idx < 0 or idx >= len(actions):
+        return Response({"error": f"Không tìm thấy công việc ở vị trí {idx}."}, status=status.HTTP_404_NOT_FOUND)
+
+    item = actions[idx]
+    if isinstance(item, str):
+        item = {
+            "type": "khac",
+            "title": item,
+            "deadline": "",
+            "required_preparations": [],
+            "priority": "normal",
+            "completed": False,
+        }
+
+    if "completed" in request.data:
+        item["completed"] = bool(request.data["completed"])
+    else:
+        item["completed"] = not bool(item.get("completed", False))
+
+    actions[idx] = item
+    digest.actions = actions
+    digest.save(update_fields=["actions", "updated_at"])
+
+    return Response({
+        "status": "updated",
+        "action_index": idx,
+        "completed": item["completed"],
+        "actions": digest.actions,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def analyze_digest_view(request, digest_id):
+    """
+    Manually trigger AI analysis for an unanalyzed email digest.
+    Fetches email body via GmailClient if not cached, then queues TYPE_SUMMARIZE job.
+    """
+    digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
+    conn = get_object_or_404(GmailConnection, user=request.user)
+
+    body_text = ""
+    try:
+        client = GmailClient.from_connection(conn)
+        msg_data = client.get_message(digest.message_id)
+        body_text = msg_data.get("body", "")
+    except Exception as exc:
+        logger.warning("Không thể đọc thân thư từ Gmail cho digest %s: %s", digest.id, exc)
+
+    job = enqueue_mail_job(
+        user=request.user,
+        job_type=MailJob.TYPE_SUMMARIZE,
+        payload={
+            "digest_id": digest.id,
+            "message_id": digest.message_id,
+            "sender": digest.sender,
+            "subject": digest.subject,
+            "date": digest.received_at.strftime("%d/%m/%Y %H:%M"),
+            "body": body_text,
+        },
+    )
+    return Response({"status": "queued", "job_id": job.id})
 
 
 @api_view(["POST"])

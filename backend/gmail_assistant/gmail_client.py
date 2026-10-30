@@ -209,6 +209,8 @@ class GmailClient:
         cleaned_body = clean_html_to_text(extracted_body)
 
         sender_raw = headers.get("from", "")
+        to_raw = headers.get("to", "")
+        cc_raw = headers.get("cc", "")
         subject_raw = headers.get("subject", "(Không có tiêu đề)")
         date_raw = headers.get("date", "")
 
@@ -224,6 +226,8 @@ class GmailClient:
             "headers": headers,
             "from_name": sender_name,
             "from_email": sender_email,
+            "to": to_raw,
+            "cc": cc_raw,
             "subject": subject_raw,
             "date": date_raw,
             "body": cleaned_body,

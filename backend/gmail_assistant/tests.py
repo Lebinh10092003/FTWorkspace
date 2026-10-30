@@ -17,7 +17,9 @@ from .ai_service import (
     build_draft_reply_prompt,
     build_summarize_prompt,
     enqueue_mail_job,
+    normalize_action_item,
     parse_ai_json,
+    process_mail_job,
     sanitize_ai_text,
 )
 from .gmail_client import GmailClient, clean_html_to_text
@@ -34,6 +36,8 @@ from .sync import (
     ICT_TZ,
     check_if_thread_unreplied,
     cleanup_old_digests,
+    detect_name_addressing,
+    extract_email_addresses,
     is_automated_or_ignored,
     run_morning_scan_for_user,
     sync_user_gmail,
@@ -620,3 +624,351 @@ class GmailOAuthCallbackEndpointTests(TestCase):
         domains = resp.data.get("allowed_domains", [])
         self.assertIn("fermat.vn", domains)
         self.assertIn("fermat.edu.vn", domains)
+
+
+class GmailClassificationAndWorkItemsTests(TestCase):
+    def setUp(self):
+        self.env_patcher = mock.patch.dict(os.environ, {"GMAIL_TOKEN_KEY": TEST_FERNET_KEY})
+        self.env_patcher.start()
+        self.addCleanup(self.env_patcher.stop)
+        self.client = APIClient()
+        self.user, _ = UserProfile.objects.get_or_create(
+            email="nhanvien.test@fermat.vn",
+            defaults={"name": "Lê Thị Bình", "role": "EMPLOYEE"},
+        )
+        self.client.force_authenticate(user=self.user)
+        self.conn, _ = GmailConnection.objects.get_or_create(
+            user=self.user,
+            defaults={
+                "email": "nhanvien.test@fermat.vn",
+                "encrypted_refresh_token": encrypt_token("mock_refresh_token"),
+                "scopes": "https://www.googleapis.com/auth/gmail.readonly",
+                "superior_contacts": ["sep.tong@fermat.vn", "Trần Trưởng Phòng"],
+            },
+        )
+
+    def test_detect_name_addressing_patterns(self):
+        """Test rule B: detecting various forms of name addressing (Vietnamese diacritics, abbreviations, titles)."""
+        full_name = "Lê Thị Bình"
+
+        # Direct addressing with honorifics
+        matched, token = detect_name_addressing("Chào chị Bình, nhờ chị kiểm tra giúp hợp đồng.", full_name)
+        self.assertTrue(matched)
+        self.assertIn("Bình", token)
+
+        # Informal addressing
+        matched, token = detect_name_addressing("Bình ơi gửi file cho anh trước 15h nhé.", full_name)
+        self.assertTrue(matched)
+        self.assertIn("Bình", token)
+
+        # Abbreviation initial + last name: "L.Bình" or "L. Bình"
+        matched, token = detect_name_addressing("Nhờ L.Bình phụ trách phần báo cáo tổng hợp.", full_name)
+        self.assertTrue(matched)
+        self.assertEqual(token, "L.Bình")
+
+        # Non-accented input
+        matched, token = detect_name_addressing("Gui chi Binh tai lieu tap huan", full_name)
+        self.assertTrue(matched)
+
+        # General text without addressing user
+        matched, token = detect_name_addressing("Kính gửi toàn thể các thầy cô giáo trong trường.", full_name)
+        self.assertFalse(matched)
+        self.assertEqual(token, "")
+
+    @mock.patch.object(GmailClient, "list_messages")
+    @mock.patch.object(GmailClient, "get_message")
+    def test_sync_recipient_role_and_needs_reply_rules(self, mock_get_msg, mock_list):
+        """
+        Verify:
+        - To direct => recipient_role='to', needs_reply=True
+        - CC only => recipient_role='cc', needs_reply=False
+        - CC but addressed by name => recipient_role='cc', addressed_by_name=True, needs_reply=True
+        """
+        mock_list.return_value = {
+            "messages": [
+                {"id": "msg_to_1", "threadId": "th_to_1"},
+                {"id": "msg_cc_2", "threadId": "th_cc_2"},
+                {"id": "msg_cc_addressed_3", "threadId": "th_cc_3"},
+            ]
+        }
+
+        def side_effect_get_message(msg_id):
+            if msg_id == "msg_to_1":
+                return {
+                    "id": "msg_to_1",
+                    "thread_id": "th_to_1",
+                    "from_name": "Đối Tác A",
+                    "from_email": "doitac@truongthcs.edu.vn",
+                    "to": "nhanvien.test@fermat.vn",
+                    "cc": "",
+                    "subject": "Yêu cầu báo giá thiết bị STEM",
+                    "date": "Wed, 30 Oct 2026 09:00:00 +0700",
+                    "body": "Kính gửi công ty, xin gửi báo giá trước ngày mai.",
+                    "snippet": "Kính gửi công ty, xin gửi báo giá...",
+                    "internal_date_ms": 1793325600000,
+                    "label_ids": ["INBOX"],
+                }
+            elif msg_id == "msg_cc_2":
+                return {
+                    "id": "msg_cc_2",
+                    "thread_id": "th_cc_2",
+                    "from_name": "Phòng Đào Tạo",
+                    "from_email": "daotao@fermat.vn",
+                    "to": "giamdoc@fermat.vn",
+                    "cc": "nhanvien.test@fermat.vn",
+                    "subject": "Thông báo lịch họp giao ban tuần",
+                    "date": "Wed, 30 Oct 2026 09:15:00 +0700",
+                    "body": "Kính gửi Ban Giám đốc, phòng xin gửi lịch họp tuần này.",
+                    "snippet": "Kính gửi Ban Giám đốc...",
+                    "internal_date_ms": 1793326500000,
+                    "label_ids": ["INBOX"],
+                }
+            else:
+                return {
+                    "id": "msg_cc_addressed_3",
+                    "thread_id": "th_cc_3",
+                    "from_name": "Phòng Nhân Sự",
+                    "from_email": "nhansu@fermat.vn",
+                    "to": "truongphong@fermat.vn",
+                    "cc": "nhanvien.test@fermat.vn",
+                    "subject": "Bổ sung danh sách tập huấn",
+                    "date": "Wed, 30 Oct 2026 09:30:00 +0700",
+                    "body": "Gửi anh, nhờ chị Bình gửi danh sách giảng viên trước 17h nhé.",
+                    "snippet": "Nhờ chị Bình gửi danh sách...",
+                    "internal_date_ms": 1793327400000,
+                    "label_ids": ["INBOX"],
+                }
+
+        mock_get_msg.side_effect = side_effect_get_message
+
+        res = sync_user_gmail(self.conn, max_fetch=10)
+        self.assertEqual(res["new_count"], 3)
+        self.assertEqual(res["needs_reply_count"], 2)
+
+        # Check msg_to_1: To direct -> needs_reply=True
+        d_to = MailDigest.objects.get(message_id="msg_to_1")
+        self.assertEqual(d_to.recipient_role, MailDigest.RECIPIENT_ROLE_TO)
+        self.assertFalse(d_to.addressed_by_name)
+        self.assertTrue(d_to.needs_reply)
+
+        # Check msg_cc_2: CC direct without name -> needs_reply=False
+        d_cc = MailDigest.objects.get(message_id="msg_cc_2")
+        self.assertEqual(d_cc.recipient_role, MailDigest.RECIPIENT_ROLE_CC)
+        self.assertFalse(d_cc.addressed_by_name)
+        self.assertFalse(d_cc.needs_reply)
+
+        # Check msg_cc_addressed_3: CC but addressed by name -> needs_reply=True
+        d_cc_addr = MailDigest.objects.get(message_id="msg_cc_addressed_3")
+        self.assertEqual(d_cc_addr.recipient_role, MailDigest.RECIPIENT_ROLE_CC)
+        self.assertTrue(d_cc_addr.addressed_by_name)
+        self.assertTrue(d_cc_addr.needs_reply)
+
+    @mock.patch("gmail_assistant.ai_service.execute_ai_command")
+    def test_ai_cannot_downgrade_to_or_addressed_mail(self, mock_execute):
+        """
+        Rule B guardrail: AI is not allowed to downgrade a To/addressed email to needs_reply=False.
+        """
+        digest = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_to_test_ai",
+            thread_id="th_to_test_ai",
+            sender="Đối Tác B <doitacb@test.vn>",
+            subject="Cần phản hồi khẩn cấp",
+            received_at=timezone.now(),
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            addressed_by_name=True,
+            needs_reply=True,
+            status=MailDigest.STATUS_NEW,
+        )
+
+        mock_execute.return_value = (
+            '{"priority": "low", "needs_reply": false, "reply_by": "", "summary": "Chỉ là thư test", "actions": []}'
+        )
+
+        job = enqueue_mail_job(
+            user=self.user,
+            job_type=MailJob.TYPE_SUMMARIZE,
+            payload={
+                "message_id": digest.message_id,
+                "sender": digest.sender,
+                "subject": digest.subject,
+                "body": "Nội dung thư...",
+            },
+        )
+        process_mail_job(job.id)
+
+        digest.refresh_from_db()
+        # Even though AI returned needs_reply=false, guardrail keeps needs_reply=True!
+        self.assertTrue(digest.needs_reply)
+        self.assertEqual(digest.summary, "Chỉ là thư test")
+
+    def test_list_digests_tabs_filters_and_counts(self):
+        """Test tab filtering (all, needs_reply, cc, today) and counts."""
+        now = timezone.now()
+        # 1. To needs_reply
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="m1",
+            thread_id="t1",
+            sender="Sender 1",
+            subject="Sub 1",
+            received_at=now,
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            needs_reply=True,
+            status=MailDigest.STATUS_NEW,
+        )
+        # 2. CC not needs_reply
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="m2",
+            thread_id="t2",
+            sender="Sender 2",
+            subject="Sub 2",
+            received_at=now,
+            recipient_role=MailDigest.RECIPIENT_ROLE_CC,
+            needs_reply=False,
+            status=MailDigest.STATUS_NEW,
+        )
+        # 3. CC with needs_reply
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="m3",
+            thread_id="t3",
+            sender="Sender 3",
+            subject="Sub 3",
+            received_at=now,
+            recipient_role=MailDigest.RECIPIENT_ROLE_CC,
+            addressed_by_name=True,
+            needs_reply=True,
+            status=MailDigest.STATUS_NEW,
+        )
+
+        # Tab: all
+        resp_all = self.client.get("/api/gmail/digests/?tab=all")
+        self.assertEqual(resp_all.status_code, 200)
+        self.assertEqual(resp_all.data["total"], 3)
+        counts = resp_all.data["counts"]
+        self.assertEqual(counts["all"], 3)
+        self.assertEqual(counts["needs_reply"], 2)
+        self.assertEqual(counts["cc"], 2)
+
+        # Tab: needs_reply
+        resp_nr = self.client.get("/api/gmail/digests/?tab=needs_reply")
+        self.assertEqual(resp_nr.status_code, 200)
+        self.assertEqual(resp_nr.data["total"], 2)
+
+        # Tab: cc
+        resp_cc = self.client.get("/api/gmail/digests/?tab=cc")
+        self.assertEqual(resp_cc.status_code, 200)
+        self.assertEqual(resp_cc.data["total"], 2)
+
+    def test_superior_contacts_and_draft_reply_persona(self):
+        """Test rule C: superior contacts configuration and polite employee persona."""
+        # 1. Update settings with superior contacts
+        resp_patch = self.client.patch(
+            "/api/gmail/settings/",
+            {"superior_contacts": ["giamdoc@fermat.vn", "Nguyễn Lãnh Đạo"]},
+            format="json",
+        )
+        self.assertEqual(resp_patch.status_code, 200)
+        self.assertIn("giamdoc@fermat.vn", resp_patch.data["superior_contacts"])
+
+        # 2. Check prompt construction with is_superior=True
+        prompt_sup = build_draft_reply_prompt(
+            digest_subject="Giao việc tuần",
+            sender="giamdoc@fermat.vn",
+            summary="Sếp giao chuẩn bị báo cáo dự án",
+            user_name="Lê Thị Bình",
+            is_superior=True,
+        )
+        self.assertIn("xưng 'em'", prompt_sup)
+        self.assertIn("Lê Thị Bình", prompt_sup)
+        self.assertNotIn("Fermat Tech", prompt_sup)
+        self.assertIn("TUYỆT ĐỐI KHÔNG nhân danh công ty", prompt_sup)
+
+        # 3. Check prompt construction with is_superior=False
+        prompt_normal = build_draft_reply_prompt(
+            digest_subject="Hỏi thăm tài liệu",
+            sender="doitac@truong.edu.vn",
+            summary="Đối tác xin tài liệu",
+            user_name="Lê Thị Bình",
+            is_superior=False,
+        )
+        self.assertIn("Lê Thị Bình", prompt_normal)
+        self.assertNotIn("Fermat Tech", prompt_normal)
+
+    def test_action_items_normalization_and_toggle_endpoint(self):
+        """Test rule E: action item normalization, schema validation, and toggle-action endpoint."""
+        # Test normalization helper
+        raw_str = "Soạn thảo công văn gửi Sở GD"
+        item1 = normalize_action_item(raw_str, default_deadline="17h hôm nay", default_priority="high")
+        self.assertEqual(item1["type"], "khac")
+        self.assertEqual(item1["title"], raw_str)
+        self.assertEqual(item1["deadline"], "17h hôm nay")
+        self.assertFalse(item1["completed"])
+
+        raw_dict = {
+            "type": "gui_file/bao_cao",
+            "title": "Gửi file kế hoạch ngân sách",
+            "deadline": "Trước thứ 5",
+            "required_preparations": ["Bảng excel tính chi phí", "Tờ trình"],
+            "priority": "high",
+        }
+        item2 = normalize_action_item(raw_dict)
+        self.assertEqual(item2["type"], "gui_file_bao_cao")
+        self.assertEqual(len(item2["required_preparations"]), 2)
+        self.assertFalse(item2["completed"])
+
+        # Test toggle-action API endpoint
+        digest = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_act_1",
+            thread_id="th_act_1",
+            sender="Sender X",
+            subject="Việc cần làm",
+            received_at=timezone.now(),
+            actions=[item1, item2],
+        )
+
+        resp_toggle = self.client.post(
+            f"/api/gmail/digests/{digest.id}/toggle-action/",
+            {"action_index": 1, "completed": True},
+            format="json",
+        )
+        self.assertEqual(resp_toggle.status_code, 200)
+        self.assertTrue(resp_toggle.data["completed"])
+        digest.refresh_from_db()
+        self.assertTrue(digest.actions[1]["completed"])
+
+        # Toggle back (without completed param, should flip to False)
+        resp_toggle_back = self.client.post(
+            f"/api/gmail/digests/{digest.id}/toggle-action/",
+            {"action_index": 1},
+            format="json",
+        )
+        self.assertEqual(resp_toggle_back.status_code, 200)
+        self.assertFalse(resp_toggle_back.data["completed"])
+
+    @mock.patch.object(GmailClient, "get_message")
+    def test_analyze_digest_endpoint(self, mock_get_msg):
+        """Test rule D: manually trigger analysis for unanalyzed digest."""
+        mock_get_msg.return_value = {
+            "id": "msg_unanalyzed_1",
+            "body": "Nội dung email chi tiết...",
+        }
+        digest = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_unanalyzed_1",
+            thread_id="th_unanalyzed_1",
+            sender="Sender Y",
+            subject="Chưa phân tích",
+            received_at=timezone.now(),
+        )
+
+        resp = self.client.post(f"/api/gmail/digests/{digest.id}/analyze/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["status"], "queued")
+        job_id = resp.data["job_id"]
+        job = MailJob.objects.get(id=job_id)
+        self.assertEqual(job.job_type, MailJob.TYPE_SUMMARIZE)
+        self.assertEqual(job.payload["message_id"], "msg_unanalyzed_1")
