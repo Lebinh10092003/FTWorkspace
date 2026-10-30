@@ -24,7 +24,9 @@ import {
   HelpCircle,
   Calendar,
   Layers,
-  ArrowRight
+  ArrowRight,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import ModuleShellHeader from '../layout/ModuleShellHeader';
 import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
@@ -88,6 +90,11 @@ export default function GmailAssistantCenter({
   // Tác vụ trên thư (phân tích, toggle action)
   const [analyzingDigestId, setAnalyzingDigestId] = useState<number | null>(null);
   const [togglingAction, setTogglingAction] = useState<{ digestId: number; actionIndex: number } | null>(null);
+  const [expandedTimelineThreadIds, setExpandedTimelineThreadIds] = useState<Record<number, boolean>>({});
+
+  const toggleTimeline = (digestId: number) => {
+    setExpandedTimelineThreadIds(prev => ({ ...prev, [digestId]: !prev[digestId] }));
+  };
 
   // Xem chi tiết & Soạn phản hồi
   const [selectedDigest, setSelectedDigest] = useState<MailDigestItem | null>(null);
@@ -687,7 +694,9 @@ export default function GmailAssistantCenter({
         body: JSON.stringify({
           thread_id: selectedDigest.thread_id,
           to_email: selectedDigest.sender,
-          subject: selectedDigest.subject.startsWith('Re:') ? selectedDigest.subject : `Re: ${selectedDigest.subject}`,
+          subject: selectedDigest.clean_subject
+            ? `Re: ${selectedDigest.clean_subject}`
+            : (selectedDigest.subject.startsWith('Re:') ? selectedDigest.subject : `Re: ${selectedDigest.subject}`),
           body_text: draftContent.trim(),
           digest_id: selectedDigest.id,
         }),
@@ -843,9 +852,16 @@ export default function GmailAssistantCenter({
   };
 
   // Mở thread trong Gmail
-  const openGmailThread = (threadId: string) => {
-    const url = `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(threadId)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+  const openGmailThread = (threadId?: string, subject?: string) => {
+    if (threadId) {
+      const url = `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(threadId)}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else if (subject) {
+      const url = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(subject)}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      window.open('https://mail.google.com/mail/u/0/#inbox', '_blank', 'noopener,noreferrer');
+    }
   };
 
   // Helper hiển thị độ ưu tiên
@@ -1459,6 +1475,14 @@ export default function GmailAssistantCenter({
                             <div className="flex items-center gap-1.5 flex-wrap mb-2">
                               {renderPriorityBadge(item.priority)}
 
+                              {/* Số thư trong luồng */}
+                              {(item.messages_count || 1) > 1 && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 px-2.5 py-0.5 text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                                  <Layers className="h-3 w-3" />
+                                  <span>Luồng {item.messages_count} thư</span>
+                                </span>
+                              )}
+
                               {/* Vai trò người nhận */}
                               {item.recipient_role === 'to' && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:text-blue-300">
@@ -1528,14 +1552,31 @@ export default function GmailAssistantCenter({
                               )}
                             </div>
 
-                            {/* Tiêu đề & Người gửi */}
+                            {/* Tiêu đề & Người gửi / Người tham gia */}
                             <h4 className="text-base font-extrabold text-slate-900 dark:text-slate-100">
-                              {item.subject || '(Không có tiêu đề)'}
+                              {item.clean_subject || item.subject || '(Không có tiêu đề)'}
                             </h4>
-                            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                              Từ: <span className="font-semibold text-slate-700 dark:text-slate-300">{item.sender}</span>{' '}
-                              • {new Date(item.received_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
-                            </p>
+                            {Array.isArray(item.participants) && item.participants.length > 1 ? (
+                              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                                Tham gia ({item.participants.length}):{' '}
+                                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                  {item.participants.map(p => p.name || p.email).join(', ')}
+                                </span>{' '}
+                                • Mới nhất:{' '}
+                                {new Date(item.received_at).toLocaleString('vi-VN', {
+                                  timeZone: 'Asia/Ho_Chi_Minh',
+                                  month: 'numeric',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </p>
+                            ) : (
+                              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                                Từ: <span className="font-semibold text-slate-700 dark:text-slate-300">{item.sender}</span>{' '}
+                                • {new Date(item.received_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
+                              </p>
+                            )}
 
                             {/* Tóm tắt nội dung */}
                             {item.summary && item.summary.trim() ? (
@@ -1572,6 +1613,83 @@ export default function GmailAssistantCenter({
                                   <Settings className="h-3.5 w-3.5" />
                                   <span>Mở Cài đặt</span>
                                 </button>
+                              </div>
+                            )}
+
+                            {/* Nút xem / thu gọn dòng thời gian luồng */}
+                            {Array.isArray(item.messages) && item.messages.length > 1 && (
+                              <div className="mt-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleTimeline(item.id)}
+                                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 cursor-pointer"
+                                >
+                                  {expandedTimelineThreadIds[item.id] ? (
+                                    <>
+                                      <ChevronUp className="h-3.5 w-3.5" />
+                                      <span>Thu gọn diễn biến luồng ({item.messages.length} thư)</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChevronDown className="h-3.5 w-3.5" />
+                                      <span>Xem diễn biến luồng ({item.messages.length} thư)</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                {expandedTimelineThreadIds[item.id] && (
+                                  <div className="mt-2 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 p-3 space-y-2.5">
+                                    <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                                      <span>Dòng thời gian các thư trong luồng:</span>
+                                      <span className="font-normal text-slate-400">Từ cũ đến mới nhất</span>
+                                    </div>
+                                    <div className="space-y-2.5 border-l-2 border-blue-200 dark:border-blue-900/60 ml-2 pl-3">
+                                      {item.messages.map((msg, mIdx) => (
+                                        <div key={msg.id || mIdx} className="relative">
+                                          <div className="absolute -left-[19px] top-1.5 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-white dark:ring-slate-900" />
+                                          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                              {msg.is_from_me ? 'Bạn' : (msg.sender_name || msg.sender)}
+                                            </span>
+                                            {msg.is_from_me && (
+                                              <span className="rounded-md bg-emerald-100 dark:bg-emerald-950/80 px-1.5 py-0.2 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                                Bạn đã gửi
+                                              </span>
+                                            )}
+                                            {!msg.is_from_me && msg.recipient_role === 'to' && (
+                                              <span className="rounded-md bg-blue-100 dark:bg-blue-950/80 px-1.5 py-0.2 text-[10px] font-semibold text-blue-700 dark:text-blue-300">
+                                                To
+                                              </span>
+                                            )}
+                                            {!msg.is_from_me && msg.recipient_role === 'cc' && (
+                                              <span className="rounded-md bg-slate-200 dark:bg-slate-800 px-1.5 py-0.2 text-[10px] text-slate-600 dark:text-slate-400">
+                                                CC
+                                              </span>
+                                            )}
+                                            {msg.addressed_by_name && (
+                                              <span className="rounded-md bg-purple-100 dark:bg-purple-950/80 px-1.5 py-0.2 text-[10px] font-bold text-purple-700 dark:text-purple-300">
+                                                Gọi tên bạn
+                                              </span>
+                                            )}
+                                            <span className="text-[11px] text-slate-400 ml-auto">
+                                              {new Date(msg.received_at).toLocaleString('vi-VN', {
+                                                month: 'numeric',
+                                                day: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                              })}
+                                            </span>
+                                          </div>
+                                          {msg.snippet && (
+                                            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 leading-relaxed italic">
+                                              &ldquo;{msg.snippet}&rdquo;
+                                            </p>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
 
@@ -1765,7 +1883,7 @@ export default function GmailAssistantCenter({
                     Soạn phản hồi thư với AI
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-md">
-                    Trả lời: {selectedDigest.subject}
+                    Trả lời: {selectedDigest.clean_subject ? `Re: ${selectedDigest.clean_subject}` : selectedDigest.subject}
                   </p>
                 </div>
               </div>
@@ -1782,8 +1900,16 @@ export default function GmailAssistantCenter({
               {/* Thông tin thư gốc & Tóm tắt */}
               <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-4 text-xs space-y-2">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
-                  <span className="text-slate-500">Người gửi:</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">{selectedDigest.sender}</span>
+                  <span className="text-slate-500">
+                    {Array.isArray(selectedDigest.participants) && selectedDigest.participants.length > 1
+                      ? `Tham gia (${selectedDigest.participants.length}):`
+                      : 'Người gửi:'}
+                  </span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {Array.isArray(selectedDigest.participants) && selectedDigest.participants.length > 1
+                      ? selectedDigest.participants.map(p => p.name || p.email).join(', ')
+                      : selectedDigest.sender}
+                  </span>
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">

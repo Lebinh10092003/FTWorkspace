@@ -263,6 +263,7 @@ def sync_user_gmail(connection: GmailConnection, max_fetch: int = 20) -> Dict[st
                 sender=from_name or sender_email,
                 sender_email=sender_email,
                 subject=subject,
+                snippet=msg_data.get("snippet", "")[:500],
                 received_at=received_at,
                 recipient_role=recipient_role,
                 addressed_by_name=addressed_by_name,
@@ -273,6 +274,14 @@ def sync_user_gmail(connection: GmailConnection, max_fetch: int = 20) -> Dict[st
                 is_from_me=is_from_me,
             )
             new_count += 1
+
+            # Nếu thư do chính người dùng gửi trong luồng => các thư trước đó trong luồng đã được trả lời
+            if is_from_me and thread_id:
+                MailDigest.objects.filter(
+                    user=connection.user,
+                    thread_id=thread_id,
+                    received_at__lt=received_at,
+                ).update(needs_reply=False, status=MailDigest.STATUS_REPLIED)
 
             # If user has opted in for AI analysis, enqueue summarization job
             if connection.ai_enabled and not is_from_me and not is_automated:

@@ -285,12 +285,86 @@ MailDigest.objects.create(
     needs_reply=True,
     reply_by='Trước 12h ngày mai',
     summary='Giám đốc giao việc: Nhờ Tiến rà soát lại phần thí nghiệm Vật lý khối 7 trước khi bàn giao.',
+    snippet='Nhờ Tiến rà soát lại toàn bộ thí nghiệm bài 4 và 5 trước 12h trưa mai giúp anh nhé.',
     actions=[
       {
         'type': 'sua_tai_lieu',
         'title': 'Rà soát bài thí nghiệm Vật lý khối 7',
         'deadline': 'Trước 12h ngày mai',
         'required_preparations': ['File Word giáo trình bài 4 và 5'],
+        'priority': 'high',
+        'completed': False
+      }
+    ],
+    status='new'
+)
+
+# 4. Luồng 3 thư trao đổi (Thread gộp thẻ)
+from datetime import timedelta
+now = datetime.now(timezone.utc)
+t_id = 'thread-019-stem-robotics'
+
+# Thư 1 trong luồng (cũ nhất)
+MailDigest.objects.create(
+    user=p,
+    message_id='msg-thread-01',
+    thread_id=t_id,
+    sender='Trưởng Khoa STEM <truongkhoa@stem-hanoi.edu.vn>',
+    sender_email='truongkhoa@stem-hanoi.edu.vn',
+    subject='V/v Triển khai chương trình tập huấn Robotics và STEM 2026',
+    received_at=now - timedelta(hours=3),
+    recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+    addressed_by_name=False,
+    match_reason='Gửi trực tiếp (To)',
+    priority='normal',
+    needs_reply=False,
+    snippet='Kính gửi quý công ty Fermat, nhà trường dự kiến tổ chức tập huấn robotics cho giáo viên vào tuần tới.',
+    summary='Nhà trường đề xuất phối hợp tập huấn robotics.',
+    status='replied'
+)
+
+# Thư 2 trong luồng (chính người dùng trả lời)
+MailDigest.objects.create(
+    user=p,
+    message_id='msg-thread-02',
+    thread_id=t_id,
+    sender='Nguyễn Văn Tiến <tien@fermat.vn>',
+    sender_email='tien@fermat.vn',
+    is_from_me=True,
+    subject='Re: V/v Triển khai chương trình tập huấn Robotics và STEM 2026',
+    received_at=now - timedelta(hours=2),
+    recipient_role=MailDigest.RECIPIENT_ROLE_OTHER,
+    addressed_by_name=False,
+    priority='normal',
+    needs_reply=False,
+    snippet='Chào thầy, Fermat rất hân hạnh đồng hành. Em xin gửi dự thảo khung chương trình tập huấn để thầy xem qua.',
+    summary='Tiến đã phản hồi gửi khung chương trình.',
+    status='replied'
+)
+
+# Thư 3 trong luồng (đối tác chốt lịch và yêu cầu file) -> Cần phản hồi
+MailDigest.objects.create(
+    user=p,
+    message_id='msg-thread-03',
+    thread_id=t_id,
+    sender='Trưởng Khoa STEM <truongkhoa@stem-hanoi.edu.vn>',
+    sender_email='truongkhoa@stem-hanoi.edu.vn',
+    subject='Re: Re: V/v Triển khai chương trình tập huấn Robotics và STEM 2026',
+    received_at=now - timedelta(minutes=15),
+    recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+    addressed_by_name=True,
+    match_reason='Gọi tên trong thư (Tiến)',
+    priority='high',
+    needs_reply=True,
+    reply_by='Trước 17h hôm nay',
+    snippet='Cảm ơn Tiến nhé! Khung chương trình rất chuẩn. Nhờ Tiến gửi danh sách giáo cụ và bản mềm bài giảng trước 17h hôm nay để trường in ấn.',
+    summary='Trưởng khoa chốt khung chương trình; yêu cầu gửi danh sách giáo cụ và bản mềm bài giảng trước 17h hôm nay.',
+    actions=[
+      {
+        'type': 'gui_file_bao_cao',
+        'title': 'Gửi danh sách giáo cụ và bản mềm bài giảng Robotics',
+        'deadline': 'Trước 17h hôm nay',
+        'required_preparations': ['File slide bài giảng PDF', 'Bảng kê thiết bị linh kiện'],
         'priority': 'high',
         'completed': False
       }
@@ -447,6 +521,14 @@ print('[Seed] Đã tạo thành công dữ liệu mẫu 019.')
       }
     }
 
+    // Mở rộng dòng thời gian luồng thư (Part G)
+    const btnToggleTimeline = page.locator('button:has-text("Xem diễn biến luồng")').first();
+    if (await btnToggleTimeline.isVisible()) {
+      await btnToggleTimeline.click();
+      await page.waitForTimeout(800);
+      await saveScreenshots(page, '019-desktop-08-thread-expanded-timeline');
+    }
+
     // 2. Mobile View (390px)
     console.log('[Mobile] Chụp màn hình mobile 390px...');
     await page.setViewportSize({ width: 390, height: 844 });
@@ -465,6 +547,14 @@ print('[Seed] Đã tạo thành công dữ liệu mẫu 019.')
         await btnCancelMobile.click();
       }
       await page.waitForTimeout(500);
+    }
+
+    // Mở rộng dòng thời gian trên mobile (Part G)
+    const btnMobileTimeline = page.locator('button:has-text("Xem diễn biến luồng")').first();
+    if (await btnMobileTimeline.isVisible()) {
+      await btnMobileTimeline.click();
+      await page.waitForTimeout(800);
+      await saveScreenshots(page, '019-mobile-03-thread-expanded-timeline');
     }
 
     console.log('=== HOÀN TẤT E2E TEST VÀ CHỤP ẢNH MÀN HÌNH THÀNH CÔNG ===');

@@ -71,6 +71,7 @@ class MailDigest(models.Model):
     sender = models.CharField(max_length=255)
     sender_email = models.CharField(max_length=255, blank=True)
     subject = models.CharField(max_length=500)
+    snippet = models.CharField(max_length=500, blank=True)
     received_at = models.DateTimeField(db_index=True)
 
     recipient_role = models.CharField(

@@ -30,6 +30,27 @@ export type ScheduleItemLink = {
   created_at?: string;
 };
 
+export type ThreadTimelineMessage = {
+  id: number;
+  message_id: string;
+  sender: string;
+  sender_email?: string;
+  sender_name?: string;
+  received_at: string;
+  recipient_role?: string;
+  addressed_by_name?: boolean;
+  is_from_me?: boolean;
+  snippet?: string;
+  summary?: string;
+  needs_reply?: boolean;
+  status?: string;
+};
+
+export type ThreadParticipant = {
+  email: string;
+  name: string;
+};
+
 export type MailDigestItem = {
   id: number;
   message_id: string;
@@ -37,6 +58,10 @@ export type MailDigestItem = {
   sender: string;
   sender_email?: string;
   subject: string;
+  clean_subject?: string;
+  messages_count?: number;
+  participants?: ThreadParticipant[];
+  messages?: ThreadTimelineMessage[];
   received_at: string;
   recipient_role?: 'to' | 'cc' | 'other';
   addressed_by_name?: boolean;

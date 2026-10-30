@@ -16,7 +16,7 @@ import urllib.parse
 import zoneinfo
 
 from django.db import transaction
-from django.db.models import Case, IntegerField, Max, Q, Value, When
+from django.db.models import Case, F, IntegerField, Max, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_time
@@ -42,6 +42,7 @@ from .security import (
     verify_oauth_state,
 )
 from .sync import ICT_TZ, sync_user_gmail
+from .thread_service import clean_subject, group_digests_into_threads
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +249,8 @@ def update_settings_view(request):
 @permission_classes([IsWorkspaceAuthenticated])
 def list_digests_view(request):
     """
-    List email digests with filtering and sorting:
+    List email thread digests with filtering and sorting:
+    Groups messages sharing the same thread_id (or subject) into a single thread card.
     - tab/filter: 'all', 'needs_reply', 'cc', 'new_today', 'today', 'unhandled', 'handled'
     - status: 'all', 'unhandled', 'handled', 'new', 'replied', 'ignored'
     - priority: 'high', 'normal', 'low'
@@ -260,57 +262,64 @@ def list_digests_view(request):
     now_ict = timezone.now().astimezone(ICT_TZ)
     start_of_today = now_ict.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(dt_timezone.utc)
 
-    # Compute tab counts for badges
+    # Group all digests for user into unified thread cards
+    all_threads = group_digests_into_threads(base_queryset, user_email=user.email or "")
+
+    # Compute tab counts for badges based on threads
     counts = {
-        "all": base_queryset.count(),
-        "needs_reply": base_queryset.filter(needs_reply=True, status=MailDigest.STATUS_NEW).count(),
-        "cc": base_queryset.filter(recipient_role=MailDigest.RECIPIENT_ROLE_CC).count(),
-        "today": base_queryset.filter(received_at__gte=start_of_today).count(),
-        "unhandled": base_queryset.filter(status=MailDigest.STATUS_NEW).count(),
-        "handled": base_queryset.filter(status__in=[MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED]).count(),
+        "all": len(all_threads),
+        "needs_reply": len([t for t in all_threads if t["needs_reply"] and t["status"] == MailDigest.STATUS_NEW]),
+        "cc": len([t for t in all_threads if t["recipient_role"] == MailDigest.RECIPIENT_ROLE_CC]),
+        "today": len([t for t in all_threads if t["received_at_dt"] >= start_of_today]),
+        "unhandled": len([t for t in all_threads if t["status"] == MailDigest.STATUS_NEW]),
+        "handled": len([t for t in all_threads if t["status"] in (MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED)]),
     }
 
-    queryset = base_queryset
+    filtered = all_threads
 
     # Tab / main filter
     filter_type = request.query_params.get("filter") or request.query_params.get("tab") or "all"
     if filter_type == "needs_reply":
-        queryset = queryset.filter(needs_reply=True, status=MailDigest.STATUS_NEW)
+        filtered = [t for t in filtered if t["needs_reply"] and t["status"] == MailDigest.STATUS_NEW]
     elif filter_type == "cc":
-        queryset = queryset.filter(recipient_role=MailDigest.RECIPIENT_ROLE_CC)
+        filtered = [t for t in filtered if t["recipient_role"] == MailDigest.RECIPIENT_ROLE_CC]
     elif filter_type in ("new_today", "today"):
-        queryset = queryset.filter(received_at__gte=start_of_today)
+        filtered = [t for t in filtered if t["received_at_dt"] >= start_of_today]
     elif filter_type == "unhandled":
-        queryset = queryset.filter(status=MailDigest.STATUS_NEW)
+        filtered = [t for t in filtered if t["status"] == MailDigest.STATUS_NEW]
     elif filter_type == "handled":
-        queryset = queryset.filter(status__in=[MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED])
+        filtered = [t for t in filtered if t["status"] in (MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED)]
 
     # Status secondary filter
     status_param = request.query_params.get("status")
     if status_param == "unhandled":
-        queryset = queryset.filter(status=MailDigest.STATUS_NEW)
+        filtered = [t for t in filtered if t["status"] == MailDigest.STATUS_NEW]
     elif status_param == "handled":
-        queryset = queryset.filter(status__in=[MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED])
+        filtered = [t for t in filtered if t["status"] in (MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED)]
     elif status_param in {MailDigest.STATUS_NEW, MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED}:
-        queryset = queryset.filter(status=status_param)
+        filtered = [t for t in filtered if t["status"] == status_param]
 
-    priority = request.query_params.get("priority")
-    if priority in {MailDigest.PRIORITY_HIGH, MailDigest.PRIORITY_NORMAL, MailDigest.PRIORITY_LOW}:
-        queryset = queryset.filter(priority=priority)
+    priority_param = request.query_params.get("priority")
+    if priority_param in {MailDigest.PRIORITY_HIGH, MailDigest.PRIORITY_NORMAL, MailDigest.PRIORITY_LOW}:
+        filtered = [t for t in filtered if t["priority"] == priority_param]
 
-    search = request.query_params.get("search", "").strip()
+    search = request.query_params.get("search", "").strip().lower()
     if search:
-        queryset = queryset.filter(Q(subject__icontains=search) | Q(sender__icontains=search))
+        def matches_search(t):
+            if search in t["subject"].lower() or search in t["clean_subject"].lower() or search in t["sender"].lower():
+                return True
+            for m in t.get("messages", []):
+                if search in m.get("sender", "").lower() or search in m.get("sender_email", "").lower() or search in m.get("snippet", "").lower():
+                    return True
+            return False
+        filtered = [t for t in filtered if matches_search(t)]
 
-    # Priority sorting: high (1) -> normal (2) -> low (3), then received_at descending
-    queryset = queryset.annotate(
-        priority_rank=Case(
-            When(priority=MailDigest.PRIORITY_HIGH, then=Value(1)),
-            When(priority=MailDigest.PRIORITY_NORMAL, then=Value(2)),
-            default=Value(3),
-            output_field=IntegerField(),
-        )
-    ).order_by("priority_rank", "-received_at")
+    # Sorting: High priority (1) -> Normal (2) -> Low (3), then received_at_dt descending
+    def sort_key(t):
+        pr = 1 if t["priority"] == MailDigest.PRIORITY_HIGH else (2 if t["priority"] == MailDigest.PRIORITY_NORMAL else 3)
+        return (pr, -t["received_at_dt"].timestamp())
+
+    filtered.sort(key=sort_key)
 
     # Pagination
     try:
@@ -319,32 +328,15 @@ def list_digests_view(request):
     except ValueError:
         page, page_size = 1, 20
 
-    total = queryset.count()
+    total = len(filtered)
     start_idx = (page - 1) * page_size
-    items = queryset[start_idx : start_idx + page_size]
+    page_items = filtered[start_idx : start_idx + page_size]
 
     results = []
-    for d in items:
-        results.append({
-            "id": d.id,
-            "message_id": d.message_id,
-            "thread_id": d.thread_id,
-            "sender": d.sender,
-            "sender_email": d.sender_email,
-            "subject": d.subject,
-            "received_at": d.received_at.isoformat(),
-            "recipient_role": d.recipient_role,
-            "addressed_by_name": d.addressed_by_name,
-            "match_reason": d.match_reason,
-            "priority": d.priority,
-            "needs_reply": d.needs_reply,
-            "reply_by": d.reply_by,
-            "summary": d.summary,
-            "actions": d.actions,
-            "schedule_items": d.schedule_items or [],
-            "status": d.status,
-            "is_from_me": d.is_from_me,
-        })
+    for t in page_items:
+        clean_item = dict(t)
+        clean_item.pop("received_at_dt", None)
+        results.append(clean_item)
 
     return Response({
         "total": total,
@@ -360,10 +352,11 @@ def list_digests_view(request):
 def morning_digest_view(request):
     """
     Provide aggregated statistics and unreplied list for the morning card:
+    Grouped by thread:
     - new_past_day count (24h)
     - unreplied_week count
     - high_priority_unreplied count
-    - top unreplied digests
+    - top unreplied threads
     """
     user = request.user
     now_utc = timezone.now()
@@ -373,42 +366,41 @@ def morning_digest_view(request):
     week_start_dt = (now_ict - timedelta(days=now_ict.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     week_start_utc = week_start_dt.astimezone(dt_timezone.utc)
 
-    new_past_day = MailDigest.objects.filter(
-        user=user,
-        received_at__gte=past_24h,
-        is_from_me=False,
-    ).count()
+    base_queryset = MailDigest.objects.filter(user=user)
+    all_threads = group_digests_into_threads(base_queryset, user_email=user.email or "")
 
-    unreplied_qs = MailDigest.objects.filter(
-        user=user,
-        received_at__gte=week_start_utc,
-        needs_reply=True,
-        status=MailDigest.STATUS_NEW,
-        is_from_me=False,
+    new_past_day = len([t for t in all_threads if t["received_at_dt"] >= past_24h and not t["is_from_me"]])
+
+    unreplied_threads = [
+        t for t in all_threads
+        if t["received_at_dt"] >= week_start_utc
+        and t["needs_reply"]
+        and t["status"] == MailDigest.STATUS_NEW
+        and not t["is_from_me"]
+    ]
+
+    unreplied_threads.sort(
+        key=lambda t: (0 if t["priority"] == MailDigest.PRIORITY_HIGH else 1, -t["received_at_dt"].timestamp())
     )
-    unreplied_count = unreplied_qs.count()
-    high_priority_count = unreplied_qs.filter(priority=MailDigest.PRIORITY_HIGH).count()
+
+    unreplied_count = len(unreplied_threads)
+    high_priority_count = len([t for t in unreplied_threads if t["priority"] == MailDigest.PRIORITY_HIGH])
 
     top_unreplied = [
         {
-            "id": d.id,
-            "thread_id": d.thread_id,
-            "sender": d.sender,
-            "subject": d.subject,
-            "date": d.received_at.isoformat(),
-            "received_at": d.received_at.isoformat(),
-            "priority": d.priority,
-            "reply_by": d.reply_by,
-            "summary": d.summary,
+            "id": t["id"],
+            "thread_id": t["thread_id"],
+            "sender": t["sender"],
+            "subject": t["subject"],
+            "clean_subject": t["clean_subject"],
+            "messages_count": t["messages_count"],
+            "date": t["received_at"],
+            "received_at": t["received_at"],
+            "priority": t["priority"],
+            "reply_by": t["reply_by"],
+            "summary": t["summary"],
         }
-        for d in unreplied_qs.order_by(
-            Case(
-                When(priority=MailDigest.PRIORITY_HIGH, then=Value(1)),
-                default=Value(2),
-                output_field=IntegerField(),
-            ),
-            "-received_at",
-        )[:10]
+        for t in unreplied_threads[:10]
     ]
 
     return Response({
@@ -423,19 +415,36 @@ def morning_digest_view(request):
     })
 
 
-@api_view(["POST"])
+@api_view(["POST", "PATCH"])
 @permission_classes([IsWorkspaceAuthenticated])
 def update_digest_status_view(request, digest_id):
-    """Update status of an email digest (new, replied, ignored)."""
+    """
+    Update status of an email digest and all other messages in the same thread.
+    Applies handled/ignored status to the entire thread.
+    """
     digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
     new_status = request.data.get("status")
 
     if new_status in {MailDigest.STATUS_NEW, MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED}:
-        digest.status = new_status
-        if new_status in {MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED}:
-            digest.needs_reply = False
-        digest.save(update_fields=["status", "needs_reply", "updated_at"])
-        return Response({"status": "updated", "digest_status": digest.status})
+        if digest.thread_id:
+            thread_qs = MailDigest.objects.filter(user=request.user, thread_id=digest.thread_id)
+        else:
+            clean_s = clean_subject(digest.subject)
+            thread_qs = MailDigest.objects.filter(user=request.user, subject__icontains=clean_s)
+
+        updated_count = thread_qs.update(
+            status=new_status,
+            needs_reply=False if new_status in {MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED} else F("needs_reply"),
+            updated_at=timezone.now(),
+        )
+        return Response({
+            "status": "updated",
+            "digest_status": new_status,
+            "thread_id": digest.thread_id,
+            "affected_count": updated_count,
+        })
+
+    return Response({"error": "Trạng thái không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
 
     return Response({"error": "Trạng thái không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -539,6 +548,7 @@ def analyze_digest_view(request, digest_id):
     """
     Manually trigger AI analysis for an unanalyzed email digest.
     Fetches email body via GmailClient if not cached, then queues TYPE_SUMMARIZE job.
+    Includes thread history if other messages exist in the thread.
     """
     digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
     conn = get_object_or_404(GmailConnection, user=request.user)
@@ -551,16 +561,31 @@ def analyze_digest_view(request, digest_id):
     except Exception as exc:
         logger.warning("Không thể đọc thân thư từ Gmail cho digest %s: %s", digest.id, exc)
 
+    thread_history = []
+    if digest.thread_id:
+        prev_digests = MailDigest.objects.filter(
+            user=request.user,
+            thread_id=digest.thread_id,
+        ).exclude(id=digest.id).order_by("received_at")
+        for pd in prev_digests:
+            thread_history.append({
+                "sender": pd.sender,
+                "date": pd.received_at.strftime("%d/%m/%Y %H:%M"),
+                "summary": pd.summary or pd.snippet or pd.subject,
+            })
+
     job = enqueue_mail_job(
         user=request.user,
         job_type=MailJob.TYPE_SUMMARIZE,
         payload={
             "digest_id": digest.id,
             "message_id": digest.message_id,
+            "thread_id": digest.thread_id,
             "sender": digest.sender,
             "subject": digest.subject,
             "date": digest.received_at.strftime("%d/%m/%Y %H:%M"),
             "body": body_text,
+            "thread_history": thread_history,
         },
     )
     return Response({"status": "queued", "job_id": job.id})

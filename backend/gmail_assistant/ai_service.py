@@ -65,12 +65,25 @@ def build_summarize_prompt(
     subject: str,
     date_str: str,
     body_text: str,
+    thread_history: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """
     Construct safe summarization prompt with strict anti-injection guardrails.
     Email body is wrapped in untrusted data delimiters.
+    Supports thread context if multiple messages exist in the conversation.
     """
     safe_body = body_text[:6000]
+
+    thread_section = ""
+    if thread_history:
+        th_lines = []
+        for idx, th in enumerate(thread_history, 1):
+            th_lines.append(f"  {idx}. ({th.get('date', '')}) Từ {th.get('sender', '')}: {th.get('summary', '')}")
+        thread_section = f"""
+DIỄN BIẾN CÁC THƯ TRƯỚC ĐÓ TRONG CÙNG LUỒNG TRAO ĐỔI:
+{"\n".join(th_lines)}
+(Lưu ý: Tóm tắt chung cho cả luồng cần nêu rõ diễn biến theo thứ tự ai nói gì/chốt gì, tình trạng hiện tại và việc còn phải làm dựa trên thư mới nhất).
+"""
 
     return f"""BẠN LÀ TRỢ LÝ PHÂN TÍCH EMAIL CÔNG VỤ CỦA CÔNG TY FERMAT TECH.
 Nhiệm vụ của bạn: Tóm tắt nội dung email, phân loại mức ưu tiên, xác định xem thư có cần phản hồi hay không, và liệt kê các việc cần làm.
@@ -82,8 +95,8 @@ Nhiệm vụ của bạn: Tóm tắt nội dung email, phân loại mức ưu ti
 4. TUYỆT ĐỐI KHÔNG in lại mật khẩu, mã OTP, số tài khoản, thông tin bí mật nếu có trong email.
 ==================================================================================
 
-THÔNG TIN EMAIL:
-- Người gửi: {sender}
+THÔNG TIN EMAIL:{thread_section}
+- Người gửi thư mới nhất: {sender}
 - Tiêu đề: {subject}
 - Thời gian: {date_str}
 
@@ -316,6 +329,7 @@ def process_mail_job(job_id: int) -> None:
                 subject=payload.get("subject", ""),
                 date_str=payload.get("date", ""),
                 body_text=payload.get("body", ""),
+                thread_history=payload.get("thread_history"),
             )
             raw_output = execute_ai_command(prompt)
             data = parse_ai_json(raw_output)

@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from authentication.models import UserProfile
@@ -1004,3 +1005,214 @@ class GmailClassificationAndWorkItemsTests(TestCase):
         job = MailJob.objects.get(id=job_id)
         self.assertEqual(job.job_type, MailJob.TYPE_SUMMARIZE)
         self.assertEqual(job.payload["message_id"], "msg_unanalyzed_1")
+
+
+class GmailThreadAggregationTests(TestCase):
+    """
+    Test Section G:
+    - Multiple messages in the same thread_id grouped into a SINGLE card.
+    - User replied after incoming message -> needs_reply becomes False.
+    - Different threads are not erroneously merged.
+    - Missing thread_id falls back to clean subject matching.
+    - Status update applies to the entire thread.
+    - Email body is NEVER stored in database.
+    """
+
+    def setUp(self):
+        self.env_patcher = mock.patch.dict(os.environ, {"GMAIL_TOKEN_KEY": TEST_FERNET_KEY})
+        self.env_patcher.start()
+        self.addCleanup(self.env_patcher.stop)
+        self.client = APIClient()
+        self.user, _ = UserProfile.objects.get_or_create(
+            email="tien.thread@fermat.vn",
+            defaults={"name": "Nguyễn Văn Tiến", "role": "ADMIN", "employment_status": "ACTIVE"},
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_multiple_messages_in_same_thread_grouped_into_single_card(self):
+        """3 messages sharing same thread_id should produce exactly 1 thread card."""
+        t1 = timezone.now() - timedelta(hours=3)
+        t2 = timezone.now() - timedelta(hours=2)
+        t3 = timezone.now() - timedelta(hours=1)
+
+        d1 = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_g_1",
+            thread_id="thread_g_stem",
+            sender="Đối tác STEM <stem@hanoi.edu.vn>",
+            sender_email="stem@hanoi.edu.vn",
+            subject="Kế hoạch tập huấn STEM THCS Cầu Giấy",
+            received_at=t1,
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            needs_reply=True,
+            summary="Hỏi kế hoạch tập huấn",
+            actions=[{"type": "tong_hop_thong_tin", "title": "Soạn đề cương", "required_preparations": ["File Word"]}],
+        )
+        d2 = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_g_2",
+            thread_id="thread_g_stem",
+            sender="Nguyễn Văn Tiến",
+            sender_email="tien@fermat.vn",
+            subject="Re: Kế hoạch tập huấn STEM THCS Cầu Giấy",
+            received_at=t2,
+            is_from_me=True,
+            recipient_role=MailDigest.RECIPIENT_ROLE_OTHER,
+            needs_reply=False,
+            summary="Em đã gửi bản thảo",
+        )
+        d3 = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_g_3",
+            thread_id="thread_g_stem",
+            sender="Đối tác STEM <stem@hanoi.edu.vn>",
+            sender_email="stem@hanoi.edu.vn",
+            subject="Re: V/v: Kế hoạch tập huấn STEM THCS Cầu Giấy",
+            received_at=t3,
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            needs_reply=True,
+            summary="Đề nghị chốt ngày chính thức",
+            actions=[{"type": "phan_hoi_xac_nhan", "title": "Chốt ngày tập huấn", "required_preparations": ["Lịch công tác"]}],
+        )
+
+        resp = self.client.get("/api/gmail/digests/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["total"], 1)
+        self.assertEqual(len(resp.data["results"]), 1)
+
+        card = resp.data["results"][0]
+        self.assertEqual(card["thread_id"], "thread_g_stem")
+        self.assertEqual(card["messages_count"], 3)
+        self.assertEqual(len(card["messages"]), 3)
+        self.assertEqual(card["clean_subject"], "Kế hoạch tập huấn STEM THCS Cầu Giấy")
+        self.assertTrue(card["needs_reply"])
+        self.assertEqual(len(card["actions"]), 2)
+        self.assertEqual(len(card["participants"]), 2)
+
+    def test_user_replied_latest_removes_needs_reply(self):
+        """If user replied latest in thread, thread needs_reply is False."""
+        t1 = timezone.now() - timedelta(hours=2)
+        t2 = timezone.now() - timedelta(hours=1)
+
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_rep_1",
+            thread_id="thread_rep_1",
+            sender="Khách hàng <kh@hanoi.vn>",
+            sender_email="kh@hanoi.vn",
+            subject="Yêu cầu thông tin",
+            received_at=t1,
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            needs_reply=True,
+            status=MailDigest.STATUS_NEW,
+        )
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_rep_2",
+            thread_id="thread_rep_1",
+            sender="Nguyễn Văn Tiến",
+            sender_email="tien@fermat.vn",
+            subject="Re: Yêu cầu thông tin",
+            received_at=t2,
+            is_from_me=True,
+            needs_reply=False,
+            status=MailDigest.STATUS_NEW,
+        )
+
+        resp = self.client.get("/api/gmail/digests/")
+        self.assertEqual(resp.status_code, 200)
+        card = resp.data["results"][0]
+        self.assertFalse(card["needs_reply"])
+        self.assertEqual(resp.data["counts"]["needs_reply"], 0)
+
+        # Tab needs_reply should be empty
+        resp_tab = self.client.get("/api/gmail/digests/?tab=needs_reply")
+        self.assertEqual(resp_tab.data["total"], 0)
+
+    def test_different_threads_not_merged(self):
+        """Messages with different thread_id are not merged."""
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_diff_1",
+            thread_id="thread_diff_alpha",
+            sender="Sender A",
+            subject="Dự án Alpha",
+            received_at=timezone.now() - timedelta(minutes=10),
+        )
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_diff_2",
+            thread_id="thread_diff_beta",
+            sender="Sender B",
+            subject="Dự án Beta",
+            received_at=timezone.now() - timedelta(minutes=5),
+        )
+
+        resp = self.client.get("/api/gmail/digests/")
+        self.assertEqual(resp.data["total"], 2)
+        self.assertEqual(len(resp.data["results"]), 2)
+
+    def test_thread_fallback_by_clean_subject_when_no_thread_id(self):
+        """Messages without thread_id group by clean_subject."""
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_nos_1",
+            thread_id="",
+            sender="Sender A",
+            subject="Triển khai cuộc thi STEM",
+            received_at=timezone.now() - timedelta(minutes=20),
+        )
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_nos_2",
+            thread_id="",
+            sender="Sender B",
+            subject="Re: V/v: Triển khai cuộc thi STEM",
+            received_at=timezone.now() - timedelta(minutes=10),
+        )
+
+        resp = self.client.get("/api/gmail/digests/")
+        self.assertEqual(resp.data["total"], 1)
+        card = resp.data["results"][0]
+        self.assertEqual(card["clean_subject"], "Triển khai cuộc thi STEM")
+        self.assertEqual(card["messages_count"], 2)
+
+    def test_update_status_affects_all_messages_in_thread(self):
+        """Updating status on a thread digest updates all messages in that thread."""
+        d1 = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_st_1",
+            thread_id="th_batch_status",
+            sender="Partner",
+            subject="Khảo sát",
+            received_at=timezone.now() - timedelta(hours=2),
+            status=MailDigest.STATUS_NEW,
+        )
+        d2 = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_st_2",
+            thread_id="th_batch_status",
+            sender="Partner",
+            subject="Re: Khảo sát",
+            received_at=timezone.now() - timedelta(hours=1),
+            status=MailDigest.STATUS_NEW,
+        )
+
+        resp = self.client.post(f"/api/gmail/digests/{d2.id}/status/", {"status": "replied"}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        d1.refresh_from_db()
+        d2.refresh_from_db()
+        self.assertEqual(d1.status, MailDigest.STATUS_REPLIED)
+        self.assertEqual(d2.status, MailDigest.STATUS_REPLIED)
+        self.assertFalse(d1.needs_reply)
+        self.assertFalse(d2.needs_reply)
+
+    def test_body_is_never_stored_in_database(self):
+        """Ensure body / raw html fields NEVER exist on MailDigest model."""
+        field_names = [f.name for f in MailDigest._meta.get_fields()]
+        self.assertNotIn("body", field_names)
+        self.assertNotIn("content", field_names)
+        self.assertNotIn("raw_body", field_names)
+        self.assertNotIn("html", field_names)
+
