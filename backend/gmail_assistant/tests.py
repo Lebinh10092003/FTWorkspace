@@ -410,3 +410,154 @@ class GmailApiAndPrivacyTests(TestCase):
         self.assertFalse(MailDigest.objects.filter(id=old_digest.id).exists())
         # Recent digest preserved
         self.assertTrue(MailDigest.objects.filter(id=self.digest1.id).exists())
+
+
+class GmailOAuthCallbackEndpointTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user, _ = UserProfile.objects.get_or_create(
+            email="tien@fermat.vn",
+            defaults={"name": "Tien Nguyen", "role": "EMPLOYEE"},
+        )
+        self.client.force_authenticate(user=self.user)
+
+    @mock.patch.dict(os.environ, {
+        "GMAIL_OAUTH_CLIENT_ID": "test_client_id.apps.googleusercontent.com",
+        "GMAIL_OAUTH_CLIENT_SECRET": "test_client_secret",
+        "GMAIL_TOKEN_KEY": TEST_FERNET_KEY,
+    })
+    def test_authorize_url_endpoint_returns_redirect_uri(self):
+        resp = self.client.get("/api/gmail/oauth/authorize-url/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.data
+        self.assertIn("authorize_url", data)
+        self.assertIn("state", data)
+        self.assertIn("redirect_uri", data)
+        self.assertTrue(verify_oauth_state(data["state"], expected_user_id=self.user.email))
+
+    @mock.patch.dict(os.environ, {
+        "GMAIL_OAUTH_CLIENT_ID": "test_client_id",
+        "GMAIL_OAUTH_CLIENT_SECRET": "test_secret",
+        "GMAIL_TOKEN_KEY": TEST_FERNET_KEY,
+    })
+    @mock.patch.object(GmailClient, "exchange_code_for_tokens")
+    @mock.patch.object(GmailClient, "get_profile")
+    def test_oauth_callback_success(self, mock_profile, mock_exchange):
+        state = generate_oauth_state(self.user.email)
+        mock_exchange.return_value = {
+            "refresh_token": "test_refresh_123",
+            "access_token": "test_access_123",
+        }
+        mock_profile.return_value = {"emailAddress": "tien@fermat.vn"}
+
+        # Delete any existing connection to test fresh create
+        GmailConnection.objects.filter(user=self.user).delete()
+
+        resp = self.client.post(
+            "/api/gmail/oauth/callback/",
+            {
+                "code": "sample_auth_code_xyz",
+                "state": state,
+                "redirect_uri": "http://localhost:58745/communication-tools/gmail",
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data.get("status"), "connected")
+        self.assertEqual(resp.data.get("email"), "tien@fermat.vn")
+
+        conn = GmailConnection.objects.get(user=self.user)
+        self.assertEqual(conn.email, "tien@fermat.vn")
+        decrypted = decrypt_token(conn.encrypted_refresh_token)
+        self.assertEqual(decrypted, "test_refresh_123")
+
+    @mock.patch.dict(os.environ, {
+        "GMAIL_OAUTH_CLIENT_ID": "test_client_id",
+        "GMAIL_OAUTH_CLIENT_SECRET": "test_secret",
+        "GMAIL_TOKEN_KEY": TEST_FERNET_KEY,
+    })
+    @mock.patch.object(GmailClient, "exchange_code_for_tokens")
+    @mock.patch.object(GmailClient, "get_profile")
+    def test_oauth_callback_different_email_same_allowed_domain(self, mock_profile, mock_exchange):
+        """User account is tien@fermat.vn but connects Google email giaovien@fermat.edu.vn (both allowed domains)."""
+        state = generate_oauth_state(self.user.email)
+        mock_exchange.return_value = {
+            "refresh_token": "edu_refresh_456",
+            "access_token": "edu_access_456",
+        }
+        mock_profile.return_value = {"emailAddress": "giaovien@fermat.edu.vn"}
+
+        resp = self.client.post(
+            "/api/gmail/oauth/callback/",
+            {"code": "edu_code", "state": state},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data.get("email"), "giaovien@fermat.edu.vn")
+
+        conn = GmailConnection.objects.get(user=self.user)
+        self.assertEqual(conn.email, "giaovien@fermat.edu.vn")
+
+    @mock.patch.dict(os.environ, {"GMAIL_TOKEN_KEY": TEST_FERNET_KEY})
+    def test_oauth_callback_invalid_state(self):
+        resp = self.client.post(
+            "/api/gmail/oauth/callback/",
+            {"code": "valid_code", "state": "tampered_or_invalid_state"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Mã bảo mật state không hợp lệ", resp.data.get("error", ""))
+
+    @mock.patch.dict(os.environ, {"GMAIL_TOKEN_KEY": TEST_FERNET_KEY})
+    def test_oauth_callback_expired_state(self):
+        # Create a state token with timestamp in the past (> 15 mins)
+        old_time = timezone.now().timestamp() - 1000
+        with mock.patch("time.time", return_value=old_time):
+            expired_state = generate_oauth_state(self.user.email)
+
+        resp = self.client.post(
+            "/api/gmail/oauth/callback/",
+            {"code": "valid_code", "state": expired_state},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("đã hết hạn", resp.data.get("error", ""))
+
+    @mock.patch.dict(os.environ, {
+        "GMAIL_OAUTH_CLIENT_ID": "test_client_id",
+        "GMAIL_OAUTH_CLIENT_SECRET": "test_secret",
+        "GMAIL_TOKEN_KEY": TEST_FERNET_KEY,
+    })
+    @mock.patch.object(GmailClient, "exchange_code_for_tokens")
+    @mock.patch.object(GmailClient, "get_profile")
+    def test_oauth_callback_disallowed_external_domain(self, mock_profile, mock_exchange):
+        state = generate_oauth_state(self.user.email)
+        mock_exchange.return_value = {
+            "refresh_token": "hacker_refresh",
+            "access_token": "hacker_access",
+        }
+        mock_profile.return_value = {"emailAddress": "hacker@malicious-domain.xyz"}
+
+        resp = self.client.post(
+            "/api/gmail/oauth/callback/",
+            {"code": "code_xyz", "state": state},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn("không thuộc tên miền được phép", resp.data.get("error", ""))
+
+    def test_oauth_callback_missing_code_or_state(self):
+        resp = self.client.post(
+            "/api/gmail/oauth/callback/",
+            {"code": "", "state": ""},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Thiếu mã xác thực", resp.data.get("error", ""))
+
+    def test_status_endpoint_returns_allowed_domains(self):
+        resp = self.client.get("/api/gmail/status/")
+        self.assertEqual(resp.status_code, 200)
+        domains = resp.data.get("allowed_domains", [])
+        self.assertIn("fermat.vn", domains)
+        self.assertIn("fermat.edu.vn", domains)

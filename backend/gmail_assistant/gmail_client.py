@@ -156,6 +156,8 @@ class GmailClient:
 
     def get_profile(self) -> Dict[str, Any]:
         """Fetch user profile to get email address and history ID."""
+        if os.environ.get("GMAIL_MOCK_MODE") == "1":
+            return {"emailAddress": "tien@fermat.vn", "messagesTotal": 42, "threadsTotal": 18, "historyId": "100001"}
         url = f"{GMAIL_API_BASE}/profile"
         resp = requests.get(url, headers=self._get_headers(), timeout=10)
         if not resp.ok:
