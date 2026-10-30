@@ -21,6 +21,7 @@ class GmailConnection(models.Model):
     notify_new = models.BooleanField(default=True)
     morning_scan_enabled = models.BooleanField(default=True)
     morning_time = models.CharField(max_length=5, default="08:00")  # HH:MM in Asia/Ho_Chi_Minh
+    superior_contacts = models.JSONField(default=list)  # Danh sách tên / email cấp trên cần xưng em
     last_sync_at = models.DateTimeField(null=True, blank=True)
     last_history_id = models.CharField(max_length=100, null=True, blank=True)
     last_morning_date = models.DateField(null=True, blank=True)
@@ -51,6 +52,15 @@ class MailDigest(models.Model):
     PRIORITY_NORMAL = "normal"
     PRIORITY_LOW = "low"
 
+    RECIPIENT_ROLE_TO = "to"
+    RECIPIENT_ROLE_CC = "cc"
+    RECIPIENT_ROLE_OTHER = "other"
+    RECIPIENT_ROLE_CHOICES = [
+        (RECIPIENT_ROLE_TO, "Gửi trực tiếp"),
+        (RECIPIENT_ROLE_CC, "Đồng kính gửi (CC)"),
+        (RECIPIENT_ROLE_OTHER, "Khác"),
+    ]
+
     user = models.ForeignKey(
         UserProfile,
         on_delete=models.CASCADE,
@@ -61,7 +71,17 @@ class MailDigest(models.Model):
     sender = models.CharField(max_length=255)
     sender_email = models.CharField(max_length=255, blank=True)
     subject = models.CharField(max_length=500)
+    snippet = models.CharField(max_length=500, blank=True)
     received_at = models.DateTimeField(db_index=True)
+
+    recipient_role = models.CharField(
+        max_length=20,
+        default=RECIPIENT_ROLE_TO,
+        choices=RECIPIENT_ROLE_CHOICES,
+        db_index=True,
+    )
+    addressed_by_name = models.BooleanField(default=False)
+    match_reason = models.CharField(max_length=255, blank=True)
 
     priority = models.CharField(
         max_length=20,
@@ -72,6 +92,7 @@ class MailDigest(models.Model):
     reply_by = models.CharField(max_length=100, blank=True)  # Gợi ý hạn phản hồi từ AI
     summary = models.TextField(blank=True)  # 3-5 dòng tóm tắt của AI
     actions = models.JSONField(default=list)  # Việc cần làm
+    schedule_items = models.JSONField(default=list)  # Liên kết các đầu việc đã thêm vào lịch công tác
     status = models.CharField(
         max_length=20,
         default=STATUS_NEW,

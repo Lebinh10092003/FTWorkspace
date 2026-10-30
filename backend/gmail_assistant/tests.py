@@ -8,16 +8,17 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from authentication.models import UserProfile
-from documents.models import WeeklyReportSupplement
-from documents.weekly_reports import week_start
 from .ai_service import (
     build_draft_reply_prompt,
     build_summarize_prompt,
     enqueue_mail_job,
+    normalize_action_item,
     parse_ai_json,
+    process_mail_job,
     sanitize_ai_text,
 )
 from .gmail_client import GmailClient, clean_html_to_text
@@ -34,6 +35,8 @@ from .sync import (
     ICT_TZ,
     check_if_thread_unreplied,
     cleanup_old_digests,
+    detect_name_addressing,
+    extract_email_addresses,
     is_automated_or_ignored,
     run_morning_scan_for_user,
     sync_user_gmail,
@@ -378,21 +381,55 @@ class GmailApiAndPrivacyTests(TestCase):
         self.assertTrue(GmailConnection.objects.filter(user=self.user2).exists())
         self.assertTrue(MailDigest.objects.filter(user=self.user2).exists())
 
-    def test_add_to_weekly_report_note(self):
+    def test_add_to_schedule_endpoint(self):
+        """Test rule F: add-to-schedule creates WorkItem for user, prevents cross-user access, and records schedule_items."""
         self.client.force_authenticate(user=self.user1)
-        self.digest1.summary = "Thống nhất lịch tập huấn vào thứ 5 tuần tới với Sở GD&ĐT."
+        self.digest1.actions = [{"type": "phan_hoi_xac_nhan", "title": "Phản hồi thư về báo cáo công tác", "completed": False}]
         self.digest1.save()
 
         resp = self.client.post(
-            "/api/gmail/digests/add-to-report/",
-            {"digest_ids": [self.digest1.id]},
+            f"/api/gmail/digests/{self.digest1.id}/add-to-schedule/",
+            {
+                "items": [
+                    {
+                        "title": "Phản hồi thư về báo cáo công tác",
+                        "work_date": "2026-10-31",
+                        "start_time": "09:00",
+                        "end_time": "10:30",
+                        "priority": "high",
+                        "description": "Người gửi: sep@test.vn - Cần chuẩn bị: file báo cáo",
+                        "action_index": 0,
+                    }
+                ]
+            },
             format="json",
         )
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data["status"], "success")
 
-        current_week_start = week_start(timezone.now().date())
-        supp = WeeklyReportSupplement.objects.get(user=self.user1, week_start=current_week_start)
-        self.assertIn("Xử lý email: Báo cáo công tác 1", supp.note)
+        # Verify WorkItem created for the user
+        from work_schedule.models import WorkItem
+        item = WorkItem.objects.get(creator=self.user1, title="Phản hồi thư về báo cáo công tác")
+        self.assertEqual(item.executor, self.user1)
+        self.assertEqual(item.work_date.isoformat(), "2026-10-31")
+        self.assertEqual(item.priority, "high")
+        self.assertEqual(item.status, WorkItem.STATUS_TODO)
+        self.assertEqual(item.label, "Công việc")
+
+        # Verify schedule_items recorded in digest to avoid duplicates & marked action completed
+        self.digest1.refresh_from_db()
+        self.assertEqual(len(self.digest1.schedule_items), 1)
+        self.assertEqual(self.digest1.schedule_items[0]["work_item_id"], item.id)
+        self.assertTrue(self.digest1.actions[0]["completed"])
+
+        # Verify other user cannot add to schedule for digest1
+        self.client.force_authenticate(user=self.user2)
+        resp_forbidden = self.client.post(
+            f"/api/gmail/digests/{self.digest1.id}/add-to-schedule/",
+            {"items": [{"title": "Hack", "work_date": "2026-10-31"}]},
+            format="json",
+        )
+        self.assertEqual(resp_forbidden.status_code, 404)
 
     def test_cleanup_old_digests(self):
         # Create an old digest 35 days ago
@@ -410,6 +447,65 @@ class GmailApiAndPrivacyTests(TestCase):
         self.assertFalse(MailDigest.objects.filter(id=old_digest.id).exists())
         # Recent digest preserved
         self.assertTrue(MailDigest.objects.filter(id=self.digest1.id).exists())
+
+    def test_update_settings_patch_morning_time_no_500(self):
+        """Test PATCH /api/gmail/settings/ does not 500 when updating morning_time."""
+        self.client.force_authenticate(user=self.user1)
+        resp = self.client.patch(
+            "/api/gmail/settings/",
+            {
+                "morning_time": "07:30",
+                "morning_scan_enabled": True,
+                "ai_enabled": True,
+                "notify_new": True,
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["morning_time"], "07:30")
+        self.assertTrue(resp.data["morning_scan_enabled"])
+        self.conn1.refresh_from_db()
+        self.assertEqual(self.conn1.morning_time, "07:30")
+
+    def test_morning_digest_endpoint_no_500(self):
+        """Test GET /api/gmail/digests/morning/ does not 500 due to timezone.utc."""
+        self.client.force_authenticate(user=self.user1)
+        resp = self.client.get("/api/gmail/digests/morning/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("unreplied_count", resp.data)
+        self.assertIn("new_past_day", resp.data)
+        self.assertIn("top_unreplied", resp.data)
+
+    def test_list_digests_new_today_filter_no_500(self):
+        """Test GET /api/gmail/digests/?filter=new_today does not 500 due to timezone.utc."""
+        self.client.force_authenticate(user=self.user1)
+        resp = self.client.get("/api/gmail/digests/?filter=new_today")
+        self.assertEqual(resp.status_code, 200)
+        resp_tab = self.client.get("/api/gmail/digests/?tab=today")
+        self.assertEqual(resp_tab.status_code, 200)
+
+    def test_full_gmail_endpoint_suite_no_500(self):
+        """Verify entire set of Gmail endpoints responds without 500 errors."""
+        self.client.force_authenticate(user=self.user1)
+        # 1. Status
+        r1 = self.client.get("/api/gmail/status/")
+        self.assertEqual(r1.status_code, 200)
+        # 2. Digests list (different filter options)
+        r2 = self.client.get("/api/gmail/digests/")
+        self.assertEqual(r2.status_code, 200)
+        r3 = self.client.get("/api/gmail/digests/?filter=needs_reply")
+        self.assertEqual(r3.status_code, 200)
+        r4 = self.client.get("/api/gmail/digests/?filter=all")
+        self.assertEqual(r4.status_code, 200)
+        # 3. Morning digest
+        r5 = self.client.get("/api/gmail/digests/morning/")
+        self.assertEqual(r5.status_code, 200)
+        # 4. Settings
+        r6 = self.client.patch("/api/gmail/settings/", {"morning_time": "08:15"}, format="json")
+        self.assertEqual(r6.status_code, 200)
+        # 5. Digest status update
+        r7 = self.client.post(f"/api/gmail/digests/{self.digest1.id}/status/", {"status": "replied"}, format="json")
+        self.assertEqual(r7.status_code, 200)
 
 
 class GmailOAuthCallbackEndpointTests(TestCase):
@@ -561,3 +657,562 @@ class GmailOAuthCallbackEndpointTests(TestCase):
         domains = resp.data.get("allowed_domains", [])
         self.assertIn("fermat.vn", domains)
         self.assertIn("fermat.edu.vn", domains)
+
+
+class GmailClassificationAndWorkItemsTests(TestCase):
+    def setUp(self):
+        self.env_patcher = mock.patch.dict(os.environ, {"GMAIL_TOKEN_KEY": TEST_FERNET_KEY})
+        self.env_patcher.start()
+        self.addCleanup(self.env_patcher.stop)
+        self.client = APIClient()
+        self.user, _ = UserProfile.objects.get_or_create(
+            email="nhanvien.test@fermat.vn",
+            defaults={"name": "Lê Thị Bình", "role": "EMPLOYEE"},
+        )
+        self.client.force_authenticate(user=self.user)
+        self.conn, _ = GmailConnection.objects.get_or_create(
+            user=self.user,
+            defaults={
+                "email": "nhanvien.test@fermat.vn",
+                "encrypted_refresh_token": encrypt_token("mock_refresh_token"),
+                "scopes": "https://www.googleapis.com/auth/gmail.readonly",
+                "superior_contacts": ["sep.tong@fermat.vn", "Trần Trưởng Phòng"],
+            },
+        )
+
+    def test_detect_name_addressing_patterns(self):
+        """Test rule B: detecting various forms of name addressing (Vietnamese diacritics, abbreviations, titles)."""
+        full_name = "Lê Thị Bình"
+
+        # Direct addressing with honorifics
+        matched, token = detect_name_addressing("Chào chị Bình, nhờ chị kiểm tra giúp hợp đồng.", full_name)
+        self.assertTrue(matched)
+        self.assertIn("Bình", token)
+
+        # Informal addressing
+        matched, token = detect_name_addressing("Bình ơi gửi file cho anh trước 15h nhé.", full_name)
+        self.assertTrue(matched)
+        self.assertIn("Bình", token)
+
+        # Abbreviation initial + last name: "L.Bình" or "L. Bình"
+        matched, token = detect_name_addressing("Nhờ L.Bình phụ trách phần báo cáo tổng hợp.", full_name)
+        self.assertTrue(matched)
+        self.assertEqual(token, "L.Bình")
+
+        # Non-accented input
+        matched, token = detect_name_addressing("Gui chi Binh tai lieu tap huan", full_name)
+        self.assertTrue(matched)
+
+        # General text without addressing user
+        matched, token = detect_name_addressing("Kính gửi toàn thể các thầy cô giáo trong trường.", full_name)
+        self.assertFalse(matched)
+        self.assertEqual(token, "")
+
+    @mock.patch.object(GmailClient, "list_messages")
+    @mock.patch.object(GmailClient, "get_message")
+    def test_sync_recipient_role_and_needs_reply_rules(self, mock_get_msg, mock_list):
+        """
+        Verify:
+        - To direct => recipient_role='to', needs_reply=True
+        - CC only => recipient_role='cc', needs_reply=False
+        - CC but addressed by name => recipient_role='cc', addressed_by_name=True, needs_reply=True
+        """
+        mock_list.return_value = {
+            "messages": [
+                {"id": "msg_to_1", "threadId": "th_to_1"},
+                {"id": "msg_cc_2", "threadId": "th_cc_2"},
+                {"id": "msg_cc_addressed_3", "threadId": "th_cc_3"},
+            ]
+        }
+
+        def side_effect_get_message(msg_id):
+            if msg_id == "msg_to_1":
+                return {
+                    "id": "msg_to_1",
+                    "thread_id": "th_to_1",
+                    "from_name": "Đối Tác A",
+                    "from_email": "doitac@truongthcs.edu.vn",
+                    "to": "nhanvien.test@fermat.vn",
+                    "cc": "",
+                    "subject": "Yêu cầu báo giá thiết bị STEM",
+                    "date": "Wed, 30 Oct 2026 09:00:00 +0700",
+                    "body": "Kính gửi công ty, xin gửi báo giá trước ngày mai.",
+                    "snippet": "Kính gửi công ty, xin gửi báo giá...",
+                    "internal_date_ms": 1793325600000,
+                    "label_ids": ["INBOX"],
+                }
+            elif msg_id == "msg_cc_2":
+                return {
+                    "id": "msg_cc_2",
+                    "thread_id": "th_cc_2",
+                    "from_name": "Phòng Đào Tạo",
+                    "from_email": "daotao@fermat.vn",
+                    "to": "giamdoc@fermat.vn",
+                    "cc": "nhanvien.test@fermat.vn",
+                    "subject": "Thông báo lịch họp giao ban tuần",
+                    "date": "Wed, 30 Oct 2026 09:15:00 +0700",
+                    "body": "Kính gửi Ban Giám đốc, phòng xin gửi lịch họp tuần này.",
+                    "snippet": "Kính gửi Ban Giám đốc...",
+                    "internal_date_ms": 1793326500000,
+                    "label_ids": ["INBOX"],
+                }
+            else:
+                return {
+                    "id": "msg_cc_addressed_3",
+                    "thread_id": "th_cc_3",
+                    "from_name": "Phòng Nhân Sự",
+                    "from_email": "nhansu@fermat.vn",
+                    "to": "truongphong@fermat.vn",
+                    "cc": "nhanvien.test@fermat.vn",
+                    "subject": "Bổ sung danh sách tập huấn",
+                    "date": "Wed, 30 Oct 2026 09:30:00 +0700",
+                    "body": "Gửi anh, nhờ chị Bình gửi danh sách giảng viên trước 17h nhé.",
+                    "snippet": "Nhờ chị Bình gửi danh sách...",
+                    "internal_date_ms": 1793327400000,
+                    "label_ids": ["INBOX"],
+                }
+
+        mock_get_msg.side_effect = side_effect_get_message
+
+        res = sync_user_gmail(self.conn, max_fetch=10)
+        self.assertEqual(res["new_count"], 3)
+        self.assertEqual(res["needs_reply_count"], 2)
+
+        # Check msg_to_1: To direct -> needs_reply=True
+        d_to = MailDigest.objects.get(message_id="msg_to_1")
+        self.assertEqual(d_to.recipient_role, MailDigest.RECIPIENT_ROLE_TO)
+        self.assertFalse(d_to.addressed_by_name)
+        self.assertTrue(d_to.needs_reply)
+
+        # Check msg_cc_2: CC direct without name -> needs_reply=False
+        d_cc = MailDigest.objects.get(message_id="msg_cc_2")
+        self.assertEqual(d_cc.recipient_role, MailDigest.RECIPIENT_ROLE_CC)
+        self.assertFalse(d_cc.addressed_by_name)
+        self.assertFalse(d_cc.needs_reply)
+
+        # Check msg_cc_addressed_3: CC but addressed by name -> needs_reply=True
+        d_cc_addr = MailDigest.objects.get(message_id="msg_cc_addressed_3")
+        self.assertEqual(d_cc_addr.recipient_role, MailDigest.RECIPIENT_ROLE_CC)
+        self.assertTrue(d_cc_addr.addressed_by_name)
+        self.assertTrue(d_cc_addr.needs_reply)
+
+    @mock.patch("gmail_assistant.ai_service.execute_ai_command")
+    def test_ai_cannot_downgrade_to_or_addressed_mail(self, mock_execute):
+        """
+        Rule B guardrail: AI is not allowed to downgrade a To/addressed email to needs_reply=False.
+        """
+        digest = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_to_test_ai",
+            thread_id="th_to_test_ai",
+            sender="Đối Tác B <doitacb@test.vn>",
+            subject="Cần phản hồi khẩn cấp",
+            received_at=timezone.now(),
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            addressed_by_name=True,
+            needs_reply=True,
+            status=MailDigest.STATUS_NEW,
+        )
+
+        mock_execute.return_value = (
+            '{"priority": "low", "needs_reply": false, "reply_by": "", "summary": "Chỉ là thư test", "actions": []}'
+        )
+
+        job = enqueue_mail_job(
+            user=self.user,
+            job_type=MailJob.TYPE_SUMMARIZE,
+            payload={
+                "message_id": digest.message_id,
+                "sender": digest.sender,
+                "subject": digest.subject,
+                "body": "Nội dung thư...",
+            },
+        )
+        process_mail_job(job.id)
+
+        digest.refresh_from_db()
+        # Even though AI returned needs_reply=false, guardrail keeps needs_reply=True!
+        self.assertTrue(digest.needs_reply)
+        self.assertEqual(digest.summary, "Chỉ là thư test")
+
+    def test_list_digests_tabs_filters_and_counts(self):
+        """Test tab filtering (all, needs_reply, cc, today) and counts."""
+        now = timezone.now()
+        # 1. To needs_reply
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="m1",
+            thread_id="t1",
+            sender="Sender 1",
+            subject="Sub 1",
+            received_at=now,
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            needs_reply=True,
+            status=MailDigest.STATUS_NEW,
+        )
+        # 2. CC not needs_reply
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="m2",
+            thread_id="t2",
+            sender="Sender 2",
+            subject="Sub 2",
+            received_at=now,
+            recipient_role=MailDigest.RECIPIENT_ROLE_CC,
+            needs_reply=False,
+            status=MailDigest.STATUS_NEW,
+        )
+        # 3. CC with needs_reply
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="m3",
+            thread_id="t3",
+            sender="Sender 3",
+            subject="Sub 3",
+            received_at=now,
+            recipient_role=MailDigest.RECIPIENT_ROLE_CC,
+            addressed_by_name=True,
+            needs_reply=True,
+            status=MailDigest.STATUS_NEW,
+        )
+
+        # Tab: all
+        resp_all = self.client.get("/api/gmail/digests/?tab=all")
+        self.assertEqual(resp_all.status_code, 200)
+        self.assertEqual(resp_all.data["total"], 3)
+        counts = resp_all.data["counts"]
+        self.assertEqual(counts["all"], 3)
+        self.assertEqual(counts["needs_reply"], 2)
+        self.assertEqual(counts["cc"], 2)
+
+        # Tab: needs_reply
+        resp_nr = self.client.get("/api/gmail/digests/?tab=needs_reply")
+        self.assertEqual(resp_nr.status_code, 200)
+        self.assertEqual(resp_nr.data["total"], 2)
+
+        # Tab: cc
+        resp_cc = self.client.get("/api/gmail/digests/?tab=cc")
+        self.assertEqual(resp_cc.status_code, 200)
+        self.assertEqual(resp_cc.data["total"], 2)
+
+    def test_superior_contacts_and_draft_reply_persona(self):
+        """Test rule C: superior contacts configuration and polite employee persona."""
+        # 1. Update settings with superior contacts
+        resp_patch = self.client.patch(
+            "/api/gmail/settings/",
+            {"superior_contacts": ["giamdoc@fermat.vn", "Nguyễn Lãnh Đạo"]},
+            format="json",
+        )
+        self.assertEqual(resp_patch.status_code, 200)
+        self.assertIn("giamdoc@fermat.vn", resp_patch.data["superior_contacts"])
+
+        # 2. Check prompt construction with is_superior=True
+        prompt_sup = build_draft_reply_prompt(
+            digest_subject="Giao việc tuần",
+            sender="giamdoc@fermat.vn",
+            summary="Sếp giao chuẩn bị báo cáo dự án",
+            user_name="Lê Thị Bình",
+            is_superior=True,
+        )
+        self.assertIn("xưng 'em'", prompt_sup)
+        self.assertIn("Lê Thị Bình", prompt_sup)
+        self.assertNotIn("Fermat Tech", prompt_sup)
+        self.assertIn("TUYỆT ĐỐI KHÔNG nhân danh công ty", prompt_sup)
+
+        # 3. Check prompt construction with is_superior=False
+        prompt_normal = build_draft_reply_prompt(
+            digest_subject="Hỏi thăm tài liệu",
+            sender="doitac@truong.edu.vn",
+            summary="Đối tác xin tài liệu",
+            user_name="Lê Thị Bình",
+            is_superior=False,
+        )
+        self.assertIn("Lê Thị Bình", prompt_normal)
+        self.assertNotIn("Fermat Tech", prompt_normal)
+
+    def test_action_items_normalization_and_toggle_endpoint(self):
+        """Test rule E: action item normalization, schema validation, and toggle-action endpoint."""
+        # Test normalization helper
+        raw_str = "Soạn thảo công văn gửi Sở GD"
+        item1 = normalize_action_item(raw_str, default_deadline="17h hôm nay", default_priority="high")
+        self.assertEqual(item1["type"], "khac")
+        self.assertEqual(item1["title"], raw_str)
+        self.assertEqual(item1["deadline"], "17h hôm nay")
+        self.assertFalse(item1["completed"])
+
+        raw_dict = {
+            "type": "gui_file/bao_cao",
+            "title": "Gửi file kế hoạch ngân sách",
+            "deadline": "Trước thứ 5",
+            "required_preparations": ["Bảng excel tính chi phí", "Tờ trình"],
+            "priority": "high",
+        }
+        item2 = normalize_action_item(raw_dict)
+        self.assertEqual(item2["type"], "gui_file_bao_cao")
+        self.assertEqual(len(item2["required_preparations"]), 2)
+        self.assertFalse(item2["completed"])
+
+        # Test toggle-action API endpoint
+        digest = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_act_1",
+            thread_id="th_act_1",
+            sender="Sender X",
+            subject="Việc cần làm",
+            received_at=timezone.now(),
+            actions=[item1, item2],
+        )
+
+        resp_toggle = self.client.post(
+            f"/api/gmail/digests/{digest.id}/toggle-action/",
+            {"action_index": 1, "completed": True},
+            format="json",
+        )
+        self.assertEqual(resp_toggle.status_code, 200)
+        self.assertTrue(resp_toggle.data["completed"])
+        digest.refresh_from_db()
+        self.assertTrue(digest.actions[1]["completed"])
+
+        # Toggle back (without completed param, should flip to False)
+        resp_toggle_back = self.client.post(
+            f"/api/gmail/digests/{digest.id}/toggle-action/",
+            {"action_index": 1},
+            format="json",
+        )
+        self.assertEqual(resp_toggle_back.status_code, 200)
+        self.assertFalse(resp_toggle_back.data["completed"])
+
+    @mock.patch.object(GmailClient, "get_message")
+    def test_analyze_digest_endpoint(self, mock_get_msg):
+        """Test rule D: manually trigger analysis for unanalyzed digest."""
+        mock_get_msg.return_value = {
+            "id": "msg_unanalyzed_1",
+            "body": "Nội dung email chi tiết...",
+        }
+        digest = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_unanalyzed_1",
+            thread_id="th_unanalyzed_1",
+            sender="Sender Y",
+            subject="Chưa phân tích",
+            received_at=timezone.now(),
+        )
+
+        resp = self.client.post(f"/api/gmail/digests/{digest.id}/analyze/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["status"], "queued")
+        job_id = resp.data["job_id"]
+        job = MailJob.objects.get(id=job_id)
+        self.assertEqual(job.job_type, MailJob.TYPE_SUMMARIZE)
+        self.assertEqual(job.payload["message_id"], "msg_unanalyzed_1")
+
+
+class GmailThreadAggregationTests(TestCase):
+    """
+    Test Section G:
+    - Multiple messages in the same thread_id grouped into a SINGLE card.
+    - User replied after incoming message -> needs_reply becomes False.
+    - Different threads are not erroneously merged.
+    - Missing thread_id falls back to clean subject matching.
+    - Status update applies to the entire thread.
+    - Email body is NEVER stored in database.
+    """
+
+    def setUp(self):
+        self.env_patcher = mock.patch.dict(os.environ, {"GMAIL_TOKEN_KEY": TEST_FERNET_KEY})
+        self.env_patcher.start()
+        self.addCleanup(self.env_patcher.stop)
+        self.client = APIClient()
+        self.user, _ = UserProfile.objects.get_or_create(
+            email="tien.thread@fermat.vn",
+            defaults={"name": "Nguyễn Văn Tiến", "role": "ADMIN", "employment_status": "ACTIVE"},
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_multiple_messages_in_same_thread_grouped_into_single_card(self):
+        """3 messages sharing same thread_id should produce exactly 1 thread card."""
+        t1 = timezone.now() - timedelta(hours=3)
+        t2 = timezone.now() - timedelta(hours=2)
+        t3 = timezone.now() - timedelta(hours=1)
+
+        d1 = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_g_1",
+            thread_id="thread_g_stem",
+            sender="Đối tác STEM <stem@hanoi.edu.vn>",
+            sender_email="stem@hanoi.edu.vn",
+            subject="Kế hoạch tập huấn STEM THCS Cầu Giấy",
+            received_at=t1,
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            needs_reply=True,
+            summary="Hỏi kế hoạch tập huấn",
+            actions=[{"type": "tong_hop_thong_tin", "title": "Soạn đề cương", "required_preparations": ["File Word"]}],
+        )
+        d2 = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_g_2",
+            thread_id="thread_g_stem",
+            sender="Nguyễn Văn Tiến",
+            sender_email="tien@fermat.vn",
+            subject="Re: Kế hoạch tập huấn STEM THCS Cầu Giấy",
+            received_at=t2,
+            is_from_me=True,
+            recipient_role=MailDigest.RECIPIENT_ROLE_OTHER,
+            needs_reply=False,
+            summary="Em đã gửi bản thảo",
+        )
+        d3 = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_g_3",
+            thread_id="thread_g_stem",
+            sender="Đối tác STEM <stem@hanoi.edu.vn>",
+            sender_email="stem@hanoi.edu.vn",
+            subject="Re: V/v: Kế hoạch tập huấn STEM THCS Cầu Giấy",
+            received_at=t3,
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            needs_reply=True,
+            summary="Đề nghị chốt ngày chính thức",
+            actions=[{"type": "phan_hoi_xac_nhan", "title": "Chốt ngày tập huấn", "required_preparations": ["Lịch công tác"]}],
+        )
+
+        resp = self.client.get("/api/gmail/digests/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["total"], 1)
+        self.assertEqual(len(resp.data["results"]), 1)
+
+        card = resp.data["results"][0]
+        self.assertEqual(card["thread_id"], "thread_g_stem")
+        self.assertEqual(card["messages_count"], 3)
+        self.assertEqual(len(card["messages"]), 3)
+        self.assertEqual(card["clean_subject"], "Kế hoạch tập huấn STEM THCS Cầu Giấy")
+        self.assertTrue(card["needs_reply"])
+        self.assertEqual(len(card["actions"]), 2)
+        self.assertEqual(len(card["participants"]), 2)
+
+    def test_user_replied_latest_removes_needs_reply(self):
+        """If user replied latest in thread, thread needs_reply is False."""
+        t1 = timezone.now() - timedelta(hours=2)
+        t2 = timezone.now() - timedelta(hours=1)
+
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_rep_1",
+            thread_id="thread_rep_1",
+            sender="Khách hàng <kh@hanoi.vn>",
+            sender_email="kh@hanoi.vn",
+            subject="Yêu cầu thông tin",
+            received_at=t1,
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            needs_reply=True,
+            status=MailDigest.STATUS_NEW,
+        )
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_rep_2",
+            thread_id="thread_rep_1",
+            sender="Nguyễn Văn Tiến",
+            sender_email="tien@fermat.vn",
+            subject="Re: Yêu cầu thông tin",
+            received_at=t2,
+            is_from_me=True,
+            needs_reply=False,
+            status=MailDigest.STATUS_NEW,
+        )
+
+        resp = self.client.get("/api/gmail/digests/")
+        self.assertEqual(resp.status_code, 200)
+        card = resp.data["results"][0]
+        self.assertFalse(card["needs_reply"])
+        self.assertEqual(resp.data["counts"]["needs_reply"], 0)
+
+        # Tab needs_reply should be empty
+        resp_tab = self.client.get("/api/gmail/digests/?tab=needs_reply")
+        self.assertEqual(resp_tab.data["total"], 0)
+
+    def test_different_threads_not_merged(self):
+        """Messages with different thread_id are not merged."""
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_diff_1",
+            thread_id="thread_diff_alpha",
+            sender="Sender A",
+            subject="Dự án Alpha",
+            received_at=timezone.now() - timedelta(minutes=10),
+        )
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_diff_2",
+            thread_id="thread_diff_beta",
+            sender="Sender B",
+            subject="Dự án Beta",
+            received_at=timezone.now() - timedelta(minutes=5),
+        )
+
+        resp = self.client.get("/api/gmail/digests/")
+        self.assertEqual(resp.data["total"], 2)
+        self.assertEqual(len(resp.data["results"]), 2)
+
+    def test_thread_fallback_by_clean_subject_when_no_thread_id(self):
+        """Messages without thread_id group by clean_subject."""
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_nos_1",
+            thread_id="",
+            sender="Sender A",
+            subject="Triển khai cuộc thi STEM",
+            received_at=timezone.now() - timedelta(minutes=20),
+        )
+        MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_nos_2",
+            thread_id="",
+            sender="Sender B",
+            subject="Re: V/v: Triển khai cuộc thi STEM",
+            received_at=timezone.now() - timedelta(minutes=10),
+        )
+
+        resp = self.client.get("/api/gmail/digests/")
+        self.assertEqual(resp.data["total"], 1)
+        card = resp.data["results"][0]
+        self.assertEqual(card["clean_subject"], "Triển khai cuộc thi STEM")
+        self.assertEqual(card["messages_count"], 2)
+
+    def test_update_status_affects_all_messages_in_thread(self):
+        """Updating status on a thread digest updates all messages in that thread."""
+        d1 = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_st_1",
+            thread_id="th_batch_status",
+            sender="Partner",
+            subject="Khảo sát",
+            received_at=timezone.now() - timedelta(hours=2),
+            status=MailDigest.STATUS_NEW,
+        )
+        d2 = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_st_2",
+            thread_id="th_batch_status",
+            sender="Partner",
+            subject="Re: Khảo sát",
+            received_at=timezone.now() - timedelta(hours=1),
+            status=MailDigest.STATUS_NEW,
+        )
+
+        resp = self.client.post(f"/api/gmail/digests/{d2.id}/status/", {"status": "replied"}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        d1.refresh_from_db()
+        d2.refresh_from_db()
+        self.assertEqual(d1.status, MailDigest.STATUS_REPLIED)
+        self.assertEqual(d2.status, MailDigest.STATUS_REPLIED)
+        self.assertFalse(d1.needs_reply)
+        self.assertFalse(d2.needs_reply)
+
+    def test_body_is_never_stored_in_database(self):
+        """Ensure body / raw html fields NEVER exist on MailDigest model."""
+        field_names = [f.name for f in MailDigest._meta.get_fields()]
+        self.assertNotIn("body", field_names)
+        self.assertNotIn("content", field_names)
+        self.assertNotIn("raw_body", field_names)
+        self.assertNotIn("html", field_names)
+

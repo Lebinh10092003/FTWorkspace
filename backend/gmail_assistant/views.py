@@ -8,25 +8,25 @@ Views for Gmail Assistant:
 - Job status polling.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 import logging
+import re
 from typing import Any, Dict
 import urllib.parse
 import zoneinfo
 
 from django.db import transaction
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Case, F, IntegerField, Max, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_time
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.models import UserProfile
 from authentication.permissions import IsWorkspaceAuthenticated
-from documents.content_filter import clean_report_item
-from documents.models import WeeklyReportSupplement
-from documents.weekly_reports import week_start
+from work_schedule.models import WorkItem
 from .ai_service import enqueue_mail_job, process_mail_job
 from .gmail_client import GmailClient
 from .models import GmailConnection, MailDigest, MailJob
@@ -42,6 +42,7 @@ from .security import (
     verify_oauth_state,
 )
 from .sync import ICT_TZ, sync_user_gmail
+from .thread_service import clean_subject, group_digests_into_threads
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ def gmail_status_view(request):
         "notify_new": conn.notify_new if conn else True,
         "morning_scan_enabled": conn.morning_scan_enabled if conn else True,
         "morning_time": conn.morning_time if conn else "08:00",
+        "superior_contacts": conn.superior_contacts if conn else [],
         "last_sync_at": conn.last_sync_at.isoformat() if conn and conn.last_sync_at else None,
         "allowed_domains": get_allowed_domains(),
     }
@@ -227,6 +229,11 @@ def update_settings_view(request):
         raw_time = str(data["morning_time"]).strip()
         if re.match(r"^\d{1,2}:\d{2}$", raw_time):
             conn.morning_time = raw_time
+    if "superior_contacts" in data:
+        raw_contacts = data["superior_contacts"]
+        if isinstance(raw_contacts, list):
+            clean_contacts = [str(c).strip() for c in raw_contacts if str(c).strip()]
+            conn.superior_contacts = clean_contacts
 
     conn.save()
     return Response({
@@ -234,6 +241,7 @@ def update_settings_view(request):
         "notify_new": conn.notify_new,
         "morning_scan_enabled": conn.morning_scan_enabled,
         "morning_time": conn.morning_time,
+        "superior_contacts": conn.superior_contacts,
     })
 
 
@@ -241,39 +249,77 @@ def update_settings_view(request):
 @permission_classes([IsWorkspaceAuthenticated])
 def list_digests_view(request):
     """
-    List email digests with filtering and sorting:
-    - filter: 'needs_reply', 'new_today', 'all'
+    List email thread digests with filtering and sorting:
+    Groups messages sharing the same thread_id (or subject) into a single thread card.
+    - tab/filter: 'all', 'needs_reply', 'cc', 'new_today', 'today', 'unhandled', 'handled'
+    - status: 'all', 'unhandled', 'handled', 'new', 'replied', 'ignored'
     - priority: 'high', 'normal', 'low'
     - search: keyword search in subject or sender
     """
     user = request.user
-    queryset = MailDigest.objects.filter(user=user)
+    base_queryset = MailDigest.objects.filter(user=user)
 
-    filter_type = request.query_params.get("filter", "all")
+    now_ict = timezone.now().astimezone(ICT_TZ)
+    start_of_today = now_ict.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(dt_timezone.utc)
+
+    # Group all digests for user into unified thread cards
+    all_threads = group_digests_into_threads(base_queryset, user_email=user.email or "")
+
+    # Compute tab counts for badges based on threads
+    counts = {
+        "all": len(all_threads),
+        "needs_reply": len([t for t in all_threads if t["needs_reply"] and t["status"] == MailDigest.STATUS_NEW]),
+        "cc": len([t for t in all_threads if t["recipient_role"] == MailDigest.RECIPIENT_ROLE_CC]),
+        "today": len([t for t in all_threads if t["received_at_dt"] >= start_of_today]),
+        "unhandled": len([t for t in all_threads if t["status"] == MailDigest.STATUS_NEW]),
+        "handled": len([t for t in all_threads if t["status"] in (MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED)]),
+    }
+
+    filtered = all_threads
+
+    # Tab / main filter
+    filter_type = request.query_params.get("filter") or request.query_params.get("tab") or "all"
     if filter_type == "needs_reply":
-        queryset = queryset.filter(needs_reply=True, status=MailDigest.STATUS_NEW)
-    elif filter_type == "new_today":
-        now_ict = timezone.now().astimezone(ICT_TZ)
-        start_of_today = now_ict.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
-        queryset = queryset.filter(received_at__gte=start_of_today)
+        filtered = [t for t in filtered if t["needs_reply"] and t["status"] == MailDigest.STATUS_NEW]
+    elif filter_type == "cc":
+        filtered = [t for t in filtered if t["recipient_role"] == MailDigest.RECIPIENT_ROLE_CC]
+    elif filter_type in ("new_today", "today"):
+        filtered = [t for t in filtered if t["received_at_dt"] >= start_of_today]
+    elif filter_type == "unhandled":
+        filtered = [t for t in filtered if t["status"] == MailDigest.STATUS_NEW]
+    elif filter_type == "handled":
+        filtered = [t for t in filtered if t["status"] in (MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED)]
 
-    priority = request.query_params.get("priority")
-    if priority in {MailDigest.PRIORITY_HIGH, MailDigest.PRIORITY_NORMAL, MailDigest.PRIORITY_LOW}:
-        queryset = queryset.filter(priority=priority)
+    # Status secondary filter
+    status_param = request.query_params.get("status")
+    if status_param == "unhandled":
+        filtered = [t for t in filtered if t["status"] == MailDigest.STATUS_NEW]
+    elif status_param == "handled":
+        filtered = [t for t in filtered if t["status"] in (MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED)]
+    elif status_param in {MailDigest.STATUS_NEW, MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED}:
+        filtered = [t for t in filtered if t["status"] == status_param]
 
-    search = request.query_params.get("search", "").strip()
+    priority_param = request.query_params.get("priority")
+    if priority_param in {MailDigest.PRIORITY_HIGH, MailDigest.PRIORITY_NORMAL, MailDigest.PRIORITY_LOW}:
+        filtered = [t for t in filtered if t["priority"] == priority_param]
+
+    search = request.query_params.get("search", "").strip().lower()
     if search:
-        queryset = queryset.filter(Q(subject__icontains=search) | Q(sender__icontains=search))
+        def matches_search(t):
+            if search in t["subject"].lower() or search in t["clean_subject"].lower() or search in t["sender"].lower():
+                return True
+            for m in t.get("messages", []):
+                if search in m.get("sender", "").lower() or search in m.get("sender_email", "").lower() or search in m.get("snippet", "").lower():
+                    return True
+            return False
+        filtered = [t for t in filtered if matches_search(t)]
 
-    # Priority sorting: high (1) -> normal (2) -> low (3), then received_at descending
-    queryset = queryset.annotate(
-        priority_rank=Case(
-            When(priority=MailDigest.PRIORITY_HIGH, then=Value(1)),
-            When(priority=MailDigest.PRIORITY_NORMAL, then=Value(2)),
-            default=Value(3),
-            output_field=IntegerField(),
-        )
-    ).order_by("priority_rank", "-received_at")
+    # Sorting: High priority (1) -> Normal (2) -> Low (3), then received_at_dt descending
+    def sort_key(t):
+        pr = 1 if t["priority"] == MailDigest.PRIORITY_HIGH else (2 if t["priority"] == MailDigest.PRIORITY_NORMAL else 3)
+        return (pr, -t["received_at_dt"].timestamp())
+
+    filtered.sort(key=sort_key)
 
     # Pagination
     try:
@@ -282,33 +328,21 @@ def list_digests_view(request):
     except ValueError:
         page, page_size = 1, 20
 
-    total = queryset.count()
+    total = len(filtered)
     start_idx = (page - 1) * page_size
-    items = queryset[start_idx : start_idx + page_size]
+    page_items = filtered[start_idx : start_idx + page_size]
 
     results = []
-    for d in items:
-        results.append({
-            "id": d.id,
-            "message_id": d.message_id,
-            "thread_id": d.thread_id,
-            "sender": d.sender,
-            "sender_email": d.sender_email,
-            "subject": d.subject,
-            "received_at": d.received_at.isoformat(),
-            "priority": d.priority,
-            "needs_reply": d.needs_reply,
-            "reply_by": d.reply_by,
-            "summary": d.summary,
-            "actions": d.actions,
-            "status": d.status,
-            "is_from_me": d.is_from_me,
-        })
+    for t in page_items:
+        clean_item = dict(t)
+        clean_item.pop("received_at_dt", None)
+        results.append(clean_item)
 
     return Response({
         "total": total,
         "page": page,
         "page_size": page_size,
+        "counts": counts,
         "results": results,
     })
 
@@ -318,10 +352,11 @@ def list_digests_view(request):
 def morning_digest_view(request):
     """
     Provide aggregated statistics and unreplied list for the morning card:
+    Grouped by thread:
     - new_past_day count (24h)
     - unreplied_week count
     - high_priority_unreplied count
-    - top unreplied digests
+    - top unreplied threads
     """
     user = request.user
     now_utc = timezone.now()
@@ -329,65 +364,87 @@ def morning_digest_view(request):
 
     now_ict = now_utc.astimezone(ICT_TZ)
     week_start_dt = (now_ict - timedelta(days=now_ict.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start_utc = week_start_dt.astimezone(timezone.utc)
+    week_start_utc = week_start_dt.astimezone(dt_timezone.utc)
 
-    new_past_day = MailDigest.objects.filter(
-        user=user,
-        received_at__gte=past_24h,
-        is_from_me=False,
-    ).count()
+    base_queryset = MailDigest.objects.filter(user=user)
+    all_threads = group_digests_into_threads(base_queryset, user_email=user.email or "")
 
-    unreplied_qs = MailDigest.objects.filter(
-        user=user,
-        received_at__gte=week_start_utc,
-        needs_reply=True,
-        status=MailDigest.STATUS_NEW,
-        is_from_me=False,
+    new_past_day = len([t for t in all_threads if t["received_at_dt"] >= past_24h and not t["is_from_me"]])
+
+    unreplied_threads = [
+        t for t in all_threads
+        if t["received_at_dt"] >= week_start_utc
+        and t["needs_reply"]
+        and t["status"] == MailDigest.STATUS_NEW
+        and not t["is_from_me"]
+    ]
+
+    unreplied_threads.sort(
+        key=lambda t: (0 if t["priority"] == MailDigest.PRIORITY_HIGH else 1, -t["received_at_dt"].timestamp())
     )
-    unreplied_count = unreplied_qs.count()
-    high_priority_count = unreplied_qs.filter(priority=MailDigest.PRIORITY_HIGH).count()
+
+    unreplied_count = len(unreplied_threads)
+    high_priority_count = len([t for t in unreplied_threads if t["priority"] == MailDigest.PRIORITY_HIGH])
 
     top_unreplied = [
         {
-            "id": d.id,
-            "sender": d.sender,
-            "subject": d.subject,
-            "received_at": d.received_at.isoformat(),
-            "priority": d.priority,
-            "reply_by": d.reply_by,
-            "summary": d.summary,
+            "id": t["id"],
+            "thread_id": t["thread_id"],
+            "sender": t["sender"],
+            "subject": t["subject"],
+            "clean_subject": t["clean_subject"],
+            "messages_count": t["messages_count"],
+            "date": t["received_at"],
+            "received_at": t["received_at"],
+            "priority": t["priority"],
+            "reply_by": t["reply_by"],
+            "summary": t["summary"],
         }
-        for d in unreplied_qs.order_by(
-            Case(
-                When(priority=MailDigest.PRIORITY_HIGH, then=Value(1)),
-                default=Value(2),
-                output_field=IntegerField(),
-            ),
-            "-received_at",
-        )[:10]
+        for t in unreplied_threads[:10]
     ]
 
     return Response({
         "new_past_day": new_past_day,
+        "recent_count": new_past_day,
         "unreplied_week": unreplied_count,
+        "unreplied_count": unreplied_count,
         "high_priority_unreplied": high_priority_count,
         "unreplied_items": top_unreplied,
+        "unreplied_threads": top_unreplied,
+        "top_unreplied": top_unreplied,
     })
 
 
-@api_view(["POST"])
+@api_view(["POST", "PATCH"])
 @permission_classes([IsWorkspaceAuthenticated])
 def update_digest_status_view(request, digest_id):
-    """Update status of an email digest (new, replied, ignored)."""
+    """
+    Update status of an email digest and all other messages in the same thread.
+    Applies handled/ignored status to the entire thread.
+    """
     digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
     new_status = request.data.get("status")
 
     if new_status in {MailDigest.STATUS_NEW, MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED}:
-        digest.status = new_status
-        if new_status in {MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED}:
-            digest.needs_reply = False
-        digest.save(update_fields=["status", "needs_reply", "updated_at"])
-        return Response({"status": "updated", "digest_status": digest.status})
+        if digest.thread_id:
+            thread_qs = MailDigest.objects.filter(user=request.user, thread_id=digest.thread_id)
+        else:
+            clean_s = clean_subject(digest.subject)
+            thread_qs = MailDigest.objects.filter(user=request.user, subject__icontains=clean_s)
+
+        updated_count = thread_qs.update(
+            status=new_status,
+            needs_reply=False if new_status in {MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED} else F("needs_reply"),
+            updated_at=timezone.now(),
+        )
+        return Response({
+            "status": "updated",
+            "digest_status": new_status,
+            "thread_id": digest.thread_id,
+            "affected_count": updated_count,
+        })
+
+    return Response({"error": "Trạng thái không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
 
     return Response({"error": "Trạng thái không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -397,10 +454,24 @@ def update_digest_status_view(request, digest_id):
 def draft_reply_ai_view(request, digest_id):
     """
     Queue AI drafting of response for an email digest.
+    Applies superior tone if sender matches superior contacts list.
     Returns queued MailJob ID or result if synchronous.
     """
     digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
     guidance = request.data.get("guidance", "").strip()
+
+    conn = GmailConnection.objects.filter(user=request.user).first()
+    is_superior = bool(request.data.get("is_superior", False))
+    if not is_superior and conn and conn.superior_contacts:
+        sender_lower = (digest.sender or "").lower()
+        sender_email_lower = (digest.sender_email or "").lower()
+        for contact in conn.superior_contacts:
+            c = str(contact).strip().lower()
+            if c and (c in sender_lower or c in sender_email_lower):
+                is_superior = True
+                break
+
+    user_name = (getattr(request.user, "name", "") or request.user.username or "").strip()
 
     try:
         job = enqueue_mail_job(
@@ -412,11 +483,112 @@ def draft_reply_ai_view(request, digest_id):
                 "sender": digest.sender,
                 "summary": digest.summary,
                 "guidance": guidance,
+                "user_name": user_name,
+                "is_superior": is_superior,
+                "actions": digest.actions or [],
             },
         )
         return Response({"job_id": job.id, "status": job.status})
     except ValueError as val_err:
         return Response({"error": str(val_err)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def toggle_action_view(request, digest_id):
+    """
+    Toggle completion status of a specific action item within a MailDigest.
+    Payload: {"action_index": 0, "completed": true|false}
+    """
+    digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
+    action_index = request.data.get("action_index")
+    if action_index is None:
+        return Response({"error": "Thiếu chỉ số công việc (action_index)."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        idx = int(action_index)
+    except ValueError:
+        return Response({"error": "action_index không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
+
+    actions = digest.actions or []
+    if idx < 0 or idx >= len(actions):
+        return Response({"error": f"Không tìm thấy công việc ở vị trí {idx}."}, status=status.HTTP_404_NOT_FOUND)
+
+    item = actions[idx]
+    if isinstance(item, str):
+        item = {
+            "type": "khac",
+            "title": item,
+            "deadline": "",
+            "required_preparations": [],
+            "priority": "normal",
+            "completed": False,
+        }
+
+    if "completed" in request.data:
+        item["completed"] = bool(request.data["completed"])
+    else:
+        item["completed"] = not bool(item.get("completed", False))
+
+    actions[idx] = item
+    digest.actions = actions
+    digest.save(update_fields=["actions", "updated_at"])
+
+    return Response({
+        "status": "updated",
+        "action_index": idx,
+        "completed": item["completed"],
+        "actions": digest.actions,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def analyze_digest_view(request, digest_id):
+    """
+    Manually trigger AI analysis for an unanalyzed email digest.
+    Fetches email body via GmailClient if not cached, then queues TYPE_SUMMARIZE job.
+    Includes thread history if other messages exist in the thread.
+    """
+    digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
+    conn = get_object_or_404(GmailConnection, user=request.user)
+
+    body_text = ""
+    try:
+        client = GmailClient.from_connection(conn)
+        msg_data = client.get_message(digest.message_id)
+        body_text = msg_data.get("body", "")
+    except Exception as exc:
+        logger.warning("Không thể đọc thân thư từ Gmail cho digest %s: %s", digest.id, exc)
+
+    thread_history = []
+    if digest.thread_id:
+        prev_digests = MailDigest.objects.filter(
+            user=request.user,
+            thread_id=digest.thread_id,
+        ).exclude(id=digest.id).order_by("received_at")
+        for pd in prev_digests:
+            thread_history.append({
+                "sender": pd.sender,
+                "date": pd.received_at.strftime("%d/%m/%Y %H:%M"),
+                "summary": pd.summary or pd.snippet or pd.subject,
+            })
+
+    job = enqueue_mail_job(
+        user=request.user,
+        job_type=MailJob.TYPE_SUMMARIZE,
+        payload={
+            "digest_id": digest.id,
+            "message_id": digest.message_id,
+            "thread_id": digest.thread_id,
+            "sender": digest.sender,
+            "subject": digest.subject,
+            "date": digest.received_at.strftime("%d/%m/%Y %H:%M"),
+            "body": body_text,
+            "thread_history": thread_history,
+        },
+    )
+    return Response({"status": "queued", "job_id": job.id})
 
 
 @api_view(["POST"])
@@ -471,56 +643,125 @@ def create_draft_view(request):
 
 @api_view(["POST"])
 @permission_classes([IsWorkspaceAuthenticated])
-def add_to_report_view(request):
+def add_to_schedule_view(request, digest_id):
     """
-    Export summaries of selected email digests into WeeklyReportSupplement.note of current week.
-    Applies content_filter to guarantee clean, professional notes.
+    Create WorkItem(s) in work_schedule for the authenticated user from action items of an email digest.
+    Guarantees:
+    - Executor is the user themselves.
+    - Default label='Công việc', status='todo'.
+    - Stores references in digest.schedule_items to prevent accidental duplicates.
+    - User can edit all fields before creating (only created when confirmed).
     """
-    digest_ids = request.data.get("digest_ids", [])
-    if not isinstance(digest_ids, list) or not digest_ids:
-        return Response({"error": "Vui lòng chọn ít nhất một email."}, status=status.HTTP_400_BAD_REQUEST)
+    digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
+    items_data = request.data.get("items")
+    if items_data is None:
+        items_data = [request.data]
 
-    digests = MailDigest.objects.filter(user=request.user, id__in=digest_ids)
-    if not digests.exists():
-        return Response({"error": "Không tìm thấy email hợp lệ."}, status=status.HTTP_404_NOT_FOUND)
+    if not isinstance(items_data, list) or not items_data:
+        return Response({"error": "Danh sách công việc không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
 
-    clean_items = []
-    for d in digests:
-        line = f"Xử lý email: {d.subject} (từ {d.sender})"
-        if d.summary:
-            # First line of summary
-            summary_first = d.summary.splitlines()[0]
-            line += f" - {summary_first}"
-        cleaned = clean_report_item(line)
-        if cleaned:
-            clean_items.append(f"- {cleaned}")
+    created_work_items = []
+    updated_schedule_items = list(digest.schedule_items or [])
+    current_actions = list(digest.actions or [])
 
-    if not clean_items:
-        return Response(
-            {"error": "Nội dung các email được chọn không phù hợp để đưa vào báo cáo tuần."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    with transaction.atomic():
+        for item_data in items_data:
+            title = str(item_data.get("title", "")).strip()
+            if not title:
+                return Response({"error": "Tiêu đề công việc không được để trống."}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Find or create WeeklyReportSupplement for current week
-    current_week_start = week_start(timezone.now().date())
-    supplement, _ = WeeklyReportSupplement.objects.get_or_create(
-        user=request.user,
-        week_start=current_week_start,
-    )
+            work_date_str = str(item_data.get("work_date", "")).strip()
+            work_date = parse_date(work_date_str)
+            if not work_date:
+                return Response(
+                    {"error": f"Ngày thực hiện '{work_date_str}' không hợp lệ (định dạng YYYY-MM-DD)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-    existing_note = (supplement.note or "").strip()
-    new_snippet = "\n".join(clean_items)
-    if existing_note:
-        supplement.note = f"{existing_note}\n\n[Email công việc]\n{new_snippet}"
-    else:
-        supplement.note = f"[Email công việc]\n{new_snippet}"
+            start_time_raw = str(item_data.get("start_time", "")).strip()
+            end_time_raw = str(item_data.get("end_time", "")).strip()
+            start_time = parse_time(start_time_raw) if start_time_raw else None
+            end_time = parse_time(end_time_raw) if end_time_raw else None
 
-    supplement.save(update_fields=["note", "updated_at"])
+            prio = str(item_data.get("priority", "medium")).lower()
+            if prio not in {"low", "medium", "high"}:
+                prio = "medium"
+
+            description = str(item_data.get("description", "")).strip()
+            action_index = item_data.get("action_index")
+
+            # Determine next daily order for this date
+            highest_order = (
+                WorkItem.objects.filter(executor=request.user, work_date=work_date)
+                .aggregate(highest=Max("daily_order"))["highest"]
+                or 0
+            )
+            daily_order = highest_order + 1
+
+            work_item = WorkItem.objects.create(
+                creator=request.user,
+                executor=request.user,
+                title=title[:1000],
+                description=description,
+                work_date=work_date,
+                start_time=start_time,
+                end_time=end_time,
+                priority=prio,
+                status=WorkItem.STATUS_TODO,
+                label="Công việc",
+                daily_order=daily_order,
+            )
+
+            # Assign user's manager if available
+            if getattr(request.user, "manager", None):
+                work_item.managers.set([request.user.manager])
+
+            created_work_items.append({
+                "id": work_item.id,
+                "title": work_item.title,
+                "work_date": work_item.work_date.isoformat(),
+            })
+
+            # Record link in digest.schedule_items
+            schedule_record = {
+                "work_item_id": work_item.id,
+                "title": work_item.title,
+                "work_date": work_item.work_date.isoformat(),
+                "action_index": action_index,
+                "created_at": timezone.now().isoformat(),
+            }
+            updated_schedule_items.append(schedule_record)
+
+            # Auto-mark action as completed if action_index valid
+            if action_index is not None:
+                try:
+                    idx = int(action_index)
+                    if 0 <= idx < len(current_actions):
+                        act = current_actions[idx]
+                        if isinstance(act, dict):
+                            act["completed"] = True
+                        elif isinstance(act, str):
+                            current_actions[idx] = {
+                                "type": "khac",
+                                "title": act,
+                                "deadline": "",
+                                "required_preparations": [],
+                                "priority": "normal",
+                                "completed": True,
+                            }
+                except ValueError:
+                    pass
+
+        digest.schedule_items = updated_schedule_items
+        digest.actions = current_actions
+        digest.save(update_fields=["schedule_items", "actions", "updated_at"])
+
     return Response({
         "status": "success",
-        "message": f"Đã bổ sung {len(clean_items)} đầu việc từ email vào ghi chú báo cáo tuần {current_week_start.isocalendar()[1]}.",
-        "added_notes": clean_items,
-    })
+        "message": f"Đã thêm {len(created_work_items)} việc vào lịch công tác ngày {created_work_items[0]['work_date']}.",
+        "created_items": created_work_items,
+        "schedule_items": digest.schedule_items,
+    }, status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])
