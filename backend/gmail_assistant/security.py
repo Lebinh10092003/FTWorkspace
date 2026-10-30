@@ -19,7 +19,7 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ALLOWED_DOMAINS = ["fermat.vn"]
+DEFAULT_ALLOWED_DOMAINS = ["fermat.vn", "fermat.edu.vn"]
 STATE_TTL_SECONDS = 900  # 15 minutes
 
 

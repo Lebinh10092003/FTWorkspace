@@ -23,6 +23,8 @@ const DJANGO_PORT = 58085;
 const WEB_PORT = 58745;
 const DIST_DIR = path.resolve(__dirname, '../dist');
 const SCREEN_DIRS = [
+  path.resolve('/home/orcauser/orca/workspaces/ft-workspace/agy5/docs/tasks/017-screens'),
+  path.resolve(__dirname, '../docs/tasks/017-screens'),
   path.resolve('/home/orcauser/orca/workspaces/ft-workspace/agy5/docs/tasks/016-screens'),
   path.resolve(__dirname, '../docs/tasks/016-screens'),
 ];
@@ -156,7 +158,7 @@ print(json.dumps(result, ensure_ascii=False))
     GMAIL_MOCK_MODE: '1',
     GMAIL_OAUTH_CLIENT_ID: 'test-e2e-client-id.apps.googleusercontent.com',
     GMAIL_OAUTH_CLIENT_SECRET: 'test-e2e-client-secret',
-    GMAIL_OAUTH_REDIRECT_URI: `http://127.0.0.1:${DJANGO_PORT}/api/gmail/oauth/callback/`,
+    GMAIL_OAUTH_REDIRECT_URI: `http://127.0.0.1:${WEB_PORT}/communication-tools/gmail`,
     GMAIL_TOKEN_KEY: FERNET_KEY,
     AI_AGY_COMMAND: `${venvPython} /tmp/mock_agy_016.py`,
     PYTHONUNBUFFERED: '1',
@@ -192,20 +194,8 @@ p.role = 'ADMIN'
 p.employment_status = 'ACTIVE'
 p.save()
 
-# Seed Gmail Connection
-conn, _ = GmailConnection.objects.update_or_create(
-    user=p,
-    defaults={
-        'email': 'tien@fermat.vn',
-        'encrypted_refresh_token': encrypt_token('mock_refresh_token_for_e2e'),
-        'scopes': 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose',
-        'ai_enabled': True,
-        'notify_new': True,
-        'morning_scan_enabled': True,
-        'morning_time': '08:00',
-        'last_sync_at': datetime.now(timezone.utc),
-    }
-)
+# Bắt đầu chưa kết nối để test luồng OAuth callback thật
+GmailConnection.objects.filter(user=p).delete()
 
 # Xóa digests cũ của user
 MailDigest.objects.filter(user=p).delete()
@@ -301,7 +291,28 @@ print('Seed data Gmail Assistant successfully injected')
     process.stdout.write(`[Worker Log] ${d.toString()}`);
   });
 
-  await new Promise(r => setTimeout(r, 2000));
+  // Chờ Django sẵn sàng nhận kết nối
+  console.log('[Setup] Chờ Django backend sẵn sàng...');
+  let djangoReady = false;
+  for (let i = 0; i < 30; i++) {
+    try {
+      await new Promise((resolve, reject) => {
+        const req = http.get(`http://127.0.0.1:${DJANGO_PORT}/api/gmail/status/`, res => {
+          resolve(true);
+        });
+        req.on('error', reject);
+        req.setTimeout(500, () => {
+          req.destroy();
+          reject(new Error('timeout'));
+        });
+      });
+      djangoReady = true;
+      console.log(`[Setup] Django backend đã sẵn sàng (sau ${(i + 1) * 300}ms).`);
+      break;
+    } catch {
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
 
   const webServer = await startWebServer();
 
@@ -340,15 +351,45 @@ print('Seed data Gmail Assistant successfully injected')
       );
     });
 
+    // Setup mock Google OAuth & delay callback on desktop
+    await desktopPage.route('**/api/gmail/oauth/callback/', async route => {
+      await new Promise(r => setTimeout(r, 600));
+      await route.continue();
+    });
+
+    await desktopPage.route('https://accounts.google.com/**', async route => {
+      const u = new URL(route.request().url());
+      const state = u.searchParams.get('state');
+      const redirectUri = u.searchParams.get('redirect_uri') || `http://127.0.0.1:${WEB_PORT}/communication-tools/gmail`;
+      const dest = new URL(redirectUri);
+      dest.searchParams.set('code', 'mock_auth_code_e2e_017');
+      dest.searchParams.set('state', state);
+      await route.fulfill({
+        status: 302,
+        headers: { Location: dest.toString() },
+      });
+    });
+
     await desktopPage.goto(`http://127.0.0.1:${WEB_PORT}/communication-tools/gmail`, {
       waitUntil: 'networkidle',
     });
-    console.log('[E2E Desktop] Đã mở trang Hộp thư AI.');
+    console.log('[E2E Desktop] Đã mở trang Hộp thư AI (chưa kết nối).');
 
-    // Chờ xuất hiện tiêu đề hoặc email kết nối
-    await desktopPage.waitForSelector('text=tien@fermat.vn', { timeout: 10000 });
+    // Chờ màn hình chưa kết nối với nút Kết nối Gmail của bạn
+    await desktopPage.waitForSelector('text=Kết nối Gmail của bạn', { timeout: 10000 });
+    console.log('[E2E Desktop] Bấm nút Kết nối Gmail của bạn để bắt đầu luồng OAuth...');
+    await desktopPage.locator('button:has-text("Kết nối Gmail của bạn")').click();
+
+    // Chờ màn hình Đang hoàn tất kết nối...
+    await desktopPage.waitForSelector('text=Đang hoàn tất kết nối…', { timeout: 10000 });
+    console.log('[E2E Desktop] Đang hoàn tất kết nối... chụp ảnh màn hình.');
+    await saveScreenshots(desktopPage, '01-desktop-completing-light');
+
+    // Chờ frontend tự động POST callback và chuyển sang trạng thái Đã kết nối
+    await desktopPage.waitForSelector('text=tien@fermat.vn', { timeout: 15000 });
     await desktopPage.waitForSelector('text=Khẩn: Xác nhận lịch tập huấn STEM tại Trường THCS Cầu Giấy');
-    await saveScreenshots(desktopPage, '01-desktop-overview-light');
+    console.log('[E2E Desktop] Đã kết nối thành công qua OAuth callback!');
+    await saveScreenshots(desktopPage, '02-desktop-connected-light');
 
     // Mở modal Soạn phản hồi AI
     console.log('[E2E Desktop] Bấm nút Soạn phản hồi...');
@@ -441,10 +482,42 @@ print('Seed data Gmail Assistant successfully injected')
       );
     });
 
+    // Xóa kết nối trong test DB để mobile kiểm thử luồng OAuth callback độc lập
+    execSync(`${venvPython} -c "import django, sys, os; sys.path.insert(0, '${path.resolve(__dirname, '../backend')}'); os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings'); django.setup(); from authentication.models import UserProfile; from gmail_assistant.models import GmailConnection; p = UserProfile.objects.get(email='tien@fermat.vn'); GmailConnection.objects.filter(user=p).delete()"`, { env: djangoEnv, cwd: path.resolve(__dirname, '../backend') });
+
+    await mobilePage.route('**/api/gmail/oauth/callback/', async route => {
+      await new Promise(r => setTimeout(r, 600));
+      await route.continue();
+    });
+
+    await mobilePage.route('https://accounts.google.com/**', async route => {
+      const u = new URL(route.request().url());
+      const state = u.searchParams.get('state');
+      const redirectUri = u.searchParams.get('redirect_uri') || `http://127.0.0.1:${WEB_PORT}/communication-tools/gmail`;
+      const dest = new URL(redirectUri);
+      dest.searchParams.set('code', 'mock_auth_code_mobile_017');
+      dest.searchParams.set('state', state);
+      await route.fulfill({
+        status: 302,
+        headers: { Location: dest.toString() },
+      });
+    });
+
     await mobilePage.goto(`http://127.0.0.1:${WEB_PORT}/communication-tools/gmail`, {
       waitUntil: 'networkidle',
     });
-    await mobilePage.waitForSelector('text=tien@fermat.vn', { timeout: 10000 });
+    console.log('[E2E Mobile] Mở trang Hộp thư AI trên Mobile (chưa kết nối).');
+
+    await mobilePage.waitForSelector('text=Kết nối Gmail của bạn', { timeout: 10000 });
+    await mobilePage.locator('button:has-text("Kết nối Gmail của bạn")').click();
+
+    await mobilePage.waitForSelector('text=Đang hoàn tất kết nối…', { timeout: 10000 });
+    console.log('[E2E Mobile] Đang hoàn tất kết nối... chụp ảnh mobile.');
+    await saveScreenshots(mobilePage, '03-mobile-completing-light');
+
+    await mobilePage.waitForSelector('text=tien@fermat.vn', { timeout: 15000 });
+    console.log('[E2E Mobile] Đã kết nối thành công trên Mobile!');
+    await saveScreenshots(mobilePage, '04-mobile-connected-light');
 
     // Bấm nút Cài đặt trên mobile
     console.log('[E2E Mobile] Mở modal Cài đặt...');
