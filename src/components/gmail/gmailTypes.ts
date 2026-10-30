@@ -70,6 +70,12 @@ export type MailDigestItem = {
   needs_reply: boolean;
   reply_by?: string | null;
   summary: string;
+  snippet?: string;
+  has_ai_summary?: boolean;
+  waiting_for?: string;
+  latest_snippet?: string;
+  thread_error?: string;
+  last_analyzed_at?: string | null;
   actions: Array<ActionItem | string>;
   schedule_items?: ScheduleItemLink[];
   status: 'new' | 'replied' | 'ignored';
@@ -109,5 +115,20 @@ export type MorningDigestResponse = {
     sender: string;
     date: string;
     snippet: string;
+  }>;
+};
+
+export type JobProgressResponse = {
+  analyzing: boolean;
+  queued_count: number;
+  running_count: number;
+  active_count: number;
+  failed_jobs: Array<{
+    id: number;
+    job_type: string;
+    thread_id: string;
+    subject?: string;
+    error_message: string;
+    updated_at: string;
   }>;
 };

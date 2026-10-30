@@ -31,7 +31,7 @@ import {
 import ModuleShellHeader from '../layout/ModuleShellHeader';
 import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
 import { appDialog } from '../AppDialog';
-import { GmailStatusResponse, MailDigestItem, MorningDigestResponse, ActionItem, DigestsCounts } from './gmailTypes';
+import { GmailStatusResponse, MailDigestItem, MorningDigestResponse, ActionItem, DigestsCounts, JobProgressResponse } from './gmailTypes';
 
 type Props = {
   idToken: string;
@@ -89,6 +89,9 @@ export default function GmailAssistantCenter({
 
   // Tác vụ trên thư (phân tích, toggle action)
   const [analyzingDigestId, setAnalyzingDigestId] = useState<number | null>(null);
+  const [analyzingThreadId, setAnalyzingThreadId] = useState<string | null>(null);
+  const [analyzingAll, setAnalyzingAll] = useState(false);
+  const [queueProgress, setQueueProgress] = useState<JobProgressResponse | null>(null);
   const [togglingAction, setTogglingAction] = useState<{ digestId: number; actionIndex: number } | null>(null);
   const [expandedTimelineThreadIds, setExpandedTimelineThreadIds] = useState<Record<number, boolean>>({});
 
@@ -222,6 +225,28 @@ export default function GmailAssistantCenter({
       setLoadingMorning(false);
     }
   }, [authHeaders, status?.connected]);
+
+  // 4. Tải tiến độ hàng đợi AI
+  const fetchQueueProgress = useCallback(async () => {
+    if (!status?.connected) return;
+    try {
+      const res = await fetch('/api/gmail/jobs/progress/', { headers: authHeaders });
+      if (res.ok) {
+        const data: JobProgressResponse = await res.json();
+        setQueueProgress(data);
+        if (data.analyzing) {
+          setTimeout(() => {
+            void fetchQueueProgress();
+          }, 2000);
+        } else {
+          void fetchDigests();
+          void fetchMorningDigest();
+        }
+      }
+    } catch {
+      // Quiet fail
+    }
+  }, [authHeaders, status?.connected, fetchDigests, fetchMorningDigest]);
 
   // Khởi tạo và kiểm tra query params (OAuth callback từ Google)
   useEffect(() => {
@@ -679,6 +704,76 @@ export default function GmailAssistantCenter({
       setAnalyzingDigestId(null);
     }
   };
+
+  // Phân tích 1 luồng thư bằng AI
+  const handleAnalyzeThread = async (threadId: string) => {
+    if (!threadId) return;
+    setAnalyzingThreadId(threadId);
+    try {
+      const res = await fetch(`/api/gmail/threads/${encodeURIComponent(threadId)}/analyze/`, {
+        method: 'POST',
+        headers: authHeaders,
+      });
+      if (res.ok) {
+        showToast('Đã xếp luồng thư vào hàng đợi phân tích AI.');
+        void fetchQueueProgress();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        await appDialog.alert(err.error || 'Không thể yêu cầu phân tích luồng thư.', { tone: 'warning' });
+      }
+    } catch {
+      await appDialog.alert('Lỗi mạng khi yêu cầu phân tích luồng thư.', { tone: 'danger' });
+    } finally {
+      setAnalyzingThreadId(null);
+    }
+  };
+
+  // Phân tích tất cả các luồng chưa có tóm tắt (backlog 14 ngày)
+  const handleAnalyzeAllThreads = async () => {
+    setAnalyzingAll(true);
+    try {
+      const res = await fetch('/api/gmail/threads/analyze-all/', {
+        method: 'POST',
+        headers: authHeaders,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast(data.message || 'Đã xếp các luồng thư vào hàng đợi phân tích AI.');
+        void fetchQueueProgress();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        await appDialog.alert(err.error || 'Không thể yêu cầu phân tích tất cả.', { tone: 'warning' });
+      }
+    } catch {
+      await appDialog.alert('Lỗi mạng khi yêu cầu phân tích tất cả.', { tone: 'danger' });
+    } finally {
+      setAnalyzingAll(false);
+    }
+  };
+
+  // Thử lại 1 job phân tích AI bị lỗi
+  const handleRetryJob = async (jobId: number) => {
+    try {
+      const res = await fetch(`/api/gmail/jobs/${jobId}/retry/`, {
+        method: 'POST',
+        headers: authHeaders,
+      });
+      if (res.ok) {
+        showToast('Đã đưa công việc trở lại hàng đợi xử lý.');
+        void fetchQueueProgress();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        await appDialog.alert(err.error || 'Không thể thử lại công việc.', { tone: 'warning' });
+      }
+    } catch {
+      await appDialog.alert('Lỗi mạng khi thử lại công việc.', { tone: 'danger' });
+    }
+  };
+
+  // Đếm số luồng chưa có tóm tắt AI
+  const unanalyzedCount = useMemo(() => {
+    return digests.filter(d => !d.has_ai_summary).length;
+  }, [digests]);
 
   // Lưu bản nháp vào Gmail
   const handleSaveDraftToGmail = async () => {
@@ -1210,7 +1305,19 @@ export default function GmailAssistantCenter({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-end sm:self-auto">
+                <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+                  {status.ai_enabled && unanalyzedCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleAnalyzeAllThreads}
+                      disabled={analyzingAll || !!queueProgress?.analyzing}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 px-3.5 py-2 text-xs font-bold text-white shadow-xs cursor-pointer min-h-[40px] transition disabled:opacity-60"
+                      title="Phân tích lại các luồng thư 14 ngày gần nhất chưa có tóm tắt AI"
+                    >
+                      <Sparkles className={`h-4 w-4 ${analyzingAll || queueProgress?.analyzing ? 'animate-spin' : ''}`} />
+                      <span>{analyzingAll ? 'Đang xếp việc...' : `Phân tích tất cả (${unanalyzedCount})`}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleSyncNow}
@@ -1230,6 +1337,50 @@ export default function GmailAssistantCenter({
                   </button>
                 </div>
               </div>
+
+              {/* Thanh tiến độ xử lý hàng đợi AI */}
+              {queueProgress?.analyzing && (
+                <div className="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/80 dark:bg-blue-950/40 p-4 flex items-center justify-between gap-3 animate-pulse">
+                  <div className="flex items-center gap-2.5 text-xs text-blue-800 dark:text-blue-300">
+                    <RefreshCw className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400 shrink-0" />
+                    <div>
+                      <p className="font-bold">Đang phân tích các luồng thư bằng AI...</p>
+                      <p className="text-[11px] text-blue-600 dark:text-blue-400">
+                        Còn {queueProgress.active_count} luồng trong hàng đợi ({queueProgress.running_count} đang chạy, {queueProgress.queued_count} đang chờ).
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold text-blue-700 dark:text-blue-300 shrink-0">Tuần tự...</span>
+                </div>
+              )}
+
+              {/* Cảnh báo job phân tích gặp lỗi nếu có */}
+              {Array.isArray(queueProgress?.failed_jobs) && queueProgress.failed_jobs.length > 0 && (
+                <div className="rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 p-4 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-rose-800 dark:text-rose-300">
+                    <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                    <span>Có {queueProgress.failed_jobs.length} luồng gặp lỗi khi phân tích AI:</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {queueProgress.failed_jobs.map(fj => (
+                      <div key={fj.id} className="flex items-center justify-between gap-2 text-xs bg-white/60 dark:bg-slate-900/60 p-2 rounded-xl">
+                        <div className="min-w-0 flex-1 truncate">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">{fj.subject || `Luồng #${fj.thread_id}`}</span>
+                          <span className="text-rose-600 dark:text-rose-400 ml-1.5 font-normal">({fj.error_message || 'Lỗi không xác định'})</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRetryJob(fj.id)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer shrink-0"
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          <span>Thử lại</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Thẻ Buổi Sáng (Morning Digest Card) */}
               {morningDigest && (
@@ -1579,40 +1730,78 @@ export default function GmailAssistantCenter({
                             )}
 
                             {/* Tóm tắt nội dung */}
-                            {item.summary && item.summary.trim() ? (
-                              <p className="mt-2.5 text-xs sm:text-sm leading-relaxed text-slate-700 dark:text-slate-300 whitespace-pre-line">
-                                {item.summary}
-                              </p>
-                            ) : status?.ai_enabled ? (
-                              <div className="mt-2.5 rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/30 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <div className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
-                                  <Sparkles className="h-4 w-4 shrink-0 text-amber-600" />
-                                  <span>Thư này chưa được AI tóm tắt nội dung.</span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => handleAnalyzeDigest(item.id)}
-                                  disabled={analyzingDigestId === item.id}
-                                  className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 px-3 py-1.5 text-xs font-bold text-white shadow-xs cursor-pointer disabled:opacity-60 shrink-0 self-start sm:self-auto"
-                                >
-                                  <Sparkles className={`h-3.5 w-3.5 ${analyzingDigestId === item.id ? 'animate-spin' : ''}`} />
-                                  <span>{analyzingDigestId === item.id ? 'Đang phân tích...' : 'Phân tích thư này'}</span>
-                                </button>
+                            {item.has_ai_summary && item.summary && item.summary.trim() ? (
+                              <div className="mt-2.5 space-y-1.5">
+                                <p className="text-xs sm:text-sm leading-relaxed text-slate-700 dark:text-slate-300 whitespace-pre-line">
+                                  {item.summary}
+                                </p>
+                                {item.waiting_for && (
+                                  <div className="flex items-center gap-1.5 text-xs">
+                                    <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 font-semibold text-indigo-700 dark:text-indigo-300">
+                                      <span>Tình trạng:</span>
+                                      <span>{item.waiting_for}</span>
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             ) : (
-                              <div className="mt-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                                  <Settings className="h-4 w-4 shrink-0 text-slate-500" />
-                                  <span>Tính năng AI tóm tắt đang tắt. Bật AI trong Cài đặt để có tóm tắt.</span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => setSettingsOpen(true)}
-                                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-xs cursor-pointer shrink-0 self-start sm:self-auto"
-                                >
-                                  <Settings className="h-3.5 w-3.5" />
-                                  <span>Mở Cài đặt</span>
-                                </button>
+                              <div className="mt-2.5 space-y-2">
+                                {/* Đoạn trích Gmail của thư mới nhất khi chưa có AI */}
+                                {(item.latest_snippet || item.snippet) && (
+                                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 italic bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                                    &ldquo;{item.latest_snippet || item.snippet}&rdquo;
+                                  </p>
+                                )}
+
+                                {item.thread_error ? (
+                                  <div className="rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/30 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 text-xs text-rose-800 dark:text-rose-300">
+                                      <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+                                      <span>Lỗi phân tích: {item.thread_error}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAnalyzeThread(item.thread_id)}
+                                      disabled={analyzingThreadId === item.thread_id}
+                                      className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-3 py-1.5 text-xs font-bold text-white shadow-xs cursor-pointer disabled:opacity-60 shrink-0 self-start sm:self-auto"
+                                    >
+                                      <RefreshCw className={`h-3.5 w-3.5 ${analyzingThreadId === item.thread_id ? 'animate-spin' : ''}`} />
+                                      <span>Thử lại</span>
+                                    </button>
+                                  </div>
+                                ) : status?.ai_enabled ? (
+                                  <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/30 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+                                      <Sparkles className="h-4 w-4 shrink-0 text-amber-600" />
+                                      <span className="font-bold">Chưa phân tích bằng AI</span>
+                                      <span className="hidden sm:inline text-amber-700/80">• Bấm để AI tóm tắt diễn biến luồng</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAnalyzeThread(item.thread_id)}
+                                      disabled={analyzingThreadId === item.thread_id}
+                                      className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 px-3 py-1.5 text-xs font-bold text-white shadow-xs cursor-pointer disabled:opacity-60 shrink-0 self-start sm:self-auto"
+                                    >
+                                      <Sparkles className={`h-3.5 w-3.5 ${analyzingThreadId === item.thread_id ? 'animate-spin' : ''}`} />
+                                      <span>{analyzingThreadId === item.thread_id ? 'Đang phân tích...' : 'Phân tích luồng này'}</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                                      <Settings className="h-4 w-4 shrink-0 text-slate-500" />
+                                      <span>Tính năng AI tóm tắt đang tắt. Bật AI trong Cài đặt để có tóm tắt.</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSettingsOpen(true)}
+                                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-xs cursor-pointer shrink-0 self-start sm:self-auto"
+                                    >
+                                      <Settings className="h-3.5 w-3.5" />
+                                      <span>Mở Cài đặt</span>
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             )}
 
@@ -1913,26 +2102,38 @@ export default function GmailAssistantCenter({
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold text-slate-500">Tóm tắt nội dung:</span>
-                    {(!selectedDigest.summary || !selectedDigest.summary.trim()) && (
+                    <span className="font-semibold text-slate-500">Tóm tắt nội dung luồng:</span>
+                    {(!selectedDigest.summary || !selectedDigest.summary.trim() || !selectedDigest.has_ai_summary) && (
                       <button
                         type="button"
-                        onClick={() => handleAnalyzeDigest(selectedDigest.id)}
-                        disabled={analyzingDigestId === selectedDigest.id}
+                        onClick={() => handleAnalyzeThread(selectedDigest.thread_id)}
+                        disabled={analyzingThreadId === selectedDigest.thread_id}
                         className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 hover:underline cursor-pointer"
                       >
-                        <Sparkles className="h-3 w-3" />
-                        <span>{analyzingDigestId === selectedDigest.id ? 'Đang phân tích...' : 'Phân tích thư này'}</span>
+                        <Sparkles className={`h-3 w-3 ${analyzingThreadId === selectedDigest.thread_id ? 'animate-spin' : ''}`} />
+                        <span>{analyzingThreadId === selectedDigest.thread_id ? 'Đang phân tích...' : 'Phân tích luồng này'}</span>
                       </button>
                     )}
                   </div>
-                  {selectedDigest.summary && selectedDigest.summary.trim() ? (
-                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line bg-white/70 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/50 dark:border-slate-800">
-                      {selectedDigest.summary}
-                    </p>
+                  {selectedDigest.has_ai_summary && selectedDigest.summary && selectedDigest.summary.trim() ? (
+                    <div className="space-y-1.5 bg-white/70 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/50 dark:border-slate-800">
+                      <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                        {selectedDigest.summary}
+                      </p>
+                      {selectedDigest.waiting_for && (
+                        <p className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                          Tình trạng: {selectedDigest.waiting_for}
+                        </p>
+                      )}
+                    </div>
                   ) : status?.ai_enabled ? (
-                    <div className="text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/60 flex items-center justify-between gap-2">
-                      <span>Thư này chưa được tóm tắt. Nhấn nút &ldquo;Phân tích thư này&rdquo; để AI xử lý.</span>
+                    <div className="text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/60 space-y-1.5">
+                      {(selectedDigest.latest_snippet || selectedDigest.snippet) && (
+                        <p className="text-slate-600 dark:text-slate-300 italic text-[11px]">
+                          &ldquo;{selectedDigest.latest_snippet || selectedDigest.snippet}&rdquo;
+                        </p>
+                      )}
+                      <p className="font-semibold text-[11px]">Luồng này chưa được tóm tắt bằng AI. Nhấn nút &ldquo;Phân tích luồng này&rdquo; để xử lý.</p>
                     </div>
                   ) : (
                     <div className="text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 p-2.5 rounded-xl flex items-center justify-between gap-2">

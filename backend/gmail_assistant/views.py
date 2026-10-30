@@ -219,8 +219,19 @@ def update_settings_view(request):
     conn = get_object_or_404(GmailConnection, user=request.user)
     data = request.data
 
+    enqueued_backlog_count = 0
     if "ai_enabled" in data:
-        conn.ai_enabled = bool(data["ai_enabled"])
+        old_val = conn.ai_enabled
+        new_val = bool(data["ai_enabled"])
+        conn.ai_enabled = new_val
+        # Khi người dùng bật AI: tự động xếp job backlog cho các luồng 14 ngày gần nhất
+        if new_val and not old_val:
+            from .ai_service import enqueue_thread_analysis_backlog
+            try:
+                enqueued_backlog_count = enqueue_thread_analysis_backlog(request.user, limit=30)
+            except Exception as b_err:
+                logger.warning("Lỗi xếp backlog khi bật AI: %s", b_err)
+
     if "notify_new" in data:
         conn.notify_new = bool(data["notify_new"])
     if "morning_scan_enabled" in data:
@@ -242,6 +253,7 @@ def update_settings_view(request):
         "morning_scan_enabled": conn.morning_scan_enabled,
         "morning_time": conn.morning_time,
         "superior_contacts": conn.superior_contacts,
+        "enqueued_backlog_count": enqueued_backlog_count,
     })
 
 
@@ -547,48 +559,60 @@ def toggle_action_view(request, digest_id):
 def analyze_digest_view(request, digest_id):
     """
     Manually trigger AI analysis for an unanalyzed email digest.
-    Fetches email body via GmailClient if not cached, then queues TYPE_SUMMARIZE job.
-    Includes thread history if other messages exist in the thread.
+    Queues TYPE_SUMMARIZE_THREAD job. Raw message bodies are fetched by worker in-memory only.
     """
     digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
     conn = get_object_or_404(GmailConnection, user=request.user)
+    if not conn.ai_enabled:
+        conn.ai_enabled = True
+        conn.save(update_fields=["ai_enabled", "updated_at"])
 
-    body_text = ""
+    tid = (digest.thread_id or f"msg-{digest.message_id}").strip()
+    from .ai_service import enqueue_single_thread_job
     try:
-        client = GmailClient.from_connection(conn)
-        msg_data = client.get_message(digest.message_id)
-        body_text = msg_data.get("body", "")
+        job = enqueue_single_thread_job(request.user, tid)
+        return Response({"status": "queued", "job_id": job.id, "message": "Đã xếp việc phân tích vào hàng đợi."})
     except Exception as exc:
-        logger.warning("Không thể đọc thân thư từ Gmail cho digest %s: %s", digest.id, exc)
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-    thread_history = []
-    if digest.thread_id:
-        prev_digests = MailDigest.objects.filter(
-            user=request.user,
-            thread_id=digest.thread_id,
-        ).exclude(id=digest.id).order_by("received_at")
-        for pd in prev_digests:
-            thread_history.append({
-                "sender": pd.sender,
-                "date": pd.received_at.strftime("%d/%m/%Y %H:%M"),
-                "summary": pd.summary or pd.snippet or pd.subject,
-            })
 
-    job = enqueue_mail_job(
-        user=request.user,
-        job_type=MailJob.TYPE_SUMMARIZE,
-        payload={
-            "digest_id": digest.id,
-            "message_id": digest.message_id,
-            "thread_id": digest.thread_id,
-            "sender": digest.sender,
-            "subject": digest.subject,
-            "date": digest.received_at.strftime("%d/%m/%Y %H:%M"),
-            "body": body_text,
-            "thread_history": thread_history,
-        },
-    )
-    return Response({"status": "queued", "job_id": job.id})
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def analyze_thread_view(request, thread_id):
+    """Trigger AI analysis for an entire email thread."""
+    conn = get_object_or_404(GmailConnection, user=request.user)
+    if not conn.ai_enabled:
+        conn.ai_enabled = True
+        conn.save(update_fields=["ai_enabled", "updated_at"])
+
+    from .ai_service import enqueue_single_thread_job
+    try:
+        job = enqueue_single_thread_job(request.user, thread_id)
+        return Response({
+            "status": "queued",
+            "job_id": job.id,
+            "message": "Đã xếp luồng thư vào hàng đợi phân tích AI.",
+        })
+    except Exception as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def analyze_all_threads_view(request):
+    """Trigger backlog AI analysis for all unanalyzed threads in the last 14 days."""
+    conn = get_object_or_404(GmailConnection, user=request.user)
+    if not conn.ai_enabled:
+        conn.ai_enabled = True
+        conn.save(update_fields=["ai_enabled", "updated_at"])
+
+    from .ai_service import enqueue_thread_analysis_backlog
+    count = enqueue_thread_analysis_backlog(request.user, limit=30)
+    return Response({
+        "status": "queued",
+        "enqueued_count": count,
+        "message": f"Đã xếp {count} luồng vào hàng đợi phân tích AI." if count > 0 else "Tất cả các luồng gần đây đã có tóm tắt AI hoặc đang được xử lý.",
+    })
 
 
 @api_view(["POST"])
@@ -793,4 +817,48 @@ def get_job_status_view(request, job_id):
         "result": job.result,
         "error_message": job.error_message,
         "duration_seconds": job.duration_seconds,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsWorkspaceAuthenticated])
+def jobs_progress_view(request):
+    """Get overall AI queue progress for the authenticated user."""
+    jobs_qs = MailJob.objects.filter(user=request.user)
+    queued = jobs_qs.filter(status=MailJob.STATUS_QUEUED).count()
+    running = jobs_qs.filter(status=MailJob.STATUS_RUNNING).count()
+    active = queued + running
+
+    failed_jobs = []
+    for fj in jobs_qs.filter(status=MailJob.STATUS_FAILED).order_by("-updated_at")[:5]:
+        failed_jobs.append({
+            "id": fj.id,
+            "job_type": fj.job_type,
+            "thread_id": (fj.payload or {}).get("thread_id", ""),
+            "subject": (fj.payload or {}).get("subject", ""),
+            "error_message": fj.error_message,
+            "updated_at": fj.updated_at.isoformat(),
+        })
+
+    return Response({
+        "analyzing": active > 0,
+        "queued_count": queued,
+        "running_count": running,
+        "active_count": active,
+        "failed_jobs": failed_jobs,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def retry_job_view(request, job_id):
+    """Retry a failed MailJob."""
+    job = get_object_or_404(MailJob, id=job_id, user=request.user)
+    job.status = MailJob.STATUS_QUEUED
+    job.error_message = ""
+    job.save(update_fields=["status", "error_message", "updated_at"])
+    return Response({
+        "status": "queued",
+        "job_id": job.id,
+        "message": "Đã đưa công việc trở lại hàng đợi xử lý.",
     })
