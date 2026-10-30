@@ -124,6 +124,7 @@ class MailJob(models.Model):
     """Background AI processing job for the Gmail Assistant (processed by run_ai_queue)."""
 
     TYPE_SUMMARIZE = "summarize"
+    TYPE_SUMMARIZE_THREAD = "summarize_thread"
     TYPE_DRAFT_REPLY = "draft_reply"
     TYPE_REPORT_NOTE = "report_note"
 
@@ -161,3 +162,45 @@ class MailJob(models.Model):
 
     def __str__(self):
         return f"Job #{self.id} ({self.job_type}) for {self.user.email} [{self.status}]"
+
+
+class MailThreadSummary(models.Model):
+    """
+    Stores AI analysis and summary at the THREAD level.
+    RAW EMAIL BODIES ARE NEVER STORED IN DB (privacy & security).
+    """
+
+    user = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="mail_thread_summaries",
+    )
+    thread_id = models.CharField(max_length=255, db_index=True)
+    clean_subject = models.CharField(max_length=500, blank=True)
+    summary = models.TextField(blank=True)  # 3-5 dòng tóm tắt nội dung thật
+    waiting_for = models.CharField(max_length=255, blank=True)  # Đang chờ ai / tình trạng hiện tại
+    needs_reply = models.BooleanField(default=False)
+    priority = models.CharField(max_length=20, default="normal")
+    reply_by = models.CharField(max_length=100, blank=True)
+    actions = models.JSONField(default=list)  # Đầu việc của cả luồng
+    last_analyzed_at = models.DateTimeField(null=True, blank=True)
+    last_message_id = models.CharField(max_length=255, blank=True)
+    error_message = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "gmail_thread_summaries"
+        constraints = [
+            models.UniqueConstraint(fields=["user", "thread_id"], name="unique_user_thread_summary")
+        ]
+        indexes = [
+            models.Index(fields=["user", "thread_id"]),
+            models.Index(fields=["user", "last_analyzed_at"]),
+        ]
+        verbose_name = "Tóm tắt luồng email"
+        verbose_name_plural = "Tóm tắt luồng email"
+
+    def __str__(self):
+        return f"ThreadSummary [{self.thread_id}] for {self.user.email} (needs_reply={self.needs_reply})"

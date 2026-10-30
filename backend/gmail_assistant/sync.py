@@ -282,24 +282,19 @@ def sync_user_gmail(connection: GmailConnection, max_fetch: int = 20) -> Dict[st
                     thread_id=thread_id,
                     received_at__lt=received_at,
                 ).update(needs_reply=False, status=MailDigest.STATUS_REPLIED)
+                from .models import MailThreadSummary
+                MailThreadSummary.objects.filter(
+                    user=connection.user,
+                    thread_id=thread_id,
+                ).update(needs_reply=False)
 
-            # If user has opted in for AI analysis, enqueue summarization job
+            # If user has opted in for AI analysis, enqueue thread-level summarization job
             if connection.ai_enabled and not is_from_me and not is_automated:
                 try:
-                    enqueue_mail_job(
-                        user=connection.user,
-                        job_type=MailJob.TYPE_SUMMARIZE,
-                        payload={
-                            "message_id": msg_id,
-                            "thread_id": thread_id,
-                            "sender": f"{from_name} <{sender_email}>" if from_name else sender_email,
-                            "subject": subject,
-                            "date": received_at.strftime("%Y-%m-%d %H:%M"),
-                            "body": body,
-                        },
-                    )
+                    from .ai_service import enqueue_single_thread_job
+                    enqueue_single_thread_job(connection.user, thread_id or f"msg-{msg_id}")
                 except Exception as q_err:
-                    logger.warning("Không thể xếp job tóm tắt cho email %s: %s", msg_id, q_err)
+                    logger.warning("Không thể xếp job tóm tắt luồng cho email %s: %s", msg_id, q_err)
 
         except Exception as exc:
             logger.error("Lỗi đồng bộ email message #%s: %s", msg_id, exc)

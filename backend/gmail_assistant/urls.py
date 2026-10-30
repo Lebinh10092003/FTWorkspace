@@ -16,7 +16,11 @@ urlpatterns = [
     path("digests/<int:digest_id>/toggle-action/", views.toggle_action_view, name="toggle_action"),
     path("digests/<int:digest_id>/analyze/", views.analyze_digest_view, name="analyze_digest"),
     path("digests/<int:digest_id>/add-to-schedule/", views.add_to_schedule_view, name="add_to_schedule"),
+    path("threads/<str:thread_id>/analyze/", views.analyze_thread_view, name="analyze_thread"),
+    path("threads/analyze-all/", views.analyze_all_threads_view, name="analyze_all_threads"),
     path("drafts/create/", views.create_draft_view, name="create_draft"),
     path("sync/", views.trigger_sync_view, name="trigger_sync"),
+    path("jobs/progress/", views.jobs_progress_view, name="jobs_progress"),
     path("jobs/<int:job_id>/", views.get_job_status_view, name="get_job_status"),
+    path("jobs/<int:job_id>/retry/", views.retry_job_view, name="retry_job"),
 ]

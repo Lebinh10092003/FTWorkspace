@@ -170,9 +170,10 @@ def merge_schedule_items(messages: List[MailDigest]) -> List[Dict[str, Any]]:
 
 def build_thread_summary(messages: List[MailDigest]) -> str:
     """
-    Build a unified summary for the entire thread:
-    - Chronological flow of what happened (who said what).
-    - Current status and pending work based on the latest message.
+    Build a unified summary for the entire thread from real AI summaries.
+    NOTE: When AI summary is not yet available, returns empty string so that
+    frontend displays Gmail snippet + 'Chưa phân tích bằng AI' banner instead
+    of repeating email subjects as fake summaries.
     """
     if not messages:
         return ""
@@ -180,23 +181,15 @@ def build_thread_summary(messages: List[MailDigest]) -> str:
     sorted_msgs = sorted(messages, key=lambda m: m.received_at)
     latest = sorted_msgs[-1]
 
-    if len(sorted_msgs) == 1:
-        return latest.summary or latest.snippet or ""
+    # If any message has a real AI summary, return it
+    if latest.summary and not latest.summary.startswith("Luồng trao đổi ("):
+        return latest.summary.strip()
 
-    lines = [f"Luồng trao đổi ({len(sorted_msgs)} thư):"]
-    for idx, m in enumerate(sorted_msgs, 1):
-        sender_short = m.sender.split("<")[0].strip() or m.sender_email
-        time_str = m.received_at.astimezone(timezone.get_current_timezone()).strftime("%d/%m %H:%M")
-        content_brief = (m.summary or m.snippet or m.subject).strip()
-        # Truncate content brief if too long
-        if len(content_brief) > 120:
-            content_brief = content_brief[:117] + "..."
-        lines.append(f"• Thư #{idx} ({time_str} - {sender_short}): {content_brief}")
+    for m in reversed(sorted_msgs):
+        if m.summary and not m.summary.startswith("Luồng trao đổi ("):
+            return m.summary.strip()
 
-    if latest.summary and len(latest.summary) > 30 and latest.summary not in lines[-1]:
-        lines.append(f"Tình trạng hiện tại: {latest.summary.strip()}")
-
-    return "\n".join(lines)
+    return ""
 
 
 def aggregate_thread(thread_key: str, messages: List[MailDigest], user_email: str = "") -> Dict[str, Any]:
@@ -240,8 +233,46 @@ def aggregate_thread(thread_key: str, messages: List[MailDigest], user_email: st
     actions = merge_thread_actions(sorted_msgs)
     schedule_items = merge_schedule_items(sorted_msgs)
 
-    # Summary
-    summary = build_thread_summary(sorted_msgs)
+    # Thread-level summary lookup from MailThreadSummary
+    thread_id = latest.thread_id or (first.thread_id or "")
+    thread_summary_obj = None
+    if thread_id and hasattr(latest, "user") and latest.user:
+        try:
+            from .models import MailThreadSummary
+            thread_summary_obj = MailThreadSummary.objects.filter(
+                user=latest.user,
+                thread_id=thread_id,
+            ).first()
+        except Exception:
+            pass
+
+    has_ai_summary = False
+    waiting_for = ""
+    thread_error = ""
+    last_analyzed_at = None
+
+    if thread_summary_obj and thread_summary_obj.summary:
+        summary = thread_summary_obj.summary.strip()
+        waiting_for = thread_summary_obj.waiting_for.strip()
+        has_ai_summary = True
+        thread_error = thread_summary_obj.error_message or ""
+        if thread_summary_obj.last_analyzed_at:
+            last_analyzed_at = thread_summary_obj.last_analyzed_at.isoformat()
+        if thread_summary_obj.actions:
+            # Combine actions and deduplicate
+            pseudo_digest = MailDigest(actions=thread_summary_obj.actions)
+            actions = merge_thread_actions([pseudo_digest] + sorted_msgs)
+    else:
+        # Fallback to single-digest AI summary if exists and not repeating headers
+        raw_sum = build_thread_summary(sorted_msgs)
+        if raw_sum:
+            summary = raw_sum
+            has_ai_summary = True
+        else:
+            summary = ""
+            has_ai_summary = False
+        if thread_summary_obj:
+            thread_error = thread_summary_obj.error_message or ""
 
     # Status: handled (replied/ignored) if latest is handled or all are handled
     if latest.status == MailDigest.STATUS_REPLIED or all(m.status == MailDigest.STATUS_REPLIED for m in sorted_msgs):
@@ -263,14 +294,14 @@ def aggregate_thread(thread_key: str, messages: List[MailDigest], user_email: st
             "recipient_role": m.recipient_role,
             "addressed_by_name": m.addressed_by_name,
             "is_from_me": m.is_from_me,
-            "snippet": m.snippet or (m.summary[:150] if m.summary else ""),
-            "summary": m.summary,
+            "snippet": m.snippet or "",
+            "summary": m.summary if (m.summary and not m.summary.startswith("Luồng trao đổi (")) else "",
             "needs_reply": m.needs_reply,
             "status": m.status,
         })
 
     # Reply by deadline
-    reply_by = latest.reply_by or ""
+    reply_by = (thread_summary_obj.reply_by if thread_summary_obj and thread_summary_obj.reply_by else "") or latest.reply_by or ""
     if not reply_by:
         for m in reversed(sorted_msgs):
             if m.reply_by:
@@ -279,7 +310,7 @@ def aggregate_thread(thread_key: str, messages: List[MailDigest], user_email: st
 
     return {
         "id": latest.id,
-        "thread_id": latest.thread_id or (first.thread_id or ""),
+        "thread_id": thread_id,
         "message_id": latest.message_id,
         "subject": latest.subject,
         "clean_subject": clean_subject(latest.subject),
@@ -296,6 +327,11 @@ def aggregate_thread(thread_key: str, messages: List[MailDigest], user_email: st
         "needs_reply": needs_reply,
         "reply_by": reply_by,
         "summary": summary,
+        "has_ai_summary": has_ai_summary,
+        "waiting_for": waiting_for,
+        "latest_snippet": latest.snippet or "",
+        "thread_error": thread_error,
+        "last_analyzed_at": last_analyzed_at,
         "actions": actions,
         "schedule_items": schedule_items,
         "status": status,
