@@ -103,7 +103,7 @@ def oauth_authorize_url_view(request):
         "state": state,
     }
     auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
-    return Response({"authorize_url": auth_url, "state": state})
+    return Response({"authorize_url": auth_url, "state": state, "redirect_uri": redirect_uri})
 
 
 @api_view(["POST"])
@@ -132,6 +132,8 @@ def oauth_callback_view(request):
     if not redirect_uri:
         creds = get_oauth_credentials()
         redirect_uri = creds.get("redirect_uri") or request.build_absolute_uri("/communication-tools/gmail")
+    elif "?" in redirect_uri:
+        redirect_uri = redirect_uri.split("?")[0]
 
     try:
         token_data = GmailClient.exchange_code_for_tokens(code, redirect_uri)

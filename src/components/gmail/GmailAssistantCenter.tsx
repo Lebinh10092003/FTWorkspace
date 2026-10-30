@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Mail,
   RefreshCw,
@@ -59,7 +59,10 @@ export default function GmailAssistantCenter({
   const [status, setStatus] = useState<GmailStatusResponse | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [oauthErrorMessage, setOauthErrorMessage] = useState<string | null>(null);
+  const [completingOAuth, setCompletingOAuth] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const processedCodesRef = useRef<Set<string>>(new Set());
 
   // Điểm tin sáng
   const [morningDigest, setMorningDigest] = useState<MorningDigestResponse | null>(null);
@@ -97,6 +100,14 @@ export default function GmailAssistantCenter({
     'Content-Type': 'application/json',
     Authorization: idToken ? `Bearer ${idToken}` : '',
   }), [idToken]);
+
+  // Danh sách tên miền được phép kết nối hiển thị trên giao diện
+  const allowedDomainsDisplay = useMemo(() => {
+    if (status?.allowed_domains && status.allowed_domains.length > 0) {
+      return status.allowed_domains.map(d => `@${d}`).join(' hoặc ');
+    }
+    return '@fermat.vn hoặc @fermat.edu.vn';
+  }, [status?.allowed_domains]);
 
   // Hiển thị toast thông báo ngắn
   const showToast = useCallback((msg: string) => {
@@ -169,20 +180,82 @@ export default function GmailAssistantCenter({
     }
   }, [authHeaders, status?.connected]);
 
-  // Khởi tạo và kiểm tra query params (OAuth callback)
+  // Khởi tạo và kiểm tra query params (OAuth callback từ Google)
   useEffect(() => {
+    if (!idToken) return;
+
     const searchParams = new URLSearchParams(window.location.search);
+
+    // 1. Google trả về lỗi ủy quyền (ví dụ: error=access_denied)
+    const googleError = searchParams.get('error');
+    if (googleError) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      if (googleError === 'access_denied') {
+        setOauthErrorMessage('Bạn đã từ chối cấp quyền truy cập Gmail hoặc phiên ủy quyền đã bị hủy.');
+      } else {
+        setOauthErrorMessage(`Google từ chối ủy quyền: ${decodeURIComponent(googleError)}`);
+      }
+      void fetchStatus();
+      return;
+    }
+
+    // 2. Google redirect về kèm mã xác thực code + state
+    const code = searchParams.get('code');
+    const state = searchParams.get('state');
+    if (code && state) {
+      if (processedCodesRef.current.has(code)) {
+        return;
+      }
+      processedCodesRef.current.add(code);
+      setCompletingOAuth(true);
+      setOauthErrorMessage(null);
+
+      const savedRedirectUri =
+        sessionStorage.getItem('gmail_oauth_redirect_uri') ||
+        `${window.location.origin}${window.location.pathname}`;
+      sessionStorage.removeItem('gmail_oauth_redirect_uri');
+
+      // TUYỆT ĐỐI không in code, state hoặc token vào log/console!
+      // Xóa ngay các tham số truy vấn khỏi URL để bảo mật và chống gọi lặp lại khi reload
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      void (async () => {
+        try {
+          const res = await fetch('/api/gmail/oauth/callback/', {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({
+              code,
+              state,
+              redirect_uri: savedRedirectUri,
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            showToast(data.email ? `Kết nối Gmail thành công (${data.email})!` : 'Kết nối Gmail thành công!');
+            setOauthErrorMessage(null);
+          } else {
+            const err = await res.json().catch(() => ({}));
+            setOauthErrorMessage(err.error || 'Không thể hoàn tất kết nối Gmail. Vui lòng thử lại.');
+          }
+        } catch {
+          setOauthErrorMessage('Lỗi mạng khi hoàn tất kết nối Gmail. Vui lòng thử lại.');
+        } finally {
+          setCompletingOAuth(false);
+          void fetchStatus();
+        }
+      })();
+      return;
+    }
+
+    // 3. Fallback tham số query connected
     if (searchParams.get('connected') === '1') {
       showToast('Kết nối Gmail thành công!');
-      window.history.replaceState({}, '', window.location.pathname);
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
-    const err = searchParams.get('error');
-    if (err) {
-      setErrorMessage(decodeURIComponent(err));
-      window.history.replaceState({}, '', window.location.pathname);
-    }
+
     void fetchStatus();
-  }, [fetchStatus, showToast]);
+  }, [idToken, authHeaders, fetchStatus, showToast]);
 
   // Khi status đổi thành connected -> load digests & morning
   useEffect(() => {
@@ -196,20 +269,24 @@ export default function GmailAssistantCenter({
   const handleStartOAuth = async () => {
     try {
       setErrorMessage(null);
+      setOauthErrorMessage(null);
       const res = await fetch('/api/gmail/oauth/authorize-url/', { headers: authHeaders });
       if (res.ok) {
         const data = await res.json();
         if (data.authorize_url) {
+          if (data.redirect_uri) {
+            sessionStorage.setItem('gmail_oauth_redirect_uri', data.redirect_uri);
+          }
           window.location.href = data.authorize_url;
         } else {
-          setErrorMessage('Không nhận được đường dẫn xác thực từ máy chủ.');
+          setOauthErrorMessage('Không nhận được đường dẫn xác thực từ máy chủ.');
         }
       } else {
         const err = await res.json().catch(() => ({}));
-        setErrorMessage(err.error || 'Không thể khởi động kết nối Gmail.');
+        setOauthErrorMessage(err.error || 'Không thể khởi động kết nối Gmail.');
       }
     } catch {
-      setErrorMessage('Lỗi mạng khi kết nối Gmail.');
+      setOauthErrorMessage('Lỗi mạng khi kết nối Gmail.');
     }
   };
 
@@ -549,8 +626,60 @@ export default function GmailAssistantCenter({
             </div>
           )}
 
-          {/* Trạng thái 1: Đang nạp ban đầu */}
-          {loadingStatus ? (
+          {/* Lỗi xác thực OAuth từ Google hoặc Callback */}
+          {oauthErrorMessage && (
+            <div className="mb-6 rounded-2xl bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 p-4 sm:p-5 text-rose-900 dark:text-rose-100 shadow-sm animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-bold text-rose-900 dark:text-rose-100">
+                      Không thể hoàn tất kết nối Gmail
+                    </h4>
+                    <p className="mt-0.5 text-xs text-rose-700 dark:text-rose-300">
+                      {oauthErrorMessage}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOauthErrorMessage(null);
+                      void handleStartOAuth();
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-3.5 py-2 text-xs font-bold text-white shadow-xs cursor-pointer transition min-h-[38px]"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    <span>Thử lại kết nối</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOauthErrorMessage(null)}
+                    className="p-1.5 rounded-lg text-rose-600 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-200 cursor-pointer"
+                    title="Đóng thông báo"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Trạng thái OAuth: Đang hoàn tất kết nối */}
+          {completingOAuth ? (
+            <div className="mx-auto max-w-xl rounded-3xl border border-indigo-200 dark:border-indigo-800/80 bg-white dark:bg-slate-900 p-8 sm:p-12 text-center shadow-sm my-8">
+              <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                <RefreshCw className="h-8 w-8 animate-spin" />
+              </div>
+              <h3 className="text-xl font-extrabold text-slate-900 dark:text-slate-100">
+                Đang hoàn tất kết nối…
+              </h3>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                Hệ thống đang trao đổi mã ủy quyền với Google và mã hóa khóa bảo mật cho tài khoản của bạn. Vui lòng chờ trong giây lát.
+              </p>
+            </div>
+          ) : loadingStatus ? (
             <div className="flex flex-col items-center justify-center py-24 text-center">
               <RefreshCw className="h-8 w-8 text-blue-600 animate-spin" />
               <p className="mt-4 text-sm font-medium text-slate-500 dark:text-slate-400">
@@ -680,7 +809,7 @@ export default function GmailAssistantCenter({
                         xóa toàn bộ tóm tắt.
                       </li>
                       <li>
-                        Chỉ hỗ trợ tài khoản email công ty kết thúc bằng <strong>@fermat.vn</strong> hoặc trùng khớp với
+                        Chỉ hỗ trợ tài khoản email công ty kết thúc bằng <strong>{allowedDomainsDisplay}</strong> hoặc trùng khớp với
                         tài khoản của bạn.
                       </li>
                     </ul>

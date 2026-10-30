@@ -9,6 +9,7 @@ export type GmailStatusResponse = {
   last_sync_at?: string | null;
   digest_count?: number;
   needs_reply_count?: number;
+  allowed_domains?: string[];
 };
 
 export type MailDigestItem = {
