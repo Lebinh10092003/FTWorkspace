@@ -8,8 +8,9 @@ Views for Gmail Assistant:
 - Job status polling.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 import logging
+import re
 from typing import Any, Dict
 import urllib.parse
 import zoneinfo
@@ -249,12 +250,12 @@ def list_digests_view(request):
     user = request.user
     queryset = MailDigest.objects.filter(user=user)
 
-    filter_type = request.query_params.get("filter", "all")
+    filter_type = request.query_params.get("filter") or request.query_params.get("tab") or "all"
     if filter_type == "needs_reply":
         queryset = queryset.filter(needs_reply=True, status=MailDigest.STATUS_NEW)
-    elif filter_type == "new_today":
+    elif filter_type in ("new_today", "today"):
         now_ict = timezone.now().astimezone(ICT_TZ)
-        start_of_today = now_ict.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        start_of_today = now_ict.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(dt_timezone.utc)
         queryset = queryset.filter(received_at__gte=start_of_today)
 
     priority = request.query_params.get("priority")
@@ -329,7 +330,7 @@ def morning_digest_view(request):
 
     now_ict = now_utc.astimezone(ICT_TZ)
     week_start_dt = (now_ict - timedelta(days=now_ict.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start_utc = week_start_dt.astimezone(timezone.utc)
+    week_start_utc = week_start_dt.astimezone(dt_timezone.utc)
 
     new_past_day = MailDigest.objects.filter(
         user=user,
@@ -350,8 +351,10 @@ def morning_digest_view(request):
     top_unreplied = [
         {
             "id": d.id,
+            "thread_id": d.thread_id,
             "sender": d.sender,
             "subject": d.subject,
+            "date": d.received_at.isoformat(),
             "received_at": d.received_at.isoformat(),
             "priority": d.priority,
             "reply_by": d.reply_by,
@@ -369,9 +372,13 @@ def morning_digest_view(request):
 
     return Response({
         "new_past_day": new_past_day,
+        "recent_count": new_past_day,
         "unreplied_week": unreplied_count,
+        "unreplied_count": unreplied_count,
         "high_priority_unreplied": high_priority_count,
         "unreplied_items": top_unreplied,
+        "unreplied_threads": top_unreplied,
+        "top_unreplied": top_unreplied,
     })
 
 

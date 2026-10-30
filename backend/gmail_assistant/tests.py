@@ -411,6 +411,65 @@ class GmailApiAndPrivacyTests(TestCase):
         # Recent digest preserved
         self.assertTrue(MailDigest.objects.filter(id=self.digest1.id).exists())
 
+    def test_update_settings_patch_morning_time_no_500(self):
+        """Test PATCH /api/gmail/settings/ does not 500 when updating morning_time."""
+        self.client.force_authenticate(user=self.user1)
+        resp = self.client.patch(
+            "/api/gmail/settings/",
+            {
+                "morning_time": "07:30",
+                "morning_scan_enabled": True,
+                "ai_enabled": True,
+                "notify_new": True,
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["morning_time"], "07:30")
+        self.assertTrue(resp.data["morning_scan_enabled"])
+        self.conn1.refresh_from_db()
+        self.assertEqual(self.conn1.morning_time, "07:30")
+
+    def test_morning_digest_endpoint_no_500(self):
+        """Test GET /api/gmail/digests/morning/ does not 500 due to timezone.utc."""
+        self.client.force_authenticate(user=self.user1)
+        resp = self.client.get("/api/gmail/digests/morning/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("unreplied_count", resp.data)
+        self.assertIn("new_past_day", resp.data)
+        self.assertIn("top_unreplied", resp.data)
+
+    def test_list_digests_new_today_filter_no_500(self):
+        """Test GET /api/gmail/digests/?filter=new_today does not 500 due to timezone.utc."""
+        self.client.force_authenticate(user=self.user1)
+        resp = self.client.get("/api/gmail/digests/?filter=new_today")
+        self.assertEqual(resp.status_code, 200)
+        resp_tab = self.client.get("/api/gmail/digests/?tab=today")
+        self.assertEqual(resp_tab.status_code, 200)
+
+    def test_full_gmail_endpoint_suite_no_500(self):
+        """Verify entire set of Gmail endpoints responds without 500 errors."""
+        self.client.force_authenticate(user=self.user1)
+        # 1. Status
+        r1 = self.client.get("/api/gmail/status/")
+        self.assertEqual(r1.status_code, 200)
+        # 2. Digests list (different filter options)
+        r2 = self.client.get("/api/gmail/digests/")
+        self.assertEqual(r2.status_code, 200)
+        r3 = self.client.get("/api/gmail/digests/?filter=needs_reply")
+        self.assertEqual(r3.status_code, 200)
+        r4 = self.client.get("/api/gmail/digests/?filter=all")
+        self.assertEqual(r4.status_code, 200)
+        # 3. Morning digest
+        r5 = self.client.get("/api/gmail/digests/morning/")
+        self.assertEqual(r5.status_code, 200)
+        # 4. Settings
+        r6 = self.client.patch("/api/gmail/settings/", {"morning_time": "08:15"}, format="json")
+        self.assertEqual(r6.status_code, 200)
+        # 5. Digest status update
+        r7 = self.client.post(f"/api/gmail/digests/{self.digest1.id}/status/", {"status": "replied"}, format="json")
+        self.assertEqual(r7.status_code, 200)
+
 
 class GmailOAuthCallbackEndpointTests(TestCase):
     def setUp(self):
