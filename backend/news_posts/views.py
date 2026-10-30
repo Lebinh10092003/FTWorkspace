@@ -12,6 +12,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsWorkspaceAuthenticated
+from documents.filename_utils import to_ascii_filename
 from documents.models import AiServiceHealth
 
 from .document_parser import extract_text_from_file, validate_and_truncate_files_total
@@ -361,12 +362,13 @@ def news_post_download_docx(request, pk: int):
 
     docx_buffer = build_news_post_docx(news_post)
     filename = make_safe_docx_filename(news_post)
+    ascii_filename = to_ascii_filename(filename, default_name=f"Tin-bai-{news_post.pk}.docx")
     quoted_filename = urllib.parse.quote(filename.encode("utf-8"))
 
     response = HttpResponse(
         docx_buffer.getvalue(),
         content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
-    response["Content-Disposition"] = f'attachment; filename="{filename}"; filename*=UTF-8\'\'{quoted_filename}'
+    response["Content-Disposition"] = f'attachment; filename="{ascii_filename}"; filename*=UTF-8\'\'{quoted_filename}'
     response["Access-Control-Expose-Headers"] = "Content-Disposition"
     return response
