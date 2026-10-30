@@ -27,6 +27,7 @@ from .document_parser import (
     extract_text_from_file,
     validate_and_truncate_files_total,
 )
+from .docx_builder import build_news_post_docx, make_safe_docx_filename
 from .models import NewsPost, NewsPostJob
 from .prompts import build_news_post_prompt
 from .service import cancel_news_post_job, enqueue_news_post_job, process_news_post_job
@@ -866,7 +867,10 @@ class DocxExportAndFormattingTests(TestCase):
             response["Content-Type"],
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
-        self.assertIn("Tin-bai-thcs-ly-thuong-kiet", response["Content-Disposition"])
+        self.assertIn("filename*=", response["Content-Disposition"])
+        self.assertIn("THCS%20L%C3%BD%20Th%C6%B0%E1%BB%9Dng%20Ki%E1%BB%87t.docx", response["Content-Disposition"])
+        self.assertIn('filename="', response["Content-Disposition"])
+        self.assertIn("THCS Ly Thuong Kiet.docx", response["Content-Disposition"])
 
         # 1. Kiểm tra mở bằng zipfile
         zf = zipfile.ZipFile(io.BytesIO(response.content))
@@ -1001,5 +1005,189 @@ class DocxExportAndFormattingTests(TestCase):
         raw_tags = ["FermatTech", "#LyThuongKiet", "  ChuyenDoiSo  "]
         formatted = format_hashtags_string(raw_tags)
         self.assertEqual(formatted, "#FermatTech #LyThuongKiet #ChuyenDoiSo")
+
+
+class NewsPostWordFilenameStandardTests(TestCase):
+    """Kiểm thử chuẩn tên file Word tải về cho tin bài theo Việc 018:
+    YYYY.MM.DD. <Loại> <nội dung>.docx
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = UserProfile.objects.create(
+            email="test_filename@fermat.vn",
+            name="Mr Tester",
+            role="EMPLOYEE",
+        )
+
+    def test_fb_training_filename_with_sessions_date_and_shortened_school_name(self):
+        """fb_training: ngày chấm cách, Bài đăng FB tập huấn BNDC TH, THCS Lý Thường Kiệt.docx"""
+        post = NewsPost.objects.create(
+            owner=self.user,
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            title="Tập huấn BNDC Lý Thường Kiệt",
+            input_payload={
+                "unit_name": "Trường Tiểu học & THCS Lý Thường Kiệt",
+                "sessions": [
+                    {"session_date": "2026-10-10"},
+                    {"session_date": "2026-10-11"},
+                ],
+            },
+        )
+        fname = make_safe_docx_filename(post)
+        # Nhiều buổi thì lấy ngày buổi cuối (2026.10.11)
+        self.assertEqual(
+            fname,
+            "2026.10.11. Bài đăng FB tập huấn BNDC TH, THCS Lý Thường Kiệt.docx",
+        )
+
+    def test_fb_meeting_filename_with_action_verb_lam_viec(self):
+        """fb_meeting: Bài đăng FB làm việc MN Vĩnh Hưng.docx"""
+        post = NewsPost.objects.create(
+            owner=self.user,
+            post_type=NewsPost.TYPE_FB_MEETING,
+            title="Buổi làm việc với Trường MN Vĩnh Hưng",
+            input_payload={
+                "unit_name": "Trường Mầm non Vĩnh Hưng",
+                "sessions": [{"session_date": "2026-10-27"}],
+            },
+        )
+        fname = make_safe_docx_filename(post)
+        self.assertEqual(
+            fname,
+            "2026.10.27. Bài đăng FB làm việc MN Vĩnh Hưng.docx",
+        )
+
+    def test_fb_meeting_filename_with_hop_trien_khai(self):
+        """fb_meeting: Bài đăng FB họp triển khai cài đặt BNDC THCS Giảng Võ.docx"""
+        post = NewsPost.objects.create(
+            owner=self.user,
+            post_type=NewsPost.TYPE_FB_MEETING,
+            title="Họp triển khai cài đặt BNDC THCS Giảng Võ",
+            input_payload={
+                "unit_name": "THCS Giảng Võ",
+                "sessions": [{"session_date": "2026-10-15"}],
+            },
+        )
+        fname = make_safe_docx_filename(post)
+        self.assertEqual(
+            fname,
+            "2026.10.15. Bài đăng FB họp triển khai cài đặt BNDC THCS Giảng Võ.docx",
+        )
+
+    def test_press_article_with_newspaper_name(self):
+        """press_article có tên báo: Tin bài THCS Giảng Võ gửi Báo Giáo dục và Thời đại.docx"""
+        post = NewsPost.objects.create(
+            owner=self.user,
+            post_type=NewsPost.TYPE_PRESS_ARTICLE,
+            title="Tin bài THCS Giảng Võ gửi Báo Giáo dục và Thời đại",
+            input_payload={
+                "unit_name": "Trường THCS Giảng Võ",
+                "newspaper_name": "Báo Giáo dục và Thời đại",
+                "sessions": [{"session_date": "2026-10-23"}],
+            },
+        )
+        fname = make_safe_docx_filename(post)
+        self.assertEqual(
+            fname,
+            "2026.10.23. Tin bài THCS Giảng Võ gửi Báo Giáo dục và Thời đại.docx",
+        )
+
+    def test_press_article_without_newspaper_name(self):
+        """press_article không có tên báo: Tin bài THCS Giảng Võ.docx"""
+        post = NewsPost.objects.create(
+            owner=self.user,
+            post_type=NewsPost.TYPE_PRESS_ARTICLE,
+            title="THCS Giảng Võ ứng dụng AI",
+            input_payload={
+                "unit_name": "THCS Giảng Võ",
+                "sessions": [{"session_date": "2026-10-23"}],
+            },
+        )
+        fname = make_safe_docx_filename(post)
+        self.assertEqual(
+            fname,
+            "2026.10.23. Tin bài THCS Giảng Võ.docx",
+        )
+
+    def test_date_extracted_from_agenda_file_text_when_no_sessions(self):
+        """Trích xuất ngày từ tệp tiến trình khi không có danh sách sessions."""
+        post = NewsPost.objects.create(
+            owner=self.user,
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            title="Tập huấn MN Vĩnh Hưng",
+            input_payload={
+                "unit_name": "MN Vĩnh Hưng",
+                "agenda_files": [
+                    {"name": "tientrinh.docx", "text": "FT-MN VĨNH HƯNG SÁNG 27/10/2026\nNội dung buổi làm việc..."}
+                ],
+            },
+        )
+        fname = make_safe_docx_filename(post)
+        self.assertTrue(fname.startswith("2026.10.27. "))
+
+    def test_fallback_to_created_at_when_no_date_in_inputs(self):
+        """Khi dữ liệu đầu vào không chứa ngày, lấy ngày tạo bài (ICT)."""
+        post = NewsPost.objects.create(
+            owner=self.user,
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            title="Tập huấn chung",
+            input_payload={"unit_name": "TH Ngọc Hà"},
+        )
+        local_date = timezone.localtime(post.created_at).date()
+        expected_date = f"{local_date.year:04d}.{local_date.month:02d}.{local_date.day:02d}. "
+        fname = make_safe_docx_filename(post)
+        self.assertTrue(fname.startswith(expected_date))
+
+    def test_sanitizes_forbidden_chars_emojis_and_truncates_length(self):
+        """Làm sạch ký tự cấm, emoji, dấu hai chấm và cắt ở ranh giới từ khi quá dài."""
+        long_title = "💻 TIÊU ĐỀ RẤT DÀI: " + "Chương trình tập huấn giáo viên " * 10 + " / * ? < > |"
+        post = NewsPost.objects.create(
+            owner=self.user,
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            title=long_title,
+            input_payload={
+                "unit_name": "Trường THCS Giảng Võ",
+                "sessions": [{"session_date": "2026-10-10"}],
+            },
+        )
+        fname = make_safe_docx_filename(post)
+        self.assertLessEqual(len(fname), 120)
+        self.assertTrue(fname.endswith(".docx"))
+        self.assertFalse(fname.endswith(" .docx"))
+        self.assertFalse(fname.endswith("..docx"))
+        self.assertNotIn("💻", fname)
+        self.assertNotIn(":", fname)
+        self.assertNotIn("/", fname)
+        self.assertNotIn("*", fname)
+        self.assertNotIn("?", fname)
+        self.assertNotIn("<", fname)
+        self.assertNotIn(">", fname)
+        self.assertNotIn("|", fname)
+
+    def test_api_download_docx_content_disposition_header(self):
+        """Kiểm tra header Content-Disposition qua API đúng chuẩn RFC 6266."""
+        post = NewsPost.objects.create(
+            owner=self.user,
+            post_type=NewsPost.TYPE_FB_TRAINING,
+            title="Tập huấn BNDC TH, THCS Lý Thường Kiệt",
+            input_payload={
+                "unit_name": "Trường Tiểu học & THCS Lý Thường Kiệt",
+                "sessions": [{"session_date": "2026-10-10"}],
+            },
+            status=NewsPost.STATUS_COMPLETED,
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(f"/api/news-posts/{post.id}/download-docx/")
+        self.assertEqual(response.status_code, 200)
+
+        disposition = response["Content-Disposition"]
+        # Phải có bản ASCII dự phòng
+        self.assertIn('filename="2026.10.10. Bai dang FB tap huan BNDC TH, THCS Ly Thuong Kiet.docx"', disposition)
+        # Phải có bản UTF-8 mã hóa percent
+        self.assertIn("filename*=UTF-8''2026.10.10.%20B%C3%A0i%20%C4%91%C4%83ng%20FB%20t%E1%BA%ADp%20hu%E1%BA%A5n%20BNDC%20TH%2C%20THCS%20L%C3%BD%20Th%C6%B0%E1%BB%9Dng%20Ki%E1%BB%87t.docx", disposition)
+        # Expose header
+        self.assertIn("Content-Disposition", response["Access-Control-Expose-Headers"])
+
 
 

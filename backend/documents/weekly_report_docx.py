@@ -14,6 +14,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
+from documents.filename_utils import sanitize_docx_filename
+
 
 FONT = "Times New Roman"
 
@@ -54,8 +56,13 @@ def _section(document, heading, items):
 
 
 def _filename(report):
-    name = _safe_text(report.employee_name) or "Nhân viên"
-    return f"BC KQ tuần {report.completed_week}, NV tuần {report.planned_week} ({name}).docx"
+    raw_name = _safe_text(getattr(report, "employee_name", "")) or "Nhân viên"
+    # Bỏ số thứ tự đầu (vd: "9. Mr Sơn" -> "Mr Sơn", "15. Nguyễn Văn A" -> "Nguyễn Văn A")
+    name = re.sub(r"^\d+\.\s*", "", raw_name).strip() or "Nhân viên"
+    completed = getattr(report, "completed_week", "")
+    planned = getattr(report, "planned_week", "")
+    base_name = f"BC KQ tuần {completed} NV tuần {planned} ({name}).docx"
+    return sanitize_docx_filename(base_name, default_stem="BC KQ tuan NV tuan")
 
 
 def build_weekly_report_docx(report):

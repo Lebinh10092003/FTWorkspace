@@ -754,7 +754,7 @@ class WeeklyReportDocxMatchingTests(TestCase):
             include_bld_task=True,
         )
         fname, docx_bytes = build_weekly_report_docx(report)
-        self.assertTrue(fname.startswith("BC KQ tuần 43, NV tuần 44 (Nguyễn Văn A)"))
+        self.assertTrue(fname.startswith("BC KQ tuần 43 NV tuần 44 (Nguyễn Văn A)"))
 
         # Verify document text by loading docx
         doc = Document(BytesIO(docx_bytes))
