@@ -91,6 +91,7 @@ class MailDigest(models.Model):
     reply_by = models.CharField(max_length=100, blank=True)  # Gợi ý hạn phản hồi từ AI
     summary = models.TextField(blank=True)  # 3-5 dòng tóm tắt của AI
     actions = models.JSONField(default=list)  # Việc cần làm
+    schedule_items = models.JSONField(default=list)  # Liên kết các đầu việc đã thêm vào lịch công tác
     status = models.CharField(
         max_length=20,
         default=STATUS_NEW,

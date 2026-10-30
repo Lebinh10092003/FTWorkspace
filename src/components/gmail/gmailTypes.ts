@@ -22,6 +22,14 @@ export type ActionItem = {
   completed?: boolean;
 };
 
+export type ScheduleItemLink = {
+  work_item_id: number;
+  title: string;
+  work_date: string;
+  action_index?: number | null;
+  created_at?: string;
+};
+
 export type MailDigestItem = {
   id: number;
   message_id: string;
@@ -38,6 +46,7 @@ export type MailDigestItem = {
   reply_by?: string | null;
   summary: string;
   actions: Array<ActionItem | string>;
+  schedule_items?: ScheduleItemLink[];
   status: 'new' | 'replied' | 'ignored';
   is_from_me?: boolean;
 };

@@ -99,6 +99,21 @@ export default function GmailAssistantCenter({
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftSavedSuccess, setDraftSavedSuccess] = useState(false);
 
+  // Thêm vào Lịch công tác modal
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduleModalDigest, setScheduleModalDigest] = useState<MailDigestItem | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    title: '',
+    work_date: '',
+    start_time: '',
+    end_time: '',
+    priority: 'medium' as 'low' | 'medium' | 'high',
+    description: '',
+    action_index: null as number | null,
+  });
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [alreadyScheduledWarning, setAlreadyScheduledWarning] = useState<string | null>(null);
+
   // Cài đặt modal
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsForm, setSettingsForm] = useState({
@@ -357,23 +372,157 @@ export default function GmailAssistantCenter({
     }
   };
 
-  // Đưa vào ghi chú báo cáo tuần
-  const handleAddToWeeklyReport = async (digest: MailDigestItem) => {
+  // Mở modal Thêm vào lịch công tác
+  const handleOpenScheduleModal = (digest: MailDigestItem, actionIdx?: number) => {
+    setScheduleModalDigest(digest);
+
+    // Ngày mặc định: hôm nay
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
+      today.getDate()
+    ).padStart(2, '0')}`;
+
+    let initialTitle = '';
+    let initialDesc = `Nguồn: Email "${digest.subject}" từ ${digest.sender}`;
+    let initialPrio: 'low' | 'medium' | 'high' = 'medium';
+    let initialActionIdx: number | null = null;
+    let warningText: string | null = null;
+
+    if (typeof actionIdx === 'number' && digest.actions && digest.actions[actionIdx]) {
+      const act = getActionObject(digest.actions[actionIdx]);
+      initialActionIdx = actionIdx;
+
+      // Tiêu đề ngắn gọn dạng động từ
+      const cleanTitle = act.title.trim();
+      if (
+        cleanTitle.startsWith('Chuẩn bị') ||
+        cleanTitle.startsWith('Phản hồi') ||
+        cleanTitle.startsWith('Sửa') ||
+        cleanTitle.startsWith('Gửi') ||
+        cleanTitle.startsWith('Tham gia') ||
+        cleanTitle.startsWith('Soạn') ||
+        cleanTitle.startsWith('Liên hệ')
+      ) {
+        initialTitle = cleanTitle;
+      } else {
+        const badge = getActionTypeBadge(act.type);
+        initialTitle = `${badge.label}: ${cleanTitle}`;
+      }
+
+      if (act.deadline) {
+        initialDesc += `\nThời hạn: ${act.deadline}`;
+      }
+      if (act.required_preparations && act.required_preparations.length > 0) {
+        initialDesc += `\nTài liệu cần chuẩn bị: ${act.required_preparations.join(', ')}`;
+      }
+
+      const prioStr = String(act.priority || '').toLowerCase();
+      if (prioStr === 'high') initialPrio = 'high';
+      else if (prioStr === 'low') initialPrio = 'low';
+
+      // Kiểm tra xem đầu việc này đã từng được đưa vào lịch chưa
+      const existing = (digest.schedule_items || []).find(si => si.action_index === actionIdx);
+      if (existing) {
+        const parts = existing.work_date.split('-');
+        const dateDisplay = parts.length === 3 ? `${parts[2]}/${parts[1]}` : existing.work_date;
+        warningText = `Đầu việc này đã từng được thêm vào Lịch công tác ngày ${dateDisplay}. Bạn vẫn có thể tạo thêm nếu muốn.`;
+      }
+    } else {
+      // Mở chung từ email
+      initialTitle = `Phản hồi email: ${digest.subject}`;
+      if (digest.reply_by) {
+        initialDesc += `\nHạn phản hồi: ${digest.reply_by}`;
+      }
+      if (digest.summary) {
+        initialDesc += `\nTóm tắt nội dung: ${digest.summary}`;
+      }
+
+      const pUpper = String(digest.priority || '').toUpperCase();
+      if (pUpper === 'HIGH' || pUpper === 'URGENT') initialPrio = 'high';
+      else if (pUpper === 'LOW') initialPrio = 'low';
+
+      if (digest.schedule_items && digest.schedule_items.length > 0) {
+        const dates = digest.schedule_items.map(s => {
+          const parts = s.work_date.split('-');
+          return parts.length === 3 ? `${parts[2]}/${parts[1]}` : s.work_date;
+        });
+        warningText = `Thư này đã có ${digest.schedule_items.length} việc được đưa vào Lịch (${dates.join(', ')}).`;
+      }
+    }
+
+    setAlreadyScheduledWarning(warningText);
+    setScheduleForm({
+      title: initialTitle,
+      work_date: todayStr,
+      start_time: '',
+      end_time: '',
+      priority: initialPrio,
+      description: initialDesc,
+      action_index: initialActionIdx,
+    });
+    setScheduleModalOpen(true);
+  };
+
+  // Xác nhận tạo việc vào Lịch công tác
+  const handleConfirmAddToSchedule = async () => {
+    if (!scheduleModalDigest) return;
+    if (!scheduleForm.title.trim()) {
+      await appDialog.alert('Vui lòng nhập tiêu đề công việc.', { tone: 'warning' });
+      return;
+    }
+    if (!scheduleForm.work_date) {
+      await appDialog.alert('Vui lòng chọn ngày thực hiện.', { tone: 'warning' });
+      return;
+    }
+
+    setSavingSchedule(true);
     try {
-      const res = await fetch('/api/gmail/digests/add-to-report/', {
+      const res = await fetch(`/api/gmail/digests/${scheduleModalDigest.id}/add-to-schedule/`, {
         method: 'POST',
         headers: authHeaders,
-        body: JSON.stringify({ digest_ids: [digest.id] }),
+        body: JSON.stringify({
+          title: scheduleForm.title.trim(),
+          work_date: scheduleForm.work_date,
+          start_time: scheduleForm.start_time || undefined,
+          end_time: scheduleForm.end_time || undefined,
+          priority: scheduleForm.priority,
+          description: scheduleForm.description.trim(),
+          action_index: scheduleForm.action_index,
+        }),
       });
+
       if (res.ok) {
         const data = await res.json();
-        showToast(data.message || 'Đã thêm tóm tắt vào ghi chú báo cáo tuần!');
+        showToast(data.message || 'Đã thêm công việc vào Lịch công tác thành công!');
+        // Cập nhật lại schedule_items và actions của digest trong local state
+        setDigests(prev =>
+          prev.map(d => {
+            if (d.id === scheduleModalDigest.id) {
+              const updatedActions = d.actions.map((act, idx) => {
+                if (idx === scheduleForm.action_index) {
+                  const actObj = getActionObject(act);
+                  return { ...actObj, completed: true };
+                }
+                return act;
+              });
+              return {
+                ...d,
+                schedule_items: data.schedule_items,
+                actions: updatedActions,
+              };
+            }
+            return d;
+          })
+        );
+        setScheduleModalOpen(false);
       } else {
         const err = await res.json().catch(() => ({}));
-        await appDialog.alert(err.error || 'Không thể đưa vào báo cáo tuần.', { tone: 'warning' });
+        await appDialog.alert(err.error || 'Không thể thêm việc vào lịch công tác.', { tone: 'warning' });
       }
     } catch {
-      await appDialog.alert('Lỗi mạng khi thêm vào báo cáo tuần.', { tone: 'danger' });
+      await appDialog.alert('Lỗi mạng khi tạo việc vào lịch công tác.', { tone: 'danger' });
+    } finally {
+      setSavingSchedule(false);
     }
   };
 
@@ -1357,6 +1506,26 @@ export default function GmailAssistantCenter({
                                   Đã bỏ qua
                                 </span>
                               )}
+
+                              {/* Đã thêm vào lịch công tác */}
+                              {Array.isArray(item.schedule_items) && item.schedule_items.length > 0 && (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300"
+                                  title={item.schedule_items.map(s => `${s.title} (${s.work_date})`).join('\n')}
+                                >
+                                  <Calendar className="h-3 w-3" />
+                                  <span>
+                                    Đã thêm lịch (
+                                    {item.schedule_items
+                                      .map(s => {
+                                        const parts = s.work_date.split('-');
+                                        return parts.length === 3 ? `${parts[2]}/${parts[1]}` : s.work_date;
+                                      })
+                                      .join(', ')}
+                                    )
+                                  </span>
+                                </span>
+                              )}
                             </div>
 
                             {/* Tiêu đề & Người gửi */}
@@ -1422,6 +1591,9 @@ export default function GmailAssistantCenter({
                                     const badge = getActionTypeBadge(act.type);
                                     const isToggling =
                                       togglingAction?.digestId === item.id && togglingAction.actionIndex === idx;
+                                    const isItemScheduled = (item.schedule_items || []).some(
+                                      si => si.action_index === idx
+                                    );
                                     return (
                                       <div
                                         key={idx}
@@ -1440,19 +1612,38 @@ export default function GmailAssistantCenter({
                                             className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
                                           />
                                           <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                              <span
-                                                className={`inline-flex items-center rounded-md border px-1.5 py-0.2 text-[10px] font-bold ${badge.bg}`}
-                                              >
-                                                {badge.label}
-                                              </span>
-                                              {act.deadline && (
-                                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
-                                                  <Clock className="h-3 w-3" />
-                                                  <span>Hạn: {act.deadline}</span>
+                                            <div className="flex items-center justify-between gap-2">
+                                              <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span
+                                                  className={`inline-flex items-center rounded-md border px-1.5 py-0.2 text-[10px] font-bold ${badge.bg}`}
+                                                >
+                                                  {badge.label}
                                                 </span>
-                                              )}
+                                                {act.deadline && (
+                                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                                                    <Clock className="h-3 w-3" />
+                                                    <span>Hạn: {act.deadline}</span>
+                                                  </span>
+                                                )}
+                                                {isItemScheduled && (
+                                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                                    <Check className="h-3 w-3" />
+                                                    <span>Đã có trên lịch</span>
+                                                  </span>
+                                                )}
+                                              </div>
+
+                                              <button
+                                                type="button"
+                                                onClick={() => handleOpenScheduleModal(item, idx)}
+                                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition shrink-0"
+                                                title="Thêm đầu việc này vào Lịch công tác"
+                                              >
+                                                <Calendar className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                                                <span>Lịch</span>
+                                              </button>
                                             </div>
+
                                             <p
                                               className={`mt-1 font-medium leading-relaxed ${
                                                 act.completed
@@ -1494,12 +1685,12 @@ export default function GmailAssistantCenter({
 
                             <button
                               type="button"
-                              onClick={() => handleAddToWeeklyReport(item)}
+                              onClick={() => handleOpenScheduleModal(item)}
                               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs transition cursor-pointer min-h-[38px]"
-                              title="Thêm tóm tắt vào ghi chú báo cáo tuần hiện tại"
+                              title="Thêm công việc vào Lịch công tác"
                             >
-                              <FileText className="h-3.5 w-3.5 text-emerald-600" />
-                              <span className="hidden sm:inline">Vào báo cáo</span>
+                              <Calendar className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                              <span className="hidden sm:inline">Vào lịch</span>
                             </button>
 
                             <button
@@ -1931,6 +2122,152 @@ export default function GmailAssistantCenter({
                 className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-extrabold text-white shadow-xs hover:bg-blue-700 disabled:opacity-60 cursor-pointer transition"
               >
                 {savingSettings ? 'Đang lưu...' : 'Lưu cấu hình'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: Thêm việc vào Lịch công tác với Bản xem trước */}
+      {scheduleModalOpen && scheduleModalDigest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-6 py-4">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400">
+                  <Calendar className="h-4 w-4" />
+                </span>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-slate-100">
+                    Thêm việc vào Lịch công tác
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-xs sm:max-w-md">
+                    Thư: {scheduleModalDigest.subject}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScheduleModalOpen(false)}
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto text-xs">
+              {/* Cảnh báo nếu việc đã từng được thêm */}
+              {alreadyScheduledWarning && (
+                <div className="rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3 text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <span className="leading-relaxed">{alreadyScheduledWarning}</span>
+                </div>
+              )}
+
+              {/* 1. Chọn ngày và thời gian */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-1">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Ngày thực hiện <span className="text-rose-500">*</span>:
+                  </label>
+                  <input
+                    type="date"
+                    value={scheduleForm.work_date}
+                    onChange={e => setScheduleForm(prev => ({ ...prev, work_date: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Bắt đầu (tùy chọn):
+                  </label>
+                  <input
+                    type="time"
+                    value={scheduleForm.start_time}
+                    onChange={e => setScheduleForm(prev => ({ ...prev, start_time: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Kết thúc (tùy chọn):
+                  </label>
+                  <input
+                    type="time"
+                    value={scheduleForm.end_time}
+                    onChange={e => setScheduleForm(prev => ({ ...prev, end_time: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              {/* 2. Tiêu đề công việc (dạng động từ) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Tiêu đề công việc trên Lịch <span className="text-rose-500">*</span>:
+                </label>
+                <input
+                  type="text"
+                  value={scheduleForm.title}
+                  onChange={e => setScheduleForm(prev => ({ ...prev, title: e.target.value }))}
+                  placeholder="Ví dụ: Chuẩn bị file báo cáo tuần, Phản hồi email đối tác..."
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-blue-500 focus:outline-hidden"
+                />
+              </div>
+
+              {/* 3. Mức ưu tiên */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Mức độ ưu tiên:
+                </label>
+                <select
+                  value={scheduleForm.priority}
+                  onChange={e =>
+                    setScheduleForm(prev => ({ ...prev, priority: e.target.value as 'low' | 'medium' | 'high' }))
+                  }
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:outline-hidden"
+                >
+                  <option value="low">Thấp</option>
+                  <option value="medium">Vừa (Bình thường)</option>
+                  <option value="high">Cao (Quan trọng / Gấp)</option>
+                </select>
+              </div>
+
+              {/* 4. Mô tả chi tiết */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Mô tả & Ghi chú thực hiện:
+                </label>
+                <textarea
+                  rows={4}
+                  value={scheduleForm.description}
+                  onChange={e => setScheduleForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Nêu rõ người gửi, thời hạn, các file/tài liệu cần chuẩn bị..."
+                  className="w-full rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-blue-500 focus:outline-hidden leading-relaxed"
+                />
+              </div>
+
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 p-3 text-slate-500 text-[11px] leading-relaxed">
+                ℹ️ Công việc sẽ được tạo trực tiếp vào <strong>Lịch công tác</strong> cá nhân của bạn với trạng thái &ldquo;Cần làm&rdquo; và nhãn &ldquo;Công việc&rdquo;.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setScheduleModalOpen(false)}
+                className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAddToSchedule}
+                disabled={savingSchedule || !scheduleForm.title.trim() || !scheduleForm.work_date}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-5 py-2 text-xs font-extrabold text-white shadow-xs hover:bg-blue-700 disabled:opacity-60 cursor-pointer transition"
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                <span>{savingSchedule ? 'Đang tạo...' : 'Xác nhận tạo việc'}</span>
               </button>
             </div>
           </div>

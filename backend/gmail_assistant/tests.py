@@ -11,8 +11,6 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from authentication.models import UserProfile
-from documents.models import WeeklyReportSupplement
-from documents.weekly_reports import week_start
 from .ai_service import (
     build_draft_reply_prompt,
     build_summarize_prompt,
@@ -382,21 +380,55 @@ class GmailApiAndPrivacyTests(TestCase):
         self.assertTrue(GmailConnection.objects.filter(user=self.user2).exists())
         self.assertTrue(MailDigest.objects.filter(user=self.user2).exists())
 
-    def test_add_to_weekly_report_note(self):
+    def test_add_to_schedule_endpoint(self):
+        """Test rule F: add-to-schedule creates WorkItem for user, prevents cross-user access, and records schedule_items."""
         self.client.force_authenticate(user=self.user1)
-        self.digest1.summary = "Thống nhất lịch tập huấn vào thứ 5 tuần tới với Sở GD&ĐT."
+        self.digest1.actions = [{"type": "phan_hoi_xac_nhan", "title": "Phản hồi thư về báo cáo công tác", "completed": False}]
         self.digest1.save()
 
         resp = self.client.post(
-            "/api/gmail/digests/add-to-report/",
-            {"digest_ids": [self.digest1.id]},
+            f"/api/gmail/digests/{self.digest1.id}/add-to-schedule/",
+            {
+                "items": [
+                    {
+                        "title": "Phản hồi thư về báo cáo công tác",
+                        "work_date": "2026-10-31",
+                        "start_time": "09:00",
+                        "end_time": "10:30",
+                        "priority": "high",
+                        "description": "Người gửi: sep@test.vn - Cần chuẩn bị: file báo cáo",
+                        "action_index": 0,
+                    }
+                ]
+            },
             format="json",
         )
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data["status"], "success")
 
-        current_week_start = week_start(timezone.now().date())
-        supp = WeeklyReportSupplement.objects.get(user=self.user1, week_start=current_week_start)
-        self.assertIn("Xử lý email: Báo cáo công tác 1", supp.note)
+        # Verify WorkItem created for the user
+        from work_schedule.models import WorkItem
+        item = WorkItem.objects.get(creator=self.user1, title="Phản hồi thư về báo cáo công tác")
+        self.assertEqual(item.executor, self.user1)
+        self.assertEqual(item.work_date.isoformat(), "2026-10-31")
+        self.assertEqual(item.priority, "high")
+        self.assertEqual(item.status, WorkItem.STATUS_TODO)
+        self.assertEqual(item.label, "Công việc")
+
+        # Verify schedule_items recorded in digest to avoid duplicates & marked action completed
+        self.digest1.refresh_from_db()
+        self.assertEqual(len(self.digest1.schedule_items), 1)
+        self.assertEqual(self.digest1.schedule_items[0]["work_item_id"], item.id)
+        self.assertTrue(self.digest1.actions[0]["completed"])
+
+        # Verify other user cannot add to schedule for digest1
+        self.client.force_authenticate(user=self.user2)
+        resp_forbidden = self.client.post(
+            f"/api/gmail/digests/{self.digest1.id}/add-to-schedule/",
+            {"items": [{"title": "Hack", "work_date": "2026-10-31"}]},
+            format="json",
+        )
+        self.assertEqual(resp_forbidden.status_code, 404)
 
     def test_cleanup_old_digests(self):
         # Create an old digest 35 days ago

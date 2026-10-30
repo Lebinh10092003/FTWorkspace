@@ -16,18 +16,17 @@ import urllib.parse
 import zoneinfo
 
 from django.db import transaction
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Case, IntegerField, Max, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_time
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.models import UserProfile
 from authentication.permissions import IsWorkspaceAuthenticated
-from documents.content_filter import clean_report_item
-from documents.models import WeeklyReportSupplement
-from documents.weekly_reports import week_start
+from work_schedule.models import WorkItem
 from .ai_service import enqueue_mail_job, process_mail_job
 from .gmail_client import GmailClient
 from .models import GmailConnection, MailDigest, MailJob
@@ -342,6 +341,7 @@ def list_digests_view(request):
             "reply_by": d.reply_by,
             "summary": d.summary,
             "actions": d.actions,
+            "schedule_items": d.schedule_items or [],
             "status": d.status,
             "is_from_me": d.is_from_me,
         })
@@ -618,56 +618,125 @@ def create_draft_view(request):
 
 @api_view(["POST"])
 @permission_classes([IsWorkspaceAuthenticated])
-def add_to_report_view(request):
+def add_to_schedule_view(request, digest_id):
     """
-    Export summaries of selected email digests into WeeklyReportSupplement.note of current week.
-    Applies content_filter to guarantee clean, professional notes.
+    Create WorkItem(s) in work_schedule for the authenticated user from action items of an email digest.
+    Guarantees:
+    - Executor is the user themselves.
+    - Default label='Công việc', status='todo'.
+    - Stores references in digest.schedule_items to prevent accidental duplicates.
+    - User can edit all fields before creating (only created when confirmed).
     """
-    digest_ids = request.data.get("digest_ids", [])
-    if not isinstance(digest_ids, list) or not digest_ids:
-        return Response({"error": "Vui lòng chọn ít nhất một email."}, status=status.HTTP_400_BAD_REQUEST)
+    digest = get_object_or_404(MailDigest, id=digest_id, user=request.user)
+    items_data = request.data.get("items")
+    if items_data is None:
+        items_data = [request.data]
 
-    digests = MailDigest.objects.filter(user=request.user, id__in=digest_ids)
-    if not digests.exists():
-        return Response({"error": "Không tìm thấy email hợp lệ."}, status=status.HTTP_404_NOT_FOUND)
+    if not isinstance(items_data, list) or not items_data:
+        return Response({"error": "Danh sách công việc không hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
 
-    clean_items = []
-    for d in digests:
-        line = f"Xử lý email: {d.subject} (từ {d.sender})"
-        if d.summary:
-            # First line of summary
-            summary_first = d.summary.splitlines()[0]
-            line += f" - {summary_first}"
-        cleaned = clean_report_item(line)
-        if cleaned:
-            clean_items.append(f"- {cleaned}")
+    created_work_items = []
+    updated_schedule_items = list(digest.schedule_items or [])
+    current_actions = list(digest.actions or [])
 
-    if not clean_items:
-        return Response(
-            {"error": "Nội dung các email được chọn không phù hợp để đưa vào báo cáo tuần."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    with transaction.atomic():
+        for item_data in items_data:
+            title = str(item_data.get("title", "")).strip()
+            if not title:
+                return Response({"error": "Tiêu đề công việc không được để trống."}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Find or create WeeklyReportSupplement for current week
-    current_week_start = week_start(timezone.now().date())
-    supplement, _ = WeeklyReportSupplement.objects.get_or_create(
-        user=request.user,
-        week_start=current_week_start,
-    )
+            work_date_str = str(item_data.get("work_date", "")).strip()
+            work_date = parse_date(work_date_str)
+            if not work_date:
+                return Response(
+                    {"error": f"Ngày thực hiện '{work_date_str}' không hợp lệ (định dạng YYYY-MM-DD)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-    existing_note = (supplement.note or "").strip()
-    new_snippet = "\n".join(clean_items)
-    if existing_note:
-        supplement.note = f"{existing_note}\n\n[Email công việc]\n{new_snippet}"
-    else:
-        supplement.note = f"[Email công việc]\n{new_snippet}"
+            start_time_raw = str(item_data.get("start_time", "")).strip()
+            end_time_raw = str(item_data.get("end_time", "")).strip()
+            start_time = parse_time(start_time_raw) if start_time_raw else None
+            end_time = parse_time(end_time_raw) if end_time_raw else None
 
-    supplement.save(update_fields=["note", "updated_at"])
+            prio = str(item_data.get("priority", "medium")).lower()
+            if prio not in {"low", "medium", "high"}:
+                prio = "medium"
+
+            description = str(item_data.get("description", "")).strip()
+            action_index = item_data.get("action_index")
+
+            # Determine next daily order for this date
+            highest_order = (
+                WorkItem.objects.filter(executor=request.user, work_date=work_date)
+                .aggregate(highest=Max("daily_order"))["highest"]
+                or 0
+            )
+            daily_order = highest_order + 1
+
+            work_item = WorkItem.objects.create(
+                creator=request.user,
+                executor=request.user,
+                title=title[:1000],
+                description=description,
+                work_date=work_date,
+                start_time=start_time,
+                end_time=end_time,
+                priority=prio,
+                status=WorkItem.STATUS_TODO,
+                label="Công việc",
+                daily_order=daily_order,
+            )
+
+            # Assign user's manager if available
+            if getattr(request.user, "manager", None):
+                work_item.managers.set([request.user.manager])
+
+            created_work_items.append({
+                "id": work_item.id,
+                "title": work_item.title,
+                "work_date": work_item.work_date.isoformat(),
+            })
+
+            # Record link in digest.schedule_items
+            schedule_record = {
+                "work_item_id": work_item.id,
+                "title": work_item.title,
+                "work_date": work_item.work_date.isoformat(),
+                "action_index": action_index,
+                "created_at": timezone.now().isoformat(),
+            }
+            updated_schedule_items.append(schedule_record)
+
+            # Auto-mark action as completed if action_index valid
+            if action_index is not None:
+                try:
+                    idx = int(action_index)
+                    if 0 <= idx < len(current_actions):
+                        act = current_actions[idx]
+                        if isinstance(act, dict):
+                            act["completed"] = True
+                        elif isinstance(act, str):
+                            current_actions[idx] = {
+                                "type": "khac",
+                                "title": act,
+                                "deadline": "",
+                                "required_preparations": [],
+                                "priority": "normal",
+                                "completed": True,
+                            }
+                except ValueError:
+                    pass
+
+        digest.schedule_items = updated_schedule_items
+        digest.actions = current_actions
+        digest.save(update_fields=["schedule_items", "actions", "updated_at"])
+
     return Response({
         "status": "success",
-        "message": f"Đã bổ sung {len(clean_items)} đầu việc từ email vào ghi chú báo cáo tuần {current_week_start.isocalendar()[1]}.",
-        "added_notes": clean_items,
-    })
+        "message": f"Đã thêm {len(created_work_items)} việc vào lịch công tác ngày {created_work_items[0]['work_date']}.",
+        "created_items": created_work_items,
+        "schedule_items": digest.schedule_items,
+    }, status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])
