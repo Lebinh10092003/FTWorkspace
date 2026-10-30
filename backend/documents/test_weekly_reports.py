@@ -193,7 +193,7 @@ class WeeklyReportPipelineTests(TestCase):
 
         filename, content = build_weekly_report_docx(report)
 
-        self.assertEqual(filename, "BC KQ tuần 39, NV tuần 40 (Mr Phong).docx")
+        self.assertEqual(filename, "BC KQ tuần 39 NV tuần 40 (Mr Phong).docx")
         self.assertTrue(content.startswith(b"PK"))
         with ZipFile(BytesIO(content)) as archive:
             document_xml = archive.read("word/document.xml").decode("utf-8")
@@ -341,7 +341,8 @@ class WeeklyReportAccessApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-        self.assertIn("BC KQ tuan 39, NV tuan 40 (Nhan vien).docx", response["Content-Disposition"])
+        self.assertIn('filename="BC KQ tuan 39 NV tuan 40 (Nhan vien).docx"', response["Content-Disposition"])
+        self.assertIn("filename*=UTF-8''BC%20KQ%20tu%E1%BA%A7n%2039%20NV%20tu%E1%BA%A7n%2040%20%28Nh%C3%A2n%20vi%C3%AAn%29.docx", response["Content-Disposition"])
         with ZipFile(BytesIO(response.content)) as archive:
             document_xml = archive.read("word/document.xml").decode("utf-8")
         self.assertIn("Hoàn thành hồ sơ", document_xml)
@@ -429,3 +430,85 @@ class WeeklyReportWebhookTests(TestCase):
         self.assertEqual(accepted.status_code, 200)
         self.assertEqual(accepted.json(), {"created": 1, "updated": 0})
         sync_reports.assert_called_once_with()
+
+
+class FilenameUtilsUnitTests(TestCase):
+    def test_sanitize_removes_forbidden_chars_and_emoji(self):
+        from documents.filename_utils import sanitize_docx_filename
+        # Ký tự cấm \ / : * ? " < > | và emoji, ký tự điều khiển
+        raw = '💻 Báo cáo: Tuần 43 / 44 * "Quan trọng"? <v1> | nháp\x00.docx'
+        cleaned = sanitize_docx_filename(raw)
+        self.assertEqual(cleaned, "Báo cáo Tuần 43 44 Quan trọng v1 nháp.docx")
+        self.assertNotIn("💻", cleaned)
+        self.assertNotIn(":", cleaned)
+        self.assertNotIn("/", cleaned)
+        self.assertNotIn("*", cleaned)
+        self.assertNotIn("?", cleaned)
+        self.assertNotIn('"', cleaned)
+        self.assertNotIn("<", cleaned)
+        self.assertNotIn(">", cleaned)
+        self.assertNotIn("|", cleaned)
+        self.assertNotIn("\x00", cleaned)
+
+    def test_sanitize_collapses_whitespace_and_preserves_vietnamese(self):
+        from documents.filename_utils import sanitize_docx_filename
+        raw = "   BC   KQ   tuần   43   NV   tuần   44   (Mr Sơn)  .docx  "
+        cleaned = sanitize_docx_filename(raw)
+        self.assertEqual(cleaned, "BC KQ tuần 43 NV tuần 44 (Mr Sơn).docx")
+
+    def test_sanitize_max_length_truncation_at_word_boundary(self):
+        from documents.filename_utils import sanitize_docx_filename
+        long_name = "Một " * 40 + ".docx"  # Rất dài > 120 ký tự
+        cleaned = sanitize_docx_filename(long_name)
+        self.assertLessEqual(len(cleaned), 120)
+        self.assertTrue(cleaned.endswith(".docx"))
+        self.assertFalse(cleaned.endswith(" .docx"))
+        self.assertFalse(cleaned.endswith("..docx"))
+
+    def test_sanitize_removes_trailing_dot_and_space(self):
+        from documents.filename_utils import sanitize_docx_filename
+        raw = "BC KQ tuần 43 NV tuần 44 (Mr Sơn)...   .docx"
+        cleaned = sanitize_docx_filename(raw)
+        self.assertEqual(cleaned, "BC KQ tuần 43 NV tuần 44 (Mr Sơn).docx")
+
+    def test_sanitize_empty_and_fallback(self):
+        from documents.filename_utils import sanitize_docx_filename
+        self.assertEqual(sanitize_docx_filename(""), "tai-lieu.docx")
+        self.assertEqual(sanitize_docx_filename("   "), "tai-lieu.docx")
+        self.assertEqual(sanitize_docx_filename(None), "tai-lieu.docx")
+        self.assertEqual(sanitize_docx_filename(":::***???///"), "tai-lieu.docx")
+
+    def test_to_ascii_filename_converts_vietnamese(self):
+        from documents.filename_utils import to_ascii_filename
+        raw = "2026.10.10. Bài đăng FB tập huấn BNDC TH, THCS Lý Thường Kiệt.docx"
+        ascii_name = to_ascii_filename(raw)
+        self.assertEqual(
+            ascii_name,
+            "2026.10.10. Bai dang FB tap huan BNDC TH, THCS Ly Thuong Kiet.docx",
+        )
+        # Kiểm tra thuần ASCII
+        ascii_name.encode("ascii")
+
+
+class WeeklyReportFilenameStandardTests(TestCase):
+    def test_filename_standard_format_no_comma(self):
+        report = WeeklyReport(completed_week=43, planned_week=44, employee_name="Mr Sơn")
+        fname, _ = build_weekly_report_docx(report)
+        self.assertEqual(fname, "BC KQ tuần 43 NV tuần 44 (Mr Sơn).docx")
+
+    def test_filename_strips_leading_order_number(self):
+        # Mẫu thật có "9. " ở đầu
+        report = WeeklyReport(completed_week=43, planned_week=44, employee_name="9. Mr Sơn")
+        fname, _ = build_weekly_report_docx(report)
+        self.assertEqual(fname, "BC KQ tuần 43 NV tuần 44 (Mr Sơn).docx")
+
+    def test_filename_sanitizes_forbidden_characters_in_employee_name(self):
+        report = WeeklyReport(completed_week=43, planned_week=44, employee_name='Sơn: Lead / "Dev" 💻')
+        fname, _ = build_weekly_report_docx(report)
+        self.assertEqual(fname, "BC KQ tuần 43 NV tuần 44 (Sơn Lead Dev).docx")
+
+    def test_filename_fallback_when_employee_name_missing(self):
+        report = WeeklyReport(completed_week=43, planned_week=44, employee_name="")
+        fname, _ = build_weekly_report_docx(report)
+        self.assertEqual(fname, "BC KQ tuần 43 NV tuần 44 (Nhân viên).docx")
+

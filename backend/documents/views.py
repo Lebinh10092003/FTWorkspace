@@ -41,6 +41,7 @@ from .numbering import (
     register_state,
     type_code_for,
 )
+from .filename_utils import sanitize_docx_filename, to_ascii_filename
 from .weekly_report_docx import build_weekly_report_docx
 from .weekly_reports import (
     build_schedule_reports,
@@ -210,10 +211,8 @@ def funding_proposal_status(request):
     return Response({"documentNumber": record.document_number, "driveUrl": record.drive_url})
 
 
-def _ascii_filename(filename):
-    folded = unicodedata.normalize("NFKD", filename.replace("Đ", "D").replace("đ", "d"))
-    plain = folded.encode("ascii", "ignore").decode("ascii").strip()
-    return plain or "phieu-de-xuat-kinh-phi.docx"
+def _ascii_filename(filename, default_name="phieu-de-xuat-kinh-phi.docx"):
+    return to_ascii_filename(filename, default_name=default_name)
 
 
 def _weekly_report_payload(report):
@@ -387,15 +386,17 @@ def weekly_report_document_webhook(request):
 def weekly_report_docx(request, report_id):
     report = get_object_or_404(_visible_weekly_reports(request), pk=report_id)
     filename, content = build_weekly_report_docx(report)
+    ascii_name = to_ascii_filename(filename, default_name=f"BC-KQ-tuan-{report_id}.docx")
+    quoted_name = quote(filename.encode("utf-8"))
     response = HttpResponse(
         content,
         content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
     response["Content-Disposition"] = (
-        f'attachment; filename="{_ascii_filename(filename)}"; '
-        f"filename*=UTF-8''{quote(filename)}"
+        f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quoted_name}'
     )
     response["Content-Length"] = str(len(content))
+    response["Access-Control-Expose-Headers"] = "Content-Disposition"
     return response
 
 
