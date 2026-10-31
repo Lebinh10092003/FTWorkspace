@@ -50,12 +50,15 @@ def webhook_view(request):
         return JsonResponse({"ok": False, "error": "Method not allowed"}, status=405)
 
     # 1. Xác thực Secret Token
+    # Chưa cấu hình secret thì TỪ CHỐI mọi yêu cầu (không để webhook mở, tránh giả danh người dùng).
     configured_secret = getattr(settings, "ZALO_BOT_WEBHOOK_SECRET", "")
-    if configured_secret:
-        header_secret = request.headers.get("X-Bot-Api-Secret-Token", "")
-        if not hmac.compare_digest(str(header_secret), str(configured_secret)):
-            logger.warning("ZaloBot webhook: Invalid secret token received.")
-            return JsonResponse({"ok": False, "error": "Invalid secret token"}, status=403)
+    if not configured_secret:
+        logger.warning("ZaloBot webhook: ZALO_BOT_WEBHOOK_SECRET chưa cấu hình, từ chối yêu cầu.")
+        return JsonResponse({"ok": False, "error": "Webhook not configured"}, status=403)
+    header_secret = request.headers.get("X-Bot-Api-Secret-Token", "")
+    if not hmac.compare_digest(str(header_secret), str(configured_secret)):
+        logger.warning("ZaloBot webhook: Invalid secret token received.")
+        return JsonResponse({"ok": False, "error": "Invalid secret token"}, status=403)
 
     # 2. Phân tích nội dung JSON
     try:

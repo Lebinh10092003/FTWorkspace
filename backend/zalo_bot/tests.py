@@ -43,6 +43,16 @@ class ZaloBotSecurityAndWebhookTests(TestCase):
             role="MEMBER",
         )
 
+    @override_settings(ZALO_BOT_WEBHOOK_SECRET="")
+    def test_webhook_rejects_everything_when_secret_not_configured(self):
+        """Chưa cấu hình secret thì webhook không được chấp nhận yêu cầu nào (kể cả không có header)."""
+        res = self.client.post(
+            "/api/zalo-bot/webhook/",
+            data=json.dumps({"update_id": 99}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 403)
+
     def test_webhook_rejects_missing_or_invalid_secret(self):
         """Webhook phải từ chối (403) nếu không có hoặc sai header X-Bot-Api-Secret-Token."""
         # 1. Không có header
