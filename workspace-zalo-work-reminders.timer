@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Zalo work reminders every 30 minutes during working hours
+
+[Timer]
+OnCalendar=Mon..Sun *-*-* 08..18:00,30:00
+Persistent=true
+Unit=workspace-zalo-work-reminders.service
+
+[Install]
+WantedBy=timers.target

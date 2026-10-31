@@ -104,6 +104,8 @@ sudo install -m 0644 workspace-gmail-morning-scan.service /etc/systemd/system/wo
 sudo install -m 0644 workspace-gmail-morning-scan.timer /etc/systemd/system/workspace-gmail-morning-scan.timer
 sudo install -m 0644 workspace-gmail-cleanup.service /etc/systemd/system/workspace-gmail-cleanup.service
 sudo install -m 0644 workspace-gmail-cleanup.timer /etc/systemd/system/workspace-gmail-cleanup.timer
+sudo install -m 0644 workspace-zalo-work-reminders.service /etc/systemd/system/workspace-zalo-work-reminders.service
+sudo install -m 0644 workspace-zalo-work-reminders.timer /etc/systemd/system/workspace-zalo-work-reminders.timer
 sudo systemctl daemon-reload
 sudo systemctl disable --now workspace-assessment-closing.timer 2>/dev/null || true
 sudo systemctl enable --now workspace-schedule-sync.timer
@@ -137,6 +139,7 @@ sudo systemctl enable --now "$WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME"
 sudo systemctl enable --now workspace-gmail-sync.timer
 sudo systemctl enable --now workspace-gmail-morning-scan.timer
 sudo systemctl enable --now workspace-gmail-cleanup.timer
+sudo systemctl enable --now workspace-zalo-work-reminders.timer
 sudo systemctl restart "$SERVICE_NAME"
 if systemctl list-unit-files workspace-ai-queue.service --no-legend | grep -q workspace-ai-queue; then
   # worker AI giữ mã cũ trong bộ nhớ; phải nạp lại sau mỗi lần triển khai (chỉ một worker)
