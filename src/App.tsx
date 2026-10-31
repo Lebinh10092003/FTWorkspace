@@ -35,6 +35,7 @@ const MediaSummary = lazyWithRecovery(() => import('./components/social-dashboar
 const Posts = lazyWithRecovery(() => import('./components/social-dashboard/Posts'));
 const Sync = lazyWithRecovery(() => import('./components/social-dashboard/Sync'));
 const Config = lazyWithRecovery(() => import('./components/social-dashboard/Config'));
+const PublishingCenter = lazyWithRecovery(() => import('./components/publishing/PublishingCenter'));
 const AccountManagement = lazyWithRecovery(() => import('./components/social-dashboard/AccountManagement'));
 const CompanyAccounts = lazyWithRecovery(() => import('./components/account-management/CompanyAccounts'));
 const EmailTemplateBuilder = lazyWithRecovery(() => import('./components/email-builder/EmailTemplateBuilder'));
@@ -65,7 +66,7 @@ const AccountProfileModal = lazyWithRecovery(() => import('./components/AccountP
 
 type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'news-posts' | 'gmail-assistant' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
 
-const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'sync', 'config'] as const;
+const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'publishing', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
 const socialTabFromPath = (pathname: string): SocialTab => {
   const segment = pathname.replace(/^\/+|\/+$/g, '').split('/')[1] || 'dashboard';
@@ -1226,6 +1227,14 @@ export default function App() {
               )}
               {activeTab === 'media' && <MediaSummary idToken={idToken || ''} channels={channels} />}
               {activeTab === 'posts' && <Posts idToken={idToken || ''} channels={channels} />}
+              {activeTab === 'publishing' && (
+                <PublishingCenter
+                  idToken={idToken || ''}
+                  userName={user.displayName}
+                  userEmail={user.email}
+                  userRole={userRole}
+                />
+              )}
               {activeTab === 'sync' && (
                 <Sync
                   idToken={idToken || ''}
