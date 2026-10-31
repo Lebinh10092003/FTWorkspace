@@ -29,7 +29,7 @@ INSTALLED_APPS = [
     "corsheaders", "rest_framework", "rest_framework.authtoken",
     "authentication", "social", "examination", "email_builder", "digital_training", "attendance", "work_schedule",
     "documents", "company_accounts", "mcp_oauth", "chatbot", "news_posts",
-    "gmail_assistant",
+    "gmail_assistant", "zalo_bot",
 ]
 
 MIDDLEWARE = [
@@ -161,3 +161,11 @@ SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", not DEBUG)
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", not DEBUG)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
+
+# Zalo Bot Platform Configuration
+ZALO_BOT_TOKEN = os.getenv("ZALO_BOT_TOKEN", "").strip()
+ZALO_BOT_WEBHOOK_SECRET = os.getenv("ZALO_BOT_WEBHOOK_SECRET", "").strip()
+ZALO_BOT_API_BASE = os.getenv("ZALO_BOT_API_BASE", "https://bot-api.zapps.me").strip()
+ZALO_BOT_MONTHLY_CAP = int(os.getenv("ZALO_BOT_MONTHLY_CAP", "2500") or 2500)
+ZALO_BOT_MOCK_MODE = env_bool("ZALO_BOT_MOCK_MODE", False)
+
