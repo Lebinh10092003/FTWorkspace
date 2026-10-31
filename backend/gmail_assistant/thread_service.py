@@ -260,7 +260,10 @@ def aggregate_thread(thread_key: str, messages: List[MailDigest], user_email: st
             last_analyzed_at = thread_summary_obj.last_analyzed_at.isoformat()
         if thread_summary_obj.actions:
             # Combine actions and deduplicate
-            pseudo_digest = MailDigest(actions=thread_summary_obj.actions)
+            pseudo_digest = MailDigest(
+                actions=thread_summary_obj.actions,
+                received_at=datetime.min.replace(tzinfo=dt_timezone.utc),
+            )
             actions = merge_thread_actions([pseudo_digest] + sorted_msgs)
     else:
         # Fallback to single-digest AI summary if exists and not repeating headers
