@@ -242,9 +242,10 @@ def build_summarize_prompt(
         th_lines = []
         for idx, th in enumerate(thread_history, 1):
             th_lines.append(f"  {idx}. ({th.get('date', '')}) Từ {th.get('sender', '')}: {th.get('summary', '')}")
+        th_text = "\n".join(th_lines)
         thread_section = f"""
 DIỄN BIẾN CÁC THƯ TRƯỚC ĐÓ TRONG CÙNG LUỒNG TRAO ĐỔI:
-{"\n".join(th_lines)}
+{th_text}
 (Lưu ý: Tóm tắt chung cho cả luồng cần nêu rõ diễn biến theo thứ tự ai nói gì/chốt gì, tình trạng hiện tại và việc còn phải làm dựa trên thư mới nhất).
 """
 
