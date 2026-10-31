@@ -82,7 +82,20 @@ def notify_workspace(*, event_key, title, message, severity='info', category='wo
         target_emails=emails_list,
         expires_at=expires_at,
     )
+    _dispatch_notification_to_zalo(notification)
     return notification, True
+
+
+def _dispatch_notification_to_zalo(notification):
+    try:
+        from zalo_bot.services import dispatch_workspace_notification_to_zalo
+        profiles = list(UserProfile.objects.filter(employment_status='ACTIVE'))
+        recipients = [p for p in profiles if notification_visible_to(notification, p)]
+        if recipients:
+            dispatch_workspace_notification_to_zalo(notification, recipients)
+    except Exception:
+        pass
+
 
 
 
