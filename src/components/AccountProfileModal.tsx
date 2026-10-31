@@ -8,6 +8,7 @@ import {
   EyeOff,
   KeyRound,
   LoaderCircle,
+  MessageSquare,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import { appDialog } from './AppDialog';
 import McpConnectGuide from './McpConnectGuide';
+import ZaloSettingsTab from './zalo/ZaloSettingsTab';
 
 type AccountUser = { email: string; displayName: string; photoURL?: string | null };
 
@@ -46,7 +48,7 @@ export default function AccountProfileModal({
   onSaved,
   onTokenChanged,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'ai'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'ai' | 'zalo'>('profile');
 
   // Profile states
   const [name, setName] = useState(user.displayName || '');
@@ -358,6 +360,25 @@ export default function AccountProfileModal({
             <span className="shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-extrabold bg-sky-100 dark:bg-sky-900/60 text-sky-800 dark:text-sky-200 border border-sky-200 dark:border-sky-700/50">
               26 Tools
             </span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'zalo'}
+            onClick={() => setActiveTab('zalo')}
+            className={`flex items-center justify-between sm:justify-center gap-2.5 px-4 min-h-[44px] rounded-xl text-[13px] sm:text-sm font-bold transition cursor-pointer ${
+              activeTab === 'zalo'
+                ? 'bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-2xs'
+                : 'text-[var(--ft-text-sub)] hover:text-[var(--ft-text-main)] hover:bg-[var(--ft-surface-2)] border border-transparent'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <MessageSquare className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
+              <span>
+                <span className="sm:hidden">Zalo Bot</span>
+                <span className="hidden sm:inline">Bot Zalo Cá Nhân</span>
+              </span>
+            </div>
           </button>
         </div>
 
@@ -734,6 +755,13 @@ export default function AccountProfileModal({
             </div>
 
             <McpConnectGuide mcpUrl={mcpUrl} apiKey={newlyCreatedKey} idToken={idToken} />
+          </div>
+        )}
+
+        {/* TAB 3: Zalo Bot Integration */}
+        {activeTab === 'zalo' && (
+          <div className="mt-6">
+            <ZaloSettingsTab idToken={idToken} />
           </div>
         )}
       </div>
