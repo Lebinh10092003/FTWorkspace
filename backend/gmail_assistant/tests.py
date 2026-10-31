@@ -1624,3 +1624,41 @@ class Task020RealThreadSummarizationTests(TestCase):
         self.assertEqual(resp_all.data.get("status"), "queued")
 
 
+
+
+class GmailThreadSummaryWithActionsListTests(TestCase):
+    """Luồng đã có tóm tắt AI kèm actions không được làm hỏng danh sách (lỗi so sánh received_at=None)."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user, _ = UserProfile.objects.get_or_create(
+            email="tien.actions@fermat.vn",
+            defaults={"name": "Nguyễn Văn Tiến", "role": "ADMIN", "employment_status": "ACTIVE"},
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_list_and_morning_ok_when_thread_summary_has_actions(self):
+        now = timezone.now()
+        for i, mid in enumerate(("m_a1", "m_a2")):
+            MailDigest.objects.create(
+                user=self.user,
+                message_id=mid,
+                thread_id="th_actions",
+                sender="Đối tác <p@school.vn>",
+                sender_email="p@school.vn",
+                subject="Tài liệu cuộc họp",
+                received_at=now - timedelta(hours=2 - i),
+                recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+                needs_reply=True,
+            )
+        MailThreadSummary.objects.create(
+            user=self.user,
+            thread_id="th_actions",
+            summary="Đối tác đề nghị gửi tài liệu.",
+            last_message_id="m_a2",
+            actions=[{"type": "gui_file", "description": "Gửi tài liệu", "deadline": "17h", "prepare": ["File PDF"]}],
+        )
+        resp = self.client.get("/api/gmail/digests/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["digests"] if "digests" in resp.json() else resp.json()["results"]), 1)
+        self.assertEqual(self.client.get("/api/gmail/digests/morning/").status_code, 200)
