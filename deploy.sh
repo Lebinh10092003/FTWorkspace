@@ -26,6 +26,8 @@ WEEKLY_REPORT_AUTO_SERVICE_NAME="${WEEKLY_REPORT_AUTO_SERVICE_NAME:-workspace-we
 WEEKLY_REPORT_AUTO_TIMER_NAME="${WEEKLY_REPORT_AUTO_TIMER_NAME:-workspace-weekly-report-auto.timer}"
 WEEKLY_SUPPLEMENT_CLEANUP_SERVICE_NAME="${WEEKLY_SUPPLEMENT_CLEANUP_SERVICE_NAME:-workspace-weekly-supplement-cleanup.service}"
 WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME="${WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME:-workspace-weekly-supplement-cleanup.timer}"
+SCHEDULED_POSTS_SERVICE_NAME="${SCHEDULED_POSTS_SERVICE_NAME:-workspace-scheduled-posts.service}"
+SCHEDULED_POSTS_TIMER_NAME="${SCHEDULED_POSTS_TIMER_NAME:-workspace-scheduled-posts.timer}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8001/api/health/}"
 HEALTH_HOST="${HEALTH_HOST:-workspace.fermat.vn}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
@@ -104,6 +106,8 @@ sudo install -m 0644 workspace-gmail-morning-scan.service /etc/systemd/system/wo
 sudo install -m 0644 workspace-gmail-morning-scan.timer /etc/systemd/system/workspace-gmail-morning-scan.timer
 sudo install -m 0644 workspace-gmail-cleanup.service /etc/systemd/system/workspace-gmail-cleanup.service
 sudo install -m 0644 workspace-gmail-cleanup.timer /etc/systemd/system/workspace-gmail-cleanup.timer
+sudo install -m 0644 workspace-scheduled-posts.service "/etc/systemd/system/$SCHEDULED_POSTS_SERVICE_NAME"
+sudo install -m 0644 workspace-scheduled-posts.timer "/etc/systemd/system/$SCHEDULED_POSTS_TIMER_NAME"
 sudo systemctl daemon-reload
 sudo systemctl disable --now workspace-assessment-closing.timer 2>/dev/null || true
 sudo systemctl enable --now workspace-schedule-sync.timer
@@ -137,6 +141,7 @@ sudo systemctl enable --now "$WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME"
 sudo systemctl enable --now workspace-gmail-sync.timer
 sudo systemctl enable --now workspace-gmail-morning-scan.timer
 sudo systemctl enable --now workspace-gmail-cleanup.timer
+sudo systemctl enable --now "$SCHEDULED_POSTS_TIMER_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 if systemctl list-unit-files workspace-ai-queue.service --no-legend | grep -q workspace-ai-queue; then
   # worker AI giữ mã cũ trong bộ nhớ; phải nạp lại sau mỗi lần triển khai (chỉ một worker)

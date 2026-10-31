@@ -29,6 +29,9 @@ def _worker_wrapper(job_type: str, job_id: int):
         elif job_type == "gmail":
             from gmail_assistant.ai_service import process_mail_job
             process_mail_job(job_id)
+        elif job_type == "publishing":
+            from publishing.service import process_publish_ai_job
+            process_publish_ai_job(job_id)
         else:
             process_ai_job(job_id)
     finally:
