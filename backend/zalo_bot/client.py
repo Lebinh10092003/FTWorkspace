@@ -37,7 +37,7 @@ class ZaloBotClient:
         self.token = token or getattr(settings, "ZALO_BOT_TOKEN", "")
         self.api_base = (
             api_base
-            or getattr(settings, "ZALO_BOT_API_BASE", "https://bot-api.zapps.me")
+            or getattr(settings, "ZALO_BOT_API_BASE", "https://bot-api.zaloplatforms.com")
         ).rstrip("/")
         if mock_mode is not None:
             self.mock_mode = mock_mode

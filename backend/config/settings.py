@@ -166,7 +166,7 @@ X_FRAME_OPTIONS = "DENY"
 # Zalo Bot Platform Configuration
 ZALO_BOT_TOKEN = os.getenv("ZALO_BOT_TOKEN", "").strip()
 ZALO_BOT_WEBHOOK_SECRET = os.getenv("ZALO_BOT_WEBHOOK_SECRET", "").strip()
-ZALO_BOT_API_BASE = os.getenv("ZALO_BOT_API_BASE", "https://bot-api.zapps.me").strip()
+ZALO_BOT_API_BASE = os.getenv("ZALO_BOT_API_BASE", "https://bot-api.zaloplatforms.com").strip()
 ZALO_BOT_MONTHLY_CAP = int(os.getenv("ZALO_BOT_MONTHLY_CAP", "2500") or 2500)
 ZALO_BOT_MOCK_MODE = env_bool("ZALO_BOT_MOCK_MODE", False)
 
