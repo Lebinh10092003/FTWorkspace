@@ -1,0 +1,10 @@
+[Unit]
+Description=Run FT Workspace scheduled posts runner every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5:00
+Persistent=true
+Unit=workspace-scheduled-posts.service
+
+[Install]
+WantedBy=timers.target

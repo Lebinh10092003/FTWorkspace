@@ -459,6 +459,21 @@ def expire_stale_jobs(grace_seconds: int = 30) -> int:
     except Exception:
         pass
 
+    try:
+        from publishing.models import PublishAiJob
+        stale_pub_jobs = PublishAiJob.objects.filter(
+            status=PublishAiJob.STATUS_RUNNING,
+            started_at__lt=cutoff,
+        )
+        for j in stale_pub_jobs:
+            j.status = PublishAiJob.STATUS_FAILED
+            j.error_message = f"Yêu cầu bị quá hạn thời gian xử lý ({timeout + grace_seconds}s)."
+            j.completed_at = timezone.now()
+            j.save(update_fields=["status", "error_message", "completed_at", "updated_at"])
+            count += 1
+    except Exception:
+        pass
+
     return count
 
 
@@ -482,6 +497,11 @@ def claim_next_job() -> Optional[Any]:
     try:
         from gmail_assistant.models import MailJob
         running_count += MailJob.objects.filter(status=MailJob.STATUS_RUNNING).count()
+    except Exception:
+        pass
+    try:
+        from publishing.models import PublishAiJob
+        running_count += PublishAiJob.objects.filter(status=PublishAiJob.STATUS_RUNNING).count()
     except Exception:
         pass
 
@@ -538,6 +558,18 @@ def claim_next_job() -> Optional[Any]:
     except Exception:
         pass
 
+    next_pub = None
+    try:
+        from publishing.models import PublishAiJob
+        next_pub = (
+            PublishAiJob.objects.select_for_update()
+            .filter(status=PublishAiJob.STATUS_QUEUED)
+            .order_by("created_at", "id")
+            .first()
+        )
+    except Exception:
+        pass
+
     candidates = []
     if next_report:
         candidates.append((next_report.created_at, "report", next_report))
@@ -545,6 +577,8 @@ def claim_next_job() -> Optional[Any]:
         candidates.append((next_news.created_at, "news_post", next_news))
     if next_mail:
         candidates.append((next_mail.created_at, "gmail", next_mail))
+    if next_pub:
+        candidates.append((next_pub.created_at, "publishing", next_pub))
 
     if candidates:
         candidates.sort(key=lambda c: c[0])

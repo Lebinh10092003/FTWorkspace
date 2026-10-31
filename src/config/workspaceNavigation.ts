@@ -340,6 +340,7 @@ export const SOCIAL_DASHBOARD_NAV: ModuleNavItem[] = [
   { id: 'dashboard', label: 'Biểu đồ tổng quan', icon: LayoutDashboard },
   { id: 'media', label: 'Báo cáo tổng hợp', icon: Radio },
   { id: 'posts', label: 'Bài đăng', icon: FileText },
+  { id: 'publishing', label: 'Lịch & Đăng bài', icon: CalendarDays },
   { id: 'sync', label: 'Đồng bộ dữ liệu', icon: RefreshCw, requires: 'member' },
   { id: 'config', label: 'Cấu hình hệ thống', icon: Settings, requires: 'member' },
 ];

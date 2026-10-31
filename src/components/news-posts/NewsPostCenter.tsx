@@ -46,6 +46,9 @@ import {
   UploadedDocFile,
 } from './newsPostTypes';
 import SurveyReportImage from './SurveyReportImage';
+import { PlanEditorModal } from '../publishing/PlanEditorModal';
+import { publishingService } from '../publishing/publishingService';
+import type { PublishChannel } from '../publishing/publishingTypes';
 
 type Props = {
   idToken: string;
@@ -116,6 +119,21 @@ export default function NewsPostCenter({
   const [editedContactInfo, setEditedContactInfo] = useState<string>('');
   const [editedHashtags, setEditedHashtags] = useState<string>('');
   const [downloadingDocx, setDownloadingDocx] = useState<boolean>(false);
+
+  // Publishing / Schedule Modal
+  const [showPublishModal, setShowPublishModal] = useState<boolean>(false);
+  const [publishChannels, setPublishChannels] = useState<PublishChannel[]>([]);
+
+  const handleOpenSchedulePublish = async () => {
+    if (!activePost) return;
+    try {
+      const chs = await publishingService.getChannels(idToken);
+      setPublishChannels(chs);
+    } catch {
+      // ignore
+    }
+    setShowPublishModal(true);
+  };
 
   // Fetch list of posts
   const fetchPosts = useCallback(async () => {
@@ -1559,6 +1577,15 @@ export default function NewsPostCenter({
 
                   <button
                     type="button"
+                    onClick={handleOpenSchedulePublish}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 px-4 py-2 text-xs font-bold shadow-xs transition cursor-pointer min-h-[44px]"
+                  >
+                    <Calendar className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>Lên lịch đăng bài</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleSaveArticle}
                     disabled={savingArticle}
                     className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B72CE] hover:bg-[#075CA8] text-white px-4 py-2 text-xs font-bold shadow-xs transition cursor-pointer min-h-[44px]"
@@ -1859,6 +1886,27 @@ export default function NewsPostCenter({
           )}
         </div>
       </main>
+
+      {showPublishModal && activePost && (
+        <PlanEditorModal
+          idToken={idToken}
+          plan={null}
+          channels={publishChannels}
+          newsPosts={posts.map(p => ({ id: p.id, title: p.title, post_type: p.postType }))}
+          initialNewsPost={{
+            id: activePost.id,
+            title: activePost.title,
+            content: buildCurrentRawText(),
+          }}
+          userRole={userRole}
+          userEmail={userEmail}
+          onClose={() => setShowPublishModal(false)}
+          onSaved={() => {
+            setShowPublishModal(false);
+            setNotice('Đã lên lịch phát hành bài viết thành công!');
+          }}
+        />
+      )}
     </div>
   );
 }
