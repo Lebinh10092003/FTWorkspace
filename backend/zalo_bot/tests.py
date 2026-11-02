@@ -481,3 +481,24 @@ class PromptInjectionAndPrivacyTests(TestCase):
         self.assertNotIn("message", fields)
         self.assertNotIn("content", fields)
         self.assertNotIn("body", fields)
+
+
+class BotPublicInfoTests(TestCase):
+    def test_status_includes_bot_display_name(self):
+        from unittest import mock
+        from zalo_bot import views
+
+        views._BOT_INFO_CACHE.update(at=0.0, data={})
+        fake = {"ok": True, "result": {"display_name": "Bot Mau", "account_name": "bot.mau"}}
+        with mock.patch.object(views.ZaloBotClient, "get_me", return_value=fake):
+            info = views.get_bot_public_info()
+        views._BOT_INFO_CACHE.update(at=0.0, data={})
+        self.assertEqual(info, {"bot_name": "Bot Mau", "bot_account": "bot.mau"})
+
+    def test_bot_info_failure_returns_empty(self):
+        from unittest import mock
+        from zalo_bot import views
+
+        views._BOT_INFO_CACHE.update(at=0.0, data={})
+        with mock.patch.object(views.ZaloBotClient, "get_me", side_effect=RuntimeError("x")):
+            self.assertEqual(views.get_bot_public_info(), {})
