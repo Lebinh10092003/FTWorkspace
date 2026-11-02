@@ -947,7 +947,9 @@ class GmailClassificationAndWorkItemsTests(TestCase):
         item1 = normalize_action_item(raw_str, default_deadline="17h hôm nay", default_priority="high")
         self.assertEqual(item1["type"], "khac")
         self.assertEqual(item1["title"], raw_str)
-        self.assertEqual(item1["deadline"], "17h hôm nay")
+        # Task 024: "17h hôm nay" is normalized to absolute format (17:00 dd/mm/yyyy)
+        self.assertTrue(item1["deadline"].startswith("17:00 "))
+        self.assertIsNotNone(item1.get("due_date"))
         self.assertFalse(item1["completed"])
 
         raw_dict = {
@@ -960,6 +962,7 @@ class GmailClassificationAndWorkItemsTests(TestCase):
         item2 = normalize_action_item(raw_dict)
         self.assertEqual(item2["type"], "gui_file_bao_cao")
         self.assertEqual(len(item2["required_preparations"]), 2)
+        self.assertIsNotNone(item2.get("due_date"))
         self.assertFalse(item2["completed"])
 
         # Test toggle-action API endpoint
@@ -1662,3 +1665,191 @@ class GmailThreadSummaryWithActionsListTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()["digests"] if "digests" in resp.json() else resp.json()["results"]), 1)
         self.assertEqual(self.client.get("/api/gmail/digests/morning/").status_code, 200)
+
+
+class GmailDeadlineParserAndAbsoluteDateTests(TestCase):
+    """
+    Test suite for absolute deadline parsing, storage, and sorting (Task 024).
+    Deterministic: All tests pass frozen reference_date / now and do not depend on the current execution date.
+    """
+
+    def setUp(self):
+        from .deadline_parser import ICT_TZ
+        self.ict_tz = ICT_TZ
+        self.client = APIClient()
+        self.user, _ = UserProfile.objects.get_or_create(
+            email="han.tuyetdoi@fermat.vn",
+            defaults={"name": "Kiểm Tra Hạn", "role": "ADMIN", "employment_status": "ACTIVE"},
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_parse_deadline_relative_hom_nay_ngay_mai(self):
+        from .deadline_parser import parse_deadline_to_absolute
+        from datetime import datetime
+
+        # Email received Friday 2026-10-30
+        ref_date = datetime(2026, 10, 30, 9, 30, tzinfo=self.ict_tz)
+
+        # 1. "Hôm nay (30/10/2026)" (real bug text reported by user)
+        text1, dt1 = parse_deadline_to_absolute("Hôm nay (30/10/2026)", reference_date=ref_date)
+        self.assertEqual(text1, "30/10/2026")
+        self.assertIsNotNone(dt1)
+        self.assertEqual(dt1.date().isoformat(), "2026-10-30")
+
+        # 2. "Trong ngày mai (31/10/2026)"
+        text2, dt2 = parse_deadline_to_absolute("Trong ngày mai (31/10/2026)", reference_date=ref_date)
+        self.assertEqual(text2, "31/10/2026")
+        self.assertIsNotNone(dt2)
+        self.assertEqual(dt2.date().isoformat(), "2026-10-31")
+
+        # 3. Pure relative "Hôm nay"
+        text3, dt3 = parse_deadline_to_absolute("Hôm nay", reference_date=ref_date)
+        self.assertEqual(text3, "30/10/2026")
+        self.assertEqual(dt3.date().isoformat(), "2026-10-30")
+
+        # 4. Pure relative "Ngày mai"
+        text4, dt4 = parse_deadline_to_absolute("Ngày mai", reference_date=ref_date)
+        self.assertEqual(text4, "31/10/2026")
+        self.assertEqual(dt4.date().isoformat(), "2026-10-31")
+
+    def test_parse_deadline_time_and_weekdays(self):
+        from .deadline_parser import parse_deadline_to_absolute
+        from datetime import datetime, time
+
+        # Monday 2026-11-02
+        ref_mon = datetime(2026, 11, 2, 8, 0, tzinfo=self.ict_tz)
+
+        # 1. "Trước 17h hôm nay" -> 17:00 02/11/2026
+        text1, dt1 = parse_deadline_to_absolute("Trước 17h hôm nay", reference_date=ref_mon)
+        self.assertEqual(text1, "17:00 02/11/2026")
+        self.assertEqual(dt1.time(), time(17, 0))
+        self.assertEqual(dt1.date().isoformat(), "2026-11-02")
+
+        # 2. "Trước 17h thứ 4" -> Wednesday 04/11/2026
+        text2, dt2 = parse_deadline_to_absolute("Trước 17h thứ 4", reference_date=ref_mon)
+        self.assertEqual(text2, "17:00 04/11/2026")
+        self.assertEqual(dt2.date().isoformat(), "2026-11-04")
+
+        # 3. "Trước 17h thứ 4 tuần sau" -> Next Wednesday 11/11/2026
+        text3, dt3 = parse_deadline_to_absolute("Trước 17h thứ 4 tuần sau", reference_date=ref_mon)
+        self.assertEqual(text3, "17:00 11/11/2026")
+        self.assertEqual(dt3.date().isoformat(), "2026-11-11")
+
+        # 4. "Trước 12h ngày mai"
+        text4, dt4 = parse_deadline_to_absolute("Trước 12h ngày mai", reference_date=ref_mon)
+        self.assertEqual(text4, "12:00 03/11/2026")
+        self.assertEqual(dt4.time(), time(12, 0))
+        self.assertEqual(dt4.date().isoformat(), "2026-11-03")
+
+    def test_parse_deadline_explicit_and_iso(self):
+        from .deadline_parser import parse_deadline_to_absolute
+        from datetime import datetime, time
+
+        ref = datetime(2026, 11, 2, 8, 0, tzinfo=self.ict_tz)
+
+        # Exact absolute with time
+        text1, dt1 = parse_deadline_to_absolute("17:00 30/10/2026", reference_date=ref)
+        self.assertEqual(text1, "17:00 30/10/2026")
+        self.assertEqual(dt1.time(), time(17, 0))
+        self.assertEqual(dt1.date().isoformat(), "2026-10-30")
+
+        # ISO format
+        text2, dt2 = parse_deadline_to_absolute("2026-11-20", reference_date=ref)
+        self.assertEqual(text2, "20/11/2026")
+        self.assertEqual(dt2.date().isoformat(), "2026-11-20")
+
+        # Vietnamese text format
+        text3, dt3 = parse_deadline_to_absolute("ngày 15 tháng 11 năm 2026", reference_date=ref)
+        self.assertEqual(text3, "15/11/2026")
+        self.assertEqual(dt3.date().isoformat(), "2026-11-15")
+
+        # Empty
+        text4, dt4 = parse_deadline_to_absolute("", reference_date=ref)
+        self.assertEqual(text4, "")
+        self.assertIsNone(dt4)
+
+    def test_normalize_action_item_with_reference_date(self):
+        from .ai_service import normalize_action_item
+        from datetime import datetime
+
+        ref = datetime(2026, 10, 30, 10, 0, tzinfo=self.ict_tz)
+
+        # Action as dict with relative deadline
+        act = {
+            "type": "gui_file_bao_cao",
+            "title": "Gửi báo cáo tổng hợp",
+            "deadline": "Trước 17h hôm nay",
+            "required_preparations": ["File Excel"],
+            "priority": "high",
+        }
+        normalized = normalize_action_item(act, reference_date=ref)
+        self.assertEqual(normalized["type"], "gui_file_bao_cao")
+        self.assertEqual(normalized["deadline"], "17:00 30/10/2026")
+        self.assertIn("due_date", normalized)
+        self.assertTrue(normalized["due_date"].startswith("2026-10-30T17:00:00"))
+
+    def test_prompt_contains_strict_deadline_guidelines(self):
+        from .ai_service import build_summarize_prompt, build_thread_summarize_prompt
+
+        p1 = build_summarize_prompt(
+            sender="p@partner.vn",
+            subject="Kế hoạch tập huấn",
+            date_str="30/10/2026 14:00",
+            body_text="Vui lòng xác nhận trước 17h hôm nay.",
+            today_str="02/11/2026",
+        )
+        self.assertIn("HÔM NAY LÀ NGÀY: 02/11/2026", p1)
+        self.assertIn("dd/mm/yyyy", p1)
+        self.assertIn("TUYỆT ĐỐI CẤM dùng từ tương đối", p1)
+
+        p2 = build_thread_summarize_prompt(
+            subject="Luồng công việc",
+            thread_messages=[{"sender": "a@f.vn", "date": "30/10/2026", "body": "Xin chào"}],
+            today_str="02/11/2026",
+        )
+        self.assertIn("HÔM NAY LÀ NGÀY: 02/11/2026", p2)
+        self.assertIn("TUYỆT ĐỐI CẤM dùng từ tương đối", p2)
+
+    def test_overdue_unhandled_threads_ranked_first_in_api(self):
+        from datetime import datetime
+
+        now = timezone.now()
+        # Item 1: Overdue unhandled email (deadline in the past, status new)
+        d_overdue = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_overdue_1",
+            thread_id="th_overdue",
+            sender="Sếp <boss@fermat.vn>",
+            subject="Báo cáo gấp",
+            received_at=now - timedelta(days=3),
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            needs_reply=True,
+            status=MailDigest.STATUS_NEW,
+            reply_by="Hôm nay (30/10/2026)",
+            due_date=now - timedelta(days=2),
+            priority=MailDigest.PRIORITY_NORMAL,
+        )
+
+        # Item 2: New email received recently, not overdue
+        d_recent = MailDigest.objects.create(
+            user=self.user,
+            message_id="msg_recent_1",
+            thread_id="th_recent",
+            sender="Bạn <colleague@fermat.vn>",
+            subject="Tin mới",
+            received_at=now - timedelta(minutes=10),
+            recipient_role=MailDigest.RECIPIENT_ROLE_TO,
+            needs_reply=True,
+            status=MailDigest.STATUS_NEW,
+            reply_by="Trong ngày mai",
+            due_date=now + timedelta(days=1),
+            priority=MailDigest.PRIORITY_HIGH,
+        )
+
+        resp = self.client.get("/api/gmail/digests/")
+        self.assertEqual(resp.status_code, 200)
+        results = resp.json()["results"]
+        self.assertGreaterEqual(len(results), 2)
+        # The overdue thread must appear FIRST despite d_recent having higher priority and being newer
+        self.assertEqual(results[0]["thread_id"], "th_overdue")
+        self.assertIsNotNone(results[0]["due_date"])
