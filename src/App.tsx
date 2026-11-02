@@ -64,8 +64,10 @@ const ChatbotAssistant = lazyWithRecovery(() => import('./components/chatbot/Cha
 const ItemBag = lazyWithRecovery(() => import('./components/fun/ItemBag'));
 // Hồ sơ cá nhân chỉ tải khi người dùng mở, không nằm trong gói tải ban đầu.
 const AccountProfileModal = lazyWithRecovery(() => import('./components/AccountProfileModal'));
+const OfficeWorkspace = lazyWithRecovery(() => import('./components/office/OfficeWorkspace'));
+import { useOfficeHeartbeat } from './components/office/useOfficeHeartbeat';
 
-type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'short-link' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'news-posts' | 'gmail-assistant' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
+type ViewMode = 'workspace' | 'office' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'short-link' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'news-posts' | 'gmail-assistant' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'publishing', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -173,6 +175,7 @@ function getInitialViewMode(): ViewMode {
     /* ignore search param parse error */
   }
   const path = window.location.pathname;
+  if (path === '/office' || path === '/office/' || path.startsWith('/office')) return 'office';
   if (path.startsWith('/examination/invigilation')) return 'examination-invigilation';
   if (path === '/dang-ky-du-thi' || path === '/dang-ky-du-thi/') return 'public-exam-registration';
   if (path === '/registration-forms' || path === '/registration-forms/') return 'examination';
@@ -299,8 +302,11 @@ export default function App() {
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
   const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
-  const canAccessView = (mode: ViewMode) => { if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'short-link' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report' || mode === 'news-posts' || mode === 'gmail-assistant') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
+  const canAccessView = (mode: ViewMode) => { if (mode === 'office') return !isGuest; if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'short-link' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report' || mode === 'news-posts' || mode === 'gmail-assistant') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
+
+  // Gắn nhịp online vào gốc ứng dụng
+  useOfficeHeartbeat(idToken, !isGuest);
   useEffect(() => {
     if (isGuest || !idToken) { setUpcomingDuties(0); return; }
     let active = true;
@@ -566,7 +572,7 @@ export default function App() {
 
   // The rail lists business domains; the Workspace launcher is always reachable.
   const departmentLayout = isGuest ? null : resolveDepartmentLayout((user.departments || []).map(item => item.name), user.jobTitle?.name || '');
-  const canAccessArea = (area: WorkspaceArea) => area.id === 'workspace' || canAccessView(area.id as ViewMode);
+  const canAccessArea = (area: WorkspaceArea) => area.id === 'workspace' || area.id === 'office' || canAccessView(area.id as ViewMode);
   const openArea = (area: WorkspaceArea) => {
     if (area.id === 'workspace') { setViewMode('workspace'); return; }
     openProtectedView(area.id as ViewMode, area.id === 'social-dashboard' ? 'dashboard' : undefined);
@@ -771,6 +777,32 @@ export default function App() {
           }}
         />
         {loginModal}{profileModal}{yesterdayWarningModal}
+      </>
+    );
+  }
+
+  if (viewMode === 'office') {
+    return (
+      <>
+        <Suspense fallback={<div className="flex h-[70vh] items-center justify-center text-slate-400">Đang nạp Văn phòng 3D...</div>}>
+          <OfficeWorkspace
+            idToken={idToken}
+            isDark={workspacePalettes[readWorkspaceAppearance().theme]?.text !== '#0F1F33'}
+            canAccessView={canAccessView}
+            onNavigate={(mode, tab) => {
+              if (mode === 'social-dashboard' && tab) {
+                setSocialTab(tab);
+              } else {
+                openProtectedView(mode as ViewMode);
+              }
+            }}
+            onBackTo2D={() => {
+              try { localStorage.setItem('ft-workspace-view-preference', '2d'); } catch {}
+              setViewMode('workspace');
+            }}
+          />
+        </Suspense>
+        {loginModal}{profileModal}
       </>
     );
   }
@@ -1338,6 +1370,7 @@ export default function App() {
     const cleanPath = targetPath.split('?')[0].split('#')[0].replace(/^\/+|\/+$/g, '');
     const pathToView: Record<string, ViewMode> = {
       '': 'workspace',
+      'office': 'office',
       'work-schedule': 'work-schedule',
       'attendance': 'attendance',
       'social-dashboard': 'social-dashboard',

@@ -1,3 +1,3 @@
-Bản dựng tĩnh của dự án my-office (https://github.com/khanh020905/my-office, giấy phép MIT, xem LICENSE-my-office.txt).
-Dựng bằng scripts/build-demo.mjs với OFFICE_BASE_PATH=/office3d (chế độ demo, dữ liệu giả lập). Chưa chỉnh sửa gì.
-Phần Cloud: không có. Truy cập: /office3d/vi/
+Bản dựng tĩnh của my-office (https://github.com/khanh020905/my-office, MIT, xem LICENSE-my-office.txt),
+đã tùy biến cho FermatTech: roster 10 người nhận qua postMessage (?embed=1), lối vào các mục workspace.
+Truy cập: /office3d/vi/ (nhúng trong workspace tại /office).

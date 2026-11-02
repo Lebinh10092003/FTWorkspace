@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Bot,
+  Box,
   Camera,
   Check,
   Copy,
@@ -19,6 +20,7 @@ import {
 import { appDialog } from './AppDialog';
 import McpConnectGuide from './McpConnectGuide';
 import ZaloSettingsTab from './zalo/ZaloSettingsTab';
+import OfficeSettingsTab from './office/OfficeSettingsTab';
 
 type AccountUser = { email: string; displayName: string; photoURL?: string | null };
 
@@ -48,7 +50,7 @@ export default function AccountProfileModal({
   onSaved,
   onTokenChanged,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'ai' | 'zalo'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'ai' | 'zalo' | 'office'>('profile');
 
   // Profile states
   const [name, setName] = useState(user.displayName || '');
@@ -377,6 +379,25 @@ export default function AccountProfileModal({
               <span>
                 <span className="sm:hidden">Zalo Bot</span>
                 <span className="hidden sm:inline">Bot Zalo Cá Nhân</span>
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'office'}
+            onClick={() => setActiveTab('office')}
+            className={`flex items-center justify-between sm:justify-center gap-2.5 px-4 min-h-[44px] rounded-xl text-[13px] sm:text-sm font-bold transition cursor-pointer ${
+              activeTab === 'office'
+                ? 'bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-2xs'
+                : 'text-[var(--ft-text-sub)] hover:text-[var(--ft-text-main)] hover:bg-[var(--ft-surface-2)] border border-transparent'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Box className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
+              <span>
+                <span className="sm:hidden">Văn phòng 3D</span>
+                <span className="hidden sm:inline">Văn phòng 3D</span>
               </span>
             </div>
           </button>
@@ -762,6 +783,13 @@ export default function AccountProfileModal({
         {activeTab === 'zalo' && (
           <div className="mt-6">
             <ZaloSettingsTab idToken={idToken} />
+          </div>
+        )}
+
+        {/* TAB 4: Văn phòng 3D & Hiện diện */}
+        {activeTab === 'office' && (
+          <div className="mt-6">
+            <OfficeSettingsTab idToken={idToken} />
           </div>
         )}
       </div>
