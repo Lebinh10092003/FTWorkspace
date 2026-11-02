@@ -775,6 +775,15 @@ class MediaSummaryTrendTests(TestCase):
         self.assertEqual(trend[period]['views'], 0)
         self.assertEqual(trend[period]['engagement'], 0)
 
+    def test_monthly_trend_uses_local_month_just_after_local_midnight(self):
+        # 00:30 ngày 1/12 giờ Việt Nam vẫn là 30/11 theo UTC: tháng hiện tại phải là 2026-12.
+        fake_now = datetime.datetime(2026, 11, 30, 17, 30, tzinfo=datetime.timezone.utc)
+        with patch('django.utils.timezone.now', return_value=fake_now):
+            response = self.client.get('/api/media-summary/trend', {'groupBy': 'month'})
+        self.assertEqual(response.status_code, 200)
+        periods = [point['period'] for point in response.json()['trend']]
+        self.assertEqual(periods[-1], '2026-12')
+
     def test_quarterly_report_returns_eight_quarters(self):
         response = self.client.get('/api/media-summary/trend', {'groupBy': 'quarter'})
         self.assertEqual(response.status_code, 200)

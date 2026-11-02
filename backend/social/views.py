@@ -199,7 +199,7 @@ def media_summary_trend(request):
         channels = channels.filter(id=channel_id_filter)
     channel_ids = list(channels.values_list('id', flat=True))
 
-    now = timezone.now()
+    now = timezone.localtime()
     today = timezone.localdate().isoformat()
     buckets = []
     if group_by == 'month':
