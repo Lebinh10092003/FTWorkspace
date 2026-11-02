@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BadgeDollarSign,
+  Box,
   CalendarCheck,
   CalendarRange,
   CheckCircle2,
@@ -254,6 +255,12 @@ export default function WorkspaceHome({
   const quickTools = useMemo(() => {
     const all = [
       {
+        mode: 'office',
+        title: 'Văn phòng 3D',
+        description: 'Không gian văn phòng ảo, xem vị trí chỗ ngồi và đồng nghiệp online.',
+        icon: Box,
+      },
+      {
         mode: 'work-schedule',
         title: 'Lịch làm việc',
         description: 'Lập lịch cá nhân, theo dõi việc đội nhóm và nhắc hạn.',
@@ -371,7 +378,29 @@ export default function WorkspaceHome({
               {fullDateText} • <span className="tabular-nums font-semibold">Tuần {isoWeek}</span>
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {/* Tùy chọn 2D / 3D */}
+            <div className="inline-flex items-center rounded-[10px] border border-[var(--ft-border,#DDE5EF)] bg-[var(--workspace-card,#FFFFFF)] p-1 shadow-2xs">
+              <button
+                type="button"
+                className="rounded-lg bg-[#0B72CE] px-3 py-1.5 text-xs font-bold text-white shadow-xs cursor-default min-h-[36px]"
+              >
+                Giao diện 2D
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  try { localStorage.setItem('ft-workspace-view-preference', '3d'); } catch {}
+                  onNavigate('office');
+                }}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-[var(--workspace-surface-muted,#4A5B70)] hover:text-[var(--workspace-surface-text,#0F1F33)] transition-colors cursor-pointer min-h-[36px]"
+                title="Chuyển sang Văn phòng 3D"
+              >
+                <Box className="h-3.5 w-3.5 text-blue-500" />
+                <span>Văn phòng 3D</span>
+              </button>
+            </div>
+
             <button
               type="button"
               onClick={() => onNavigate('work-schedule')}

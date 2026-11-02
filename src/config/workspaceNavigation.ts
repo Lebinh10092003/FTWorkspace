@@ -3,6 +3,7 @@ import {
   BadgeDollarSign,
   BookOpen,
   Bot,
+  Box,
   CalendarCheck,
   CalendarDays,
   CalendarRange,
@@ -54,6 +55,7 @@ import {
 
 export type WorkspaceAreaId =
   | 'workspace'
+  | 'office'
   | 'work-schedule'
   | 'examination'
   | 'digital-training'
@@ -86,6 +88,14 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     description: 'Danh sách ứng dụng của FT Workspace.',
     icon: LayoutGrid,
     path: '/',
+  },
+  {
+    id: 'office',
+    label: 'Văn phòng 3D',
+    shortLabel: 'Văn phòng',
+    description: 'Không gian văn phòng 3D và nhân sự online.',
+    icon: Box,
+    path: '/office',
   },
   {
     id: 'work-schedule',
