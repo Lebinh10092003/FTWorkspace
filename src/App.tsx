@@ -1,6 +1,6 @@
 import React, { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { appDialog } from './components/AppDialog';
-import { CalendarDays, ClipboardList, ContactRound, FileSignature, ReceiptText, Mail, Moon, Newspaper, QrCode, Presentation, TriangleAlert } from 'lucide-react';
+import { CalendarDays, ClipboardList, ContactRound, FileSignature, Link2, ReceiptText, Mail, Moon, Newspaper, QrCode, Presentation, TriangleAlert } from 'lucide-react';
 
 import { Channel, UserRole } from './types';
 import LoginModal from './components/LoginModal';
@@ -50,6 +50,7 @@ const QRCodeGenerator = lazyWithRecovery(() => import('./components/QRCodeGenera
 const Attendance = lazyWithRecovery(() => import('./components/Attendance'));
 const FundingProposalBuilder = lazyWithRecovery(() => import('./components/documents/FundingProposalBuilder'));
 const DocumentNumberGenerator = lazyWithRecovery(() => import('./components/documents/DocumentNumberGenerator'));
+const ShortLinkGenerator = lazyWithRecovery(() => import('./components/documents/ShortLinkGenerator'));
 const WeeklyReportCenter = lazyWithRecovery(() => import('./components/documents/WeeklyReportCenter'));
 const NewsPostCenter = lazyWithRecovery(() => import('./components/news-posts/NewsPostCenter'));
 const GmailAssistantCenter = lazyWithRecovery(() => import('./components/gmail/GmailAssistantCenter'));
@@ -64,7 +65,7 @@ const ItemBag = lazyWithRecovery(() => import('./components/fun/ItemBag'));
 // Hồ sơ cá nhân chỉ tải khi người dùng mở, không nằm trong gói tải ban đầu.
 const AccountProfileModal = lazyWithRecovery(() => import('./components/AccountProfileModal'));
 
-type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'news-posts' | 'gmail-assistant' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
+type ViewMode = 'workspace' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'short-link' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'news-posts' | 'gmail-assistant' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'publishing', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -186,6 +187,7 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/communication-tools/email')) return 'email-builder';
   if (path.startsWith('/communication-tools/signature')) return 'signature-builder';
   if (path.startsWith('/communication-tools/qr')) return 'qr-generator';
+  if (path.startsWith('/communication-tools/short-link')) return 'short-link';
   if (path.startsWith('/communication-tools/funding-proposal')) return 'funding-proposal';
   if (path.startsWith('/communication-tools/document-number')) return 'document-number';
   if (path.startsWith('/communication-tools/weekly-report')) return 'weekly-report';
@@ -193,6 +195,7 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/communication-tools/gmail')) return 'gmail-assistant';
   if (path.startsWith('/communication-tools/competition-landing')) return 'competition-landing';
   if (path.startsWith('/communication-tools')) return 'communication-tools';
+  if (path === '/short-link' || path === '/short-link/') return 'short-link';
   if (path === '/funding-proposal' || path === '/funding-proposal/') return 'funding-proposal';
   if (path === '/document-number' || path === '/document-number/') return 'document-number';
   if (path === '/weekly-report' || path === '/weekly-report/') return 'weekly-report';
@@ -296,7 +299,7 @@ export default function App() {
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
   const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
-  const canAccessView = (mode: ViewMode) => { if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report' || mode === 'news-posts' || mode === 'gmail-assistant') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
+  const canAccessView = (mode: ViewMode) => { if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'short-link' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report' || mode === 'news-posts' || mode === 'gmail-assistant') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
   useEffect(() => {
     if (isGuest || !idToken) { setUpcomingDuties(0); return; }
@@ -372,6 +375,7 @@ export default function App() {
       'email-builder': '/communication-tools/email',
       'signature-builder': '/communication-tools/signature',
       'qr-generator': '/communication-tools/qr',
+      'short-link': '/communication-tools/short-link',
       'funding-proposal': '/communication-tools/funding-proposal',
       'document-number': '/communication-tools/document-number',
       'weekly-report': '/communication-tools/weekly-report',
@@ -384,6 +388,20 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (window.location.pathname.startsWith('/s/')) {
+      const code = window.location.pathname.replace(/^\/s\//, '').replace(/\/+$/, '');
+      if (code) {
+        fetch(`/api/documents/short-links/resolve/${encodeURIComponent(code)}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data?.targetUrl) {
+              window.location.replace(data.targetUrl);
+            }
+          })
+          .catch(() => {});
+        return;
+      }
+    }
     const legacyRoutes: Array<[string, string]> = [
       ['/digital-training/bndc', '/digital-training/quanlybndc'],
       ['/email-builder', '/communication-tools/email'],
@@ -764,6 +782,7 @@ export default function App() {
       { mode: 'email-builder' as ViewMode, title: 'Thiết kế Email', description: 'Tạo, quản lý mẫu Email và chữ ký dùng chung.', icon: Mail, color: 'from-pink-500 to-violet-600', allowed: canAccessView('email-builder') },
       { mode: 'signature-builder' as ViewMode, title: 'Tạo chữ ký Email', description: 'Tùy biến thông tin, mạng xã hội và sao chép chữ ký dùng cho Gmail hoặc Outlook.', icon: ContactRound, color: 'from-[#104581] to-[#1473D1]', allowed: canAccessView('signature-builder') },
       { mode: 'qr-generator' as ViewMode, title: 'Tạo mã QR', description: 'Tạo mã QR, kiểm tra đường dẫn và xuất poster truyền thông.', icon: QrCode, color: 'from-blue-600 to-cyan-500', allowed: canAccessView('qr-generator') },
+      { mode: 'short-link' as ViewMode, title: 'Rút gọn liên kết', description: 'Tạo link rút gọn tùy chỉnh tên hoặc sinh mã ngẫu nhiên, theo dõi lượt nhấp và lấy mã QR.', icon: Link2, color: 'from-indigo-600 to-blue-500', allowed: canAccessView('short-link') },
       { mode: 'funding-proposal' as ViewMode, title: 'Phiếu đề xuất kinh phí', description: 'Nhập dự toán, xem trước bản in A4 và tải phiếu Word để trình ký.', icon: ReceiptText, color: 'from-emerald-600 to-teal-500', allowed: canAccessView('funding-proposal') },
       { mode: 'document-number' as ViewMode, title: 'Trình tạo số Công văn', description: 'Lấy số văn bản mới nhất theo loại và ghi thẳng vào sổ trên Google Sheets.', icon: FileSignature, color: 'from-[#0055DA] to-[#00C68D]', allowed: canAccessView('document-number') },
       { mode: 'weekly-report' as ViewMode, title: 'Báo cáo cuối tuần', description: 'Xem báo cáo AI của từng nhân viên, tự làm mới từ Google Docs và tải file Word.', icon: ClipboardList, color: 'from-amber-500 to-orange-600', allowed: canAccessView('weekly-report') },
@@ -989,6 +1008,24 @@ export default function App() {
           onNavSelect={id => setViewMode(id as ViewMode)}
         />
       </Suspense>
+    );
+  }
+
+  if (viewMode === 'short-link' && !canAccessView('short-link')) return null;
+
+  if (viewMode === 'short-link') {
+    return (
+      <>
+        <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp công cụ Rút gọn liên kết...</div>}>
+          <ShortLinkGenerator
+            idToken={idToken || ''}
+            userEmail={user.email}
+            userRole={userRole}
+            onNavSelect={id => setViewMode(id as ViewMode)}
+          />
+        </Suspense>
+        {loginModal}{profileModal}
+      </>
     );
   }
 
@@ -1318,6 +1355,8 @@ export default function App() {
       'communication-tools/email-builder': 'email-builder',
       'communication-tools/signature-builder': 'signature-builder',
       'communication-tools/qr-generator': 'qr-generator',
+      'communication-tools/short-link': 'short-link',
+      'short-link': 'short-link',
       'communication-tools/funding-proposal': 'funding-proposal',
       'communication-tools/document-number': 'document-number',
       'communication-tools/competition-landing': 'competition-landing',

@@ -12,6 +12,7 @@ import {
   ExternalLink,
   GraduationCap,
   Layers3,
+  Link2,
   Mail, Plus,
   QrCode,
   ReceiptText,
@@ -293,6 +294,12 @@ export default function WorkspaceHome({
         title: 'Tạo mã QR',
         description: 'Tạo mã QR nhanh với logo FermatTech và bảng màu.',
         icon: QrCode,
+      },
+      {
+        mode: 'short-link',
+        title: 'Rút gọn liên kết',
+        description: 'Tạo link rút gọn tùy chỉnh tên hoặc sinh mã ngẫu nhiên.',
+        icon: Link2,
       },
       {
         mode: 'email-builder',

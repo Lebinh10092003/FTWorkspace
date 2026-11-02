@@ -45,6 +45,12 @@ export default defineConfig(() => {
           changeOrigin: true,
           secure: false,
         },
+        // Link rút gọn /s/<mã> chuyển hướng qua Django.
+        '^/s/.+': {
+          target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
+          changeOrigin: true,
+          secure: false,
+        },
         // Metadata OAuth cho MCP (nginx production cũng chuyển vào Django).
         '^/\\.well-known/(oauth-|openid-configuration)': {
           target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',

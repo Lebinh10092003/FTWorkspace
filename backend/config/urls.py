@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
 
+from documents.short_links import redirect_short_link
 from mcp.streamable import streamable_http
 
 
@@ -34,6 +35,9 @@ urlpatterns = [
     # URL MCP ngan /mcp, giong /api/mcp (nginx chuyen /mcp vao Django).
     path("mcp", streamable_http, name="mcp_short"),
     path("mcp/", streamable_http),
+    # Liên kết rút gọn /s/<code>
+    path("s/<str:code>", redirect_short_link, name="short_link_redirect"),
+    path("s/<str:code>/", redirect_short_link),
 ]
 
 if settings.DEBUG:

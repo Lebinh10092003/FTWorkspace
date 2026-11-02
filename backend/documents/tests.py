@@ -21,6 +21,7 @@ from .models import (
     AiReportJob,
     FundingProposalNumberCounter,
     FundingProposalRecord,
+    ShortLink,
     WeeklyReport,
     WeeklyReportSchedule,
     WeeklyReportSupplement,
@@ -942,4 +943,71 @@ class WeeklyReportTask015Tests(TestCase):
         self.assertLessEqual(len(clean_diff), 2)
         self.assertLessEqual(len(clean_p), 5)
         self.assertLessEqual(sum(len(g["items"]) for g in clean_p), 10)
+
+
+class ShortLinkTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="staff@fermat.vn", email="staff@fermat.vn", password="secret")
+        self.profile = UserProfile.objects.create(email="staff@fermat.vn", name="Nhân viên A", role="EMPLOYEE")
+        self.token = Token.objects.create(user=self.user)
+        self.headers = {"HTTP_AUTHORIZATION": f"Bearer {self.token.key}"}
+
+    def test_create_custom_and_random_short_links_and_redirect(self):
+        # 1. Create custom short link
+        res = self.client.post(
+            "/api/documents/short-links",
+            data={
+                "targetUrl": "https://docs.google.com/forms/d/e/1FAIpQLSe/viewform",
+                "title": "Đăng ký thi FIMO 2026",
+                "mode": "custom",
+                "customCode": "fimo-2026",
+            },
+            content_type="application/json",
+            **self.headers,
+        )
+        self.assertEqual(res.status_code, 201)
+        payload = res.json()
+        self.assertEqual(payload["code"], "fimo-2026")
+        self.assertTrue(payload["isCustom"])
+        self.assertEqual(payload["clicks"], 0)
+
+        # 2. Duplicate custom code is rejected with 409
+        dup = self.client.post(
+            "/api/documents/short-links",
+            data={
+                "targetUrl": "https://fermat.vn",
+                "mode": "custom",
+                "customCode": "FIMO-2026",
+            },
+            content_type="application/json",
+            **self.headers,
+        )
+        self.assertEqual(dup.status_code, 409)
+
+        # 3. Create random short link
+        rand_res = self.client.post(
+            "/api/documents/short-links",
+            data={
+                "targetUrl": "fermat.vn/cuoc-thi",
+                "mode": "random",
+                "randomLength": 7,
+            },
+            content_type="application/json",
+            **self.headers,
+        )
+        self.assertEqual(rand_res.status_code, 201)
+        rand_payload = rand_res.json()
+        self.assertEqual(len(rand_payload["code"]), 7)
+        self.assertEqual(rand_payload["targetUrl"], "https://fermat.vn/cuoc-thi")
+
+        # 4. Public redirect increments clicks
+        redirect_res = self.client.get("/s/fimo-2026")
+        self.assertEqual(redirect_res.status_code, 302)
+        self.assertEqual(redirect_res["Location"], "https://docs.google.com/forms/d/e/1FAIpQLSe/viewform")
+
+        link = ShortLink.objects.get(code="fimo-2026")
+        self.assertEqual(link.clicks, 1)
+        self.assertIsNotNone(link.last_clicked_at)
+
 

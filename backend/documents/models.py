@@ -218,3 +218,34 @@ class WeeklyReportSchedule(models.Model):
         return f"Schedule: {self.user.email} · Thứ {self.weekday + 2} {self.run_time} ({status_str})"
 
 
+class ShortLink(models.Model):
+    """Internal and public URL shortener with custom or random codes."""
+
+    code = models.CharField(max_length=80, unique=True, db_index=True)
+    target_url = models.TextField()
+    title = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    is_custom = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    clicks = models.PositiveIntegerField(default=0)
+    last_clicked_at = models.DateTimeField(blank=True, null=True)
+    expires_at = models.DateTimeField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        UserProfile,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="short_links",
+    )
+    created_by_name = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"/s/{self.code} -> {self.target_url[:60]}"
+
+
+

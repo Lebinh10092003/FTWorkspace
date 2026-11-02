@@ -1,8 +1,13 @@
 from django.urls import path
 
-from . import views
+from . import short_links, views
 
 urlpatterns = [
+    path("documents/short-links", short_links.short_links_view, name="short_links"),
+    path("documents/short-links/check-code", short_links.short_link_check_code, name="short_link_check_code"),
+    path("documents/short-links/random-code", short_links.short_link_random_code, name="short_link_random_code"),
+    path("documents/short-links/resolve/<str:code>", short_links.resolve_short_link_api, name="resolve_short_link_api"),
+    path("documents/short-links/<int:link_id>", short_links.short_link_detail_view, name="short_link_detail"),
     path("documents/weekly-reports", views.weekly_reports, name="weekly_reports"),
     path("documents/weekly-reports/generation-options", views.weekly_report_generation_options, name="weekly_report_generation_options"),
     path("documents/weekly-reports/generate-ai", views.weekly_reports_generate_ai, name="weekly_reports_generate_ai"),
