@@ -502,3 +502,14 @@ class BotPublicInfoTests(TestCase):
         views._BOT_INFO_CACHE.update(at=0.0, data={})
         with mock.patch.object(views.ZaloBotClient, "get_me", side_effect=RuntimeError("x")):
             self.assertEqual(views.get_bot_public_info(), {})
+
+
+class CommandNormalizeTests(TestCase):
+    def test_pasted_description_lines_map_to_commands(self):
+        from zalo_bot.services import _normalize_command_text as n
+
+        self.assertEqual(n("Xem danh sách việc hôm nay"), "việc hôm nay")
+        self.assertEqual(n("việc ngày mai : Xem danh sách việc ngày mai"), "việc ngày mai")
+        self.assertEqual(n("thư mới : Xem email cần phản hồi"), "thư mới")
+        self.assertEqual(n("- `trợ giúp`"), "trợ giúp")
+        self.assertEqual(n("xong 2"), "xong 2")

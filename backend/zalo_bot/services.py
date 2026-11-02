@@ -122,11 +122,11 @@ def verify_and_link(chat_id: str, raw_code: str, zalo_user_id: str = "") -> tupl
     welcome_text = (
         f"Xin chào {display_user_name}!\n"
         "Bạn đã liên kết tài khoản Fermat Workspace thành công.\n\n"
-        "Các câu lệnh bạn có thể nhắn:\n"
-        "- việc hôm nay : Xem danh sách việc hôm nay\n"
-        "- việc ngày mai : Xem danh sách việc ngày mai\n"
-        "- thư mới : Xem email cần phản hồi\n"
-        "- trợ giúp : Danh sách câu lệnh đầy đủ"
+        "Bạn nhắn đúng các từ sau cho bot:\n"
+        "• việc hôm nay (xem việc hôm nay)\n"
+        "• việc ngày mai (xem việc ngày mai)\n"
+        "• thư mới (xem email cần phản hồi)\n"
+        "• trợ giúp (danh sách lệnh đầy đủ)"
     )
     client.send_message(chat_id_str, welcome_text)
 
@@ -377,6 +377,34 @@ def _get_item_by_number(user: UserProfile, number_str: str) -> tuple[WorkItem | 
     return None, f"Không tìm thấy công việc số {num} trong danh sách của bạn."
 
 
+_COMMAND_ALIASES = {
+    "xem danh sách việc hôm nay": "việc hôm nay",
+    "xem danh sách việc ngày mai": "việc ngày mai",
+    "xem danh sách công việc hôm nay": "việc hôm nay",
+    "xem danh sách công việc ngày mai": "việc ngày mai",
+    "xem việc hôm nay": "việc hôm nay",
+    "xem việc ngày mai": "việc ngày mai",
+    "xem email cần phản hồi": "thư mới",
+    "xem thư mới": "thư mới",
+    "xem email mới": "thư mới",
+    "email mới": "thư mới",
+    "danh sách câu lệnh đầy đủ": "trợ giúp",
+    "xem danh sách câu lệnh": "trợ giúp",
+}
+
+
+def _normalize_command_text(raw_text: str) -> str:
+    """Chuẩn hóa lệnh: bỏ dấu gạch đầu/dấu chấm ở đầu, nhận cả khi người dùng chép nguyên dòng
+    "việc hôm nay : Xem danh sách..." hoặc câu mô tả tương ứng."""
+    text = re.sub(r"^[\s\-•*`]+|[\s`.!]+$", "", (raw_text or "").lower())
+    text = re.sub(r"\s+", " ", text)
+    if ":" in text:
+        head = text.split(":", 1)[0].strip()
+        if head and not re.match(r"^(xong|dời|doi)\b", head):
+            text = head
+    return _COMMAND_ALIASES.get(text, text)
+
+
 def handle_inbound_message(chat_id: str, text: str, from_user: dict = None) -> str:
     """
     Xử lý tin nhắn văn bản gửi tới bot:
@@ -417,7 +445,7 @@ def handle_inbound_message(chat_id: str, text: str, from_user: dict = None) -> s
 
     # 2. Người dùng đã liên kết
     user = link.user
-    norm_text = raw_text.lower().strip()
+    norm_text = _normalize_command_text(raw_text)
 
     # Log command interaction (không lưu text)
     ZaloSendLog.objects.create(
