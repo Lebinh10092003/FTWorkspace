@@ -32,6 +32,7 @@ import ModuleShellHeader from '../layout/ModuleShellHeader';
 import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
 import { appDialog } from '../AppDialog';
 import { GmailStatusResponse, MailDigestItem, MorningDigestResponse, ActionItem, DigestsCounts, JobProgressResponse } from './gmailTypes';
+import { parseDeadlineInfo } from './deadlineUtils';
 
 type Props = {
   idToken: string;
@@ -408,7 +409,7 @@ export default function GmailAssistantCenter({
   const handleOpenScheduleModal = (digest: MailDigestItem, actionIdx?: number) => {
     setScheduleModalDigest(digest);
 
-    // Ngày mặc định: hôm nay
+    // Ngày hôm nay
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
       today.getDate()
@@ -419,6 +420,9 @@ export default function GmailAssistantCenter({
     let initialPrio: 'low' | 'medium' | 'high' = 'medium';
     let initialActionIdx: number | null = null;
     let warningText: string | null = null;
+    let targetWorkDate = todayStr;
+    const targetStartTime = '';
+    let targetEndTime = '';
 
     if (typeof actionIdx === 'number' && digest.actions && digest.actions[actionIdx]) {
       const act = getActionObject(digest.actions[actionIdx]);
@@ -441,9 +445,20 @@ export default function GmailAssistantCenter({
         initialTitle = `${badge.label}: ${cleanTitle}`;
       }
 
-      if (act.deadline) {
-        initialDesc += `\nThời hạn: ${act.deadline}`;
+      // Xử lý hạn theo spec 024: ngày mặc định là ngày hạn tuyệt đối (nếu quá hạn thì mặc định hôm nay), preview ghi hạn gốc
+      const dlInfo = parseDeadlineInfo(act.deadline, act.due_date, digest.received_at, today);
+      if (dlInfo.hasDeadline) {
+        targetWorkDate = dlInfo.scheduleDateStr;
+        if (dlInfo.timeStr) {
+          targetEndTime = dlInfo.timeStr;
+        }
+        if (dlInfo.isOverdue) {
+          initialDesc += `\nThời hạn gốc: ${dlInfo.absoluteDateStr || act.deadline} (Đã quá hạn, mặc định dời sang hôm nay)`;
+        } else {
+          initialDesc += `\nThời hạn: ${dlInfo.absoluteDateStr || act.deadline}`;
+        }
       }
+
       if (act.required_preparations && act.required_preparations.length > 0) {
         initialDesc += `\nTài liệu cần chuẩn bị: ${act.required_preparations.join(', ')}`;
       }
@@ -462,9 +477,20 @@ export default function GmailAssistantCenter({
     } else {
       // Mở chung từ email
       initialTitle = `Phản hồi email: ${digest.subject}`;
-      if (digest.reply_by) {
-        initialDesc += `\nHạn phản hồi: ${digest.reply_by}`;
+
+      const dlInfo = parseDeadlineInfo(digest.reply_by, digest.due_date, digest.received_at, today);
+      if (dlInfo.hasDeadline) {
+        targetWorkDate = dlInfo.scheduleDateStr;
+        if (dlInfo.timeStr) {
+          targetEndTime = dlInfo.timeStr;
+        }
+        if (dlInfo.isOverdue) {
+          initialDesc += `\nHạn phản hồi gốc: ${dlInfo.absoluteDateStr || digest.reply_by} (Đã quá hạn, mặc định dời sang hôm nay)`;
+        } else {
+          initialDesc += `\nHạn phản hồi: ${dlInfo.absoluteDateStr || digest.reply_by}`;
+        }
       }
+
       if (digest.summary) {
         initialDesc += `\nTóm tắt nội dung: ${digest.summary}`;
       }
@@ -485,9 +511,9 @@ export default function GmailAssistantCenter({
     setAlreadyScheduledWarning(warningText);
     setScheduleForm({
       title: initialTitle,
-      work_date: todayStr,
-      start_time: '',
-      end_time: '',
+      work_date: targetWorkDate,
+      start_time: targetStartTime,
+      end_time: targetEndTime,
       priority: initialPrio,
       description: initialDesc,
       action_index: initialActionIdx,
@@ -991,6 +1017,34 @@ export default function GmailAssistantCenter({
     }
   };
 
+  // Helper kiểm tra xem luồng thư có việc hoặc hạn phản hồi quá hạn chưa xử lý hay không
+  const checkIsOverdueUnhandled = useCallback((item: MailDigestItem): boolean => {
+    if (item.status === 'replied' || item.status === 'ignored') return false;
+    const itemDl = parseDeadlineInfo(item.reply_by, item.due_date, item.received_at);
+    if (itemDl.hasDeadline && itemDl.isOverdue) return true;
+    if (Array.isArray(item.actions)) {
+      for (const rawAct of item.actions) {
+        const act = getActionObject(rawAct);
+        if (!act.completed) {
+          const actDl = parseDeadlineInfo(act.deadline, act.due_date, item.received_at);
+          if (actDl.hasDeadline && actDl.isOverdue) return true;
+        }
+      }
+    }
+    return false;
+  }, []);
+
+  // Danh sách luồng thư hiển thị: xếp các luồng quá hạn chưa xong lên trước
+  const displayedDigests = useMemo(() => {
+    return [...digests].sort((a, b) => {
+      const aOverdue = checkIsOverdueUnhandled(a);
+      const bOverdue = checkIsOverdueUnhandled(b);
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+      return 0;
+    });
+  }, [digests, checkIsOverdueUnhandled]);
+
   return (
     <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors">
       <ModuleShellHeader
@@ -1442,7 +1496,18 @@ export default function GmailAssistantCenter({
                             >
                               <div className="min-w-0 pr-3">
                                 <p className="font-bold text-slate-800 dark:text-slate-200 truncate">{th.subject}</p>
-                                <p className="text-slate-500 dark:text-slate-400 truncate">{th.sender}</p>
+                                <div className="flex items-center gap-2 flex-wrap text-slate-500 dark:text-slate-400">
+                                  <p className="truncate">{th.sender}</p>
+                                  {(th.reply_by || th.due_date) && (() => {
+                                    const dl = parseDeadlineInfo(th.reply_by, th.due_date, th.received_at || th.date);
+                                    if (!dl.hasDeadline) return null;
+                                    return (
+                                      <span className={`text-[10px] ${dl.isOverdue ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-500'}`}>
+                                        • Hạn: {dl.displayText}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
                               </div>
                               <button
                                 type="button"
@@ -1609,17 +1674,21 @@ export default function GmailAssistantCenter({
                   </div>
                 ) : (
                   <div className="grid gap-3.5">
-                    {digests.map(item => (
-                      <div
-                        key={item.id}
-                        className={`rounded-3xl border transition shadow-xs ${
-                          item.status === 'replied'
-                            ? 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 opacity-75'
-                            : item.status === 'ignored'
-                            ? 'border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/20 opacity-60'
-                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-300 dark:hover:border-blue-800'
-                        } p-4 sm:p-5`}
-                      >
+                    {displayedDigests.map(item => {
+                      const isOverdue = checkIsOverdueUnhandled(item);
+                      return (
+                        <div
+                          key={item.id}
+                          className={`rounded-3xl border transition shadow-xs ${
+                            isOverdue
+                              ? 'border-rose-300 dark:border-rose-900/80 bg-rose-50/40 dark:bg-rose-950/20 hover:border-rose-400'
+                              : item.status === 'replied'
+                              ? 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 opacity-75'
+                              : item.status === 'ignored'
+                              ? 'border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/20 opacity-60'
+                              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-300 dark:hover:border-blue-800'
+                          } p-4 sm:p-5`}
+                        >
                         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             {/* Badges bar */}
@@ -1663,12 +1732,30 @@ export default function GmailAssistantCenter({
                                 </span>
                               )}
 
-                              {item.reply_by && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs text-slate-600 dark:text-slate-400">
-                                  <Clock className="h-3 w-3" />
-                                  <span>Hạn: {item.reply_by}</span>
-                                </span>
-                              )}
+                              {(item.reply_by || item.due_date) && (() => {
+                                const dl = parseDeadlineInfo(item.reply_by, item.due_date, item.received_at);
+                                if (!dl.hasDeadline) return null;
+                                const isOverdueUnhandled = dl.isOverdue && item.status === 'new';
+                                return (
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                                      isOverdueUnhandled
+                                        ? 'bg-rose-50 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-bold'
+                                        : dl.isOverdue
+                                        ? 'bg-rose-50/70 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400'
+                                        : dl.isToday
+                                        ? 'bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-bold'
+                                        : dl.isTomorrow
+                                        ? 'bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-medium'
+                                        : 'bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                                    }`}
+                                    title={dl.absoluteDateStr ? `Hạn chót: ${dl.absoluteDateStr}` : undefined}
+                                  >
+                                    <Clock className={`h-3 w-3 ${isOverdueUnhandled ? 'text-rose-600 dark:text-rose-400' : ''}`} />
+                                    <span>Hạn: {dl.displayText}</span>
+                                  </span>
+                                );
+                              })()}
 
                               {item.status === 'replied' && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
@@ -1926,12 +2013,28 @@ export default function GmailAssistantCenter({
                                                 >
                                                   {badge.label}
                                                 </span>
-                                                {act.deadline && (
-                                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
-                                                    <Clock className="h-3 w-3" />
-                                                    <span>Hạn: {act.deadline}</span>
-                                                  </span>
-                                                )}
+                                                {(act.deadline || act.due_date) && (() => {
+                                                  const dl = parseDeadlineInfo(act.deadline, act.due_date, item.received_at);
+                                                  if (!dl.hasDeadline) return null;
+                                                  const isOverdueIncomplete = dl.isOverdue && !act.completed;
+                                                  return (
+                                                    <span
+                                                      className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+                                                        isOverdueIncomplete
+                                                          ? 'text-rose-700 dark:text-rose-300 font-bold bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 px-1.5 py-0.2 rounded-md'
+                                                          : dl.isOverdue
+                                                          ? 'text-rose-600 dark:text-rose-400 line-through'
+                                                          : dl.isToday
+                                                          ? 'text-amber-600 dark:text-amber-400 font-bold'
+                                                          : 'text-slate-600 dark:text-slate-400'
+                                                      }`}
+                                                      title={dl.absoluteDateStr ? `Hạn: ${dl.absoluteDateStr}` : undefined}
+                                                    >
+                                                      <Clock className="h-3 w-3" />
+                                                      <span>Hạn: {dl.displayText}</span>
+                                                    </span>
+                                                  );
+                                                })()}
                                                 {isItemScheduled && (
                                                   <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
                                                     <Check className="h-3 w-3" />
@@ -2049,7 +2152,8 @@ export default function GmailAssistantCenter({
                           </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -2173,9 +2277,15 @@ export default function GmailAssistantCenter({
                                 {badge.label}
                               </span>
                               <span className="font-medium text-slate-800 dark:text-slate-200">{act.title}</span>
-                              {act.deadline && (
-                                <span className="text-rose-600 font-semibold">(Hạn: {act.deadline})</span>
-                              )}
+                              {(act.deadline || act.due_date) && (() => {
+                                const dl = parseDeadlineInfo(act.deadline, act.due_date, selectedDigest?.received_at);
+                                if (!dl.hasDeadline) return null;
+                                return (
+                                  <span className={`font-semibold ${dl.isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                                    (Hạn: {dl.displayText})
+                                  </span>
+                                );
+                              })()}
                             </div>
                             {Array.isArray(act.required_preparations) && act.required_preparations.length > 0 && (
                               <p className="mt-1 text-slate-500 dark:text-slate-400">
