@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -45,6 +45,39 @@ const OFFICE_MODULE_ITEMS: { id: string; label: string; mode: string }[] = [
   { id: 'resources', label: 'Tài nguyên', mode: 'resources' },
 ];
 
+
+// Khung 3D giữ sống giữa các lần mở: iframe nằm trong một khối cố định gắn vào body, khi rời trang chỉ ẩn đi
+// (không hủy) nên quay lại không phải khởi tạo lại cảnh 3D.
+let frameHost: HTMLDivElement | null = null;
+let frameEl: HTMLIFrameElement | null = null;
+let frameReady = false;
+
+function ensureOfficeFrame(): HTMLIFrameElement {
+  if (frameEl && frameHost && document.body.contains(frameHost)) return frameEl;
+  frameHost = document.createElement('div');
+  frameHost.style.cssText = 'position:fixed;display:none;z-index:5;left:0;top:0;width:0;height:0;overflow:hidden;background:#020617';
+  frameEl = document.createElement('iframe');
+  frameEl.src = '/office3d/vi/?embed=1';
+  frameEl.title = 'Văn phòng 3D FermatTech';
+  frameEl.allow = 'fullscreen';
+  frameEl.style.cssText = 'width:100%;height:100%;border:0;display:block';
+  frameReady = false;
+  frameHost.appendChild(frameEl);
+  document.body.appendChild(frameHost);
+  return frameEl;
+}
+
+function placeOfficeFrame(slot: HTMLElement | null) {
+  if (!frameHost) return;
+  if (!slot) { frameHost.style.display = 'none'; return; }
+  const r = slot.getBoundingClientRect();
+  frameHost.style.display = 'block';
+  frameHost.style.left = `${r.left}px`;
+  frameHost.style.top = `${r.top}px`;
+  frameHost.style.width = `${r.width}px`;
+  frameHost.style.height = `${r.height}px`;
+}
+
 export default function OfficeWorkspace({
   idToken,
   isDark = false,
@@ -52,7 +85,8 @@ export default function OfficeWorkspace({
   onNavigate,
   onBackTo2D,
 }: OfficeWorkspaceProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const slotRef = useRef<HTMLDivElement | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [roster, setRoster] = useState<any[]>([]);
@@ -67,6 +101,33 @@ export default function OfficeWorkspace({
       .filter(item => canAccessView(item.mode))
       .map(item => ({ id: item.id, label: item.label }));
   }, [canAccessView]);
+
+
+  // Gắn khung 3D giữ sống vào vị trí của trang này; rời trang chỉ ẩn đi
+  useLayoutEffect(() => {
+    if (!webglSupported) return;
+    iframeRef.current = ensureOfficeFrame();
+    const slot = slotRef.current;
+    let raf = 0;
+    const update = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => placeOfficeFrame(slotRef.current)); };
+    placeOfficeFrame(slot);
+    const ro = typeof ResizeObserver !== 'undefined' && slot ? new ResizeObserver(update) : null;
+    if (ro && slot) ro.observe(slot);
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    if (frameReady) {
+      setIsReady(true);
+      setLoading(false);
+      fetchRoster().then(list => sendInitToIframe(list));
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+      placeOfficeFrame(null);
+    };
+  }, [webglSupported]);
 
   // Tải danh sách nhân sự an toàn từ máy chủ
   const fetchRoster = async () => {
@@ -142,6 +203,7 @@ export default function OfficeWorkspace({
 
       // Nhận ready
       if (data.type === 'ft-office:ready') {
+        frameReady = true;
         setIsReady(true);
         setLoading(false);
         // Gửi thông điệp init
@@ -265,20 +327,8 @@ export default function OfficeWorkspace({
         </div>
       )}
 
-      {/* Frame iframe 3D */}
-      <iframe
-        ref={iframeRef}
-        src="/office3d/vi/?embed=1"
-        title="Văn phòng 3D FermatTech"
-        className="w-full flex-1 border-0 h-full min-h-[calc(100vh-6.5rem)]"
-        allow="fullscreen"
-        onLoad={() => {
-          // Khi iframe tải xong HTML, nếu có thể thì gửi init
-          if (iframeRef.current?.contentWindow) {
-            sendInitToIframe();
-          }
-        }}
-      />
+      {/* Vị trí khung 3D (iframe giữ sống nằm ngoài cây React, xếp chồng lên đây) */}
+      <div ref={slotRef} className="w-full flex-1 h-full min-h-[calc(100vh-6.5rem)]" />
     </div>
   );
 }
