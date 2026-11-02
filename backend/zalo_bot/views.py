@@ -102,6 +102,31 @@ def webhook_view(request):
     return JsonResponse({"ok": True})
 
 
+
+_BOT_INFO_CACHE = {"at": 0.0, "data": {}}
+
+
+def get_bot_public_info():
+    """Tên hiển thị của bot (getMe), lưu tạm 1 giờ; lỗi thì trả rỗng."""
+    import time
+    now = time.time()
+    if _BOT_INFO_CACHE["data"] and now - _BOT_INFO_CACHE["at"] < 3600:
+        return _BOT_INFO_CACHE["data"]
+    data = {}
+    try:
+        res = ZaloBotClient().get_me() or {}
+        info = res.get("result") or {}
+        data = {
+            "bot_name": str(info.get("display_name") or "")[:80],
+            "bot_account": str(info.get("account_name") or "")[:80],
+        }
+    except Exception:
+        data = {}
+    if data.get("bot_name"):
+        _BOT_INFO_CACHE.update(at=now, data=data)
+    return data
+
+
 @api_view(["GET"])
 @permission_classes([IsWorkspaceAuthenticated])
 def user_status_view(request):
@@ -121,6 +146,7 @@ def user_status_view(request):
         return Response({
             "success": True,
             "linked": False,
+            **get_bot_public_info(),
             "monthly_system_usage": {
                 "sent": system_sent_month,
                 "cap": monthly_cap,
@@ -130,6 +156,7 @@ def user_status_view(request):
     return Response({
         "success": True,
         "linked": True,
+        **get_bot_public_info(),
         "chat_id_masked": mask_chat_id(link.chat_id),
         "linked_at": link.linked_at.isoformat() if link.linked_at else None,
         "is_enabled": link.is_enabled,

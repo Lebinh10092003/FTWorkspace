@@ -14,6 +14,8 @@ import { appDialog } from '../AppDialog';
 
 type ZaloStatus = {
   linked: boolean;
+  bot_name?: string;
+  bot_account?: string;
   chat_id_masked?: string;
   linked_at?: string;
   is_enabled?: boolean;
@@ -402,7 +404,7 @@ export default function ZaloSettingsTab({ idToken }: Props) {
                 <p className="font-semibold text-[var(--ft-text-main)]">Các bước tiếp theo:</p>
                 <ol className="list-decimal list-inside space-y-1 pl-1">
                   <li>Mở ứng dụng Zalo trên điện thoại hoặc máy tính.</li>
-                  <li>Tìm kiếm bot <strong>Fermat Workspace</strong> hoặc mở hộp chat với bot.</li>
+                  <li>Tìm kiếm bot <strong>{status?.bot_name || 'của công ty'}</strong>{status?.bot_account ? <> (tài khoản <strong>{status.bot_account}</strong>)</> : null} trong Zalo, hoặc mở hộp chat với bot.</li>
                   <li>Nhắn mã <strong>{linkCode}</strong> vào cuộc trò chuyện.</li>
                   <li>Hệ thống sẽ tự động xác nhận và kích hoạt ngay lập tức.</li>
                 </ol>
