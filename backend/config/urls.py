@@ -29,6 +29,7 @@ urlpatterns = [
     path("api/publishing/", include("publishing.urls")),
     path("api/gmail/", include("gmail_assistant.urls")),
     path("api/zalo-bot/", include("zalo_bot.urls")),
+    path("api/office/", include("office.urls")),
     path("api/", include("mcp.urls")),
     # OAuth 2.1 cho MCP: /.well-known/* va /api/oauth/*
     path("", include("mcp_oauth.urls")),

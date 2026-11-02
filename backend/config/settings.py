@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     "documents", "company_accounts", "mcp_oauth", "chatbot", "news_posts",
     "publishing",
     "gmail_assistant", "zalo_bot",
+    "office",
 ]
 
 MIDDLEWARE = [
