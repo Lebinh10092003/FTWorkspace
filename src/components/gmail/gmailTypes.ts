@@ -17,6 +17,7 @@ export type ActionItem = {
   type: string;
   title: string;
   deadline?: string;
+  due_date?: string | null;
   required_preparations?: string[];
   priority?: string;
   completed?: boolean;
@@ -69,6 +70,7 @@ export type MailDigestItem = {
   priority: 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW' | 'urgent' | 'high' | 'normal' | 'low';
   needs_reply: boolean;
   reply_by?: string | null;
+  due_date?: string | null;
   summary: string;
   snippet?: string;
   has_ai_summary?: boolean;
@@ -107,6 +109,9 @@ export type MorningDigestResponse = {
     subject: string;
     sender: string;
     date: string;
+    received_at?: string;
+    reply_by?: string;
+    due_date?: string | null;
   }>;
   recent_messages: Array<{
     id: string;

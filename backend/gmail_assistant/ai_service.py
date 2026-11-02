@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from documents.ai_service import execute_ai_command
 from documents.content_filter import CONTROL_CHARS_REGEX, clean_report_item, is_inappropriate_or_boilerplate
+from .deadline_parser import ICT_TZ, parse_deadline_to_absolute
 from .models import MailDigest, MailJob, MailThreadSummary
 
 logger = logging.getLogger(__name__)
@@ -229,6 +230,7 @@ def build_summarize_prompt(
     date_str: str,
     body_text: str,
     thread_history: Optional[List[Dict[str, Any]]] = None,
+    today_str: Optional[str] = None,
 ) -> str:
     """
     Construct safe summarization prompt with strict anti-injection guardrails.
@@ -236,6 +238,9 @@ def build_summarize_prompt(
     Supports thread context if multiple messages exist in the conversation.
     """
     safe_body = body_text[:6000]
+
+    if not today_str:
+        today_str = timezone.now().astimezone(ICT_TZ).strftime("%d/%m/%Y")
 
     thread_section = ""
     if thread_history:
@@ -260,9 +265,10 @@ Nhiệm vụ của bạn: Tóm tắt nội dung email, phân loại mức ưu ti
 ==================================================================================
 
 THÔNG TIN EMAIL:{thread_section}
-- Người gửi thư mới nhất: {sender}
+- Người gửi thư: {sender}
 - Tiêu đề: {subject}
-- Thời gian: {date_str}
+- Thời gian gửi thư: {date_str}
+- HÔM NAY LÀ NGÀY: {today_str} (Múi giờ ICT/Việt Nam)
 
 <<<BEGIN_UNTRUSTED_EMAIL_CONTENT>>>
 {safe_body}
@@ -274,7 +280,7 @@ QUY TẮC ĐÁNH GIÁ:
   + "normal": Thư công việc thông thường trao đổi nghiệp vụ.
   + "low": Thư thông báo chung, bản tin, thư không cần hành động gì.
 - "needs_reply": true nếu người gửi đặt câu hỏi, yêu cầu phản hồi, báo giá, tài liệu hoặc xác nhận; false nếu chỉ là thông báo/xác nhận một chiều.
-- "reply_by": Gợi ý thời hạn phản hồi hợp lý (ví dụ: "Trước 17h hôm nay", "Trong ngày mai", hoặc rỗng "" nếu không cần).
+- "reply_by": Gợi ý thời hạn phản hồi hợp lý (BẮT BUỘC dùng ngày tuyệt đối dạng dd/mm/yyyy kèm giờ nếu có, ví dụ: "17:00 30/10/2026" hoặc "30/10/2026"; hoặc rỗng "" nếu không cần. TUYỆT ĐỐI CẤM dùng từ tương đối như "hôm nay", "ngày mai", "trong ngày").
 - "summary": Tóm tắt súc tích 2 đến 4 dòng bằng tiếng Việt chuẩn mực công sở, nêu rõ ai cần gì / kết quả gì.
 - "actions": Danh sách các việc cụ thể cần thực hiện trích xuất từ email. Mỗi việc là 1 đối tượng JSON gồm:
   + "type": Phân loại đầu việc, bắt buộc chọn 1 trong các giá trị:
@@ -287,22 +293,27 @@ QUY TẮC ĐÁNH GIÁ:
     * "phe_duyet" (phê duyệt / ký duyệt)
     * "khac" (việc khác)
   + "title": Mô tả ngắn việc cần làm (dạng động từ cụ thể, ví dụ: "Soạn và gửi báo giá điều chỉnh", tối đa 150 ký tự).
-  + "deadline": Thời hạn cụ thể nếu thư có nêu (ví dụ: "Trước 17h thứ 4", "Hôm nay", hoặc "" nếu không rõ).
+  + "deadline": Thời hạn cụ thể dạng ngày tuyệt đối "dd/mm/yyyy" (kèm giờ nếu có, ví dụ: "17:00 04/11/2026", hoặc "" nếu không rõ. TUYỆT ĐỐI KHÔNG ghi "hôm nay", "ngày mai", "thứ 4").
   + "required_preparations": Danh sách các file / tài liệu / số liệu cần chuẩn bị trước khi thực hiện (ví dụ: ["Bản scan giấy chứng nhận", "File báo cáo tuần"]).
   + "priority": "high", "normal", hoặc "low".
+
+QUY TẮC ĐẶC BIỆT VỀ HẠN (BẮT BUỘC TUÂN THỦ):
+- CẢ "reply_by" VÀ "deadline" BẮT BUỘC PHẢI LÀ NGÀY TUYỆT ĐỐI dạng dd/mm/yyyy (kèm giờ nếu có, ví dụ: "17:00 30/10/2026" hoặc "31/10/2026").
+- TUYỆT ĐỐI CẤM dùng từ tương đối "hôm nay", "ngày mai", "ngày kia", "hôm qua", "thứ 2".."thứ 7", "tuần sau", "trong ngày"... vì lưu lại xem ở ngày khác sẽ sai.
+- Dựa vào thời gian gửi thư ({date_str}) và ngày hôm nay ({today_str}) để tính ra ngày tuyệt đối chính xác.
 
 YÊU CẦU ĐẦU RA:
 Chỉ trả về DUY NHẤT một khối JSON hợp lệ theo cấu trúc sau, không kèm bất kỳ giải thích nào:
 {{
   "priority": "high",
   "needs_reply": true,
-  "reply_by": "Trước 17h ngày 30/10",
+  "reply_by": "17:00 30/10/2026",
   "summary": "Nội dung tóm tắt...",
   "actions": [
     {{
       "type": "phan_hoi_xac_nhan",
       "title": "Xác nhận lịch tập huấn STEM tại THCS Cầu Giấy",
-      "deadline": "Trước 17h ngày 30/10",
+      "deadline": "17:00 30/10/2026",
       "required_preparations": ["Danh sách 3 giảng viên", "File giáo trình bản mềm"],
       "priority": "high"
     }}
@@ -314,12 +325,16 @@ def build_thread_summarize_prompt(
     subject: str,
     thread_messages: List[Dict[str, Any]],
     user_name: str = "",
+    today_str: Optional[str] = None,
 ) -> str:
     """
     Construct safe thread summarization prompt with strict anti-injection guardrails.
     Presents messages in chronological order, stripped of redundant quotes and signatures.
     """
     clean_subj = subject.strip() or "(Không có tiêu đề)"
+
+    if not today_str:
+        today_str = timezone.now().astimezone(ICT_TZ).strftime("%d/%m/%Y")
 
     formatted_msgs = []
     for idx, msg in enumerate(thread_messages, 1):
@@ -347,6 +362,7 @@ Nhiệm vụ của bạn: Tóm tắt toàn bộ LUỒNG TRAO ĐỔI (THREAD) ema
 
 TIÊU ĐỀ LUỒNG THƯ: {clean_subj}
 SỐ LƯỢNG THƯ TRONG LUỒNG: {len(thread_messages)}
+HÔM NAY LÀ NGÀY: {today_str} (Múi giờ ICT/Việt Nam)
 
 <<<BEGIN_UNTRUSTED_EMAIL_CONTENT>>>
 {all_bodies}
@@ -361,14 +377,19 @@ QUY TẮC ĐÁNH GIÁ LUỒNG THƯ:
    (TUYỆT ĐỐI KHÔNG chỉ lặp lại tiêu đề email hoặc liệt kê tên thư. Phải tóm tắt thực chất nội dung thảo luận).
 2. "status": Tình trạng hiện tại / đang chờ ai (viết ngắn gọn 1 câu dưới 80 ký tự, ví dụ: "Đang chờ đối tác gửi danh mục thiết bị" hoặc "Đang chờ bạn gửi báo giá bổ sung").
 3. "needs_reply": true nếu ở thư mới nhất, người gửi đang chờ người dùng phản hồi, cung cấp thông tin, gửi file hoặc xác nhận; false nếu người dùng đã trả lời sau cùng hoặc luồng đã kết thúc/chỉ thông báo một chiều.
-4. "reply_by": Gợi ý thời hạn phản hồi hợp lý nếu có nêu trong thư (ví dụ: "Trước 17h hôm nay", "Trước 12h ngày mai", hoặc "" nếu không rõ).
+4. "reply_by": Gợi ý thời hạn phản hồi hợp lý nếu có nêu trong thư (BẮT BUỘC dùng ngày tuyệt đối dạng dd/mm/yyyy kèm giờ nếu có, ví dụ: "17:00 30/10/2026" hoặc "31/10/2026", hoặc "" nếu không rõ).
 5. "priority": "high", "normal", hoặc "low".
 6. "actions": Danh sách các đầu việc cụ thể cần thực hiện trích xuất từ diễn biến luồng thư. Mỗi việc là 1 đối tượng JSON gồm:
    - "type": "tong_hop_thong_tin", "bo_sung_tai_lieu", "sua_tai_lieu", "gui_file_bao_cao", "phan_hoi_xac_nhan", "tham_du_lich_hop", "phe_duyet", hoặc "khac".
    - "title": Mô tả ngắn việc cần làm (dạng động từ cụ thể, ví dụ: "Gửi danh sách 3 giảng viên STEM", tối đa 150 ký tự).
-   - "deadline": Hạn chót nếu có.
+   - "deadline": Hạn chót nếu có (BẮT BUỘC dạng ngày tuyệt đối "dd/mm/yyyy" kèm giờ nếu có, ví dụ: "17:00 30/10/2026" hoặc "04/11/2026").
    - "required_preparations": Danh sách file/tài liệu cần chuẩn bị trước.
    - "priority": "high", "normal", hoặc "low".
+
+QUY TẮC ĐẶC BIỆT VỀ HẠN (BẮT BUỘC TUÂN THỦ):
+- CẢ "reply_by" VÀ "deadline" BẮT BUỘC PHẢI LÀ NGÀY TUYỆT ĐỐI dạng dd/mm/yyyy (kèm giờ nếu có, ví dụ: "17:00 30/10/2026" hoặc "31/10/2026").
+- TUYỆT ĐỐI CẤM dùng từ tương đối "hôm nay", "ngày mai", "ngày kia", "hôm qua", "thứ 2".."thứ 7", "tuần sau", "trong ngày"... vì lưu lại xem ở ngày khác sẽ sai.
+- Dựa vào ngày giờ của từng thư trong luồng và ngày hôm nay ({today_str}) để tính ra ngày tuyệt đối chính xác.
 
 YÊU CẦU ĐẦU RA:
 Chỉ trả về DUY NHẤT một khối JSON hợp lệ theo cấu trúc sau, không kèm bất kỳ giải thích nào:
@@ -376,13 +397,13 @@ Chỉ trả về DUY NHẤT một khối JSON hợp lệ theo cấu trúc sau, k
   "summary": "3 đến 5 dòng tóm tắt nội dung thật...",
   "status": "Đang chờ đối tác gửi danh sách học sinh...",
   "needs_reply": true,
-  "reply_by": "Trước 17h ngày 30/10",
+  "reply_by": "17:00 30/10/2026",
   "priority": "high",
   "actions": [
     {{
       "type": "gui_file_bao_cao",
       "title": "Gửi danh sách giáo cụ và bài giảng",
-      "deadline": "Trước 17h hôm nay",
+      "deadline": "17:00 30/10/2026",
       "required_preparations": ["Bản mềm slide bài giảng", "Bảng kê linh kiện"],
       "priority": "high"
     }}
@@ -394,6 +415,7 @@ def normalize_action_item(
     item: Any,
     default_deadline: str = "",
     default_priority: str = "normal",
+    reference_date: Optional[object] = None,
 ) -> Dict[str, Any]:
     """Normalize action item into standard dictionary structure with validated fields."""
     valid_types = {
@@ -410,10 +432,15 @@ def normalize_action_item(
     }
     if isinstance(item, str):
         title = sanitize_ai_text(item)
+        raw_deadline = default_deadline
+        abs_deadline, due_dt = parse_deadline_to_absolute(raw_deadline, reference_date=reference_date)
+        deadline = abs_deadline or raw_deadline
+        due_date_iso = due_dt.isoformat() if due_dt else None
         return {
             "type": "khac",
             "title": title[:300],
-            "deadline": default_deadline[:100],
+            "deadline": deadline[:100],
+            "due_date": due_date_iso,
             "required_preparations": [],
             "priority": default_priority,
             "completed": False,
@@ -422,7 +449,10 @@ def normalize_action_item(
         raw_type = str(item.get("type", "khac")).strip().lower().replace("/", "_")
         item_type = raw_type if raw_type in valid_types else "khac"
         title = sanitize_ai_text(str(item.get("title") or item.get("description") or ""))
-        deadline = sanitize_ai_text(str(item.get("deadline") or default_deadline))
+        raw_deadline = sanitize_ai_text(str(item.get("deadline") or default_deadline))
+        abs_deadline, due_dt = parse_deadline_to_absolute(raw_deadline, reference_date=reference_date)
+        deadline = abs_deadline or raw_deadline
+        due_date_iso = due_dt.isoformat() if due_dt else item.get("due_date")
         raw_preps = item.get("required_preparations") or item.get("preparations") or []
         preps = [sanitize_ai_text(str(p))[:200] for p in raw_preps if str(p).strip()]
         prio = str(item.get("priority", default_priority)).lower()
@@ -433,6 +463,7 @@ def normalize_action_item(
             "type": item_type,
             "title": title[:300],
             "deadline": deadline[:100],
+            "due_date": due_date_iso,
             "required_preparations": preps,
             "priority": prio,
             "completed": completed,
@@ -441,6 +472,7 @@ def normalize_action_item(
         "type": "khac",
         "title": "Nhiệm vụ xử lý email",
         "deadline": "",
+        "due_date": None,
         "required_preparations": [],
         "priority": default_priority,
         "completed": False,
@@ -568,10 +600,11 @@ def process_mail_job(job_id: int) -> None:
         job_type = job.job_type
 
         if job_type == MailJob.TYPE_SUMMARIZE:
+            email_date = payload.get("date", "")
             prompt = build_summarize_prompt(
                 sender=payload.get("sender", ""),
                 subject=payload.get("subject", ""),
-                date_str=payload.get("date", ""),
+                date_str=email_date,
                 body_text=payload.get("body", ""),
                 thread_history=payload.get("thread_history"),
             )
@@ -583,11 +616,14 @@ def process_mail_job(job_id: int) -> None:
             if priority not in {"high", "normal", "low"}:
                 priority = "normal"
             needs_reply = bool(data.get("needs_reply", False))
-            reply_by = sanitize_ai_text(str(data.get("reply_by") or ""))
+            raw_reply_by = sanitize_ai_text(str(data.get("reply_by") or ""))
+            abs_reply_by, digest_due_dt = parse_deadline_to_absolute(raw_reply_by, reference_date=email_date)
+            reply_by = abs_reply_by or raw_reply_by
+
             summary = sanitize_ai_text(str(data.get("summary") or ""))
             raw_actions = data.get("actions", [])
             actions = [
-                normalize_action_item(a, default_deadline=reply_by, default_priority=priority)
+                normalize_action_item(a, default_deadline=reply_by, default_priority=priority, reference_date=email_date)
                 for a in raw_actions
                 if a
             ]
@@ -596,6 +632,7 @@ def process_mail_job(job_id: int) -> None:
                 "priority": priority,
                 "needs_reply": needs_reply,
                 "reply_by": reply_by,
+                "due_date": digest_due_dt.isoformat() if digest_due_dt else None,
                 "summary": summary,
                 "actions": actions,
             }
@@ -612,9 +649,10 @@ def process_mail_job(job_id: int) -> None:
                     else:
                         digest.needs_reply = digest.needs_reply or needs_reply
                     digest.reply_by = reply_by
+                    digest.due_date = digest_due_dt
                     digest.summary = summary
                     digest.actions = actions
-                    digest.save(update_fields=["priority", "needs_reply", "reply_by", "summary", "actions", "updated_at"])
+                    digest.save(update_fields=["priority", "needs_reply", "reply_by", "due_date", "summary", "actions", "updated_at"])
 
             job.result = result_data
 
@@ -682,17 +720,20 @@ def process_mail_job(job_id: int) -> None:
             raw_output = execute_ai_command(prompt)
             data = parse_ai_json(raw_output)
 
+            latest_digest = digests[-1]
             summary = sanitize_ai_text(str(data.get("summary") or ""))
             waiting_for = sanitize_ai_text(str(data.get("status") or data.get("waiting_for") or ""))
             prio = str(data.get("priority", "normal")).lower()
             if prio not in {"high", "normal", "low"}:
                 prio = "normal"
-            reply_by = sanitize_ai_text(str(data.get("reply_by") or ""))
+            raw_reply_by = sanitize_ai_text(str(data.get("reply_by") or ""))
+            abs_reply_by, thread_due_dt = parse_deadline_to_absolute(raw_reply_by, reference_date=latest_digest.received_at)
+            reply_by = abs_reply_by or raw_reply_by
             ai_needs_reply = bool(data.get("needs_reply", False))
 
             raw_actions = data.get("actions", [])
             actions = [
-                normalize_action_item(a, default_deadline=reply_by, default_priority=prio)
+                normalize_action_item(a, default_deadline=reply_by, default_priority=prio, reference_date=latest_digest.received_at)
                 for a in raw_actions
                 if a
             ]
@@ -711,27 +752,28 @@ def process_mail_job(job_id: int) -> None:
                 user=job.user,
                 thread_id=thread_id,
                 defaults={
-                    "clean_subject": clean_subject(digests[-1].subject),
+                    "clean_subject": clean_subject(latest_digest.subject),
                     "summary": summary,
                     "waiting_for": waiting_for[:255],
                     "needs_reply": final_needs_reply,
                     "priority": prio,
                     "reply_by": reply_by,
+                    "due_date": thread_due_dt,
                     "actions": actions,
                     "last_analyzed_at": timezone.now(),
-                    "last_message_id": digests[-1].message_id,
+                    "last_message_id": latest_digest.message_id,
                     "error_message": "",
                 },
             )
 
             # Update latest digest to reflect thread analysis
-            latest_digest = digests[-1]
             latest_digest.summary = summary
             latest_digest.actions = actions
             latest_digest.reply_by = reply_by
+            latest_digest.due_date = thread_due_dt
             latest_digest.priority = prio
             latest_digest.needs_reply = final_needs_reply
-            latest_digest.save(update_fields=["summary", "actions", "reply_by", "priority", "needs_reply", "updated_at"])
+            latest_digest.save(update_fields=["summary", "actions", "reply_by", "due_date", "priority", "needs_reply", "updated_at"])
 
             job.result = {
                 "thread_id": thread_id,
@@ -740,6 +782,7 @@ def process_mail_job(job_id: int) -> None:
                 "needs_reply": final_needs_reply,
                 "priority": prio,
                 "reply_by": reply_by,
+                "due_date": thread_due_dt.isoformat() if thread_due_dt else None,
                 "actions": actions,
             }
 

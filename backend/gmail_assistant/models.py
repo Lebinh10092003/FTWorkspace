@@ -89,7 +89,8 @@ class MailDigest(models.Model):
         choices=[(PRIORITY_HIGH, "Cao"), (PRIORITY_NORMAL, "Bình thường"), (PRIORITY_LOW, "Thấp")],
     )
     needs_reply = models.BooleanField(default=False, db_index=True)
-    reply_by = models.CharField(max_length=100, blank=True)  # Gợi ý hạn phản hồi từ AI
+    reply_by = models.CharField(max_length=100, blank=True)  # Gợi ý hạn phản hồi từ AI (ngày tuyệt đối)
+    due_date = models.DateTimeField(null=True, blank=True, db_index=True)  # Hạn dạng ISO datetime chuẩn hóa
     summary = models.TextField(blank=True)  # 3-5 dòng tóm tắt của AI
     actions = models.JSONField(default=list)  # Việc cần làm
     schedule_items = models.JSONField(default=list)  # Liên kết các đầu việc đã thêm vào lịch công tác
@@ -182,6 +183,7 @@ class MailThreadSummary(models.Model):
     needs_reply = models.BooleanField(default=False)
     priority = models.CharField(max_length=20, default="normal")
     reply_by = models.CharField(max_length=100, blank=True)
+    due_date = models.DateTimeField(null=True, blank=True, db_index=True)  # Hạn dạng ISO datetime chuẩn hóa
     actions = models.JSONField(default=list)  # Đầu việc của cả luồng
     last_analyzed_at = models.DateTimeField(null=True, blank=True)
     last_message_id = models.CharField(max_length=255, blank=True)

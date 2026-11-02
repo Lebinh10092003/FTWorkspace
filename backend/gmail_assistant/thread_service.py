@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from django.utils import timezone
 
+from .deadline_parser import parse_deadline_to_absolute
 from .models import MailDigest
 
 
@@ -122,11 +123,17 @@ def merge_thread_actions(messages: List[MailDigest]) -> List[Dict[str, Any]]:
             elif not isinstance(preps, list):
                 preps = []
 
+            raw_dl = str(act.get("deadline", "")).strip()
+            abs_dl, act_due_dt = parse_deadline_to_absolute(raw_dl, reference_date=msg.received_at)
+            dl = abs_dl or raw_dl
+            act_due_iso = act_due_dt.isoformat() if act_due_dt else act.get("due_date")
+
             if key not in actions_map:
                 actions_map[key] = {
                     "type": act.get("type", "khac"),
                     "title": title,
-                    "deadline": str(act.get("deadline", "")).strip(),
+                    "deadline": dl,
+                    "due_date": act_due_iso,
                     "required_preparations": list(OrderedDict.fromkeys(p.strip() for p in preps if p and str(p).strip())),
                     "priority": act.get("priority", "normal"),
                     "completed": bool(act.get("completed", False)),
@@ -138,7 +145,9 @@ def merge_thread_actions(messages: List[MailDigest]) -> List[Dict[str, Any]]:
                 existing["required_preparations"] = list(OrderedDict.fromkeys(combined_preps))
                 # Update deadline if newer exists
                 if act.get("deadline"):
-                    existing["deadline"] = str(act["deadline"]).strip()
+                    existing["deadline"] = dl
+                    if act_due_iso:
+                        existing["due_date"] = act_due_iso
                 # If either is completed, keep completed
                 if act.get("completed"):
                     existing["completed"] = True
@@ -303,13 +312,19 @@ def aggregate_thread(thread_key: str, messages: List[MailDigest], user_email: st
             "status": m.status,
         })
 
-    # Reply by deadline
-    reply_by = (thread_summary_obj.reply_by if thread_summary_obj and thread_summary_obj.reply_by else "") or latest.reply_by or ""
-    if not reply_by:
+    # Reply by deadline & normalized due_date
+    raw_reply_by = (thread_summary_obj.reply_by if thread_summary_obj and thread_summary_obj.reply_by else "") or latest.reply_by or ""
+    if not raw_reply_by:
         for m in reversed(sorted_msgs):
             if m.reply_by:
-                reply_by = m.reply_by
+                raw_reply_by = m.reply_by
                 break
+
+    abs_reply_by, thread_due_dt = parse_deadline_to_absolute(raw_reply_by, reference_date=latest.received_at)
+    reply_by = abs_reply_by or raw_reply_by
+
+    due_dt = getattr(thread_summary_obj, "due_date", None) or getattr(latest, "due_date", None) or thread_due_dt
+    due_date_iso = due_dt.isoformat() if due_dt else None
 
     return {
         "id": latest.id,
@@ -329,6 +344,8 @@ def aggregate_thread(thread_key: str, messages: List[MailDigest], user_email: st
         "priority": priority,
         "needs_reply": needs_reply,
         "reply_by": reply_by,
+        "due_date": due_date_iso,
+        "due_date_dt": due_dt,
         "summary": summary,
         "has_ai_summary": has_ai_summary,
         "waiting_for": waiting_for,

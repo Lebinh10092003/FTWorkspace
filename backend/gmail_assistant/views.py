@@ -326,10 +326,46 @@ def list_digests_view(request):
             return False
         filtered = [t for t in filtered if matches_search(t)]
 
-    # Sorting: High priority (1) -> Normal (2) -> Low (3), then received_at_dt descending
+    # Check if a thread is overdue and not yet handled
+    def is_overdue_unhandled(t):
+        if t["status"] in (MailDigest.STATUS_REPLIED, MailDigest.STATUS_IGNORED):
+            return False
+        # 1. Check thread due_date
+        due_dt = t.get("due_date_dt")
+        if due_dt:
+            if due_dt.tzinfo is None:
+                due_dt = due_dt.replace(tzinfo=ICT_TZ)
+            if due_dt < now_ict:
+                return True
+        # 2. Check uncompleted actions
+        for act in t.get("actions", []):
+            if isinstance(act, dict) and not act.get("completed"):
+                act_due = act.get("due_date")
+                if act_due:
+                    try:
+                        act_due_dt = datetime.fromisoformat(str(act_due).replace("Z", "+00:00"))
+                        if act_due_dt.tzinfo is None:
+                            act_due_dt = act_due_dt.replace(tzinfo=ICT_TZ)
+                        if act_due_dt < now_ict:
+                            return True
+                    except Exception:
+                        pass
+        return False
+
+    # Sorting:
+    # 0: Overdue & unhandled (tô đỏ, xếp lên trước)
+    # 1: Normal unhandled
+    # 2: Handled (replied/ignored)
+    # Within each bucket: High priority (1) -> Normal (2) -> Low (3), then received_at descending
     def sort_key(t):
+        if is_overdue_unhandled(t):
+            bucket = 0
+        elif t["status"] == MailDigest.STATUS_NEW:
+            bucket = 1
+        else:
+            bucket = 2
         pr = 1 if t["priority"] == MailDigest.PRIORITY_HIGH else (2 if t["priority"] == MailDigest.PRIORITY_NORMAL else 3)
-        return (pr, -t["received_at_dt"].timestamp())
+        return (bucket, pr, -t["received_at_dt"].timestamp())
 
     filtered.sort(key=sort_key)
 
@@ -348,6 +384,7 @@ def list_digests_view(request):
     for t in page_items:
         clean_item = dict(t)
         clean_item.pop("received_at_dt", None)
+        clean_item.pop("due_date_dt", None)
         results.append(clean_item)
 
     return Response({
@@ -410,6 +447,7 @@ def morning_digest_view(request):
             "received_at": t["received_at"],
             "priority": t["priority"],
             "reply_by": t["reply_by"],
+            "due_date": t.get("due_date"),
             "summary": t["summary"],
         }
         for t in unreplied_threads[:10]
