@@ -48,6 +48,8 @@ const OFFICE_MODULE_ITEMS: { id: string; label: string; mode: string }[] = [
 
 // Khung 3D giữ sống giữa các lần mở: iframe nằm trong một khối cố định gắn vào body, khi rời trang chỉ ẩn đi
 // (không hủy) nên quay lại không phải khởi tạo lại cảnh 3D.
+const ROOM_LABELS: Record<string, string> = { director: 'Phòng giám đốc', tech: 'Phòng công nghệ', exam: 'Phòng khảo thí', accounting: 'Phòng kế toán', common: 'Phòng chung' };
+
 let frameHost: HTMLDivElement | null = null;
 let frameEl: HTMLIFrameElement | null = null;
 let frameReady = false;
@@ -87,6 +89,9 @@ export default function OfficeWorkspace({
 }: OfficeWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const slotRef = useRef<HTMLDivElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const [boxH, setBoxH] = useState<number | undefined>(undefined);
+  const [showList, setShowList] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [roster, setRoster] = useState<any[]>([]);
@@ -102,6 +107,21 @@ export default function OfficeWorkspace({
       .map(item => ({ id: item.id, label: item.label }));
   }, [canAccessView]);
 
+
+
+  // Khung 3D lấp đầy đúng phần còn lại của màn hình (không để dải trắng thừa ở dưới)
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = boxRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      const bottomGap = window.innerWidth < 1024 ? 64 : 0; // thanh điều hướng dưới trên điện thoại
+      setBoxH(Math.max(420, Math.floor(window.innerHeight - top - bottomGap)));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [webglSupported]);
 
   // Gắn khung 3D giữ sống vào vị trí của trang này; rời trang chỉ ẩn đi
   useLayoutEffect(() => {
@@ -139,7 +159,9 @@ export default function OfficeWorkspace({
       });
       if (!res.ok) return [];
       const data = await res.json().catch(() => ({}));
-      const list = Array.isArray(data.roster) ? data.roster : [];
+      const raw = Array.isArray(data.roster) ? data.roster : [];
+      // Người đang mở trang này chắc chắn đang online (tránh nhân vật rời văn phòng trong lúc chờ nhịp đầu tiên)
+      const list = raw.map((u: any) => (u?.is_me ? { ...u, online: true, status: u.status === 'idle' ? 'idle' : 'working' } : u));
       setRoster(list);
       return list;
     } catch {
@@ -280,7 +302,7 @@ export default function OfficeWorkspace({
   }
 
   return (
-    <div className="relative flex flex-col w-full h-full min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)] bg-slate-950 text-white overflow-hidden">
+    <div ref={boxRef} style={boxH ? { height: boxH, minHeight: boxH } : undefined} className="relative flex flex-col w-full bg-slate-950 text-white overflow-hidden">
       {/* Top Bar điều khiển */}
       <div className="z-20 flex h-12 items-center justify-between border-b border-slate-800/80 bg-slate-900/90 px-3 sm:px-5 backdrop-blur-md shrink-0">
         <div className="flex items-center gap-2 sm:gap-3">
@@ -303,15 +325,18 @@ export default function OfficeWorkspace({
 
         {/* Trạng thái online & Làm mới */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <div
-            className="flex items-center gap-1.5 rounded-full bg-slate-800/90 border border-slate-700/60 px-2.5 py-0.5 text-xs font-medium text-slate-300"
-            title={`${workingCount} đang làm việc, ${idleCount} rảnh`}
+          <button
+            type="button"
+            onClick={() => setShowList(v => !v)}
+            className="flex items-center gap-1.5 rounded-full bg-slate-800/90 border border-slate-700/60 px-2.5 py-0.5 text-xs font-medium text-slate-300 hover:bg-slate-700 cursor-pointer min-h-[30px]"
+            title={`Xem danh sách mọi người (${workingCount} đang làm việc, ${idleCount} rảnh)`}
+            aria-expanded={showList}
           >
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>
-              <strong className="text-emerald-400 font-bold">{onlineCount}</strong> đang online
+              <strong className="text-emerald-400 font-bold">{onlineCount}</strong> đang online · Xem danh sách
             </span>
-          </div>
+          </button>
 
           <button
             type="button"
@@ -328,6 +353,29 @@ export default function OfficeWorkspace({
         </div>
       </div>
 
+
+      {/* Danh sách mọi người trong văn phòng */}
+      {showList && (
+        <div className="absolute right-3 top-14 z-30 w-72 max-h-[70%] overflow-y-auto rounded-xl border border-slate-700 bg-slate-900/95 p-3 shadow-2xl backdrop-blur-md">
+          <div className="mb-2 flex items-center justify-between text-xs font-bold text-slate-200">
+            <span>Mọi người ({onlineCount}/{roster.length} đang online)</span>
+            <button type="button" onClick={() => setShowList(false)} className="rounded px-1.5 py-0.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Đóng danh sách">✕</button>
+          </div>
+          {[...roster]
+            .sort((a, b) => Number(!!b.online) - Number(!!a.online) || String(a.name || '').localeCompare(String(b.name || ''), 'vi'))
+            .map((u: any) => (
+              <div key={u.id ?? u.name} className="flex items-center gap-2 border-t border-slate-800 py-1.5 text-xs first:border-t-0">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${u.online ? (u.status === 'idle' ? 'bg-amber-400' : 'bg-emerald-500') : 'bg-slate-600'}`} />
+                <div className="min-w-0 flex-1">
+                  <div className={`truncate font-semibold ${u.online ? 'text-slate-100' : 'text-slate-400'}`}>{u.name}{u.is_me ? ' (bạn)' : ''}</div>
+                  <div className="truncate text-[11px] text-slate-500">{[ROOM_LABELS[u.room] || u.department, u.role].filter(Boolean).join(' · ')}</div>
+                </div>
+                <span className="shrink-0 text-[11px] text-slate-400">{u.online ? (u.status === 'idle' ? 'Rảnh' : 'Đang làm') : 'Ngoại tuyến'}</span>
+              </div>
+            ))}
+        </div>
+      )}
+
       {/* Loading Overlay */}
       {loading && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-950/90 text-white backdrop-blur-xs">
@@ -338,7 +386,7 @@ export default function OfficeWorkspace({
       )}
 
       {/* Vị trí khung 3D (iframe giữ sống nằm ngoài cây React, xếp chồng lên đây) */}
-      <div ref={slotRef} className="w-full flex-1 h-full min-h-[calc(100vh-6.5rem)]" />
+      <div ref={slotRef} className="w-full flex-1 min-h-0" />
     </div>
   );
 }
