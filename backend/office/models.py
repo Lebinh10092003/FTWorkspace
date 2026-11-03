@@ -27,6 +27,10 @@ ROOM_CAPACITIES = {
 ONLINE_TIMEOUT_SECONDS = 180  # 3 phút
 HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS = 30  # Giới hạn tần suất ghi SQLite
 
+STATUS_WORKING = 'working'
+STATUS_IDLE = 'idle'
+STATUS_OFFLINE = 'offline'
+
 
 class OfficeSeat(models.Model):
     user = models.OneToOneField(
@@ -60,6 +64,7 @@ class OfficePresence(models.Model):
         primary_key=True,
     )
     last_seen = models.DateTimeField(null=True, blank=True)
+    is_idle = models.BooleanField(default=False)
     show_presence = models.BooleanField(default=True)
     avatar_config = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -70,7 +75,7 @@ class OfficePresence(models.Model):
         verbose_name_plural = 'Hiện diện văn phòng'
 
     def __str__(self):
-        return f'{self.user_id} (seen: {self.last_seen}, visible: {self.show_presence})'
+        return f'{self.user_id} (seen: {self.last_seen}, idle: {self.is_idle}, visible: {self.show_presence})'
 
     def is_online(self, now=None) -> bool:
         if not self.last_seen:
@@ -78,6 +83,20 @@ class OfficePresence(models.Model):
         current_time = now or timezone.now()
         delta = (current_time - self.last_seen).total_seconds()
         return 0 <= delta <= ONLINE_TIMEOUT_SECONDS
+
+    def get_status(self, now=None, is_me=False) -> str:
+        """
+        Tính trạng thái của người dùng:
+        - 'offline': quá 3 phút hoặc show_presence tắt (với người khác)
+        - 'idle': online nhưng is_idle = True
+        - 'working': online và đang thao tác
+        """
+        online = self.is_online(now)
+        if not online or (not is_me and not self.show_presence):
+            return STATUS_OFFLINE
+        if self.is_idle:
+            return STATUS_IDLE
+        return STATUS_WORKING
 
 
 def suggest_seat_for_user(user) -> dict:
