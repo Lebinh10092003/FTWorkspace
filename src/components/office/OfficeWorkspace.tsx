@@ -241,8 +241,15 @@ export default function OfficeWorkspace({
     return () => clearTimeout(timeout);
   }, [loading]);
 
-  const onlineCount = useMemo(() => {
-    return roster.filter(u => u.online).length;
+  const { workingCount, idleCount, onlineCount } = useMemo(() => {
+    let working = 0;
+    let idle = 0;
+    for (const u of roster) {
+      if (u.status === 'working') working++;
+      else if (u.status === 'idle') idle++;
+      else if (u.online) working++;
+    }
+    return { workingCount: working, idleCount: idle, onlineCount: working + idle };
   }, [roster]);
 
   // Trường hợp không hỗ trợ WebGL
@@ -296,7 +303,10 @@ export default function OfficeWorkspace({
 
         {/* Trạng thái online & Làm mới */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-1.5 rounded-full bg-slate-800/90 border border-slate-700/60 px-2.5 py-0.5 text-xs font-medium text-slate-300">
+          <div
+            className="flex items-center gap-1.5 rounded-full bg-slate-800/90 border border-slate-700/60 px-2.5 py-0.5 text-xs font-medium text-slate-300"
+            title={`${workingCount} đang làm việc, ${idleCount} rảnh`}
+          >
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>
               <strong className="text-emerald-400 font-bold">{onlineCount}</strong> đang online

@@ -77,6 +77,7 @@ Các mã phân hệ (`module id`) chuẩn:
         "is_head": false
       },
       "online": true,
+      "status": "working",
       "is_me": false,
       "avatar": {
         "skin_color": "#fadcbc",
@@ -98,3 +99,10 @@ Các mã phân hệ (`module id`) chuẩn:
   "roster": [ /* Danh sách cập nhật mới nhất từ /api/office/roster/ */ ]
 }
 ```
+
+### 3.3. Quy ước trạng thái nhân sự (`status`)
+Mỗi đối tượng thành viên trong mảng `roster` cung cấp trường `status` với 3 giá trị chuẩn:
+- `"working"`: Người dùng online và đang có thao tác (nhân vật ngồi tại bàn làm việc được gán).
+- `"idle"`: Người dùng online nhưng không thao tác trong hơn 5 phút (nhân vật đứng dậy đi lại trong văn phòng).
+- `"offline"`: Người dùng không online (không gửi heartbeat quá 3 phút) hoặc đã tắt chế độ hiện diện (`show_presence: false`).
+- Trường `online` (boolean) vẫn được duy trì đồng thời (`true` khi `status` là `"working"` hoặc `"idle"`) để bảo đảm tương thích ngược 100%.
