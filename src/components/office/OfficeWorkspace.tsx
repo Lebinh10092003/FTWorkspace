@@ -263,8 +263,15 @@ export default function OfficeWorkspace({
     return () => clearTimeout(timeout);
   }, [loading]);
 
-  const onlineCount = useMemo(() => {
-    return roster.filter(u => u.online).length;
+  const { workingCount, idleCount, onlineCount } = useMemo(() => {
+    let working = 0;
+    let idle = 0;
+    for (const u of roster) {
+      if (u.status === 'working') working++;
+      else if (u.status === 'idle') idle++;
+      else if (u.online) working++;
+    }
+    return { workingCount: working, idleCount: idle, onlineCount: working + idle };
   }, [roster]);
 
   // Trường hợp không hỗ trợ WebGL
@@ -322,7 +329,7 @@ export default function OfficeWorkspace({
             type="button"
             onClick={() => setShowList(v => !v)}
             className="flex items-center gap-1.5 rounded-full bg-slate-800/90 border border-slate-700/60 px-2.5 py-0.5 text-xs font-medium text-slate-300 hover:bg-slate-700 cursor-pointer min-h-[30px]"
-            title="Xem danh sách mọi người"
+            title={`Xem danh sách mọi người (${workingCount} đang làm việc, ${idleCount} rảnh)`}
             aria-expanded={showList}
           >
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />

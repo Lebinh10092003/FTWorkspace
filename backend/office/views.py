@@ -10,6 +10,9 @@ from .models import (
     HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS,
     ONLINE_TIMEOUT_SECONDS,
     ROOM_COMMON,
+    STATUS_IDLE,
+    STATUS_OFFLINE,
+    STATUS_WORKING,
     OfficePresence,
     OfficeSeat,
     suggest_seat_for_user,
@@ -22,23 +25,38 @@ logger = logging.getLogger(__name__)
 class HeartbeatView(APIView):
     """
     POST /api/office/heartbeat/
-    Cập nhật last_seen của người dùng đang đăng nhập.
-    Web gọi mỗi ~60 giây khi tab đang mở.
-    Có rate limit ghi để bảo vệ SQLite (không ghi nếu lần cuối < 30s).
+    Cập nhật last_seen và trạng thái idle của người dùng đang đăng nhập.
+    Web gọi mỗi ~60 giây khi tab đang mở và gửi ngay khi đổi trạng thái.
+    Có rate limit ghi để bảo vệ SQLite (không ghi nếu lần cuối < 30s và không đổi trạng thái).
     """
     permission_classes = [IsWorkspaceAuthenticated]
 
     def post(self, request):
         user = request.user
         now = timezone.now()
+
+        # Kiểm tra trường idle (mặc định False, kiểm tra kiểu dữ liệu boolean)
+        raw_idle = request.data.get('idle', False) if isinstance(request.data, dict) else False
+        if not isinstance(raw_idle, bool):
+            return Response(
+                {'error': 'Trường idle phải là kiểu boolean (true/false).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        is_idle = raw_idle
+
         presence, created = OfficePresence.objects.get_or_create(
             user=user,
-            defaults={'last_seen': now, 'show_presence': True},
+            defaults={'last_seen': now, 'is_idle': is_idle, 'show_presence': True},
         )
 
         rate_limited = False
         if not created:
-            if presence.last_seen and (now - presence.last_seen).total_seconds() < HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS:
+            state_changed = (presence.is_idle != is_idle)
+            if state_changed:
+                presence.last_seen = now
+                presence.is_idle = is_idle
+                presence.save(update_fields=['last_seen', 'is_idle', 'updated_at'])
+            elif presence.last_seen and (now - presence.last_seen).total_seconds() < HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS:
                 rate_limited = True
             else:
                 presence.last_seen = now
@@ -47,6 +65,7 @@ class HeartbeatView(APIView):
         return Response({
             'status': 'ok',
             'online': True,
+            'idle': presence.is_idle,
             'last_seen': presence.last_seen.isoformat() if presence.last_seen else now.isoformat(),
             'rate_limited': rate_limited,
         })
@@ -95,11 +114,9 @@ class OfficeRosterView(APIView):
             avatar_cfg = presence.avatar_config if presence and isinstance(presence.avatar_config, dict) else {}
             show_presence = presence.show_presence if presence else True
 
-            # Tính trạng thái online: có nhịp trong 3 phút
-            raw_online = presence.is_online(now) if presence else False
-
-            # Nếu tắt hiện diện thì người khác luôn thấy offline
-            display_online = raw_online if (is_me or show_presence) else False
+            # Tính trạng thái: 'working', 'idle', 'offline'
+            user_status = presence.get_status(now, is_me=is_me) if presence else STATUS_OFFLINE
+            display_online = (user_status != STATUS_OFFLINE)
 
             # Tên hiển thị an toàn: lấy tên tuỳ chỉnh avatar hoặc UserProfile.name
             display_name = avatar_cfg.get('display_name') or u.name or (u.email.split('@')[0] if u.email else 'Thành viên')
@@ -110,6 +127,7 @@ class OfficeRosterView(APIView):
                 'job_title': u.job_title.name if u.job_title else None,
                 'seat': seat_data,
                 'online': display_online,
+                'status': user_status,
                 'is_me': is_me,
                 'avatar': avatar_cfg,
             }

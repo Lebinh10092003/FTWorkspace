@@ -429,3 +429,106 @@ nonexistent_email@test.com,tech,1,false
         s_plain = suggest_seat_for_user(plain_user)
         self.assertEqual(s_plain['room'], ROOM_COMMON)
         self.assertFalse(s_plain['is_head'])
+
+    def test_heartbeat_idle_status_and_roster_behavior(self):
+        """
+        Việc 033: Kiểm tra trạng thái working / idle / offline trong heartbeat và roster:
+        - Heartbeat nhận idle=True -> roster trả status='idle', online=True.
+        - Heartbeat gửi ngay idle=False -> roster trả status='working', online=True.
+        - Quá 3 phút không có nhịp -> status='offline', online=False.
+        - show_presence=False -> người khác thấy status='offline', online=False.
+        """
+        self.client.force_authenticate(user=self.dev_user)
+
+        # 1. Gửi heartbeat với idle=True
+        res = self.client.post('/api/office/heartbeat/', {'idle': True}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data['idle'])
+        presence = OfficePresence.objects.get(user=self.dev_user)
+        self.assertTrue(presence.is_idle)
+
+        # Roster người khác xem thấy idle
+        self.client.force_authenticate(user=self.admin_user)
+        res_roster = self.client.get('/api/office/roster/')
+        self.assertEqual(res_roster.status_code, status.HTTP_200_OK)
+        dev_member = next(m for m in res_roster.data['roster'] if m['name'] == self.dev_user.name)
+        self.assertEqual(dev_member['status'], 'idle')
+        self.assertTrue(dev_member['online'])
+
+        # 2. Người dùng thao tác lại -> gửi ngay idle=False (không bị chặn bởi rate limit 30s)
+        self.client.force_authenticate(user=self.dev_user)
+        res_active = self.client.post('/api/office/heartbeat/', {'idle': False}, format='json')
+        self.assertEqual(res_active.status_code, status.HTTP_200_OK)
+        self.assertFalse(res_active.data['idle'])
+        self.assertFalse(res_active.data['rate_limited'])
+        presence.refresh_from_db()
+        self.assertFalse(presence.is_idle)
+
+        # Roster người khác xem thấy working
+        self.client.force_authenticate(user=self.admin_user)
+        res_roster2 = self.client.get('/api/office/roster/')
+        dev_member2 = next(m for m in res_roster2.data['roster'] if m['name'] == self.dev_user.name)
+        self.assertEqual(dev_member2['status'], 'working')
+        self.assertTrue(dev_member2['online'])
+
+        # 3. Quá 3 phút không có heartbeat -> offline
+        presence.last_seen = timezone.now() - timedelta(seconds=185)
+        presence.save(update_fields=['last_seen'])
+
+        res_roster3 = self.client.get('/api/office/roster/')
+        dev_member3 = next(m for m in res_roster3.data['roster'] if m['name'] == self.dev_user.name)
+        self.assertEqual(dev_member3['status'], 'offline')
+        self.assertFalse(dev_member3['online'])
+
+        # 4. Khi show_presence = False -> người khác thấy offline dù đang active
+        presence.last_seen = timezone.now()
+        presence.show_presence = False
+        presence.save(update_fields=['last_seen', 'show_presence'])
+
+        # Admin xem dev_user
+        res_roster4 = self.client.get('/api/office/roster/')
+        dev_member4 = next(m for m in res_roster4.data['roster'] if m['name'] == self.dev_user.name)
+        self.assertEqual(dev_member4['status'], 'offline')
+        self.assertFalse(dev_member4['online'])
+
+        # Chính dev_user xem bản thân
+        self.client.force_authenticate(user=self.dev_user)
+        res_roster_me = self.client.get('/api/office/roster/')
+        me_member = next(m for m in res_roster_me.data['roster'] if m['is_me'])
+        self.assertEqual(me_member['status'], 'working')
+        self.assertTrue(me_member['online'])
+        self.assertFalse(me_member['show_presence'])
+
+    def test_heartbeat_idle_type_validation_and_privacy(self):
+        """
+        Việc 033: Kiểm tra tính an toàn:
+        - Kiểu dữ liệu không phải boolean bị từ chối với HTTP 400.
+        - Không truyền idle thì mặc định idle=False.
+        - Roster tuyệt đối không lộ email, số điện thoại hay mã nhân viên.
+        """
+        self.client.force_authenticate(user=self.dev_user)
+
+        # Kiểu sai: chuỗi
+        res_bad_str = self.client.post('/api/office/heartbeat/', {'idle': 'yes'}, format='json')
+        self.assertEqual(res_bad_str.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Kiểu sai: số nguyên
+        res_bad_int = self.client.post('/api/office/heartbeat/', {'idle': 1}, format='json')
+        self.assertEqual(res_bad_int.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Kiểu sai: None/null
+        res_bad_none = self.client.post('/api/office/heartbeat/', {'idle': None}, format='json')
+        self.assertEqual(res_bad_none.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Mặc định không truyền idle -> False
+        res_default = self.client.post('/api/office/heartbeat/', {}, format='json')
+        self.assertEqual(res_default.status_code, status.HTTP_200_OK)
+        self.assertFalse(res_default.data['idle'])
+
+        # Kiểm tra không rò rỉ thông tin cá nhân trong roster
+        res_roster = self.client.get('/api/office/roster/')
+        for member in res_roster.data['roster']:
+            self.assertNotIn('email', member)
+            self.assertNotIn('phone', member)
+            self.assertNotIn('employee_code', member)
+            self.assertIn(member['status'], ['working', 'idle', 'offline'])
