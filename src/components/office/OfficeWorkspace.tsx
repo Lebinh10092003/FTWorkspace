@@ -163,6 +163,12 @@ export default function OfficeWorkspace({
       // Người đang mở trang này chắc chắn đang online (tránh nhân vật rời văn phòng trong lúc chờ nhịp đầu tiên)
       const list = raw.map((u: any) => (u?.is_me ? { ...u, online: true, status: u.status === 'idle' ? 'idle' : 'working' } : u));
       setRoster(list);
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          { type: "ft-office:roster", roster: list },
+          window.location.origin
+        );
+      }
       return list;
     } catch {
       return [];
@@ -229,7 +235,7 @@ export default function OfficeWorkspace({
         setIsReady(true);
         setLoading(false);
         // Gửi thông điệp init
-        sendInitToIframe();
+        fetchRoster().then(list => sendInitToIframe(list));
       }
 
       // Nhận openModule
