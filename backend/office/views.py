@@ -107,7 +107,8 @@ class OfficeRosterView(APIView):
             show_presence = presence.show_presence if presence else True
 
             # Tính trạng thái online: có nhịp trong 3 phút
-            raw_online = presence.is_online(now) if presence else False
+            is_bot = bool(u.email and u.email.strip().lower().startswith('bot.fb.'))
+            raw_online = True if is_bot else (presence.is_online(now) if presence else False)
 
             # Nếu tắt hiện diện thì người khác luôn thấy offline
             display_online = raw_online if (is_me or show_presence) else False

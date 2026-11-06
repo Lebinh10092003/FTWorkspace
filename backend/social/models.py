@@ -128,3 +128,5 @@ class ApiLog(models.Model):
 
     def __str__(self):
         return f"Log {self.log_id} ({self.status})"
+
+from .bot_models import *
