@@ -9,15 +9,18 @@ from examination.models import Competition, ExamSession
 from examination.work_schedule_sync import examination_staff
 from work_schedule.models import WorkItem
 
-def emit(label, value):
-    print(label + ' ' + json.dumps(value, ensure_ascii=False, default=str))
-
-emit('competitions', list(Competition.objects.values('id', 'code', 'organizer', 'parent')))
-emit('sessions', list(ExamSession.objects.filter(id__contains='2026-2027').values(
-    'id', 'code', 'name', 'organizer', 'parent', 'rounds', 'national_date', 'international_date')))
-emit('exam_staff', [{'email': p.email, 'name': p.name} for p in examination_staff()])
-config = SystemConfig.objects.filter(key='monthly_sheet_links').first()
-emit('calendar_links', (config.data or {}).get('links', {}).get('work_schedule', {}) if config else {})
-emit('future_exam_items', list(WorkItem.objects.filter(work_date__gte='2026-11-01',
-    source_record_id__startswith='REC-EXAM-').values('id', 'executor_id', 'title', 'work_date',
-    'source_record_id', 'source_sheet_row', 'status', 'progress_note')))
+expected = {'iaio': '2026-11-29', 'ilso': '2026-11-29',
+            'ibo': '2026-11-22', 'icho': '2026-11-22', 'ipho': '2026-11-22'}
+sessions = list(ExamSession.objects.filter(id__in=[f'{key}-2026-2027' for key in expected]))
+finals = [next((r for r in (s.rounds or []) if r.get('id') == 'round-final'), {}) for s in sessions]
+correct = sum(r.get('date') == expected[s.competition_id] for s, r in zip(sessions, finals))
+organizers = set((s.organizer or Competition.objects.get(pk=s.competition_id).organizer).strip().casefold() for s in sessions)
+target = {'thuanld@fermat.edu.vn', 'dungpv@fermat.edu.vn', 'phongnt@fermat.edu.vn', 'phuongnt@fermat.edu.vn'}
+staff = {p.email for p in examination_staff()}
+future = WorkItem.objects.filter(work_date__gte='2026-11-01', source_record_id__startswith='REC-EXAM-')
+print(json.dumps({'sessionsFound': len(sessions), 'roundsFound': sum(bool(r) for r in finals),
+    'correctNewDates': correct, 'sharedOrganizer': len(organizers) == 1 and bool(next(iter(organizers), '')),
+    'departmentStaffCount': len(staff), 'targetStaffPresent': UserProfile.objects.filter(email__in=target).count(),
+    'futureGeneratedCount': future.count(), 'generated2027Count': future.filter(work_date__year=2027).count(),
+    'oldNovemberGeneratedCount': future.filter(work_date__in=['2026-11-01','2026-11-08']).count(),
+    'newNovemberGeneratedCount': future.filter(work_date__in=['2026-11-22','2026-11-29']).count()}, ensure_ascii=True))
