@@ -1050,3 +1050,46 @@ class BotPublishingTests(TestCase):
         self.assertEqual(res2["url"], res1["url"])
 
 
+class BotGroupQueueTests(TestCase):
+    def setUp(self):
+        from .bot_models import FbDraftPost, FbPublishTarget
+        self.group = FbPublishTarget.objects.create(
+            name="Cộng đồng Toán Fermat",
+            target_type="group",
+            target_id="group_123456789",
+            is_active=True
+        )
+        self.draft = FbDraftPost.objects.create(
+            bot_creator="writer",
+            title="Bài viết hướng dẫn giải toán nhóm",
+            content="Nội dung bài viết mẫu",
+            hashtags="#toan #fermat",
+            status="approved"
+        )
+
+    def test_get_group_queue(self):
+        resp = self.client.get("/api/social-bot/group-queue")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["status"], "ok")
+        self.assertTrue(any(d["id"] == self.draft.id for d in data["drafts"]))
+        self.assertTrue(any(g["target_id"] == "group_123456789" for g in data["groups"]))
+
+    def test_post_group_queue_done(self):
+        post_url = "https://facebook.com/groups/group_123456789/posts/999888"
+        resp = self.client.post(
+            f"/api/social-bot/group-queue/{self.draft.id}/done",
+            data=json.dumps({"post_url": post_url}),
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["status"], "ok")
+
+        self.draft.refresh_from_db()
+        self.assertEqual(self.draft.status, "published")
+        self.assertEqual(self.draft.fb_post_url, post_url)
+        self.assertIsNotNone(self.draft.published_at)
+
+
+
