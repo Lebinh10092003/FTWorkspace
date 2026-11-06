@@ -64,6 +64,7 @@ jobs:
       group: workspace-production-deploy
       cancel-in-progress: false
     steps:
+      - uses: actions/checkout@v4
       - name: Configure VPS SSH access
         env:
           VPS_HOST: ${{ secrets.DEPLOY_HOST }}
