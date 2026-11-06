@@ -16,6 +16,7 @@ import {
   ChevronRight,
   ShieldCheck,
   Megaphone,
+  Bot,
 } from 'lucide-react';
 import type { PostPlan, PublishChannel, PostVariant, PlanStatus } from './publishingTypes';
 import { PLAN_STATUS_MAP, VARIANT_STATUS_MAP, CHANNEL_KIND_MAP } from './publishingTypes';
@@ -23,6 +24,7 @@ import { publishingService } from './publishingService';
 import { WeeklyCalendarView } from './WeeklyCalendarView';
 import { ChannelManager } from './ChannelManager';
 import { PlanEditorModal } from './PlanEditorModal';
+import FbBotTeamStudio from './FbBotTeamStudio';
 import { appDialog } from '../AppDialog';
 
 interface PublishingCenterProps {
@@ -43,7 +45,7 @@ export default function PublishingCenter({
   onClearInitialNewsPost,
 }: PublishingCenterProps) {
   // Navigation sub-tabs inside PublishingCenter
-  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'list' | 'channels'>('calendar');
+  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'list' | 'channels' | 'ai-bots'>('calendar');
 
   // Data state
   const [plans, setPlans] = useState<PostPlan[]>([]);
@@ -256,6 +258,18 @@ export default function PublishingCenter({
               <Radio className="w-3.5 h-3.5" />
               <span>Kênh xuất bản ({channels.length})</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('ai-bots')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                activeSubTab === 'ai-bots'
+                  ? 'bg-white dark:bg-slate-800 text-[#0B72CE] shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+              }`}
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>Tổ Bot AI Khảo thí</span>
+            </button>
           </div>
 
           {/* Refresh button */}
@@ -384,6 +398,12 @@ export default function PublishingCenter({
           channels={channels}
           onRefresh={() => loadData(true)}
           userRole={userRole}
+        />
+      ) : activeSubTab === 'ai-bots' ? (
+        <FbBotTeamStudio
+          idToken={idToken}
+          userName={userName}
+          userEmail={userEmail}
         />
       ) : (
         /* List View */
