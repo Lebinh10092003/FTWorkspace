@@ -22,7 +22,7 @@ from datetime import date, datetime
 from django.db.models import Max
 from django.utils import timezone
 
-from authentication.models import UserProfile
+from authentication.models import SystemConfig, UserProfile
 from work_schedule.models import WorkItem
 
 from .models import Competition, ExamSession
@@ -33,6 +33,7 @@ LABEL = "Khảo thí"
 RECORD_PREFIX = "REC-EXAM-"
 PRIORITY = "high"
 MAX_RECORD_ID = 100
+SUPERVISOR_EMAILS = ('thuanld@fermat.edu.vn', 'dungpv@fermat.edu.vn')
 
 
 def _normalise(value):
@@ -45,13 +46,20 @@ def _normalise(value):
 
 def examination_staff():
     """Active members of Khảo thí, matched by department code or by name."""
+    config = SystemConfig.objects.filter(key='examination_schedule_staff').first()
+    configured = (config.data or {}).get('members') if config else None
+    if isinstance(configured, list):
+        return list(UserProfile.objects.filter(
+            email__in=set(configured) | set(SUPERVISOR_EMAILS), employment_status='ACTIVE',
+        ).order_by('email'))
     by_code = UserProfile.objects.filter(
         departments__code__iexact=DEPARTMENT_CODE, employment_status="ACTIVE"
     )
     by_name = UserProfile.objects.filter(
         departments__name__iexact=DEPARTMENT_NAME, employment_status="ACTIVE"
     )
-    return list((by_code | by_name).distinct().order_by("email"))
+    supervisors = UserProfile.objects.filter(email__in=SUPERVISOR_EMAILS, employment_status="ACTIVE")
+    return list((by_code | by_name | supervisors).distinct().order_by("email"))
 
 
 def _parse_date(value):
@@ -114,6 +122,7 @@ def planned_entries(sessions=None, competitions=None):
             if len(dated_slots) > 1:
                 for batch, (index, when) in enumerate(dated_slots, start=1):
                     entries.append({
+                        "_sessionId": session.id,
                         "recordId": _record_id(session.id, round_id, index),
                         "title": _title(round_name, competition, session.name, batch),
                         "date": when,
@@ -125,11 +134,40 @@ def planned_entries(sessions=None, competitions=None):
                 continue
             index = dated_slots[0][0] if dated_slots else 0
             entries.append({
+                "_sessionId": session.id,
                 "recordId": _record_id(session.id, round_id, index),
                 "title": _title(round_name, competition, session.name),
                 "date": when,
             })
-    return entries
+    # A single organisation task per international organiser/day. Unknown
+    # organisers remain separate rather than accidentally merging unrelated exams.
+    sessions_by_id = {session.id: session for session in sessions}
+    groups = {}
+    for entry in entries:
+        session = sessions_by_id[entry.pop('_sessionId')]
+        competition = competitions.get(session.competition_id)
+        organiser = _normalise(session.organizer or (competition.organizer if competition else ''))
+        key = (organiser or f'session:{session.id}', entry['date'])
+        groups.setdefault(key, []).append((entry, session, competition))
+    merged = []
+    for members in groups.values():
+        members.sort(key=lambda member: member[0]['recordId'])
+        entry = dict(members[0][0])
+        entry['memberRecordIds'] = [member[0]['recordId'] for member in members]
+        if len(members) > 1:
+            # Combine codes when round/session match; otherwise keep both round
+            # descriptions inside the same all-day task.
+            by_description = {}
+            for member, session, _ in members:
+                code = _competition_label(session, competitions)
+                description = member['title'].replace(f'Cuộc thi {code}', 'Cuộc thi {codes}')
+                by_description.setdefault(description, []).append(code)
+            entry['title'] = '; '.join(
+                description.replace('{codes}', ', '.join(dict.fromkeys(codes)))
+                for description, codes in by_description.items()
+            )
+        merged.append(entry)
+    return merged
 
 
 def _next_order(executor_id, work_date):
@@ -155,14 +193,16 @@ def sync_examination_work_schedule(*, apply=True, today=None):
 
     entries = [entry for entry in planned_entries() if entry["date"] >= horizon]
     wanted = {entry["recordId"]: entry for entry in entries}
+    represented_ids = {record_id for entry in entries for record_id in entry.get('memberRecordIds', [entry['recordId']])}
 
     for person in staff:
-        existing = {
-            item.source_record_id: item
-            for item in WorkItem.objects.filter(
-                executor=person, source_record_id__startswith=RECORD_PREFIX
-            )
-        }
+        existing = {}
+        duplicates = []
+        for item in WorkItem.objects.filter(executor=person, source_record_id__startswith=RECORD_PREFIX).order_by('pk'):
+            if item.source_record_id in existing:
+                duplicates.append(item)
+            else:
+                existing[item.source_record_id] = item
 
         for record_id, entry in wanted.items():
             item = existing.pop(record_id, None)
@@ -199,13 +239,15 @@ def sync_examination_work_schedule(*, apply=True, today=None):
             if apply:
                 if "work_date" in changes:
                     changes["daily_order"] = _next_order(person.pk, entry["date"])
+                    changes["source_sheet_row"] = None
+                    changes["source_task_index"] = None
                 for field, value in changes.items():
                     setattr(item, field, value)
                 item.save(update_fields=[*changes, "updated_at"])
 
         # Whatever is left no longer exists in the exam calendar.
-        for record_id, item in existing.items():
-            if item.work_date < horizon:
+        for item in [*existing.values(), *duplicates]:
+            if item.work_date < horizon and item.source_record_id not in represented_ids:
                 summary["skippedPast"] += 1
                 continue
             summary["deleted"].append({"email": person.email, "title": item.title,

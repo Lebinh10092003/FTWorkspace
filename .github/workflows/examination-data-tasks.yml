@@ -11,6 +11,7 @@ on:
         options:
           - sync-work-schedule
           - audit-exam-calendar
+          - reconcile-calendar-2027
           - rename-sco-competitions
           - set-round-date
           - audit-registrations
@@ -100,6 +101,9 @@ jobs:
           case "$TASK" in
             audit-exam-calendar)
               CMD="shell" ;;
+            reconcile-calendar-2027)
+              CMD="reconcile_calendar_2027 $FLAG"
+              if [ "$APPLY" = "true" ]; then CMD="$CMD --export"; fi ;;
             restore-detached-work-items)
               [[ "$BACKUP" =~ ^workspace-[0-9]{8}-[0-9]{6}\.sqlite3$ ]]
               [[ "$ONLY" =~ ^[0-9]+(,[0-9]+)*$ ]]
@@ -149,11 +153,13 @@ jobs:
           set -Eeuo pipefail
           : "${SSHPASS:?Missing repository secret DEPLOY_PASSWORD}"
           INNER="cd /var/www/ft-workspace/backend && DJANGO_DB_PATH=/home/workspace/ft-workspace-data/workspace.sqlite3 PYTHONIOENCODING=utf-8 ../.venv/bin/python manage.py $CMD"
-          if [ "$TASK" = "audit-exam-calendar" ]; then
+          if [ "$TASK" = "audit-exam-calendar" ] || [ "$TASK" = "reconcile-calendar-2027" ]; then
+            INPUT=/dev/null
+            if [ "$TASK" = "audit-exam-calendar" ]; then INPUT=backend/scripts/audit_exam_calendar.py; fi
             sshpass -e ssh -p "$VPS_PORT" -o BatchMode=no -o StrictHostKeyChecking=yes \
               "$VPS_USERNAME@$VPS_HOST" \
               "if [ \"\$(id -u)\" -eq 0 ]; then exec sudo -u workspace -H bash -lc '$INNER'; else bash -lc '$INNER'; fi" \
-              < backend/scripts/audit_exam_calendar.py > calendar-audit.raw
+              < "$INPUT" > calendar-audit.raw 2> calendar-audit.error
             python - <<'PY'
           import json
           from pathlib import Path
@@ -168,7 +174,7 @@ jobs:
             "$VPS_USERNAME@$VPS_HOST" \
             "if [ \"\$(id -u)\" -eq 0 ]; then exec sudo -u workspace -H bash -lc '$INNER'; else bash -lc '$INNER'; fi"
       - uses: actions/upload-artifact@v4
-        if: inputs.task == 'audit-exam-calendar'
+        if: inputs.task == 'audit-exam-calendar' || inputs.task == 'reconcile-calendar-2027'
         with:
           name: calendar-summary
           path: calendar-summary.json

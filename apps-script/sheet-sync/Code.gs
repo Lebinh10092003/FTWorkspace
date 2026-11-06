@@ -1,6 +1,6 @@
 /**
- * Realtime Sheet -> Web sync trigger for "Lịch công tác FT 2026 mới"
- * (spreadsheet 1kWiJdTSM_6ZDeLTGCWvDA3num5n0DmRH2Tv-6AwuBYc, tab "Lịch công tác").
+ * Realtime Sheet -> Web sync for the annual FT work calendars (2026 and 2027).
+ * Every event identifies its bound spreadsheet; never reuse another year's ID.
  *
  * This file is kept in the FTWorkspace repo (apps-script/sheet-sync/Code.gs) so the logic is
  * reviewable and versioned, but the code that actually runs lives in the Sheet's own
@@ -123,7 +123,8 @@ function onChangeInstallable(e) {
   props.setProperty('LAST_STRUCTURAL_SYNC_AT', String(now));
 
   var eventId = Utilities.getUuid();
-  var payload = { event_type: 'full_sync', sheet_name: SHEET_NAME, reason: changeType };
+  var payload = { event_type: 'full_sync', sheet_name: SHEET_NAME, reason: changeType,
+    spreadsheet_id: e.source.getId() };
   var outboxRow = appendToOutbox_(eventId, 1, payload);
   var result = sendFullSyncWebhook_(eventId, changeType);
   markOutboxResult_(outboxRow, result);
@@ -212,6 +213,7 @@ function handleRowEdit_(sheet, row, event) {
   var values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
   var eventId = Utilities.getUuid();
   var payload = {
+    spreadsheet_id: sheet.getParent().getId(),
     row: row,
     values: values,
     edited_at: new Date().toISOString(),
@@ -296,6 +298,7 @@ function sendWebhook_(eventId, row, payload) {
     values: Array.isArray(payload) ? payload : (payload && payload.values) || [],
   };
   if (payload && !Array.isArray(payload)) {
+    if (payload.spreadsheet_id) requestPayload.spreadsheet_id = payload.spreadsheet_id;
     if (payload.edited_at) requestPayload.edited_at = payload.edited_at;
     if (payload.editor_email) requestPayload.editor_email = payload.editor_email;
     if (payload.sheet_name) requestPayload.sheet_name = payload.sheet_name;
@@ -329,6 +332,7 @@ function sendFullSyncWebhook_(eventId, reason) {
   var payload = {
     event_id: eventId,
     event_type: 'full_sync',
+    spreadsheet_id: SpreadsheetApp.getActiveSpreadsheet().getId(),
     sheet_name: SHEET_NAME,
     reason: reason || 'structural_change',
   };
