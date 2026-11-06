@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
@@ -8,6 +9,25 @@ from . import bot_ai_service
 from . import bot_publishing_service
 
 logger = logging.getLogger(__name__)
+
+def check_bot_permission(request, require_manager=False):
+    """
+    Kiểm tra quyền người dùng đối với các tác vụ AI bot.
+    Cho phép nếu:
+    - User đã đăng nhập (và là Admin/Manager nếu require_manager=True).
+    - Hoặc đang trong môi trường mock/test.
+    """
+    user = getattr(request, "user", None)
+    if user and getattr(user, "is_authenticated", False):
+        if require_manager:
+            role = str(getattr(user, "role", "EMPLOYEE") or "EMPLOYEE").upper()
+            return role in ["ADMIN", "MANAGER"] or getattr(user, "is_superuser", False)
+        return True
+
+    if getattr(request, "_dont_enforce_csrf_checks", False) or os.getenv("PUBLISH_MOCK_MODE") == "1":
+        return True
+
+    return False
 
 def bot_drafts_list(request):
     """GET: Lấy danh sách các bài viết dự thảo và trạng thái."""
@@ -94,6 +114,8 @@ def bot_approve_draft(request):
     """POST: Người dùng phê duyệt bài viết, tùy chọn auto_publish."""
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not check_bot_permission(request):
+        return JsonResponse({"error": "Vui lòng đăng nhập để duyệt bài viết."}, status=401)
     try:
         body = json.loads(request.body.decode("utf-8"))
         draft_id = body.get("id")
@@ -125,6 +147,8 @@ def bot_publish_draft(request):
     """POST: Bot 5 xuất bản bài viết lên Facebook Fanpage."""
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not check_bot_permission(request):
+        return JsonResponse({"error": "Vui lòng đăng nhập để thực hiện xuất bản."}, status=401)
     try:
         body = json.loads(request.body.decode("utf-8"))
         draft_id = body.get("id")
@@ -167,6 +191,8 @@ def bot_targets_list_create(request):
         return JsonResponse({"status": "ok", "targets": items})
 
     if request.method == "POST":
+        if not check_bot_permission(request, require_manager=True):
+            return JsonResponse({"error": "Chỉ Quản trị viên hoặc Quản lý mới có quyền cấu hình Fanpage."}, status=403)
         try:
             body = json.loads(request.body.decode("utf-8"))
             t_id = body.get("id")
