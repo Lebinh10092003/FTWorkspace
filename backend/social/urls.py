@@ -22,4 +22,6 @@ urlpatterns = [
     path('social-bot/approve-draft', bot_views.bot_approve_draft, name='bot_approve_draft'),
     path('social-bot/publish-draft', bot_views.bot_publish_draft, name='bot_publish_draft'),
     path('social-bot/targets', bot_views.bot_targets_list_create, name='bot_targets_list_create'),
+    path('social-bot/group-queue', bot_views.bot_group_queue, name='bot_group_queue'),
+    path('social-bot/group-queue/<int:draft_id>/done', bot_views.bot_group_queue_done, name='bot_group_queue_done'),
 ]

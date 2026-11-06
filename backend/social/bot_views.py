@@ -237,3 +237,49 @@ def bot_targets_list_create(request):
             return JsonResponse({"error": str(e)}, status=400)
 
     return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+@csrf_exempt
+def bot_group_queue(request):
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    drafts = FbDraftPost.objects.filter(status__in=['approved', 'published']).order_by('-id')[:50]
+    groups = FbPublishTarget.objects.filter(target_type='group', is_active=True).order_by('-id')
+    return JsonResponse({
+        'status': 'ok',
+        'drafts': [{
+            'id': d.id,
+            'title': d.title,
+            'content': d.content,
+            'hashtags': d.hashtags,
+            'image_urls': d.image_urls,
+            'status': d.status,
+            'fb_post_url': d.fb_post_url
+        } for d in drafts],
+        'groups': [{
+            'id': g.id,
+            'name': g.name,
+            'target_id': g.target_id
+        } for g in groups]
+    })
+
+
+@csrf_exempt
+def bot_group_queue_done(request, draft_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    try:
+        draft = FbDraftPost.objects.get(id=draft_id)
+        data = json.loads(request.body.decode('utf-8')) if request.body else {}
+        post_url = data.get('post_url', '').strip()
+        draft.status = 'published'
+        draft.published_at = timezone.now()
+        if post_url:
+            draft.fb_post_url = post_url
+        draft.save(update_fields=['status', 'published_at', 'fb_post_url'])
+        return JsonResponse({'status': 'ok', 'draft_id': draft.id, 'fb_post_url': draft.fb_post_url})
+    except FbDraftPost.DoesNotExist:
+        return JsonResponse({'error': 'Draft not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
