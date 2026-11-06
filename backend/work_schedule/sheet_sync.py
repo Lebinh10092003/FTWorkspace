@@ -28,6 +28,7 @@ from .retention import purge_expired_work_schedule, retained_from
 from .rich_text import format_state_at, normalize_format_runs, slice_format_runs, utf16_length
 from .sheet_parser import is_star_line, split_star_blocks, is_personal_task, is_support_task, without_task_tags, leader_assessment_notes, parse_leader_review, assessment_notes, parse_sheet_tasks, status_from_note, training_end
 from .signals import suppress_sheet_queue
+from .sheet_routing import calendar_workbook, selected_workbook, workbook_for_date, workbook_ranges
 
 
 logger = logging.getLogger(__name__)
@@ -110,9 +111,7 @@ def _service(google_token=None):
 
 
 def _spreadsheet_id():
-    month = timezone.localdate().strftime("%Y-%m")
-    configured = get_monthly_sheet_links(month).get("work_schedule", "")
-    return extract_spreadsheet_id(configured) or DEFAULT_SPREADSHEET_ID
+    return selected_workbook() or workbook_for_date(timezone.localdate())
 
 
 def _sheet_properties(service):
@@ -752,6 +751,10 @@ def _ingest_row(
                 status=WorkScheduleSheetInboundEvent.STATUS_PROCESSED,
                 edited_at__isnull=False,
             )
+            .filter(
+                models.Q(payload__spreadsheet_id=_spreadsheet_id())
+                | (models.Q(payload__spreadsheet_id__isnull=True) if _spreadsheet_id() == DEFAULT_SPREADSHEET_ID else models.Q(pk__in=[]))
+            )
             .exclude(event_id=sheet_event_id)
             .order_by("-edited_at", "-pk")
             .first()
@@ -1051,6 +1054,21 @@ def _ingest_row(
 
 
 def pull_from_sheet(service, start_date, end_date):
+    if selected_workbook():
+        return _pull_from_sheet(service, start_date, end_date)
+    total = {"created": 0, "updated": 0, "deleted": 0, "groups": set(), "duplicateGroups": [], "formatRepairRows": []}
+    for workbook, first, last in workbook_ranges(start_date, end_date):
+        with calendar_workbook(workbook):
+            result = _pull_from_sheet(service, first, last)
+        for key in ("created", "updated", "deleted"):
+            total[key] += result.get(key, 0)
+        total["groups"].update(result.get("groups", set()))
+        for key in ("duplicateGroups", "formatRepairRows"):
+            total[key].extend(result.get(key, []))
+    return total
+
+
+def _pull_from_sheet(service, start_date, end_date):
     created = updated = deleted = 0
     touched = set()
     duplicate_groups = []
@@ -1064,6 +1082,8 @@ def pull_from_sheet(service, start_date, end_date):
         for offset, row in enumerate(_rows(service, rows_start), start=rows_start):
             work_date = _parse_date(_cell(row, 1))
             if not work_date or not (start_date <= work_date <= end_date):
+                continue
+            if selected_workbook() and workbook_for_date(work_date) != selected_workbook():
                 continue
             email = _row_employee_email(row, name_email_map)
             if not email:
@@ -1748,6 +1768,26 @@ def push_groups_to_sheet(
     service, groups, force=False, preserve_sheet_groups=None, attendance_only_groups=None,
     resolve_conflict_groups=None,
 ):
+    grouped = defaultdict(set)
+    for email, day in groups:
+        workbook = workbook_for_date(day)
+        if not selected_workbook() or workbook == selected_workbook():
+            grouped[workbook].add((email, day))
+    total = {"groups": 0, "tasks": 0, "conflicts": [], "sheetAuthoritySkips": []}
+    for workbook, batch in grouped.items():
+        with calendar_workbook(workbook):
+            result = _push_groups_to_sheet(service, batch, force, preserve_sheet_groups, attendance_only_groups, resolve_conflict_groups)
+        for key in ("groups", "tasks"):
+            total[key] += result.get(key, 0)
+        for key in ("conflicts", "sheetAuthoritySkips"):
+            total[key].extend(result.get(key, []))
+    return total
+
+
+def _push_groups_to_sheet(
+    service, groups, force=False, preserve_sheet_groups=None, attendance_only_groups=None,
+    resolve_conflict_groups=None,
+):
     columns = ensure_sync_columns(service)
     if not isinstance(columns, dict):  # compatibility with isolated test/mocked callers
         columns = LEGACY_COLUMNS
@@ -2044,7 +2084,6 @@ def _push_pending_changes(service, pending, force):
     groups = {(row.executor_email, row.work_date) for row in pending}
     ids = [row.pk for row in pending]
     try:
-        ensure_sync_columns(service)
         content_groups = {(row.executor_email, row.work_date) for row in pending if not row.attendance_only}
         # Back for another try after a conflict: the Sheet edit behind it
         # should have arrived by now, so the row is imported if it did not.
@@ -2137,6 +2176,8 @@ def _two_way_sync(google_token, start, end):
             "employee_id", "work_date"
         )
     )
+    if selected_workbook():
+        groups = {(email, day) for email, day in groups if workbook_for_date(day) == selected_workbook()}
     # Rows read from the Sheet remain authoritative for this pass. Only
     # groups that exist solely in the Web projection may write visible content;
     # pulled groups can receive hidden identity metadata but never a Web-style

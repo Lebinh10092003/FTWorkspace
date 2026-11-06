@@ -21,6 +21,7 @@ from .models import WorkItem, WorkScheduleSheetInboundEvent
 from .retention import purge_expired_work_schedule, retained_from
 from .rich_text import format_state_at, normalize_format_runs, utf16_length
 from .sheet_parser import is_personal_task
+from .sheet_routing import sheet_webhook_workbook, selected_workbook
 from .training_sync import delete_training_for_work_item, sync_training_from_work_item
 from config.db_transactions import atomic_mutation
 
@@ -871,6 +872,7 @@ def work_items_batch(request):
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
+@sheet_webhook_workbook
 def work_schedule_sheet_webhook(request):
     """Realtime Sheet -> Web sync. Called by the Apps Script `onEdit` trigger for exactly
     one edited row (never a full-sheet scan). Authenticated by a shared secret header
@@ -916,6 +918,7 @@ def work_schedule_sheet_webhook(request):
                 "status": "ignored_non_structural",
             })
         event_payload = {
+            "spreadsheet_id": selected_workbook(),
             "event_type": "full_sync",
             "sheet_name": sheet_name,
             "reason": reason,
@@ -1002,6 +1005,7 @@ def work_schedule_sheet_webhook(request):
         return Response({"error": "Payload thiếu event_id/row/values hợp lệ."}, status=status.HTTP_400_BAD_REQUEST)
 
     event_payload = {
+        "spreadsheet_id": selected_workbook(),
         "row": row_number,
         "values": values,
         "edited_at": edited_at.isoformat() if edited_at else "",

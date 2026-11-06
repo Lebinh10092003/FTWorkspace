@@ -10,7 +10,7 @@ from authentication.models import Department, UserProfile
 from work_schedule.models import WorkItem
 
 from .models import Competition, ExamSession
-from .work_schedule_sync import RECORD_PREFIX, planned_entries, sync_examination_work_schedule
+from .work_schedule_sync import RECORD_PREFIX, examination_staff, planned_entries, sync_examination_work_schedule
 
 TODAY = date(2026, 9, 1)
 
@@ -183,7 +183,7 @@ class ExaminationScheduleSyncTests(TestCase):
 
     def test_dry_run_reports_without_writing(self):
         summary = sync_examination_work_schedule(apply=False, today=TODAY)
-        self.assertEqual(len(summary["created"]), 1)
+        self.assertEqual(len(summary["created"]), len(examination_staff()))
         self.assertFalse(self.items().exists())
 
     def test_the_command_runs_end_to_end(self):
