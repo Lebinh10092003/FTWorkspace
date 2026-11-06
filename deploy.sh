@@ -67,6 +67,7 @@ fi
   cd backend
   "$VENV_DIR/bin/python" manage.py backup_workspace_db --destination "$DATABASE_BACKUP_DIR" --keep "$DATABASE_BACKUP_KEEP"
   "$VENV_DIR/bin/python" manage.py migrate --noinput
+  "$VENV_DIR/bin/python" manage.py init_fb_bots
   "$VENV_DIR/bin/python" manage.py collectstatic --noinput
 )
 
