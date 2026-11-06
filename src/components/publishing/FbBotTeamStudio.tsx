@@ -10,7 +10,8 @@ import {
   ExternalLink, 
   Check, 
   Upload, 
-  Share2 
+  Share2,
+  Puzzle
 } from 'lucide-react';
 
 interface FbBotTeamStudioProps {
@@ -55,7 +56,7 @@ export default function FbBotTeamStudio({
   userName,
   userEmail,
 }: FbBotTeamStudioProps) {
-  const [activeTab, setActiveTab] = useState<'queue' | 'upload'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'upload' | 'extension'>('queue');
   const [materialTitle, setMaterialTitle] = useState('');
   const [materialContent, setMaterialContent] = useState('');
   const [targetType, setTargetType] = useState<'page' | 'group'>('page');
@@ -264,6 +265,18 @@ export default function FbBotTeamStudio({
           <Upload className="w-3.5 h-3.5" />
           <span>Nạp tư liệu cho Bot</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('extension')}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            activeTab === 'extension'
+              ? 'bg-[#0B72CE] text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Puzzle className="w-3.5 h-3.5" />
+          <span>Extension Đăng Nhóm FB</span>
+        </button>
       </div>
 
       {/* Tab 1: Queue & Approval */}
@@ -460,6 +473,54 @@ export default function FbBotTeamStudio({
               )}
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Tab 3: Chrome Extension for FB Groups */}
+      {activeTab === 'extension' && (
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs max-w-3xl">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center text-[#0B72CE]">
+              <Puzzle className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                Tiện ích FT Workspace - Facebook Group Auto Poster
+              </h3>
+              <p className="text-xs text-slate-500">
+                Đăng bài viết đã duyệt vào các Nhóm Facebook bằng chính tài khoản cá nhân của bạn, không lo bị chặn hay checkpoint.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4 text-xs text-slate-600 dark:text-slate-300">
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">4 bước cài đặt nhanh vào Google Chrome / Cốc Cốc / Edge:</h4>
+              <ol className="list-decimal list-inside space-y-2 text-slate-700 dark:text-slate-300">
+                <li>
+                  Mở trình duyệt truy cập: <code className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 rounded font-mono text-[11px]">chrome://extensions</code>
+                </li>
+                <li>
+                  Bật công tắc <strong>Chế độ dành cho nhà phát triển (Developer mode)</strong> ở góc trên bên phải.
+                </li>
+                <li>
+                  Bấm nút <strong>Tải tiện ích đã giải nén (Load unpacked)</strong>.
+                </li>
+                <li>
+                  Chọn thư mục: <code className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 rounded font-mono text-[11px]">extensions/ft-fb-group-poster</code> trong mã nguồn dự án.
+                </li>
+              </ol>
+            </div>
+
+            <div className="p-4 bg-blue-50/50 dark:bg-blue-950/30 rounded-2xl border border-blue-100 dark:border-blue-900/40">
+              <h4 className="font-bold text-[#0B72CE] dark:text-blue-300 mb-1">Cách vận hành:</h4>
+              <ul className="list-disc list-inside space-y-1.5 text-slate-600 dark:text-slate-300">
+                <li>Tiện ích tự động nhận danh sách các bài viết đã được duyệt từ Workspace.</li>
+                <li>Bấm <strong>Mở nhóm & Điền bài</strong>: Tiện ích mở Facebook Group và tự động dán nội dung đã chuẩn bị sẵn.</li>
+                <li>Bạn kiểm tra và bấm nút Đăng trên Facebook thật.</li>
+              </ul>
+            </div>
+          </div>
         </div>
       )}
     </div>

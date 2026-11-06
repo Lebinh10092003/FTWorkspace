@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "FT Workspace - Facebook Group Auto Poster",
+  "version": "1.0.0",
+  "description": "Tiện ích đồng bộ và hỗ trợ đăng bài viết đã duyệt từ FT Workspace trực tiếp vào các nhóm Facebook bằng tài khoản cá nhân.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://*.fermat.vn/*",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*",
+    "https://*.facebook.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "FT Group Poster"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.facebook.com/groups/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
