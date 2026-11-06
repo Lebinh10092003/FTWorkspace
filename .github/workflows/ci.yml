@@ -49,6 +49,7 @@ jobs:
       - name: Run all backend tests
         working-directory: backend
         run: |
+          set -e -o pipefail
           python manage.py test --noinput 2>&1 | tee test-output.log
           ran=$(grep -oE '^Ran [0-9]+ test' test-output.log | grep -oE '[0-9]+' || echo 0)
           echo "Backend tests run: $ran"
