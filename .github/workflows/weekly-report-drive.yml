@@ -1,0 +1,64 @@
+name: Weekly report to Drive
+
+# Chạy tay lượt báo cáo tuần trên VPS (timer tự chạy 16:00 thứ Sáu).
+#   check: chỉ kiểm tra tài khoản dịch vụ có thấy các thư mục TUAN không.
+#   run:   làm mới bản nháp tuần hiện tại, lưu lên Drive, gửi AI viết lại.
+#   week:  chỉ lưu lại lên Drive các báo cáo đã có của tuần nhập ở ô "week".
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check | run | week"
+        required: true
+        default: check
+        type: choice
+        options: [check, run, week]
+      week:
+        description: "Số tuần (chỉ dùng với mode=week)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  weekly-report:
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: workspace-production-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Configure VPS SSH access
+        env:
+          VPS_HOST: ${{ secrets.DEPLOY_HOST }}
+          VPS_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+          install -d -m 700 ~/.ssh
+          ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Run weekly report command
+        env:
+          VPS_HOST: ${{ secrets.DEPLOY_HOST }}
+          VPS_PORT: ${{ secrets.DEPLOY_PORT }}
+          VPS_USERNAME: ${{ secrets.DEPLOY_USER }}
+          SSHPASS: ${{ secrets.DEPLOY_PASSWORD }}
+          MODE: ${{ inputs.mode }}
+          WEEK: ${{ inputs.week }}
+        run: |
+          set -Eeuo pipefail
+          : "${SSHPASS:?Missing repository secret DEPLOY_PASSWORD}"
+          case "$MODE" in
+            check) ARGS="--check" ;;
+            run) ARGS="" ;;
+            week)
+              [[ "$WEEK" =~ ^[0-9]{1,2}$ ]] || { echo "Cần nhập số tuần hợp lệ"; exit 1; }
+              ARGS="--week $WEEK" ;;
+            *) echo "mode không hợp lệ"; exit 1 ;;
+          esac
+          INNER="cd /var/www/ft-workspace/backend && DJANGO_DB_PATH=/home/workspace/ft-workspace-data/workspace.sqlite3 PYTHONIOENCODING=utf-8 ../.venv/bin/python manage.py run_weekly_report_friday $ARGS"
+          sshpass -e ssh -p "$VPS_PORT" -o BatchMode=no -o StrictHostKeyChecking=yes "$VPS_USERNAME@$VPS_HOST" "if [ \"\$(id -u)\" -eq 0 ]; then exec sudo -u workspace -H bash -lc '$INNER'; else $INNER; fi"

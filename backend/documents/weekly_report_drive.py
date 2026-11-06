@@ -111,6 +111,21 @@ def _list(service, query, fields="files(id,name,mimeType,appProperties,webViewLi
             return files
 
 
+def visible_week_folders(service, parent_id):
+    """Week folders, refusing to go on when none are visible.
+
+    Seeing no "TUAN NN" folder at all means the service account cannot read
+    the parent folder yet; creating folders then would only add duplicates.
+    """
+    folders = _week_folders(service, parent_id)
+    if not folders:
+        raise PermissionError(
+            "Tài khoản dịch vụ chưa thấy thư mục TUAN nào trong thư mục báo cáo tuần trên Drive "
+            "(chưa được chia sẻ quyền chỉnh sửa)."
+        )
+    return folders
+
+
 def _week_folders(service, parent_id):
     """{week_number: folder_id} for every "TUAN NN" child folder."""
     folders = {}
@@ -245,7 +260,7 @@ def save_report_to_drive(report, *, service=None, context=None):
     context = context if context is not None else {}
     parent_id = context.setdefault("parent_id", parent_folder_id())
     if "folders" not in context:
-        context["folders"] = _week_folders(service, parent_id)
+        context["folders"] = visible_week_folders(service, parent_id)
     if "profiles" not in context:
         context["profiles"] = list(UserProfile.objects.filter(employment_status="ACTIVE").only("email", "name"))
     if "slots" not in context:
@@ -309,7 +324,7 @@ def archive_week_reports(completed_week, *, service=None):
     service = service or _drive_service()
     context = {}
     context["parent_id"] = parent_folder_id()
-    context["folders"] = _week_folders(service, context["parent_id"])
+    context["folders"] = visible_week_folders(service, context["parent_id"])
     context["profiles"] = list(UserProfile.objects.filter(employment_status="ACTIVE").only("email", "name"))
     context["slots"] = learn_employee_slots(service, context["folders"], completed_week, context["profiles"])
     result = {"saved": [], "skipped": [], "failed": []}

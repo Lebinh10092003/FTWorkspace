@@ -308,3 +308,19 @@ class RicherDraftAndPromptTests(TestCase):
         )
         report.refresh_from_db()
         self.assertEqual(report_week_dates(report), (date(2026, 12, 28), date(2027, 1, 4)))
+
+
+class DriveAccessGuardTests(TestCase):
+    def test_no_visible_week_folder_stops_without_creating_duplicates(self):
+        _profile("binh@fermat.vn", "Lê Văn Bình")
+        drive = FakeDrive()  # what an account without access sees: nothing
+        report = WeeklyReport.objects.create(
+            report_key="45-46-binh", employee_email="binh@fermat.vn", employee_name="Lê Văn Bình",
+            completed_week=45, planned_week=46, completed_items=["Hoàn thành slide"],
+        )
+        with mock.patch.dict("os.environ", {"WEEKLY_REPORT_DRIVE_FOLDER_ID": PARENT}):
+            with self.assertRaises(PermissionError):
+                save_report_to_drive(report, service=drive)
+            with self.assertRaises(PermissionError):
+                archive_week_reports(45, service=drive)
+        self.assertEqual(drive.creates, 0)

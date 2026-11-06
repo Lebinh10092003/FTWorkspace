@@ -412,7 +412,9 @@ def weekly_report_docx(request, report_id):
 def _drive_error_message(exc):
     text = str(exc)
     lowered = text.casefold()
-    if "insufficient" in lowered or "403" in lowered or "permission" in lowered or "notfound" in lowered or "404" in lowered:
+    if isinstance(exc, PermissionError) or any(
+        key in lowered for key in ("insufficient", "403", "permission", "notfound", "404")
+    ):
         return (
             "Tài khoản Google của hệ thống chưa có quyền ghi vào thư mục báo cáo tuần trên Drive. "
             "Quản trị viên cần thêm tài khoản dịch vụ vào Shared Drive với quyền Quản lý nội dung."
