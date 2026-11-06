@@ -120,6 +120,7 @@ class OfficeRosterView(APIView):
                 'name': display_name,
                 'department': u.department.name if u.department else None,
                 'job_title': u.job_title.name if u.job_title else None,
+                'role': u.job_title.name if u.job_title else getattr(u, 'role', None),
                 'id': member_id,
                 'seat': seat_data,
                 'online': display_online,
