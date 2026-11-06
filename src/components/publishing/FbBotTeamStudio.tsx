@@ -47,6 +47,7 @@ interface DraftItem {
   reviewNotes?: string;
   creator?: string;
   createdAt?: string;
+  fb_post_url?: string;
 }
 
 export default function FbBotTeamStudio({
@@ -95,6 +96,7 @@ export default function FbBotTeamStudio({
             reviewNotes: 'Đã được Bot 4 thẩm định văn phong và quy chuẩn cộng đồng.',
             creator: d.bot_creator || 'AI Soạn thảo',
             createdAt: d.created_at || 'Vừa xong',
+            fb_post_url: d.fb_post_url,
           }));
           setDraftPosts(mapped);
         }
@@ -167,8 +169,12 @@ export default function FbBotTeamStudio({
         body: JSON.stringify({ id }),
       });
       if (res.ok) {
-        setDraftPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'published' } : p));
+        const data = await res.json();
+        setDraftPosts((prev: DraftItem[]) => prev.map((p: DraftItem) => p.id === id ? { ...p, status: 'published', fb_post_url: data.fb_post_url } : p));
         setNotice('Bot 5 đã đăng bài thành công lên Facebook!');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setNotice(data.error || 'Lỗi khi đăng bài.');
       }
     } catch (e) {
       setNotice('Lỗi khi đăng bài.');
@@ -347,13 +353,22 @@ export default function FbBotTeamStudio({
                     </button>
                   )}
                   {post.status === 'published' && (
-                    <button
-                      type="button"
-                      disabled
-                      className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-400 rounded-xl font-medium"
-                    >
-                      Đã phát hành
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-semibold">
+                        Đã phát hành
+                      </span>
+                      {post.fb_post_url && (
+                        <a
+                          href={post.fb_post_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 text-[#0B72CE] dark:text-blue-400 rounded-xl text-xs font-semibold flex items-center gap-1 transition"
+                        >
+                          <span>Xem bài</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
