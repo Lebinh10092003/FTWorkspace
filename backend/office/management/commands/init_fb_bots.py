@@ -57,10 +57,7 @@ class Command(BaseCommand):
         )
 
         for b in BOTS:
-            job_title, _ = JobTitle.objects.get_or_create(
-                name=b["role"],
-                defaults={"department": exam_dept}
-            )
+            job_title, _ = JobTitle.objects.get_or_create(name=b["role"])
 
             user, created = UserProfile.objects.get_or_create(
                 email=b["email"],

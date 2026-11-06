@@ -58,9 +58,7 @@ def provision_fb_bots(apps, schema_editor):
     )
 
     for b in BOTS:
-        job_title = JobTitle.objects.filter(name=b["role"]).first()
-        if not job_title:
-            job_title = JobTitle.objects.create(name=b["role"], department=exam_dept)
+        job_title, _ = JobTitle.objects.get_or_create(name=b["role"])
 
         user, created = UserProfile.objects.get_or_create(
             email=b["email"],
