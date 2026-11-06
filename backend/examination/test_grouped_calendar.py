@@ -77,3 +77,18 @@ class GroupedExamCalendarTests(TestCase):
         reconcile(True)
         self.assertFalse(WorkItem.objects.filter(pk=duplicate.pk).exists())
         self.assertTrue(WorkItem.objects.filter(pk=unrelated.pk).exists())
+
+    def test_annual_transfer_detaches_old_workbook_rows_without_losing_notes(self):
+        for key in DATES:
+            self.add(key.upper(), 'SCO')
+        a_competition('fimo', 'FIMO', 'FIMO')
+        a_session('fimo-2026-2027', 'fimo', rounds=[{'id': 'round-final', 'name': 'Vòng Chung kết Quốc gia', 'date': '2027-04-25'}])
+        person, _ = UserProfile.objects.update_or_create(email='phongnt@fermat.edu.vn', defaults={'name': 'Phong'})
+        item = WorkItem.objects.create(creator=person, executor=person, title='Tổ chức Vòng Chung kết Quốc gia Cuộc thi FIMO – Năm học 2026-2027',
+            work_date='2027-04-25', source_record_id='REC-EXAM-fimo-2026-2027-round-final-0', source_sheet_row=2260,
+            source_sync_hash='old-file-hash', progress_note='Đã chuẩn bị')
+        reconcile(True)
+        item.refresh_from_db()
+        self.assertIsNone(item.source_sheet_row)
+        self.assertEqual(item.source_sync_hash, '')
+        self.assertEqual(item.progress_note, 'Đã chuẩn bị')
