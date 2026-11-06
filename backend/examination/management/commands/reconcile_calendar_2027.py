@@ -69,6 +69,14 @@ def reconcile(apply=False):
             obsolete.delete()
             groups = before_groups | set(WorkItem.objects.filter(source_record_id__startswith=RECORD_PREFIX,
                 work_date__gte='2026-11-01').values_list('executor_id', 'work_date'))
+            # Existing 2027 row numbers refer to the old 2026 workbook. They
+            # are not proof that an item has reached the new workbook: keeping
+            # them lets a blank destination look like a deliberate deletion.
+            for email, day in groups:
+                if day.year == 2027:
+                    WorkItem.objects.filter(executor_id=email, work_date=day).update(
+                        source_sheet_row=None, source_task_index=None, source_sync_hash='',
+                    )
         else:
             transaction.set_rollback(True)
             groups = set()
