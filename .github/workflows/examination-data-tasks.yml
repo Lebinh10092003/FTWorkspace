@@ -153,9 +153,23 @@ jobs:
             sshpass -e ssh -p "$VPS_PORT" -o BatchMode=no -o StrictHostKeyChecking=yes \
               "$VPS_USERNAME@$VPS_HOST" \
               "if [ \"\$(id -u)\" -eq 0 ]; then exec sudo -u workspace -H bash -lc '$INNER'; else bash -lc '$INNER'; fi" \
-              < backend/scripts/audit_exam_calendar.py
+              < backend/scripts/audit_exam_calendar.py > calendar-audit.raw
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          lines = Path('calendar-audit.raw').read_text().splitlines()
+          report = json.loads(next(line for line in reversed(lines) if line.startswith('{')))
+          assert all(isinstance(value, (int, bool)) for value in report.values())
+          Path('calendar-summary.json').write_text(json.dumps(report))
+          PY
             exit
           fi
           sshpass -e ssh -p "$VPS_PORT" -o BatchMode=no -o StrictHostKeyChecking=yes \
             "$VPS_USERNAME@$VPS_HOST" \
             "if [ \"\$(id -u)\" -eq 0 ]; then exec sudo -u workspace -H bash -lc '$INNER'; else bash -lc '$INNER'; fi"
+      - uses: actions/upload-artifact@v4
+        if: inputs.task == 'audit-exam-calendar'
+        with:
+          name: calendar-summary
+          path: calendar-summary.json
+          retention-days: 1
