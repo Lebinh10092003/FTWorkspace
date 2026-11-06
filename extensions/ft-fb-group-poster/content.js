@@ -66,24 +66,24 @@
     });
 
     // Đánh dấu hoàn tất
-    document.getElementById("ft-btn-done").addEventListener("click", async () => {
-      try {
-        const cleanBase = baseUrl.replace(/\/+$/, "");
-        await fetch(`${cleanBase}/api/social-bot/group-queue/${post.id}/done`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ post_url: window.location.href })
-        });
-        chrome.storage.local.remove(["pending_post"]);
-        widget.innerHTML = `
-          <div style="color:#16a34a; font-weight:600; padding:10px 0; text-align:center;">
-            ✓ Đã cập nhật bài viết thành công lên Workspace!
-          </div>
-        `;
-        setTimeout(() => widget.remove(), 2500);
-      } catch (err) {
-        alert("Lỗi khi kết nối Workspace: " + err.message);
-      }
+    document.getElementById("ft-btn-done").addEventListener("click", () => {
+      chrome.runtime.sendMessage({
+        action: "mark_done",
+        draft_id: post.id,
+        post_url: window.location.href
+      }, (res) => {
+        if (res && res.success) {
+          chrome.storage.local.remove(["pending_post"]);
+          widget.innerHTML = `
+            <div style="color:#16a34a; font-weight:600; padding:10px 0; text-align:center;">
+              ✓ Đã cập nhật bài viết thành công lên Workspace!
+            </div>
+          `;
+          setTimeout(() => widget.remove(), 2500);
+        } else {
+          alert("Lỗi khi kết nối Workspace: " + (res ? res.error : "Không nhận được phản hồi"));
+        }
+      });
     });
   }
 

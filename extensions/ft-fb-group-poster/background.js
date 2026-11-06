@@ -26,4 +26,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (request.action === "mark_done") {
+    chrome.storage.local.get(["workspace_url"], async (res) => {
+      const baseUrl = (res.workspace_url || "https://workspace.fermat.vn").replace(/\/+$/, "");
+      try {
+        const response = await fetch(`${baseUrl}/api/social-bot/group-queue/${request.draft_id}/done`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ post_url: request.post_url || "" })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          sendResponse({ success: true, data });
+        } else {
+          sendResponse({ success: false, error: `HTTP ${response.status}` });
+        }
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    });
+    return true; // async sendResponse
+  }
 });

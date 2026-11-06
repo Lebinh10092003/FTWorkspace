@@ -86,7 +86,7 @@ function renderDrafts(drafts, groups) {
 
     let groupOptions = "";
     if (groups.length > 0) {
-      groupOptions = groups.map(g => `<option value="${g.target_id}">${g.name}</option>`).join("");
+      groupOptions = groups.map(g => `<option value="${escapeHtml(g.target_id)}">${escapeHtml(g.name)}</option>`).join("");
     } else {
       groupOptions = '<option value="">(Chưa có nhóm nào cấu hình)</option>';
     }

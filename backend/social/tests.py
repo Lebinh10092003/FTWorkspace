@@ -1091,5 +1091,43 @@ class BotGroupQueueTests(TestCase):
         self.assertEqual(self.draft.fb_post_url, post_url)
         self.assertIsNotNone(self.draft.published_at)
 
+    def test_group_queue_only_includes_approved_drafts(self):
+        from .bot_models import FbDraftPost
+        # Tạo thêm bài draft đã published và bài đang draft
+        FbDraftPost.objects.create(
+            bot_creator="writer",
+            title="Bài đã đăng",
+            content="Nội dung đã đăng",
+            status="published"
+        )
+        FbDraftPost.objects.create(
+            bot_creator="writer",
+            title="Bài chưa duyệt",
+            content="Nội dung chưa duyệt",
+            status="draft"
+        )
+        resp = self.client.get("/api/social-bot/group-queue")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        draft_statuses = [d["status"] for d in data["drafts"]]
+        self.assertTrue(all(s == "approved" for s in draft_statuses))
+
+    def test_group_queue_done_not_found(self):
+        resp = self.client.post(
+            "/api/social-bot/group-queue/999999/done",
+            data=json.dumps({"post_url": "https://facebook.com"}),
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_invalid_http_methods(self):
+        # POST to queue -> 405
+        resp_post = self.client.post("/api/social-bot/group-queue")
+        self.assertEqual(resp_post.status_code, 405)
+        # GET to done -> 405
+        resp_get = self.client.get(f"/api/social-bot/group-queue/{self.draft.id}/done")
+        self.assertEqual(resp_get.status_code, 405)
+
+
 
 

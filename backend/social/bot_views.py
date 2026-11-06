@@ -243,7 +243,10 @@ def bot_targets_list_create(request):
 def bot_group_queue(request):
     if request.method != 'GET':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    drafts = FbDraftPost.objects.filter(status__in=['approved', 'published']).order_by('-id')[:50]
+    if not check_bot_permission(request):
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+    # Chỉ lấy các bài viết đã duyệt chờ đăng vào nhóm
+    drafts = FbDraftPost.objects.filter(status='approved').order_by('-id')[:50]
     groups = FbPublishTarget.objects.filter(target_type='group', is_active=True).order_by('-id')
     return JsonResponse({
         'status': 'ok',
@@ -268,6 +271,8 @@ def bot_group_queue(request):
 def bot_group_queue_done(request, draft_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
+    if not check_bot_permission(request):
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
     try:
         draft = FbDraftPost.objects.get(id=draft_id)
         data = json.loads(request.body.decode('utf-8')) if request.body else {}
