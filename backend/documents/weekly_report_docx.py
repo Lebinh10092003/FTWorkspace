@@ -15,6 +15,7 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
 from documents.filename_utils import sanitize_docx_filename
+from documents.weekly_reports import report_week_dates, week_range_label
 
 
 FONT = "Times New Roman"
@@ -91,8 +92,14 @@ def build_weekly_report_docx(report):
         if index < 2:
             run.add_break()
 
-    # Section I: I. KẾT QUẢ TUẦN {completed_week}
-    _paragraph(document, f"I. KẾT QUẢ TUẦN {report.completed_week}", bold=True, size=12.5, before=4, after=1.5)
+    completed_monday, planned_monday = report_week_dates(report)
+
+    # Section I: I. KẾT QUẢ TUẦN {completed_week} (dd/mm–dd/mm/yyyy)
+    _paragraph(
+        document,
+        f"I. KẾT QUẢ TUẦN {report.completed_week} ({week_range_label(completed_monday)})",
+        bold=True, size=12.5, before=4, after=1.5,
+    )
 
     raw_completed_groups = report.get_completed_groups() if hasattr(report, "get_completed_groups") else []
     if not raw_completed_groups:
@@ -123,7 +130,11 @@ def build_weekly_report_docx(report):
         _paragraph(document, f"- {item}", size=11.5, after=1)
 
     # Section II: II. NHIỆM VỤ TUẦN {planned_week}
-    _paragraph(document, f"II. NHIỆM VỤ TUẦN {report.planned_week}", bold=True, size=12.5, before=5, after=1.5)
+    _paragraph(
+        document,
+        f"II. NHIỆM VỤ TUẦN {report.planned_week} ({week_range_label(planned_monday)})",
+        bold=True, size=12.5, before=5, after=1.5,
+    )
 
     planned_groups = report.get_planned_groups() if hasattr(report, "get_planned_groups") else []
     if not planned_groups:

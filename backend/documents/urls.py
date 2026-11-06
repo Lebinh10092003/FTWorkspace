@@ -25,6 +25,7 @@ urlpatterns = [
     path("documents/weekly-reports/<int:report_id>/ai-rewrite", views.weekly_report_ai_rewrite, name="weekly_report_ai_rewrite"),
     path("documents/weekly-reports/<int:report_id>", views.weekly_report_update, name="weekly_report_update"),
     path("documents/weekly-reports/<int:report_id>.docx", views.weekly_report_docx, name="weekly_report_docx"),
+    path("documents/weekly-reports/<int:report_id>/drive", views.weekly_report_save_to_drive, name="weekly_report_save_to_drive"),
     path("documents/numbers", views.document_number_register, name="document_number_register"),
     path("documents/numbers/issue", views.document_number_issue, name="document_number_issue"),
     path("documents/funding-proposal.docx", views.funding_proposal_docx, name="funding_proposal_docx"),

@@ -69,6 +69,11 @@ class WeeklyReport(models.Model):
     google_tab_id = models.CharField(max_length=180, blank=True, default="")
     source_revision = models.CharField(max_length=500, blank=True, default="")
     document_synced_at = models.DateTimeField(blank=True, null=True)
+    # Bản Word hệ thống đã lưu vào thư mục "TUAN NN" trên Google Drive.
+    drive_file_id = models.CharField(max_length=180, blank=True, default="")
+    drive_file_url = models.CharField(max_length=500, blank=True, default="")
+    drive_file_name = models.CharField(max_length=255, blank=True, default="")
+    drive_saved_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -114,6 +119,8 @@ class AiReportJob(models.Model):
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="ai_report_jobs")
     report = models.ForeignKey(WeeklyReport, on_delete=models.CASCADE, related_name="ai_report_jobs")
     supplement_snapshot = models.JSONField(default=dict, blank=True)
+    # Lượt tự động thứ Sáu: AI viết xong thì cập nhật luôn file trên Google Drive.
+    save_to_drive = models.BooleanField(default=False)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_QUEUED, db_index=True)
     result = models.JSONField(default=dict, blank=True)
     error_message = models.TextField(blank=True, default="")

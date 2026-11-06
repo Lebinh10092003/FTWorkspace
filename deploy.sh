@@ -26,6 +26,8 @@ WEEKLY_REPORT_AUTO_SERVICE_NAME="${WEEKLY_REPORT_AUTO_SERVICE_NAME:-workspace-we
 WEEKLY_REPORT_AUTO_TIMER_NAME="${WEEKLY_REPORT_AUTO_TIMER_NAME:-workspace-weekly-report-auto.timer}"
 WEEKLY_SUPPLEMENT_CLEANUP_SERVICE_NAME="${WEEKLY_SUPPLEMENT_CLEANUP_SERVICE_NAME:-workspace-weekly-supplement-cleanup.service}"
 WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME="${WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME:-workspace-weekly-supplement-cleanup.timer}"
+WEEKLY_REPORT_DRIVE_SERVICE_NAME="${WEEKLY_REPORT_DRIVE_SERVICE_NAME:-workspace-weekly-report-drive.service}"
+WEEKLY_REPORT_DRIVE_TIMER_NAME="${WEEKLY_REPORT_DRIVE_TIMER_NAME:-workspace-weekly-report-drive.timer}"
 SCHEDULED_POSTS_SERVICE_NAME="${SCHEDULED_POSTS_SERVICE_NAME:-workspace-scheduled-posts.service}"
 SCHEDULED_POSTS_TIMER_NAME="${SCHEDULED_POSTS_TIMER_NAME:-workspace-scheduled-posts.timer}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8001/api/health/}"
@@ -101,6 +103,8 @@ sudo install -m 0644 workspace-weekly-report-auto.service "/etc/systemd/system/$
 sudo install -m 0644 workspace-weekly-report-auto.timer "/etc/systemd/system/$WEEKLY_REPORT_AUTO_TIMER_NAME"
 sudo install -m 0644 workspace-weekly-supplement-cleanup.service "/etc/systemd/system/$WEEKLY_SUPPLEMENT_CLEANUP_SERVICE_NAME"
 sudo install -m 0644 workspace-weekly-supplement-cleanup.timer "/etc/systemd/system/$WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME"
+sudo install -m 0644 workspace-weekly-report-drive.service "/etc/systemd/system/$WEEKLY_REPORT_DRIVE_SERVICE_NAME"
+sudo install -m 0644 workspace-weekly-report-drive.timer "/etc/systemd/system/$WEEKLY_REPORT_DRIVE_TIMER_NAME"
 sudo install -m 0644 workspace-gmail-sync.service /etc/systemd/system/workspace-gmail-sync.service
 sudo install -m 0644 workspace-gmail-sync.timer /etc/systemd/system/workspace-gmail-sync.timer
 sudo install -m 0644 workspace-gmail-morning-scan.service /etc/systemd/system/workspace-gmail-morning-scan.service
@@ -141,6 +145,7 @@ sudo systemctl enable --now "$DB_BACKUP_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_REPORT_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_REPORT_AUTO_TIMER_NAME"
 sudo systemctl enable --now "$WEEKLY_SUPPLEMENT_CLEANUP_TIMER_NAME"
+sudo systemctl enable --now "$WEEKLY_REPORT_DRIVE_TIMER_NAME"
 sudo systemctl enable --now workspace-gmail-sync.timer
 sudo systemctl enable --now workspace-gmail-morning-scan.timer
 sudo systemctl enable --now workspace-gmail-cleanup.timer

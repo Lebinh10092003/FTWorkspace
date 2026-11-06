@@ -912,11 +912,14 @@ class WeeklyReportTask015Tests(TestCase):
         self.assertNotIn("- Tích cực cập nhật các công việc liên quan phát sinh", full_text)
 
     def test_one_page_a4_limits(self):
-        """Giới hạn cứng <= 28 dòng, mỗi ý <= 200 ký tự, max 5 nhóm, max 2 khó khăn, max 10 kế hoạch."""
-        long_item = "Công việc " + "x" * 250
+        """Giới hạn khoảng 2 trang: <= 45 dòng, mỗi ý <= 400 ký tự, tối đa 6 nhóm, 4 khó khăn, 15 kế hoạch."""
+        long_item = "Công việc " + "x" * 450
         cleaned = clean_report_item(long_item)
         self.assertIsNotNone(cleaned)
-        self.assertLessEqual(len(cleaned), 203)  # 200 + "..."
+        self.assertLessEqual(len(cleaned), 403)  # 400 + "..."
+        # A normal detailed sentence (~300 characters) is kept whole.
+        detailed = "Hoàn thiện nội dung biên bản làm việc tại THCS Giảng Võ ngày 23/10 " * 4
+        self.assertEqual(clean_report_item(detailed), detailed.strip())
 
         # Generate huge content > 40 lines
         huge_c_groups = [
@@ -939,10 +942,11 @@ class WeeklyReportTask015Tests(TestCase):
             + sum(len(g["items"]) for g in clean_p)
         )
         self.assertLessEqual(total_lines, MAX_ITEMS_TOTAL)
-        self.assertLessEqual(len(clean_c), 5)
-        self.assertLessEqual(len(clean_diff), 2)
-        self.assertLessEqual(len(clean_p), 5)
-        self.assertLessEqual(sum(len(g["items"]) for g in clean_p), 10)
+        self.assertLessEqual(len(clean_c), 6)
+        self.assertLessEqual(max(len(g["items"]) for g in clean_c), 8)
+        self.assertLessEqual(len(clean_diff), 4)
+        self.assertLessEqual(len(clean_p), 6)
+        self.assertLessEqual(sum(len(g["items"]) for g in clean_p), 15)
 
 
 class ShortLinkTests(TestCase):

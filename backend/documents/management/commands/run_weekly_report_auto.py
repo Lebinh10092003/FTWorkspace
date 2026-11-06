@@ -73,7 +73,7 @@ class Command(BaseCommand):
                                 severity="normal",
                                 category="weekly-report",
                                 action_url=f"/communication-tools/weekly-report?week_start={current_monday.isoformat()}",
-                                target_users=[user],
+                                target_emails=[user.email],
                             )
                             sched.last_reminded_week = week_id
                             sched.save(update_fields=["last_reminded_week", "updated_at"])
@@ -140,7 +140,7 @@ class Command(BaseCommand):
                             severity="normal",
                             category="weekly-report",
                             action_url="/communication-tools/weekly-report",
-                            target_users=[user],
+                            target_emails=[user.email],
                         )
                     else:
                         self.stdout.write(f"  [Skipped enqueue] User {user.email} already has active Job #{active_job.id}")

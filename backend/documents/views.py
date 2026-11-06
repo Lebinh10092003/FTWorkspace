@@ -43,14 +43,17 @@ from .numbering import (
 )
 from .filename_utils import sanitize_docx_filename, to_ascii_filename
 from .weekly_report_docx import build_weekly_report_docx
+from .weekly_report_drive import DriveArchiveSkipped, save_report_to_drive
 from .weekly_reports import (
     build_schedule_reports,
     report_document_id,
     report_generation_options,
     report_sheet_id,
+    report_week_dates,
     resolve_report_week_start,
     run_weekly_report_pipeline,
     sync_reports_from_google_doc,
+    week_range_label,
     week_start,
 )
 
@@ -223,6 +226,7 @@ def _weekly_report_payload(report):
         if planned_count < 5
         else None
     )
+    completed_monday, planned_monday = report_week_dates(report)
     return {
         "id": report.pk,
         "employeeName": report.employee_name,
@@ -242,6 +246,11 @@ def _weekly_report_payload(report):
         "editedAt": report.edited_at.isoformat() if report.edited_at else None,
         "plannedWarning": planned_warning,
         "documentSyncedAt": report.document_synced_at.isoformat() if report.document_synced_at else None,
+        "completedRange": week_range_label(completed_monday),
+        "plannedRange": week_range_label(planned_monday),
+        "driveFileUrl": report.drive_file_url or None,
+        "driveFileName": report.drive_file_name or None,
+        "driveSavedAt": report.drive_saved_at.isoformat() if report.drive_saved_at else None,
         "updatedAt": report.updated_at.isoformat(),
     }
 
@@ -398,6 +407,36 @@ def weekly_report_docx(request, report_id):
     response["Content-Length"] = str(len(content))
     response["Access-Control-Expose-Headers"] = "Content-Disposition"
     return response
+
+
+def _drive_error_message(exc):
+    text = str(exc)
+    lowered = text.casefold()
+    if "insufficient" in lowered or "403" in lowered or "permission" in lowered or "notfound" in lowered or "404" in lowered:
+        return (
+            "Tài khoản Google của hệ thống chưa có quyền ghi vào thư mục báo cáo tuần trên Drive. "
+            "Quản trị viên cần thêm tài khoản dịch vụ vào Shared Drive với quyền Quản lý nội dung."
+        )
+    return f"Không lưu được lên Google Drive: {text[:300]}"
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def weekly_report_save_to_drive(request, report_id):
+    """Save the current Word version into this week's "TUAN NN" Drive folder."""
+    report = get_object_or_404(_visible_weekly_reports(request), pk=report_id)
+    try:
+        save_report_to_drive(report)
+    except DriveArchiveSkipped as exc:
+        return Response(
+            {"error": str(exc), "existingFileName": exc.file_name, "existingFileUrl": exc.file_url},
+            status=status.HTTP_409_CONFLICT,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Saving weekly report %s to Drive failed", report_id)
+        return Response({"error": _drive_error_message(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+    report.refresh_from_db()
+    return Response({"report": _weekly_report_payload(report)})
 
 
 @api_view(["POST"])

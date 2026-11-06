@@ -17,7 +17,7 @@ from authentication.notifications import notify_workspace
 from integrations.google_sheets import build_docs_service, build_sheets_service
 from work_schedule.models import WorkItem
 
-from .content_filter import clean_report_item, sanitize_and_limit_report_content
+from .content_filter import MAX_ITEMS_TOTAL, clean_report_item, sanitize_and_limit_report_content
 from .models import WeeklyReport
 
 
@@ -41,6 +41,37 @@ def report_document_id():
 
 def week_start(value):
     return value - timedelta(days=value.weekday())
+
+
+def report_week_dates(report):
+    """Return the Mondays of the reported week and the planned week.
+
+    A report stores only ISO week numbers, so the year comes from when the
+    report was created: the candidate Monday closest to that date wins.  This
+    keeps week 52 written in early January in the previous year.
+    """
+    anchor = timezone.localtime(report.created_at).date() if report.created_at else timezone.localdate()
+    candidates = []
+    for year in (anchor.year - 1, anchor.year, anchor.year + 1):
+        try:
+            candidates.append(date.fromisocalendar(year, int(report.completed_week), 1))
+        except (TypeError, ValueError):
+            continue
+    completed_monday = min(candidates, key=lambda value: abs((value - anchor).days)) if candidates else week_start(anchor)
+    planned_monday = completed_monday + timedelta(days=7)
+    if planned_monday.isocalendar().week != report.planned_week:
+        for offset in range(1, 6):
+            probe = completed_monday + timedelta(days=7 * offset)
+            if probe.isocalendar().week == report.planned_week:
+                planned_monday = probe
+                break
+    return completed_monday, planned_monday
+
+
+def week_range_label(monday):
+    """'02/11–08/11/2026', the date span used in the report headings."""
+    sunday = monday + timedelta(days=6)
+    return f"{monday.strftime('%d/%m')}–{sunday.strftime('%d/%m/%Y')}"
 
 
 def report_generation_options(*, today=None):
@@ -305,11 +336,13 @@ def build_schedule_reports(*, today=None, report_week_start=None, employee_email
                     planned_pairs.append((item.label, txt))
             raw_p_groups = _group_items_by_label(planned_pairs)
 
-            # Làm sạch, loại boilerplate/PII, tách mục khó khăn và giới hạn <= 28 dòng
+            # Lịch công tác thường để nhãn mặc định "Công việc" nên mọi việc rơi
+            # vào một nhóm; không cắt theo nhóm ở đây, chỉ giới hạn tổng số dòng.
             completed_groups, difficulties, planned_groups = sanitize_and_limit_report_content(
                 raw_c_groups,
                 raw_difficulties,
                 raw_p_groups,
+                max_items_per_group=MAX_ITEMS_TOTAL,
             )
             completed_items = [t for g in completed_groups for t in g["items"]]
             planned_items = [t for g in planned_groups for t in g["items"]]

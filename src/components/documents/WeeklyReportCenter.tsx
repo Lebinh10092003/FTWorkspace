@@ -51,6 +51,11 @@ type Report = {
   editedAt?: string | null;
   plannedWarning?: string | null;
   documentSyncedAt: string | null;
+  completedRange?: string;
+  plannedRange?: string;
+  driveFileUrl?: string | null;
+  driveFileName?: string | null;
+  driveSavedAt?: string | null;
   updatedAt: string;
 };
 
@@ -147,6 +152,7 @@ export default function WeeklyReportCenter({
   const [loading, setLoading] = useState(true);
   const [sources, setSources] = useState<ReportSources | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [savingDrive, setSavingDrive] = useState(false);
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [weekOptions, setWeekOptions] = useState<WeekOption[]>([]);
@@ -675,6 +681,30 @@ export default function WeeklyReportCenter({
       setError(cause.message || 'Không tải được file Word. Vui lòng thử lại.');
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const saveToDrive = async () => {
+    if (!selected || savingDrive) return;
+    setSavingDrive(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch(`/api/documents/weekly-reports/${selected.id}/drive`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || 'Không lưu được lên Google Drive. Vui lòng thử lại.');
+      }
+      const updated = payload.report as Report;
+      setReports(current => current.map(r => (r.id === updated.id ? updated : r)));
+      setNotice(`Đã lưu lên Google Drive: ${updated.driveFileName || 'báo cáo tuần'}.`);
+    } catch (cause: any) {
+      setError(cause.message || 'Không lưu được lên Google Drive. Vui lòng thử lại.');
+    } finally {
+      setSavingDrive(false);
     }
   };
 
@@ -1403,10 +1433,43 @@ export default function WeeklyReportCenter({
                               )}
                               {downloading ? 'Đang tải…' : 'Tải Word'}
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => void saveToDrive()}
+                              disabled={savingDrive}
+                              title="Lưu bản đang xem vào thư mục TUAN trên Google Drive (không ghi đè file tự tải lên)"
+                              className="inline-flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs sm:text-sm font-bold text-emerald-700 dark:text-emerald-300 shadow-sm hover:bg-emerald-50 dark:hover:bg-emerald-950/40 disabled:opacity-50 transition min-h-[44px]"
+                            >
+                              {savingDrive ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <UploadCloud className="h-4 w-4 shrink-0" />
+                              )}
+                              {savingDrive ? 'Đang lưu…' : 'Lưu lên Drive'}
+                            </button>
                           </>
                         )}
                       </div>
                     </div>
+
+                    {selected.driveFileUrl && (
+                      <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                        <span>Đã lưu trên Drive{selected.driveSavedAt ? ` lúc ${new Date(selected.driveSavedAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}` : ''}:</span>
+                        <a
+                          href={selected.driveFileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex min-w-0 items-center gap-1 font-semibold text-blue-700 dark:text-blue-300 hover:underline"
+                        >
+                          <span className="truncate">{selected.driveFileName || 'Mở file'}</span>
+                          <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                        </a>
+                        {selected.driveSavedAt && new Date(selected.updatedAt) > new Date(selected.driveSavedAt) && (
+                          <span className="font-semibold text-amber-700 dark:text-amber-300">· Có thay đổi chưa lưu lên Drive</span>
+                        )}
+                      </div>
+                    )}
 
                     {/* AI Service Health warning banner if auth error */}
                     {aiHealth?.status === 'auth_error' && (
@@ -1505,7 +1568,7 @@ export default function WeeklyReportCenter({
                           <div>
                             <div className="flex items-center justify-between pb-2 border-b">
                               <h2 className="text-sm sm:text-base font-bold text-slate-900">
-                                I. KẾT QUẢ TUẦN {selected.completedWeek && selected.completedWeek > 0 ? selected.completedWeek : 'HIỆN TẠI'}
+                                I. KẾT QUẢ TUẦN {selected.completedWeek && selected.completedWeek > 0 ? selected.completedWeek : 'HIỆN TẠI'}{selected.completedRange ? ` (${selected.completedRange})` : ''}
                               </h2>
                               <button
                                 type="button"
@@ -1729,7 +1792,7 @@ export default function WeeklyReportCenter({
                           <div className="pt-4">
                             <div className="flex items-center justify-between pb-2 border-b">
                               <h2 className="text-sm sm:text-base font-bold text-slate-900">
-                                II. NHIỆM VỤ TUẦN {selected.plannedWeek}
+                                II. NHIỆM VỤ TUẦN {selected.plannedWeek}{selected.plannedRange ? ` (${selected.plannedRange})` : ''}
                               </h2>
                               <button
                                 type="button"
@@ -1917,7 +1980,7 @@ export default function WeeklyReportCenter({
                           {/* SECTION I */}
                           <section className="mb-6">
                             <h2 className="font-bold text-[13pt] mb-2 uppercase">
-                              I. KẾT QUẢ TUẦN {selected.completedWeek && selected.completedWeek > 0 ? selected.completedWeek : 'HIỆN TẠI'}
+                              I. KẾT QUẢ TUẦN {selected.completedWeek && selected.completedWeek > 0 ? selected.completedWeek : 'HIỆN TẠI'}{selected.completedRange ? ` (${selected.completedRange})` : ''}
                             </h2>
 
                             <div className="space-y-3">
@@ -1965,7 +2028,7 @@ export default function WeeklyReportCenter({
                           {/* SECTION II */}
                           <section>
                             <h2 className="font-bold text-[13pt] mb-2 uppercase">
-                              II. NHIỆM VỤ TUẦN {selected.plannedWeek && selected.plannedWeek > 0 ? selected.plannedWeek : 'TIẾP THEO'}
+                              II. NHIỆM VỤ TUẦN {selected.plannedWeek && selected.plannedWeek > 0 ? selected.plannedWeek : 'TIẾP THEO'}{selected.plannedRange ? ` (${selected.plannedRange})` : ''}
                             </h2>
 
                             <div className="space-y-3">

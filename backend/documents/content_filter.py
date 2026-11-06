@@ -3,7 +3,7 @@ Bộ lọc và chuẩn hóa nội dung báo cáo tuần Fermat Tech:
 1. Bỏ các dòng boilerplate tự chèn (tự đánh giá, chấm công, nộp báo cáo, chỉ đạo BLĐ, cập nhật phát sinh...).
 2. Lọc bỏ thông tin nhạy cảm, bí mật, PII (mật khẩu, token, khóa API, CCCD, SĐT, STK ngân hàng, email cá nhân).
 3. Lọc bỏ chuyện phiếm, lời lẽ nhạy cảm, lệnh gửi AI, các dòng quá ngắn vô nghĩa.
-4. Giới hạn độ dài tối đa 1 trang A4 (tổng <= 28 dòng nội dung, mỗi ý <= 200 ký tự).
+4. Giới hạn độ dài khoảng 2 trang A4 (tổng <= 45 dòng nội dung, mỗi ý <= 400 ký tự).
 5. Đảm bảo chỉ có DUY NHẤT một mục 'Khó khăn, vướng mắc' luôn nằm ở cuối Phần I.
 """
 
@@ -48,12 +48,15 @@ SENSITIVE_PATTERNS = [
 # Tên nhóm liên quan đến khó khăn vướng mắc
 DIFFICULTY_GROUP_REGEX = re.compile(r"(?i)\b(?:khó\s*khăn|vướng\s*mắc|tồn\s*tại|chưa\s*hoàn\s*thành|đề\s*xuất)\b")
 
-MAX_CHARS_PER_ITEM = 200
-MAX_ITEMS_TOTAL = 28
-MAX_ITEMS_PER_GROUP = 5
-MAX_GROUPS = 5
-MAX_DIFFICULTIES = 2
-MAX_PLANNED_ITEMS = 10
+# Báo cáo mẫu do nhân viên tự viết dài khoảng 1,5–2 trang: 4–6 nhóm việc,
+# mỗi ý 1–3 câu (250–350 ký tự). Giới hạn cũ (28 dòng, 5 ý/nhóm, 200 ký tự)
+# làm mất phần lớn công việc trong tuần.
+MAX_CHARS_PER_ITEM = 400
+MAX_ITEMS_TOTAL = 45
+MAX_ITEMS_PER_GROUP = 8
+MAX_GROUPS = 6
+MAX_DIFFICULTIES = 4
+MAX_PLANNED_ITEMS = 15
 
 
 CONTROL_CHARS_REGEX = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -90,8 +93,8 @@ def is_inappropriate_or_boilerplate(text: str) -> bool:
     return False
 
 
-def clean_report_item(text: str) -> Optional[str]:
-    """Làm sạch một dòng công việc: loại bỏ ký tự lạ, lọc nội dung xấu, giới hạn 200 ký tự."""
+def clean_report_item(text: str, max_chars: int = MAX_CHARS_PER_ITEM) -> Optional[str]:
+    """Làm sạch một dòng công việc: loại bỏ ký tự lạ, lọc nội dung xấu, giới hạn độ dài."""
     if not text:
         return None
     val = str(text).strip()
@@ -101,9 +104,8 @@ def clean_report_item(text: str) -> Optional[str]:
     if is_inappropriate_or_boilerplate(val):
         return None
 
-    # Giới hạn 200 ký tự
-    if len(val) > MAX_CHARS_PER_ITEM:
-        val = val[:MAX_CHARS_PER_ITEM].rstrip() + "..."
+    if len(val) > max_chars:
+        val = val[:max_chars].rstrip() + "..."
 
     return val if val else None
 
@@ -121,12 +123,17 @@ def sanitize_and_limit_report_content(
     completed_groups: List[Dict[str, Any]],
     difficulties: List[str],
     planned_groups: List[Dict[str, Any]],
+    *,
+    max_items_per_group: int = MAX_ITEMS_PER_GROUP,
 ) -> Tuple[List[Dict[str, Any]], List[str], List[Dict[str, Any]]]:
     """
     Chuẩn hóa và giới hạn toàn diện nội dung báo cáo:
     1. Tách bất kỳ nhóm 'Khó khăn, vướng mắc' nào trong completed_groups đưa vào difficulties.
     2. Lọc bỏ các dòng không phù hợp, boilerplate, nhạy cảm.
-    3. Giới hạn số lượng mục và tổng số dòng <= 28 để vừa vặn 1 trang A4.
+    3. Giới hạn số lượng mục và tổng số dòng <= MAX_ITEMS_TOTAL.
+
+    Bản nháp lấy từ lịch thường dồn mọi việc vào một nhóm "Công việc", nên
+    nơi gọi có thể nới `max_items_per_group` để không cắt mất việc thật.
     """
     merged_diffs: List[str] = []
     for it in difficulties or []:
@@ -159,15 +166,15 @@ def sanitize_and_limit_report_content(
         if clean_items:
             clean_c_groups.append({
                 "name": g_name,
-                "items": clean_items[:MAX_ITEMS_PER_GROUP],
+                "items": clean_items[:max_items_per_group],
             })
 
-    # Giới hạn số nhóm completed_groups tối đa 5
+    # Giới hạn số nhóm completed_groups
     clean_c_groups = clean_c_groups[:MAX_GROUPS]
     if not clean_c_groups:
         clean_c_groups = [{"name": "Công việc", "items": []}]
 
-    # 2. Xử lý difficulties: tối đa 2 ý
+    # 2. Xử lý difficulties
     dedup_diffs = []
     seen_diffs = set()
     for d in merged_diffs:
@@ -198,14 +205,14 @@ def sanitize_and_limit_report_content(
         if clean_items:
             clean_p_groups.append({
                 "name": g_name,
-                "items": clean_items[:MAX_ITEMS_PER_GROUP],
+                "items": clean_items[:max_items_per_group],
             })
 
     clean_p_groups = clean_p_groups[:MAX_GROUPS]
     if not clean_p_groups:
         clean_p_groups = [{"name": "Công việc", "items": []}]
 
-    # 4. Giới hạn tổng số dòng <= MAX_ITEMS_TOTAL (28 dòng)
+    # 4. Giới hạn tổng số dòng <= MAX_ITEMS_TOTAL
     total_lines = (
         sum(len(g["items"]) for g in clean_c_groups)
         + len(final_diffs)

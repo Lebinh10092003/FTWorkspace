@@ -82,6 +82,17 @@ một tab nhỏ cho mỗi nhân viên trong Google Sheet báo cáo; không phụ
 GitHub Actions. Service account trong `GOOGLE_SERVICE_ACCOUNT_JSON` cần quyền
 chỉnh sửa Google Sheet đó.
 
+Timer `workspace-weekly-report-drive.timer` chạy lúc **16:00 thứ Sáu** cho mọi
+người đang nộp báo cáo tuần (không cần bật lịch cá nhân): làm mới bản nháp từ
+Lịch công tác, lưu file Word vào thư mục `TUAN NN` trong thư mục Drive báo cáo
+tuần (`WEEKLY_REPORT_DRIVE_FOLDER_ID`), rồi gửi AI viết lại. AI viết xong thì
+file trên Drive được cập nhật tại chỗ; AI lỗi thì Drive vẫn giữ bản nháp đầy đủ.
+Số thứ tự và cách gọi tên ("5. … (Mr Bình)") học từ các file những tuần trước;
+chỉ lưu cho người đã từng nộp vào thư mục này và không ghi đè file người dùng tự
+tải lên. Trên web, nút "Lưu lên Drive" lưu ngay bản đang xem. Service account
+cần là thành viên Shared Drive với quyền **Quản lý nội dung (Content manager)**.
+Lưu lại tay một tuần: `python manage.py run_weekly_report_friday --week 45`.
+
 Tạo chuỗi bí mật:
 
 ```bash

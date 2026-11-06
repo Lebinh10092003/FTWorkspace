@@ -812,7 +812,7 @@ def process_mail_job(job_id: int) -> None:
             summaries = payload.get("summaries", [])
             clean_lines = []
             for s in summaries:
-                cl = clean_report_item(s)
+                cl = clean_report_item(s, max_chars=200)
                 if cl:
                     clean_lines.append(f"- Xử lý email: {cl}")
 
