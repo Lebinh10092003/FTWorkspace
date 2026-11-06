@@ -1,3 +1,5 @@
+import hashlib
+import collections
 import logging
 from django.utils import timezone
 from rest_framework import status
@@ -73,23 +75,32 @@ class OfficeRosterView(APIView):
         ).select_related('department', 'job_title', 'office_seat', 'office_presence')
 
         roster = []
+        room_counters = collections.defaultdict(int)
         for u in active_users:
-            is_me = (u.email == current_email)
+            is_me = (u.email.strip().lower() == current_email.strip().lower()) if (u.email and current_email) else False
+            member_id = hashlib.sha256(u.email.encode('utf-8')).hexdigest()[:12] if u.email else f"u_{u.pk}"
 
-            # Chỗ ngồi: nếu chưa có thì tự xếp vào "common" (phòng chung)
+            # Chỗ ngồi: ưu tiên OfficeSeat trong DB, nếu chưa có thì gợi ý theo phòng ban
             if hasattr(u, 'office_seat') and u.office_seat:
-                seat_data = {
-                    'room': u.office_seat.room,
-                    'seat_index': u.office_seat.seat_index,
-                    'is_head': u.office_seat.is_head,
-                }
+                room = u.office_seat.room
+                seat_index = u.office_seat.seat_index
+                is_head = u.office_seat.is_head
             else:
-                seat_data = {
-                    'room': ROOM_COMMON,
-                    'seat_index': None,
-                    'is_head': False,
-                }
+                sug = suggest_seat_for_user(u)
+                room = sug.get('room', ROOM_COMMON)
+                seat_index = sug.get('seat_index')
+                is_head = sug.get('is_head', False)
 
+            # Phân bổ seat_index tuần tự không trùng lặp nếu chưa có
+            if seat_index is None or seat_index == 0:
+                room_counters[room] += 1
+                seat_index = room_counters[room]
+
+            seat_data = {
+                'room': room,
+                'seat_index': seat_index,
+                'is_head': is_head,
+            }
             # Hiện diện và avatar
             presence = getattr(u, 'office_presence', None)
             avatar_cfg = presence.avatar_config if presence and isinstance(presence.avatar_config, dict) else {}
@@ -108,6 +119,7 @@ class OfficeRosterView(APIView):
                 'name': display_name,
                 'department': u.department.name if u.department else None,
                 'job_title': u.job_title.name if u.job_title else None,
+                'id': member_id,
                 'seat': seat_data,
                 'online': display_online,
                 'is_me': is_me,
