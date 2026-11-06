@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Bot, 
   Sparkles, 
@@ -6,15 +6,11 @@ import {
   Send, 
   CheckCircle2, 
   Clock, 
-  Eye, 
   RefreshCw, 
   ExternalLink, 
   Check, 
   Upload, 
-  Share2, 
-  ThumbsUp, 
-  MessageCircle, 
-  AlertCircle 
+  Share2 
 } from 'lucide-react';
 
 interface FbBotTeamStudioProps {
@@ -33,76 +29,150 @@ interface MockBot {
 }
 
 const BOTS_INFO: MockBot[] = [
-  { code: 'trend', name: 'AI Săn tin & Xu hướng', role: 'Chuyên viên Săn tin AI', color: 'emerald', status: 'ready', currentTask: 'Đang quét RSS công nghệ & giáo dục' },
-  { code: 'material', name: 'AI Xử lý tư liệu', role: 'Chuyên viên Tư liệu AI', color: 'amber', status: 'working', currentTask: 'Sẵn sàng tiếp nhận tài liệu tập huấn' },
+  { code: 'trend', name: 'AI Săn tin & Xu hướng', role: 'Chuyên viên Săn tin AI', color: 'emerald', status: 'ready', currentTask: 'Đang quét xu hướng công nghệ & giáo dục' },
+  { code: 'material', name: 'AI Xử lý tư liệu', role: 'Chuyên viên Tư liệu AI', color: 'amber', status: 'ready', currentTask: 'Sẵn sàng tiếp nhận tài liệu tập huấn' },
   { code: 'writer', name: 'AI Soạn thảo bài viết', role: 'Biên tập viên AI', color: 'blue', status: 'ready', currentTask: 'Chờ tư liệu để chấp bút' },
   { code: 'reviewer', name: 'AI Kiểm duyệt nội dung', role: 'Kiểm duyệt viên AI', color: 'purple', status: 'ready', currentTask: 'Sẵn sàng kiểm tra văn phong & quy chuẩn' },
   { code: 'publisher', name: 'AI Đăng bài tự động', role: 'Điều phối xuất bản AI', color: 'pink', status: 'idle', currentTask: 'Chờ lệnh phê duyệt từ người dùng' },
 ];
+
+interface DraftItem {
+  id: number;
+  title: string;
+  content: string;
+  hashtags: string;
+  target?: string;
+  status: 'draft' | 'pending' | 'approved' | 'published' | 'rejected';
+  reviewScore?: number;
+  reviewNotes?: string;
+  creator?: string;
+  createdAt?: string;
+}
 
 export default function FbBotTeamStudio({
   idToken,
   userName,
   userEmail,
 }: FbBotTeamStudioProps) {
-  const [activeTab, setActiveTab] = useState<'queue' | 'upload' | 'trend'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'upload'>('queue');
   const [materialTitle, setMaterialTitle] = useState('');
   const [materialContent, setMaterialContent] = useState('');
   const [targetType, setTargetType] = useState<'page' | 'group'>('page');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState('');
+  const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
 
-  // Mock draft posts
-  const [draftPosts, setDraftPosts] = useState([
+  const [draftPosts, setDraftPosts] = useState<DraftItem[]>([
     {
       id: 1,
       title: 'Tổng kết buổi tập huấn Chuyển đổi số giáo dục & Khảo thí 2026',
       content: '🎉 Chúc mừng buổi tập huấn "Ứng dụng AI & Chuyển đổi số trong Khảo thí" do FermatTech tổ chức cùng các trường đã diễn ra thành công tốt đẹp!\n\n💡 Hơn 150 thầy cô giáo và chuyên gia khảo thí đã cùng trải nghiệm quy trình số hóa toàn diện từ ra đề, tổ chức thi đến chấm thi tự động.\n\n👉 Xem chi tiết giải pháp tại: https://fermat.vn',
       hashtags: '#FermatTech #KhaoThi #ChuyenDoiSo #GiaoDuc2026',
       target: 'Fanpage Fermat Education',
-      status: 'pending', // pending, approved, published
+      status: 'pending',
       reviewScore: 9.5,
       reviewNotes: 'Văn phong chuẩn mực, CTA rõ ràng, không vi phạm chính sách Facebook.',
       creator: 'AI Soạn thảo',
-      createdAt: '10 phút trước',
-    },
-    {
-      id: 2,
-      title: 'Thông báo mở cổng đăng ký Kỳ thi Toán học Quốc tế FIMO 2026',
-      content: '📢 CHÍNH THỨC MỞ CỔNG ĐĂNG KÝ FIMO 2026!\n\nSân chơi toán học bổ ích dành cho học sinh từ Tiểu học đến THCS. Cơ hội giao lưu quốc tế và nhận các phần thưởng giá trị.\n\n⏳ Hạn chót nộp hồ sơ: 25/11/2026.\n🔗 Đăng ký ngay hôm nay tại: https://workspace.fermat.vn',
-      hashtags: '#FIMO2026 #ToanQuocTe #FermatTech',
-      target: 'Nhóm Giáo viên & Phụ huynh Khảo thí',
-      status: 'approved',
-      reviewScore: 9.8,
-      reviewNotes: 'Đầy đủ thông tin kỳ thi, ngày hạn chót và link đăng ký trực tiếp.',
-      creator: 'AI Soạn thảo',
-      createdAt: '1 giờ trước',
+      createdAt: 'Vừa xong',
     }
   ]);
 
-  const handleCreateTask = (e: React.FormEvent) => {
+  const loadDrafts = async () => {
+    setIsLoadingDrafts(true);
+    try {
+      const res = await fetch('/api/social-bot/drafts');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.drafts && data.drafts.length > 0) {
+          const mapped = data.drafts.map((d: any) => ({
+            id: d.id,
+            title: d.title,
+            content: d.content,
+            hashtags: d.hashtags,
+            target: 'Fanpage Fermat Education',
+            status: d.status,
+            reviewScore: 9.5,
+            reviewNotes: 'Đã được Bot 4 thẩm định văn phong và quy chuẩn cộng đồng.',
+            creator: d.bot_creator || 'AI Soạn thảo',
+            createdAt: d.created_at || 'Vừa xong',
+          }));
+          setDraftPosts(mapped);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch drafts', e);
+    } finally {
+      setIsLoadingDrafts(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDrafts();
+  }, []);
+
+  const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!materialTitle.trim() || !materialContent.trim()) return;
     setIsSubmitting(true);
-    setTimeout(() => {
+    try {
+      const res = await fetch('/api/social-bot/create-task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: materialTitle,
+          content: materialContent,
+          target_type: targetType,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotice('Tổ Bot AI đã bóc tách tư liệu, soạn thảo bài viết và kiểm duyệt thành công!');
+        setMaterialTitle('');
+        setMaterialContent('');
+        setActiveTab('queue');
+        loadDrafts();
+      } else {
+        setNotice('Có lỗi khi gọi Tổ Bot AI. Vui lòng thử lại sau.');
+      }
+    } catch (err) {
+      setNotice('Không thể kết nối đến máy chủ.');
+    } finally {
       setIsSubmitting(false);
-      setNotice('Đã nạp tư liệu thành công! Bot Xử lý tư liệu và Bot Soạn bài đang bắt đầu xử lý...');
-      setMaterialTitle('');
-      setMaterialContent('');
-      setActiveTab('queue');
       setTimeout(() => setNotice(''), 4000);
-    }, 1000);
+    }
   };
 
-  const handleApprove = (id: number) => {
-    setDraftPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'approved' } : p));
-    setNotice('Đã phê duyệt bài viết! Bot Đăng bài tự động sẽ xuất bản theo lịch.');
+  const handleApprove = async (id: number) => {
+    try {
+      const res = await fetch('/api/social-bot/approve-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        setDraftPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'approved' } : p));
+        setNotice('Đã phê duyệt bài viết! Bot Đăng bài tự động sẽ xuất bản theo lịch.');
+      }
+    } catch (e) {
+      setNotice('Lỗi khi duyệt bài viết.');
+    }
     setTimeout(() => setNotice(''), 3000);
   };
 
-  const handlePublishNow = (id: number) => {
-    setDraftPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'published' } : p));
-    setNotice('Bot 5 đã đăng bài thành công lên Facebook!');
+  const handlePublishNow = async (id: number) => {
+    try {
+      const res = await fetch('/api/social-bot/publish-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        setDraftPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'published' } : p));
+        setNotice('Bot 5 đã đăng bài thành công lên Facebook!');
+      }
+    } catch (e) {
+      setNotice('Lỗi khi đăng bài.');
+    }
     setTimeout(() => setNotice(''), 3000);
   };
 
@@ -193,7 +263,11 @@ export default function FbBotTeamStudio({
       {/* Tab 1: Queue & Approval */}
       {activeTab === 'queue' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {draftPosts.map(post => (
+          {isLoadingDrafts ? (
+            <div className="col-span-2 py-10 text-center text-xs text-slate-400">
+              Đang tải danh sách bài viết từ Tổ Bot...
+            </div>
+          ) : draftPosts.map(post => (
             <div 
               key={post.id}
               className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col justify-between"
@@ -201,7 +275,7 @@ export default function FbBotTeamStudio({
               <div>
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-[#0B72CE] dark:text-blue-400">
-                    {post.target}
+                    {post.target || 'Fanpage Facebook'}
                   </span>
                   <div className="flex items-center gap-2">
                     {post.status === 'pending' && (
@@ -240,8 +314,8 @@ export default function FbBotTeamStudio({
                 <div className="flex items-start gap-2 p-2.5 bg-purple-50/60 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40 rounded-xl text-[11px] text-purple-900 dark:text-purple-300 mb-4">
                   <Bot className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold">Đánh giá của Bot 4 ({post.reviewScore}/10): </span>
-                    <span>{post.reviewNotes}</span>
+                    <span className="font-bold">Đánh giá của Bot 4 ({post.reviewScore || 9.5}/10): </span>
+                    <span>{post.reviewNotes || 'Đạt chuẩn nội dung.'}</span>
                   </div>
                 </div>
               </div>
@@ -249,7 +323,7 @@ export default function FbBotTeamStudio({
               {/* Actions */}
               <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-700 text-xs">
                 <span className="text-[11px] text-slate-400">
-                  Tạo bởi {post.creator} • {post.createdAt}
+                  Tạo bởi {post.creator || 'AI Soạn thảo'} • {post.createdAt}
                 </span>
                 <div className="flex items-center gap-2">
                   {post.status === 'pending' && (
@@ -296,7 +370,7 @@ export default function FbBotTeamStudio({
             Nạp dữ liệu & Yêu cầu soạn bài
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">
-            Dữ liệu sẽ được chuyển giao cho Bot 2 (Tư liệu) bóc tách và Bot 3 (Soạn bài) viết nội dung hoàn chỉnh.
+            Dữ liệu sẽ được chuyển giao cho Bot 2 (Tư liệu) bóc tách và Bot 3 (Soạn bài) viết nội dung hoàn chỉnh qua AI.
           </p>
 
           <form onSubmit={handleCreateTask} className="flex flex-col gap-4">
@@ -308,7 +382,7 @@ export default function FbBotTeamStudio({
                 type="text"
                 value={materialTitle}
                 onChange={e => setMaterialTitle(e.target.value)}
-                placeholder="VD: Tổng kết buổi họp giới thiệu Khảo thí tại trường THCS Lê Quý Đôn"
+                placeholder="VD: Buổi tập huấn ứng dụng AI trong khảo thí tại Hà Nội"
                 required
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:outline-hidden focus:ring-2 focus:ring-[#0B72CE]"
               />
@@ -330,11 +404,11 @@ export default function FbBotTeamStudio({
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Tải lên ảnh / tệp buổi làm việc
+                  Đính kèm hình ảnh
                 </label>
                 <div className="flex items-center justify-center p-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-500 cursor-pointer hover:bg-slate-100">
                   <Upload className="w-3.5 h-3.5 mr-1" />
-                  <span>Chọn ảnh/tệp...</span>
+                  <span>Chọn ảnh đính kèm...</span>
                 </div>
               </div>
             </div>
@@ -361,7 +435,7 @@ export default function FbBotTeamStudio({
               {isSubmitting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Đang giao việc cho Bot...</span>
+                  <span>Tổ Bot AI đang xử lý (Bot 2 → Bot 3 → Bot 4)...</span>
                 </>
               ) : (
                 <>

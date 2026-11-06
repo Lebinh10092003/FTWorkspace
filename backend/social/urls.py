@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import bot_views
 
 urlpatterns = [
     path('channels', views.channels_list, name='channels_list'),
@@ -16,4 +17,8 @@ urlpatterns = [
     path('sync/facebook-usage', views.facebook_api_usage, name='facebook_api_usage'),
     path('sync/history', views.sync_history, name='sync_history'),
     path('posts', views.posts_list, name='posts_list'),
+    path('social-bot/drafts', bot_views.bot_drafts_list, name='bot_drafts_list'),
+    path('social-bot/create-task', bot_views.bot_create_task, name='bot_create_task'),
+    path('social-bot/approve-draft', bot_views.bot_approve_draft, name='bot_approve_draft'),
+    path('social-bot/publish-draft', bot_views.bot_publish_draft, name='bot_publish_draft'),
 ]
