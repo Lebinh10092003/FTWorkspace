@@ -21,4 +21,5 @@ urlpatterns = [
     path('social-bot/create-task', bot_views.bot_create_task, name='bot_create_task'),
     path('social-bot/approve-draft', bot_views.bot_approve_draft, name='bot_approve_draft'),
     path('social-bot/publish-draft', bot_views.bot_publish_draft, name='bot_publish_draft'),
+    path('social-bot/targets', bot_views.bot_targets_list_create, name='bot_targets_list_create'),
 ]

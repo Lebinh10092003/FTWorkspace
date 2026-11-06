@@ -969,3 +969,73 @@ class DashboardFilterConsistencyTests(TestCase):
         self.assertEqual(response.status_code, 200)
         external_ids = [item['externalId'] for item in response.json()]
         self.assertNotIn('current-facebook-token', external_ids)
+
+
+class BotPublishingTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        from .bot_models import FbDraftPost, FbPublishTarget
+        self.target = FbPublishTarget.objects.create(
+            name="Fanpage Fermat Test",
+            target_type="page",
+            target_id="123456789",
+            access_token="mock_access_token_123",
+            is_active=True
+        )
+        self.draft = FbDraftPost.objects.create(
+            title="Kỳ thi Thử Toán 2026",
+            content="Đăng ký ngay hôm nay để nhận ưu đãi.",
+            hashtags="#fermat #toan",
+            status="pending"
+        )
+
+    def test_mock_publish_service(self):
+        from .bot_publishing_service import publish_draft_to_facebook
+        res = publish_draft_to_facebook(self.draft, target_id=self.target.id)
+        self.assertTrue(res["id"].startswith("mock_123456789_"))
+        self.draft.refresh_from_db()
+        self.assertEqual(self.draft.status, "published")
+        self.assertIsNotNone(self.draft.published_at)
+        self.assertIn("123456789", self.draft.fb_post_url)
+
+    def test_api_publish_draft(self):
+        resp = self.client.post(
+            "/api/social-bot/publish-draft",
+            data=json.dumps({"id": self.draft.id, "target_id": self.target.id}),
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["status"], "ok")
+        self.assertEqual(data["new_status"], "published")
+
+    def test_api_approve_with_auto_publish(self):
+        resp = self.client.post(
+            "/api/social-bot/approve-draft",
+            data=json.dumps({"id": self.draft.id, "auto_publish": True, "target_id": self.target.id}),
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["new_status"], "published")
+
+    def test_api_targets_list_and_create(self):
+        # GET
+        get_res = self.client.get("/api/social-bot/targets")
+        self.assertEqual(get_res.status_code, 200)
+        self.assertTrue(len(get_res.json()["targets"]) >= 1)
+
+        # POST create new
+        post_res = self.client.post(
+            "/api/social-bot/targets",
+            data=json.dumps({
+                "name": "New Fanpage",
+                "target_type": "page",
+                "target_id": "999888777",
+                "access_token": "mock_token"
+            }),
+            content_type="application/json"
+        )
+        self.assertEqual(post_res.status_code, 200)
+        self.assertEqual(post_res.json()["target"]["name"], "New Fanpage")
+
