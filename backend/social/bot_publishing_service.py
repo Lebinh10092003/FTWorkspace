@@ -19,9 +19,11 @@ def get_fb_target_credentials(target_id=None):
     3. PublishChannel đầu tiên có kind='facebook_page' và is_active=True.
     """
     if target_id:
-        target = FbPublishTarget.objects.filter(id=target_id).first()
+        target = None
+        if isinstance(target_id, int) or (isinstance(target_id, str) and str(target_id).isdigit()):
+            target = FbPublishTarget.objects.filter(id=int(target_id)).first()
         if not target:
-            target = FbPublishTarget.objects.filter(target_id=target_id).first()
+            target = FbPublishTarget.objects.filter(target_id=str(target_id)).first()
         if target:
             return {
                 "page_id": target.target_id,
@@ -62,6 +64,14 @@ def publish_draft_to_facebook(draft: FbDraftPost, target_id=None):
     Xuất bản bài viết FbDraftPost lên Facebook Fanpage.
     Cập nhật status -> 'published', published_at, fb_post_url.
     """
+    if draft.status == "published" and draft.fb_post_url:
+        logger.warning("Draft #%s đã xuất bản trước đó tại %s", draft.id, draft.fb_post_url)
+        return {
+            "id": draft.fb_post_url.rstrip("/").split("/")[-1],
+            "url": draft.fb_post_url,
+            "already_published": True,
+        }
+
     creds = get_fb_target_credentials(target_id)
     page_id = creds["page_id"]
     access_token = creds["access_token"]
@@ -99,11 +109,20 @@ def publish_draft_to_facebook(draft: FbDraftPost, target_id=None):
         return {"id": post_id, "url": post_url}
 
     # Thực tế: Gọi Facebook Graph API
-    url = f"https://graph.facebook.com/v21.0/{page_id}/feed"
-    payload = {
-        "message": message,
-        "access_token": access_token,
-    }
+    images = [img for img in (draft.image_urls or []) if img and str(img).startswith("http")]
+    if images and len(images) == 1:
+        url = f"https://graph.facebook.com/v21.0/{page_id}/photos"
+        payload = {
+            "url": images[0],
+            "caption": message,
+            "access_token": access_token,
+        }
+    else:
+        url = f"https://graph.facebook.com/v21.0/{page_id}/feed"
+        payload = {
+            "message": message,
+            "access_token": access_token,
+        }
 
     try:
         resp = requests.post(url, data=payload, timeout=25)

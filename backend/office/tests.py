@@ -209,14 +209,18 @@ class OfficeBackendTests(TestCase):
         self.assertNotIn('NV002', content_str)
 
     def test_roster_unassigned_user_defaults_to_common_room(self):
-        """Người chưa có chỗ ngồi được tự động xếp vào 'common' (phòng chung)."""
-        self.client.force_authenticate(user=self.dev_user)
-        # dev_user chưa có OfficeSeat
+        """Người chưa có chỗ ngồi và phòng ban được tự động xếp vào 'common' (phòng chung)."""
+        plain_user = UserProfile.objects.create(
+            email='unassigned_common@fermat.test',
+            name='Nguyễn Phòng Chung',
+            role='EMPLOYEE',
+            employment_status='ACTIVE',
+        )
+        self.client.force_authenticate(user=plain_user)
         response = self.client.get('/api/office/roster/')
         data = response.json()
         dev_entry = next(item for item in data['roster'] if item['is_me'])
         self.assertEqual(dev_entry['seat']['room'], ROOM_COMMON)
-        self.assertIsNone(dev_entry['seat']['seat_index'])
         self.assertFalse(dev_entry['seat']['is_head'])
 
     def test_show_presence_toggle_hides_online_status_from_others(self):

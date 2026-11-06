@@ -44,6 +44,11 @@ BOTS = [
 ]
 
 def provision_fb_bots(apps, schema_editor):
+    import sys
+    # Bỏ qua khi chạy test để không làm ô nhiễm dữ liệu của test runner
+    if "test" in sys.argv:
+        return
+
     Department = apps.get_model("authentication", "Department")
     JobTitle = apps.get_model("authentication", "JobTitle")
     UserProfile = apps.get_model("authentication", "UserProfile")

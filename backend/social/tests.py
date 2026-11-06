@@ -973,7 +973,6 @@ class DashboardFilterConsistencyTests(TestCase):
 
 class BotPublishingTests(TestCase):
     def setUp(self):
-        self.client = Client()
         from .bot_models import FbDraftPost, FbPublishTarget
         self.target = FbPublishTarget.objects.create(
             name="Fanpage Fermat Test",
@@ -1038,4 +1037,16 @@ class BotPublishingTests(TestCase):
         )
         self.assertEqual(post_res.status_code, 200)
         self.assertEqual(post_res.json()["target"]["name"], "New Fanpage")
+
+    def test_idempotent_publish(self):
+        from .bot_publishing_service import publish_draft_to_facebook
+        res1 = publish_draft_to_facebook(self.draft, target_id=self.target.id)
+        self.assertFalse(res1.get("already_published", False))
+
+        # Gọi lại lần 2 không gây lỗi và trả về already_published
+        self.draft.refresh_from_db()
+        res2 = publish_draft_to_facebook(self.draft, target_id=str(self.target.target_id))
+        self.assertTrue(res2.get("already_published", False))
+        self.assertEqual(res2["url"], res1["url"])
+
 
