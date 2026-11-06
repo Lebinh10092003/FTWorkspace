@@ -1,6 +1,6 @@
 import React, { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { appDialog } from './components/AppDialog';
-import { CalendarDays, ClipboardList, ContactRound, FileSignature, Link2, ReceiptText, Mail, Moon, Newspaper, QrCode, Presentation, TriangleAlert } from 'lucide-react';
+import { Bot, CalendarDays, ClipboardList, ContactRound, FileSignature, Link2, ReceiptText, Mail, Moon, Newspaper, QrCode, Presentation, TriangleAlert } from 'lucide-react';
 
 import { Channel, UserRole } from './types';
 import LoginModal from './components/LoginModal';
@@ -294,15 +294,19 @@ export default function App() {
   const normalisedEmployeeIdentityText = normalizeSearchText(normalisedEmployeeIdentity);
   const isAccountant = normalisedEmployeeIdentityText.includes('ke toan');
   const communicationModules = ['email-builder', 'signature-builder', 'qr-generator'];
-  const hasModuleAccess = (module: string) => userRole === 'ADMIN' || (
-    communicationModules.includes(module)
+  const hasModuleAccess = (module: string) => (
+    userRole === 'ADMIN'
+      ? true
+      : module === 'social-dashboard'
+      ? !isGuest
+      : communicationModules.includes(module)
       ? communicationModules.some(item => (user.accessModules || []).includes(item))
       : (user.accessModules || []).includes(module)
   );
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
   const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
-  const canAccessView = (mode: ViewMode) => { if (mode === 'office') return !isGuest; if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'short-link' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report' || mode === 'news-posts' || mode === 'gmail-assistant') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
+  const canAccessView = (mode: ViewMode) => { if (mode === 'office') return !isGuest; if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'social-dashboard' || mode === 'short-link' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report' || mode === 'news-posts' || mode === 'gmail-assistant') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
 
   // Gắn nhịp online vào gốc ứng dụng
@@ -811,6 +815,7 @@ export default function App() {
 
   if (viewMode === 'communication-tools') {
     const tools = [
+      { mode: 'social-dashboard' as ViewMode, tab: 'publishing', title: 'Tổ Bot AI Khảo thí (Facebook)', description: 'Tổ 5 Bot AI phòng Khảo thí: Săn tin, xử lý tư liệu, viết bài và tự động đăng Facebook.', icon: Bot, color: 'from-blue-600 to-indigo-700', allowed: canAccessView('social-dashboard') },
       { mode: 'email-builder' as ViewMode, title: 'Thiết kế Email', description: 'Tạo, quản lý mẫu Email và chữ ký dùng chung.', icon: Mail, color: 'from-pink-500 to-violet-600', allowed: canAccessView('email-builder') },
       { mode: 'signature-builder' as ViewMode, title: 'Tạo chữ ký Email', description: 'Tùy biến thông tin, mạng xã hội và sao chép chữ ký dùng cho Gmail hoặc Outlook.', icon: ContactRound, color: 'from-[#104581] to-[#1473D1]', allowed: canAccessView('signature-builder') },
       { mode: 'qr-generator' as ViewMode, title: 'Tạo mã QR', description: 'Tạo mã QR, kiểm tra đường dẫn và xuất poster truyền thông.', icon: QrCode, color: 'from-blue-600 to-cyan-500', allowed: canAccessView('qr-generator') },
@@ -838,7 +843,7 @@ export default function App() {
               <p className="mt-2 text-slate-500">Các công cụ phục vụ thiết kế và phân phối nội dung truyền thông được gom vào một nơi.</p>
             </div>
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {tools.map(tool => { const Icon = tool.icon; return <button key={tool.mode} type="button" onClick={() => setViewMode(tool.mode)} className="group rounded-3xl border border-slate-200 bg-white p-7 text-left shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl"><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white shadow-lg`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-900">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{tool.description}</p><span className="mt-6 block text-sm font-bold text-blue-600">Mở công cụ →</span></button>; })}
+              {tools.map(tool => { const Icon = tool.icon; return <button key={tool.mode} type="button" onClick={() => ('tab' in tool && tool.tab) ? openProtectedView(tool.mode, tool.tab as string) : setViewMode(tool.mode)} className="group rounded-3xl border border-slate-200 bg-white p-7 text-left shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl"><span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${tool.color} text-white shadow-lg`}><Icon className="h-7 w-7" /></span><h3 className="mt-5 text-xl font-extrabold text-slate-900">{tool.title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{tool.description}</p><span className="mt-6 block text-sm font-bold text-blue-600">Mở công cụ →</span></button>; })}
             </div>
           </div>
         </main>
