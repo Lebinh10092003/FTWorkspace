@@ -79,10 +79,20 @@ export default function FbBotTeamStudio({
     }
   ]);
 
+  const getAuthHeaders = (extra: Record<string, string> = {}) => {
+    const headers: Record<string, string> = { ...extra };
+    if (idToken) {
+      headers['Authorization'] = `Bearer ${idToken}`;
+    }
+    return headers;
+  };
+
   const loadDrafts = async () => {
     setIsLoadingDrafts(true);
     try {
-      const res = await fetch('/api/social-bot/drafts');
+      const res = await fetch('/api/social-bot/drafts', {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.drafts && data.drafts.length > 0) {
@@ -111,7 +121,7 @@ export default function FbBotTeamStudio({
 
   useEffect(() => {
     loadDrafts();
-  }, []);
+  }, [idToken]);
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +130,7 @@ export default function FbBotTeamStudio({
     try {
       const res = await fetch('/api/social-bot/create-task', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           title: materialTitle,
           content: materialContent,
@@ -149,7 +159,7 @@ export default function FbBotTeamStudio({
     try {
       const res = await fetch('/api/social-bot/approve-draft', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id }),
       });
       if (res.ok) {
@@ -166,7 +176,7 @@ export default function FbBotTeamStudio({
     try {
       const res = await fetch('/api/social-bot/publish-draft', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id }),
       });
       if (res.ok) {
