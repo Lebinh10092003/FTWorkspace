@@ -25,8 +25,9 @@ async function request<T>(url: string, idToken: string, options: RequestInit = {
 export const publishingService = {
   // Channels
   async getChannels(idToken: string): Promise<PublishChannel[]> {
-    const data = await request<{ channels: PublishChannel[] }>(`${API_BASE}/channels/`, idToken);
-    return data.channels || [];
+    const data = await request<any>(`${API_BASE}/channels/`, idToken);
+    if (Array.isArray(data)) return data;
+    return data?.channels || [];
   },
 
   async createChannel(idToken: string, payload: {
@@ -36,11 +37,11 @@ export const publishingService = {
     is_active?: boolean;
     config: Record<string, any>;
   }): Promise<PublishChannel> {
-    const data = await request<{ channel: PublishChannel }>(`${API_BASE}/channels/`, idToken, {
+    const data = await request<any>(`${API_BASE}/channels/`, idToken, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    return data.channel;
+    return data?.channel || data;
   },
 
   async updateChannel(idToken: string, id: number, payload: {
@@ -49,11 +50,11 @@ export const publishingService = {
     is_active?: boolean;
     config?: Record<string, any>;
   }): Promise<PublishChannel> {
-    const data = await request<{ channel: PublishChannel }>(`${API_BASE}/channels/${id}/`, idToken, {
+    const data = await request<any>(`${API_BASE}/channels/${id}/`, idToken, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
-    return data.channel;
+    return data?.channel || data;
   },
 
   async deleteChannel(idToken: string, id: number): Promise<void> {
@@ -75,13 +76,14 @@ export const publishingService = {
     if (params?.start) query.set('start', params.start);
     if (params?.end) query.set('end', params.end);
     const qs = query.toString() ? `?${query.toString()}` : '';
-    const data = await request<{ plans: PostPlan[] }>(`${API_BASE}/plans/${qs}`, idToken);
-    return data.plans || [];
+    const data = await request<any>(`${API_BASE}/plans/${qs}`, idToken);
+    if (Array.isArray(data)) return data;
+    return data?.plans || [];
   },
 
   async getPlanDetail(idToken: string, id: number): Promise<PostPlan> {
-    const data = await request<{ plan: PostPlan }>(`${API_BASE}/plans/${id}/`, idToken);
-    return data.plan;
+    const data = await request<any>(`${API_BASE}/plans/${id}/`, idToken);
+    return data?.plan || data;
   },
 
   async createPlan(idToken: string, payload: {
@@ -91,11 +93,11 @@ export const publishingService = {
     scheduled_at?: string | null;
     channel_ids?: number[];
   }): Promise<PostPlan> {
-    const data = await request<{ plan: PostPlan }>(`${API_BASE}/plans/`, idToken, {
+    const data = await request<any>(`${API_BASE}/plans/`, idToken, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    return data.plan;
+    return data?.plan || data;
   },
 
   async updatePlan(idToken: string, id: number, payload: {
@@ -105,11 +107,11 @@ export const publishingService = {
     channel_ids?: number[];
     submit_for_approval?: boolean;
   }): Promise<PostPlan> {
-    const data = await request<{ plan: PostPlan }>(`${API_BASE}/plans/${id}/`, idToken, {
+    const data = await request<any>(`${API_BASE}/plans/${id}/`, idToken, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
-    return data.plan;
+    return data?.plan || data;
   },
 
   async deletePlan(idToken: string, id: number): Promise<void> {
@@ -119,11 +121,11 @@ export const publishingService = {
   },
 
   async approvePlan(idToken: string, id: number, action: 'approve' | 'reject', reject_reason?: string): Promise<PostPlan> {
-    const data = await request<{ plan: PostPlan }>(`${API_BASE}/plans/${id}/approve/`, idToken, {
+    const data = await request<any>(`${API_BASE}/plans/${id}/approve/`, idToken, {
       method: 'POST',
       body: JSON.stringify({ action, reject_reason }),
     });
-    return data.plan;
+    return data?.plan || data;
   },
 
   async generateAiVariants(idToken: string, id: number, channel_ids: number[]): Promise<{ job_id: number; message: string }> {
@@ -140,19 +142,19 @@ export const publishingService = {
     link_url?: string;
     scheduled_at?: string | null;
   }): Promise<PostVariant> {
-    const data = await request<{ variant: PostVariant }>(`${API_BASE}/variants/${id}/`, idToken, {
+    const data = await request<any>(`${API_BASE}/variants/${id}/`, idToken, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
-    return data.variant;
+    return data?.variant || data;
   },
 
   async markVariantManualDone(idToken: string, id: number, external_post_url?: string): Promise<PostVariant> {
-    const data = await request<{ variant: PostVariant }>(`${API_BASE}/variants/${id}/manual-done/`, idToken, {
+    const data = await request<any>(`${API_BASE}/variants/${id}/manual-done/`, idToken, {
       method: 'POST',
       body: JSON.stringify({ external_post_url }),
     });
-    return data.variant;
+    return data?.variant || data;
   },
 
   // Fetch NewsPosts for quick link/selection
