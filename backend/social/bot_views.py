@@ -141,7 +141,7 @@ def bot_approve_draft(request):
         return JsonResponse({"error": "Vui lòng đăng nhập để duyệt bài viết."}, status=401)
     try:
         body = json.loads(request.body.decode("utf-8"))
-        draft_id = body.get("id")
+        draft_id = body.get("id") or body.get("draft_id")
         auto_publish = body.get("auto_publish", False)
         target_id = body.get("target_id")
 
@@ -174,7 +174,7 @@ def bot_publish_draft(request):
         return JsonResponse({"error": "Vui lòng đăng nhập để thực hiện xuất bản."}, status=401)
     try:
         body = json.loads(request.body.decode("utf-8"))
-        draft_id = body.get("id")
+        draft_id = body.get("id") or body.get("draft_id")
         target_id = body.get("target_id")
 
         draft = FbDraftPost.objects.get(id=draft_id)
