@@ -176,14 +176,17 @@ export default function FbBotTeamStudio({
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         credentials: 'include',
-        body: JSON.stringify({ draft_id: id }),
+        body: JSON.stringify({ id, draft_id: id }),
       });
       if (res.ok) {
         setDraftPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'approved' } : p));
         setNotice('Đã phê duyệt bài viết! Bot Đăng bài tự động sẽ xuất bản theo lịch.');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setNotice(data.error || 'Lỗi khi duyệt bài viết.');
       }
-    } catch (e) {
-      setNotice('Lỗi khi duyệt bài viết.');
+    } catch (e: any) {
+      setNotice(e?.message || 'Lỗi khi duyệt bài viết.');
     }
     setTimeout(() => setNotice(''), 3000);
   };
@@ -194,7 +197,7 @@ export default function FbBotTeamStudio({
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         credentials: 'include',
-        body: JSON.stringify({ draft_id: id }),
+        body: JSON.stringify({ id, draft_id: id }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -204,8 +207,8 @@ export default function FbBotTeamStudio({
         const data = await res.json().catch(() => ({}));
         setNotice(data.error || 'Lỗi khi đăng bài.');
       }
-    } catch (e) {
-      setNotice('Lỗi khi đăng bài.');
+    } catch (e: any) {
+      setNotice(e?.message || 'Lỗi khi đăng bài.');
     }
     setTimeout(() => setNotice(''), 3000);
   };
