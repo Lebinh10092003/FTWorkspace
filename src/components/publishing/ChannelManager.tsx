@@ -84,7 +84,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
     setFormIsShared(c.is_shared);
     setFormIsActive(c.is_active);
 
-    const m = c.masked_config || {};
+    const m = (c as any).config || c.masked_config || {};
     setCfgFbPageId(m.page_id || '');
     setCfgFbAccessToken(m.page_access_token || '');
     setCfgWebhookUrl(m.webhook_url || '');
@@ -298,32 +298,37 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                   </p>
 
                   {/* Masked Config Summary */}
-                  <div className="mt-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 text-[11px] font-mono text-slate-600 dark:text-slate-400 flex flex-col gap-1">
-                    {channel.kind === 'facebook_page' && (
-                      <>
-                        <div>Page ID: {channel.masked_config.page_id || 'Chưa thiết lập'}</div>
-                        <div>Token: {channel.masked_config.page_access_token || '••••••••'}</div>
-                      </>
-                    )}
-                    {channel.kind === 'web_webhook' && (
-                      <>
-                        <div className="truncate">URL: {channel.masked_config.webhook_url || 'Chưa có'}</div>
-                        <div>Secret: {channel.masked_config.webhook_secret ? '••••••••' : '(Không)'}</div>
-                      </>
-                    )}
-                    {channel.kind === 'web_wordpress' && (
-                      <>
-                        <div className="truncate">Web: {channel.masked_config.site_url || 'Chưa có'}</div>
-                        <div>User: {channel.masked_config.username || 'Chưa có'}</div>
-                      </>
-                    )}
-                    {(channel.kind === 'manual_facebook_group' || channel.kind === 'manual_zalo_group' || channel.kind === 'manual_other') && (
-                      <>
-                        <div className="truncate">Link: {channel.masked_config.group_url || channel.masked_config.target_url || '(Chưa có link)'}</div>
-                        {channel.masked_config.note && <div className="truncate">Ghi chú: {channel.masked_config.note}</div>}
-                      </>
-                    )}
-                  </div>
+                  {(() => {
+                    const cfg = (channel as any).config || channel.masked_config || {};
+                    return (
+                      <div className="mt-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 text-[11px] font-mono text-slate-600 dark:text-slate-400 flex flex-col gap-1">
+                        {channel.kind === 'facebook_page' && (
+                          <>
+                            <div>Page ID: {cfg.page_id || 'Chưa thiết lập'}</div>
+                            <div>Token: {cfg.page_access_token || '••••••••'}</div>
+                          </>
+                        )}
+                        {channel.kind === 'web_webhook' && (
+                          <>
+                            <div className="truncate">URL: {cfg.webhook_url || 'Chưa có'}</div>
+                            <div>Secret: {cfg.webhook_secret ? '••••••••' : '(Không)'}</div>
+                          </>
+                        )}
+                        {channel.kind === 'web_wordpress' && (
+                          <>
+                            <div className="truncate">Web: {cfg.site_url || 'Chưa có'}</div>
+                            <div>User: {cfg.username || 'Chưa có'}</div>
+                          </>
+                        )}
+                        {(channel.kind === 'manual_facebook_group' || channel.kind === 'manual_zalo_group' || channel.kind === 'manual_other') && (
+                          <>
+                            <div className="truncate">Link: {cfg.group_url || cfg.target_url || '(Chưa có link)'}</div>
+                            {cfg.note && <div className="truncate">Ghi chú: {cfg.note}</div>}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Card Actions */}
