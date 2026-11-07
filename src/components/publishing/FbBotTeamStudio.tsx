@@ -109,7 +109,7 @@ export default function FbBotTeamStudio({
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.drafts && data.drafts.length > 0) {
+        if (data.drafts && Array.isArray(data.drafts)) {
           const mapped = data.drafts.map((d: any) => ({
             id: d.id,
             title: d.title,
@@ -123,7 +123,9 @@ export default function FbBotTeamStudio({
             createdAt: d.created_at || 'Vừa xong',
             fb_post_url: d.fb_post_url,
           }));
-          setDraftPosts(mapped);
+          if (mapped.length > 0) {
+            setDraftPosts(mapped);
+          }
         }
       }
     } catch (e) {
@@ -179,7 +181,8 @@ export default function FbBotTeamStudio({
         body: JSON.stringify({ id, draft_id: id }),
       });
       if (res.ok) {
-        setDraftPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'approved' } : p));
+        const data = await res.json().catch(() => ({}));
+        setDraftPosts((prev: DraftItem[]) => prev.map((p: DraftItem) => (p.id === id || (data.id && p.id === data.id)) ? { ...p, status: 'approved' } : p));
         setNotice('Đã phê duyệt bài viết! Bot Đăng bài tự động sẽ xuất bản theo lịch.');
       } else {
         const data = await res.json().catch(() => ({}));
@@ -200,8 +203,8 @@ export default function FbBotTeamStudio({
         body: JSON.stringify({ id, draft_id: id }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setDraftPosts((prev: DraftItem[]) => prev.map((p: DraftItem) => p.id === id ? { ...p, status: 'published', fb_post_url: data.fb_post_url } : p));
+        const data = await res.json().catch(() => ({}));
+        setDraftPosts((prev: DraftItem[]) => prev.map((p: DraftItem) => (p.id === id || (data.id && p.id === data.id)) ? { ...p, status: 'published', fb_post_url: data.fb_post_url } : p));
         setNotice('Bot 5 đã đăng bài thành công lên Facebook!');
       } else {
         const data = await res.json().catch(() => ({}));
