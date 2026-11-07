@@ -26,8 +26,11 @@ export const publishingService = {
   // Channels
   async getChannels(idToken: string): Promise<PublishChannel[]> {
     const data = await request<any>(`${API_BASE}/channels/`, idToken);
-    if (Array.isArray(data)) return data;
-    return data?.channels || [];
+    const list: any[] = Array.isArray(data) ? data : (data?.channels || []);
+    return list.map(item => ({
+      ...item,
+      masked_config: item.masked_config || item.config || {},
+    }));
   },
 
   async createChannel(idToken: string, payload: {

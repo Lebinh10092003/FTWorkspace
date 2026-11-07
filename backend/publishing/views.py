@@ -43,6 +43,7 @@ def _serialize_channel(channel: PublishChannel) -> Dict[str, Any]:
         "ownerEmail": channel.owner.email if channel.owner else None,
         "ownerName": channel.owner.name if channel.owner else None,
         "config": channel.get_masked_config(),
+        "masked_config": channel.get_masked_config(),
         "createdAt": channel.created_at.isoformat(),
         "updatedAt": channel.updated_at.isoformat(),
     }
