@@ -14,22 +14,34 @@ def check_bot_permission(request, require_manager=False):
     """
     Kiểm tra quyền người dùng đối với các tác vụ AI bot.
     Cho phép nếu:
-    - User đã đăng nhập (và là Admin/Manager nếu require_manager=True).
+    - User đã đăng nhập (UserProfile hoặc Django User).
     - Hoặc xác thực thành công qua Bearer / DjangoTokenAuthentication.
     - Hoặc đang trong môi trường mock/test.
     """
     user = getattr(request, "user", None)
-    if not user or not getattr(user, "is_authenticated", False):
+    
+    # Nếu user là AnonymousUser hoặc chưa xác thực hoặc là UserProfile (không có is_authenticated),
+    # kiểm tra DjangoTokenAuthentication
+    is_auth = False
+    if user:
+        if getattr(user, "is_authenticated", False):
+            is_auth = True
+        elif hasattr(user, "email") and bool(user.email):
+            # UserProfile của FTWorkspace
+            is_auth = True
+
+    if not is_auth:
         try:
             from authentication.auth import DjangoTokenAuthentication
             auth_res = DjangoTokenAuthentication().authenticate(request)
             if auth_res:
                 user = auth_res[0]
                 request.user = user
+                is_auth = True
         except Exception:
             pass
 
-    if user and getattr(user, "is_authenticated", False):
+    if is_auth and user:
         if require_manager:
             role = str(getattr(user, "role", "EMPLOYEE") or "EMPLOYEE").upper()
             return role in ["ADMIN", "MANAGER"] or getattr(user, "is_superuser", False)

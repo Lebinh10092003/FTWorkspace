@@ -81,8 +81,21 @@ export default function FbBotTeamStudio({
 
   const getAuthHeaders = (extra: Record<string, string> = {}) => {
     const headers: Record<string, string> = { ...extra };
-    if (idToken) {
-      headers['Authorization'] = `Bearer ${idToken}`;
+    const token = idToken || (() => {
+      try {
+        const raw = localStorage.getItem('ft_auth_session');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return parsed?.token || null;
+        }
+      } catch {
+        return null;
+      }
+      return null;
+    })();
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
     return headers;
   };
@@ -92,6 +105,7 @@ export default function FbBotTeamStudio({
     try {
       const res = await fetch('/api/social-bot/drafts', {
         headers: getAuthHeaders(),
+        credentials: 'include',
       });
       if (res.ok) {
         const data = await res.json();
@@ -131,6 +145,7 @@ export default function FbBotTeamStudio({
       const res = await fetch('/api/social-bot/create-task', {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        credentials: 'include',
         body: JSON.stringify({
           title: materialTitle,
           content: materialContent,
@@ -160,7 +175,8 @@ export default function FbBotTeamStudio({
       const res = await fetch('/api/social-bot/approve-draft', {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ id }),
+        credentials: 'include',
+        body: JSON.stringify({ draft_id: id }),
       });
       if (res.ok) {
         setDraftPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'approved' } : p));
@@ -177,7 +193,8 @@ export default function FbBotTeamStudio({
       const res = await fetch('/api/social-bot/publish-draft', {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ id }),
+        credentials: 'include',
+        body: JSON.stringify({ draft_id: id }),
       });
       if (res.ok) {
         const data = await res.json();
