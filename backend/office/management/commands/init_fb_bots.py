@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from authentication.models import UserProfile, Department, JobTitle
 from office.models import OfficeSeat, OfficePresence, ROOM_EXAM
-from social.bot_models import FbBotProfile
+from social.bot_models import FbBotProfile, FbDraftPost
 
 BOTS = [
     {
@@ -107,3 +107,13 @@ class Command(BaseCommand):
                 }
             )
             self.stdout.write(self.style.SUCCESS(f"Đã cập nhật bot: {b['name']} ({b['email']})"))
+
+        if not FbDraftPost.objects.exists():
+            FbDraftPost.objects.create(
+                title="Tổng kết buổi tập huấn Chuyển đổi số giáo dục & Khảo thí 2026",
+                content="🎉 Chúc mừng buổi tập huấn \"Ứng dụng AI & Chuyển đổi số trong Khảo thí\" do FermatTech tổ chức cùng các trường đã diễn ra thành công tốt đẹp!\n\n💡 Hơn 150 thầy cô giáo và chuyên gia khảo thí đã cùng trải nghiệm quy trình số hóa toàn diện từ ra đề, tổ chức thi đến chấm thi tự động.\n\n👉 Xem chi tiết giải pháp tại: https://fermat.vn",
+                hashtags="#FermatTech #KhaoThi #ChuyenDoiSo #GiaoDuc2026",
+                status="pending",
+                bot_creator="AI Soạn thảo",
+            )
+            self.stdout.write(self.style.SUCCESS("Đã khởi tạo bài viết dự thảo mẫu cho FB Bot"))
