@@ -281,12 +281,12 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                     </span>
                     <span
                       className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                        Boolean((channel as any).is_active ?? (channel as any).isActive)
+                        ((channel as any).is_active ?? (channel as any).isActive)
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                           : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
                       }`}
                     >
-                      {Boolean((channel as any).is_active ?? (channel as any).isActive) ? 'Đang bật' : 'Đang tắt'}
+                      {((channel as any).is_active ?? (channel as any).isActive) ? 'Đang bật' : 'Đang tắt'}
                     </span>
                   </div>
 
