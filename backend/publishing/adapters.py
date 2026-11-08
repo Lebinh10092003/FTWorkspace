@@ -67,29 +67,19 @@ def test_channel_connection(channel: PublishChannel) -> Dict[str, Any]:
                 "details": {"page_id": page_id, "name": f"Mock Page {page_id}"},
             }
         try:
-            # Check debug_token or page metadata
-            res = requests.get(
-                f"https://graph.facebook.com/{META_GRAPH_VERSION}/debug_token",
-                params={"input_token": token, "access_token": token},
-                timeout=10,
-            )
-            data = res.json()
-            if res.status_code != 200 or not data.get("data", {}).get("is_valid"):
-                err = (data.get("error") or data.get("data", {}).get("error") or {}).get("message", "Token không hợp lệ.")
-                return {
-                    "success": False,
-                    "message": f"Token Facebook không hợp lệ hoặc đã hết hạn: {err}",
-                }
-            # Verify page ownership / tasks
             p_res = requests.get(
                 f"https://graph.facebook.com/{META_GRAPH_VERSION}/{page_id}",
                 params={"fields": "id,name,tasks", "access_token": token},
                 timeout=10,
             )
-            p_data = p_res.json()
+            try:
+                p_data = p_res.json()
+            except Exception:
+                p_data = {}
+
             if p_res.status_code != 200 or "error" in p_data:
-                err = p_data.get("error", {}).get("message", "Không tìm thấy Page.")
-                return {"success": False, "message": f"Không thể đọc thông tin Page ID {page_id}: {err}"}
+                err = p_data.get("error", {}).get("message", f"HTTP {p_res.status_code}")
+                return {"success": False, "message": f"Không thể kết nối Page ID {page_id}: {err}"}
 
             return {
                 "success": True,

@@ -639,3 +639,112 @@ class AiPromptAndVariantGenerationTests(TestCase):
         v_fb = plan.variants.get(channel=self.ch_fb)
         self.assertIn("Nội dung FB", v_fb.content)
         self.assertIn("#FT", v_fb.content)
+
+
+class PublishChannelConnectionTests(TestCase):
+    def setUp(self):
+        self.user = UserProfile.objects.create(
+            email="manager@fermat.vn",
+            name="Manager User",
+            role="ADMIN",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    @patch("publishing.adapters.requests.get")
+    def test_facebook_page_connection_success(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "id": "61596304441823",
+            "name": "Fermat Fanpage",
+            "tasks": ["CREATE_CONTENT", "MANAGE"],
+        }
+        mock_get.return_value = mock_resp
+
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name="Fanpage Test",
+            kind=PublishChannel.KIND_FACEBOOK_PAGE,
+        )
+        ch.set_config({"page_id": "61596304441823", "access_token": "valid_token_123"})
+        ch.save()
+
+        res = test_channel_connection(ch)
+        self.assertTrue(res["success"])
+        self.assertIn("Fermat Fanpage", res["message"])
+        self.assertEqual(res["details"]["id"], "61596304441823")
+        # Ensure requests.get called page endpoint directly without debug_token
+        mock_get.assert_called_once()
+        called_url = mock_get.call_args[0][0]
+        self.assertIn("61596304441823", called_url)
+        self.assertNotIn("debug_token", called_url)
+
+    @patch("publishing.adapters.requests.get")
+    def test_facebook_page_connection_failure_oauth_error(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 400
+        mock_resp.json.return_value = {
+            "error": {
+                "message": "Invalid OAuth access token - Session has expired.",
+                "type": "OAuthException",
+                "code": 190,
+            }
+        }
+        mock_get.return_value = mock_resp
+
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name="Fanpage Expired",
+            kind=PublishChannel.KIND_FACEBOOK_PAGE,
+        )
+        ch.set_config({"page_id": "61596304441823", "access_token": "expired_token"})
+        ch.save()
+
+        res = test_channel_connection(ch)
+        self.assertFalse(res["success"])
+        self.assertIn("Invalid OAuth access token", res["message"])
+
+    def test_facebook_page_missing_credentials(self):
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name="Fanpage Missing",
+            kind=PublishChannel.KIND_FACEBOOK_PAGE,
+        )
+        ch.set_config({"page_id": "", "access_token": ""})
+        ch.save()
+
+        res = test_channel_connection(ch)
+        self.assertFalse(res["success"])
+        self.assertIn("Thiếu Page ID hoặc Access Token", res["message"])
+
+    @patch("publishing.adapters.requests.get")
+    def test_api_channel_test_connection_endpoint(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"id": "123456", "name": "My Page", "tasks": []}
+        mock_get.return_value = mock_resp
+
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name="Fanpage API Test",
+            kind=PublishChannel.KIND_FACEBOOK_PAGE,
+        )
+        ch.set_config({"page_id": "123456", "access_token": "tok"})
+        ch.save()
+
+        # Success case -> 200 OK
+        resp = self.client.post(f"/api/publishing/channels/{ch.id}/test/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertTrue(resp.data["success"])
+
+        # Failure case -> 400 BAD REQUEST with both message and error populated
+        mock_resp.status_code = 400
+        mock_resp.json.return_value = {"error": {"message": "Token expired"}}
+        resp_fail = self.client.post(f"/api/publishing/channels/{ch.id}/test/")
+        self.assertEqual(resp_fail.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(resp_fail.data["success"])
+        self.assertIn("error", resp_fail.data)
+        self.assertIn("message", resp_fail.data)
+        self.assertEqual(resp_fail.data["error"], resp_fail.data["message"])
+
