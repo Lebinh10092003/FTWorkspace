@@ -16,7 +16,7 @@ async function request<T>(url: string, idToken: string, options: RequestInit = {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const errorMsg = data.error || data.detail || `Yêu cầu thất bại (${res.status})`;
+    const errorMsg = data.message || data.error || data.detail || `Yêu cầu thất bại (${res.status})`;
     throw new Error(errorMsg);
   }
   return data as T;

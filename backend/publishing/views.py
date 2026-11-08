@@ -199,6 +199,8 @@ def channel_test_connection(request, pk: int):
     """Test channel connectivity and verify credentials."""
     channel = get_object_or_404(PublishChannel, pk=pk)
     res = test_channel_connection(channel)
+    if not res.get("success"):
+        res.setdefault("error", res.get("message"))
     code = status.HTTP_200_OK if res.get("success") else status.HTTP_400_BAD_REQUEST
     return Response(res, status=code)
 
