@@ -658,7 +658,6 @@ class PublishChannelConnectionTests(TestCase):
         mock_resp.json.return_value = {
             "id": "61596304441823",
             "name": "Fermat Fanpage",
-            "tasks": ["CREATE_CONTENT", "MANAGE"],
         }
         mock_get.return_value = mock_resp
 
