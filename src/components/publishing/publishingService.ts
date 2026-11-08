@@ -67,7 +67,7 @@ export const publishingService = {
   },
 
   async testChannel(idToken: string, id: number): Promise<{ success: boolean; message: string }> {
-    return await request<{ success: boolean; message: string }>(`${API_BASE}/channels/${id}/test/`, idToken, {
+    return await request<{ success: boolean; message: string }>(`${API_BASE}/channels/${id}/test-connection/`, idToken, {
       method: 'POST',
     });
   },
