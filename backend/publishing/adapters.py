@@ -72,9 +72,13 @@ def test_channel_connection(channel: PublishChannel) -> Dict[str, Any]:
                 params={"fields": "id,name,tasks", "access_token": token},
                 timeout=10,
             )
-            p_data = p_res.json()
+            try:
+                p_data = p_res.json()
+            except Exception:
+                p_data = {}
+
             if p_res.status_code != 200 or "error" in p_data:
-                err = p_data.get("error", {}).get("message", "Không tìm thấy Page.")
+                err = p_data.get("error", {}).get("message", f"HTTP {p_res.status_code}")
                 return {"success": False, "message": f"Không thể kết nối Page ID {page_id}: {err}"}
 
             return {
