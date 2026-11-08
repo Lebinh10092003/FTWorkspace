@@ -69,7 +69,7 @@ def test_channel_connection(channel: PublishChannel) -> Dict[str, Any]:
         try:
             p_res = requests.get(
                 f"https://graph.facebook.com/{META_GRAPH_VERSION}/{page_id}",
-                params={"fields": "id,name,tasks", "access_token": token},
+                params={"fields": "id,name", "access_token": token},
                 timeout=10,
             )
             try:
