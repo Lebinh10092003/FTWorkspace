@@ -14,41 +14,33 @@ def get_fb_target_credentials(target_id=None):
     """
     Lấy thông tin Fanpage đích (page_id, access_token, name).
     Thứ tự ưu tiên:
-    1. FbPublishTarget theo id hoặc target_id nếu được truyền.
-    2. FbPublishTarget đầu tiên có target_type='page' và is_active=True.
-    3. PublishChannel đầu tiên có kind='facebook_page' và is_active=True.
+    1. PublishChannel active loại KIND_FACEBOOK_PAGE (nguồn kênh xuất bản chính thức).
+    2. FbPublishTarget theo id hoặc target_id nếu được truyền.
+    3. FbPublishTarget đầu tiên có target_type='page' và is_active=True (legacy fallback).
     """
-    if target_id:
-        target = None
-        if isinstance(target_id, int) or (isinstance(target_id, str) and str(target_id).isdigit()):
-            target = FbPublishTarget.objects.filter(id=int(target_id)).first()
-        if not target:
-            target = FbPublishTarget.objects.filter(target_id=str(target_id)).first()
-        if target:
-            return {
-                "page_id": target.target_id,
-                "access_token": target.access_token,
-                "name": target.name,
-                "target_obj": target,
-            }
-
-    # Fallback 1: FbPublishTarget active
-    target = FbPublishTarget.objects.filter(target_type='page', is_active=True).first()
-    if target:
-        return {
-            "page_id": target.target_id,
-            "access_token": target.access_token,
-            "name": target.name,
-            "target_obj": target,
-        }
-
-    # Fallback 2: PublishChannel active
+    # 1. Ưu tiên PublishChannel (nguồn cấu hình chính thức từ Kênh xuất bản)
     if PublishChannel:
-        chan = PublishChannel.objects.filter(kind='facebook_page', is_active=True).first()
+        chan_query = PublishChannel.objects.filter(kind=PublishChannel.KIND_FACEBOOK_PAGE, is_active=True)
+        if target_id:
+            if isinstance(target_id, int) or (isinstance(target_id, str) and str(target_id).isdigit()):
+                c = chan_query.filter(id=int(target_id)).first()
+                if c:
+                    cfg = c.get_config() if hasattr(c, "get_config") else (getattr(c, "config", None) or {})
+                    page_id = str(cfg.get("page_id") or cfg.get("pageId") or cfg.get("target_id") or "").strip()
+                    access_token = str(cfg.get("access_token") or cfg.get("accessToken") or cfg.get("page_access_token") or "").strip()
+                    if page_id and access_token:
+                        return {
+                            "page_id": page_id,
+                            "access_token": access_token,
+                            "name": c.name,
+                            "target_obj": c,
+                        }
+
+        chan = chan_query.order_by("-updated_at", "-id").first()
         if chan:
-            cfg = chan.config or {}
-            page_id = cfg.get("page_id") or cfg.get("target_id") or chan.external_id
-            access_token = cfg.get("access_token") or cfg.get("page_access_token")
+            cfg = chan.get_config() if hasattr(chan, "get_config") else (getattr(chan, "config", None) or {})
+            page_id = str(cfg.get("page_id") or cfg.get("pageId") or cfg.get("target_id") or "").strip()
+            access_token = str(cfg.get("access_token") or cfg.get("accessToken") or cfg.get("page_access_token") or "").strip()
             if page_id and access_token:
                 return {
                     "page_id": page_id,
@@ -56,6 +48,31 @@ def get_fb_target_credentials(target_id=None):
                     "name": chan.name,
                     "target_obj": chan,
                 }
+
+    # 2. Legacy: FbPublishTarget theo id hoặc target_id
+    if target_id:
+        target = None
+        if isinstance(target_id, int) or (isinstance(target_id, str) and str(target_id).isdigit()):
+            target = FbPublishTarget.objects.filter(id=int(target_id)).first()
+        if not target:
+            target = FbPublishTarget.objects.filter(target_id=str(target_id)).first()
+        if target and target.access_token:
+            return {
+                "page_id": target.target_id,
+                "access_token": target.access_token,
+                "name": target.name,
+                "target_obj": target,
+            }
+
+    # 3. Legacy Fallback: FbPublishTarget active
+    target = FbPublishTarget.objects.filter(target_type='page', is_active=True).first()
+    if target and target.access_token:
+        return {
+            "page_id": target.target_id,
+            "access_token": target.access_token,
+            "name": target.name,
+            "target_obj": target,
+        }
 
     raise ValueError("Chưa cấu hình Fanpage Facebook (Page ID & Access Token) để xuất bản.")
 

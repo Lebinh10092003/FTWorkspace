@@ -1049,6 +1049,30 @@ class BotPublishingTests(TestCase):
         self.assertTrue(res2.get("already_published", False))
         self.assertEqual(res2["url"], res1["url"])
 
+    def test_get_fb_target_credentials_prioritizes_publish_channel(self):
+        from publishing.models import PublishChannel
+        from .bot_publishing_service import get_fb_target_credentials
+        from authentication.models import UserProfile
+
+        user = UserProfile.objects.create(email="pub@fermat.vn", name="Pub User", role="ADMIN")
+        pub_chan = PublishChannel(
+            name="Kênh Facebook Chính Thức",
+            kind=PublishChannel.KIND_FACEBOOK_PAGE,
+            is_active=True,
+            owner=user,
+        )
+        pub_chan.set_config({
+            "page_id": "9876543210",
+            "access_token": "mock_new_channel_token",
+        })
+        pub_chan.save()
+
+        # Khi cả FbPublishTarget và PublishChannel đều tồn tại, hệ thống phải ưu tiên PublishChannel
+        creds = get_fb_target_credentials()
+        self.assertEqual(creds["page_id"], "9876543210")
+        self.assertEqual(creds["access_token"], "mock_new_channel_token")
+        self.assertEqual(creds["name"], "Kênh Facebook Chính Thức")
+
 
 class BotGroupQueueTests(TestCase):
     def setUp(self):
