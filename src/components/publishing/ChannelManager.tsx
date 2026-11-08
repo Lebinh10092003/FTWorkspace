@@ -81,8 +81,8 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
     setEditingChannel(c);
     setFormName(c.name);
     setFormKind(c.kind);
-    setFormIsShared(c.is_shared);
-    setFormIsActive(c.is_active);
+    setFormIsShared(Boolean(c.is_shared ?? (c as any).isShared));
+    setFormIsActive(Boolean(c.is_active ?? (c as any).isActive));
 
     const m = (c as any).config || c.masked_config || {};
     setCfgFbPageId(m.page_id || '');
@@ -281,12 +281,12 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                     </span>
                     <span
                       className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                        channel.is_active
+                        ((channel as any).is_active ?? (channel as any).isActive)
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                           : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
                       }`}
                     >
-                      {channel.is_active ? 'Đang bật' : 'Đang tắt'}
+                      {((channel as any).is_active ?? (channel as any).isActive) ? 'Đang bật' : 'Đang tắt'}
                     </span>
                   </div>
 
