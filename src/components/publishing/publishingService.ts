@@ -22,15 +22,20 @@ async function request<T>(url: string, idToken: string, options: RequestInit = {
   return data as T;
 }
 
+const normalizeChannel = (item: any): PublishChannel => ({
+  ...item,
+  is_active: item.is_active !== undefined ? Boolean(item.is_active) : (item.isActive !== undefined ? Boolean(item.isActive) : true),
+  is_shared: item.is_shared !== undefined ? Boolean(item.is_shared) : (item.isShared !== undefined ? Boolean(item.isShared) : false),
+  masked_config: item.masked_config || item.config || {},
+  config: item.config || item.masked_config || {},
+});
+
 export const publishingService = {
   // Channels
   async getChannels(idToken: string): Promise<PublishChannel[]> {
     const data = await request<any>(`${API_BASE}/channels/`, idToken);
     const list: any[] = Array.isArray(data) ? data : (data?.channels || []);
-    return list.map(item => ({
-      ...item,
-      masked_config: item.masked_config || item.config || {},
-    }));
+    return list.map(normalizeChannel);
   },
 
   async createChannel(idToken: string, payload: {
@@ -42,9 +47,13 @@ export const publishingService = {
   }): Promise<PublishChannel> {
     const data = await request<any>(`${API_BASE}/channels/`, idToken, {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        isActive: payload.is_active,
+        isShared: payload.is_shared,
+      }),
     });
-    return data?.channel || data;
+    return normalizeChannel(data?.channel || data);
   },
 
   async updateChannel(idToken: string, id: number, payload: {
@@ -55,9 +64,13 @@ export const publishingService = {
   }): Promise<PublishChannel> {
     const data = await request<any>(`${API_BASE}/channels/${id}/`, idToken, {
       method: 'PUT',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        isActive: payload.is_active,
+        isShared: payload.is_shared,
+      }),
     });
-    return data?.channel || data;
+    return normalizeChannel(data?.channel || data);
   },
 
   async deleteChannel(idToken: string, id: number): Promise<void> {

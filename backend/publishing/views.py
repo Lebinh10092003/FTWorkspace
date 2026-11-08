@@ -39,13 +39,18 @@ def _serialize_channel(channel: PublishChannel) -> Dict[str, Any]:
         "kind": channel.kind,
         "kindDisplay": channel.get_kind_display(),
         "isShared": channel.is_shared,
+        "is_shared": channel.is_shared,
         "isActive": channel.is_active,
+        "is_active": channel.is_active,
         "ownerEmail": channel.owner.email if channel.owner else None,
+        "created_by_email": channel.owner.email if channel.owner else None,
         "ownerName": channel.owner.name if channel.owner else None,
         "config": channel.get_masked_config(),
         "masked_config": channel.get_masked_config(),
         "createdAt": channel.created_at.isoformat(),
+        "created_at": channel.created_at.isoformat(),
         "updatedAt": channel.updated_at.isoformat(),
+        "updated_at": channel.updated_at.isoformat(),
     }
 
 
@@ -132,7 +137,7 @@ def channels_list_create(request):
         kind=kind,
         owner=request.user,
         is_shared=is_shared,
-        is_active=bool(payload.get("isActive", True)),
+        is_active=bool(payload.get("isActive") if "isActive" in payload else payload.get("is_active", True)),
     )
     if isinstance(raw_config, dict):
         channel.set_config(raw_config)
