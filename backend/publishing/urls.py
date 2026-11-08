@@ -6,6 +6,7 @@ urlpatterns = [
     path("channels/", views.channels_list_create, name="publishing_channels"),
     path("channels/<int:pk>/", views.channel_detail, name="publishing_channel_detail"),
     path("channels/<int:pk>/test-connection/", views.channel_test_connection, name="publishing_channel_test"),
+    path("channels/<int:pk>/test/", views.channel_test_connection, name="publishing_channel_test_alias"),
     path("plans/", views.post_plans_list_create, name="publishing_plans"),
     path("plans/<int:pk>/", views.post_plan_detail, name="publishing_plan_detail"),
     path("plans/<int:pk>/approve/", views.post_plan_approve, name="publishing_plan_approve"),

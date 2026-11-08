@@ -144,6 +144,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
     if (formKind === 'facebook_page') {
       config.page_id = cfgFbPageId.trim();
       config.page_access_token = cfgFbAccessToken.trim();
+      config.access_token = cfgFbAccessToken.trim();
     } else if (formKind === 'web_webhook') {
       config.webhook_url = cfgWebhookUrl.trim();
       config.webhook_secret = cfgWebhookSecret.trim();

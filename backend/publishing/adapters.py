@@ -54,7 +54,7 @@ def test_channel_connection(channel: PublishChannel) -> Dict[str, Any]:
 
     if channel.kind == PublishChannel.KIND_FACEBOOK_PAGE:
         page_id = str(cfg.get("page_id") or cfg.get("pageId") or "").strip()
-        token = str(cfg.get("access_token") or cfg.get("accessToken") or "").strip()
+        token = str(cfg.get("access_token") or cfg.get("accessToken") or cfg.get("page_access_token") or "").strip()
         if not page_id or not token:
             return {
                 "success": False,
@@ -218,7 +218,7 @@ def _dispatch_facebook_page(
     mock: bool,
 ) -> Dict[str, Any]:
     page_id = str(cfg.get("page_id") or cfg.get("pageId") or "").strip()
-    token = str(cfg.get("access_token") or cfg.get("accessToken") or "").strip()
+    token = str(cfg.get("access_token") or cfg.get("accessToken") or cfg.get("page_access_token") or "").strip()
 
     if not page_id or not token:
         raise PublishAdapterError(

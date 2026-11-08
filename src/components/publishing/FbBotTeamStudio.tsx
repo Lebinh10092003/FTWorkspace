@@ -11,7 +11,8 @@ import {
   Check, 
   Upload, 
   Share2,
-  Puzzle
+  Puzzle,
+  AlertCircle
 } from 'lucide-react';
 
 interface FbBotTeamStudioProps {
@@ -62,6 +63,7 @@ export default function FbBotTeamStudio({
   const [targetType, setTargetType] = useState<'page' | 'group'>('page');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState('');
+  const [noticeType, setNoticeType] = useState<'success' | 'error'>('success');
   const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
 
   const [draftPosts, setDraftPosts] = useState<DraftItem[]>([
@@ -184,14 +186,17 @@ export default function FbBotTeamStudio({
         const data = await res.json().catch(() => ({}));
         setDraftPosts((prev: DraftItem[]) => prev.map((p: DraftItem) => (p.id === id || (data.id && p.id === data.id)) ? { ...p, status: 'approved' } : p));
         setNotice('Đã phê duyệt bài viết! Bot Đăng bài tự động sẽ xuất bản theo lịch.');
+        setNoticeType('success');
       } else {
         const data = await res.json().catch(() => ({}));
         setNotice(data.error || 'Lỗi khi duyệt bài viết.');
+        setNoticeType('error');
       }
     } catch (e: any) {
       setNotice(e?.message || 'Lỗi khi duyệt bài viết.');
+      setNoticeType('error');
     }
-    setTimeout(() => setNotice(''), 3000);
+    setTimeout(() => setNotice(''), 6000);
   };
 
   const handlePublishNow = async (id: number) => {
@@ -206,21 +211,32 @@ export default function FbBotTeamStudio({
         const data = await res.json().catch(() => ({}));
         setDraftPosts((prev: DraftItem[]) => prev.map((p: DraftItem) => (p.id === id || (data.id && p.id === data.id)) ? { ...p, status: 'published', fb_post_url: data.fb_post_url } : p));
         setNotice('Bot 5 đã đăng bài thành công lên Facebook!');
+        setNoticeType('success');
       } else {
         const data = await res.json().catch(() => ({}));
         setNotice(data.error || 'Lỗi khi đăng bài.');
+        setNoticeType('error');
       }
     } catch (e: any) {
       setNotice(e?.message || 'Lỗi khi đăng bài.');
+      setNoticeType('error');
     }
-    setTimeout(() => setNotice(''), 3000);
+    setTimeout(() => setNotice(''), 8000);
   };
 
   return (
     <div className="flex flex-col gap-6 w-full animate-fade-in">
       {notice && (
-        <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+        <div className={`flex items-center gap-2 p-3 rounded-2xl text-xs font-semibold ${
+          noticeType === 'error'
+            ? 'bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+            : 'bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+        }`}>
+          {noticeType === 'error' ? (
+            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+          )}
           <span>{notice}</span>
         </div>
       )}
