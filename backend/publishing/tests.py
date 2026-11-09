@@ -904,7 +904,7 @@ class PublishChannelConnectionTests(TestCase):
         import json
         from pathlib import Path
         from unittest.mock import patch, MagicMock
-        from publishing.zalo_automation import generate_zalo_qr_login, get_zalo_session_status
+        from publishing.zalo_automation import generate_zalo_qr_login, get_zalo_session_status, _login_session_manager
 
         with tempfile.TemporaryDirectory() as tmpdir:
             session_dir = Path(tmpdir)
@@ -924,20 +924,18 @@ class PublishChannelConnectionTests(TestCase):
                     mock_resp.__enter__.return_value = mock_resp
                     mock_resp.__exit__.return_value = None
 
-                    if 'main-' in url or 'continue=' in url and 'chat.zalo.me' in url:
-                        mock_resp.read.return_value = b'<html><script src="https://stc-zlogin.zdn.vn/main-2606161423.js"></script></html>'
-                    elif 'logininfo' in url:
-                        mock_resp.read.return_value = b'{"error_code": 0}'
-                    elif 'qr/generate' in url:
-                        mock_resp.read.return_value = json.dumps(mock_qr_json).encode('utf-8')
-                    elif 'waiting-scan' in url:
-                        mock_resp.read.return_value = b'{"error_code": 0, "data": {"avatar": "", "display_name": "Test"}}'
+                    if 'checksession' in url:
+                        mock_resp.read.return_value = b'OK'
                     elif 'waiting-confirm' in url:
                         mock_resp.read.return_value = b'{"error_code": 0}'
-                    elif 'checksession' in url:
-                        mock_resp.read.return_value = b'OK'
+                    elif 'waiting-scan' in url:
+                        mock_resp.read.return_value = b'{"error_code": 0, "data": {"avatar": "", "display_name": "Test"}}'
+                    elif 'qr/generate' in url:
+                        mock_resp.read.return_value = json.dumps(mock_qr_json).encode('utf-8')
+                    elif 'logininfo' in url:
+                        mock_resp.read.return_value = b'{"error_code": 0}'
                     else:
-                        mock_resp.read.return_value = b'{}'
+                        mock_resp.read.return_value = b'<html><script src="https://stc-zlogin.zdn.vn/main-2606161423.js"></script></html>'
                     return mock_resp
 
                 with patch('urllib.request.OpenerDirector.open', side_effect=fake_open):
@@ -945,12 +943,16 @@ class PublishChannelConnectionTests(TestCase):
                     self.assertEqual(res['status'], 'qr_ready')
                     self.assertTrue(res['qr_data'].startswith('data:image/png;base64,'))
 
-                    # Chờ worker thread xử lý xong các bước xác thực
+                    # Chờ worker thread xử lý xong các bước xác thực và ghi storage_state
                     import time
                     for _ in range(50):
-                        if (session_dir / 'active_qr_session.json').exists():
+                        if (session_dir / 'storage_state.json').exists():
                             break
                         time.sleep(0.05)
+                    sess_info = _login_session_manager._sessions.get('test_direct_api', {})
+                    err = sess_info.get('error')
+                    self.assertIsNone(err, f"Worker failed with error: {err}")
+                    self.assertTrue((session_dir / 'storage_state.json').exists())
                     self.assertTrue((session_dir / 'active_qr_session.json').exists())
 
 
