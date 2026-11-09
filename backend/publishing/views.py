@@ -535,3 +535,22 @@ def publish_job_status(request, pk: int):
 
 # Helper import for Q lookup
 from django.db.models import Q as models_Q
+
+
+@api_view(['GET'])
+@permission_classes([IsWorkspaceAuthenticated])
+def zalo_automation_status(request):
+    """Lấy trạng thái phiên kết nối Zalo Web trên Server VPS."""
+    from .zalo_automation import get_zalo_session_status
+    return Response(get_zalo_session_status())
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsWorkspaceAuthenticated])
+def zalo_automation_qr(request):
+    """Sinh hoặc làm mới mã QR để quét đăng nhập Zalo Web trên VPS."""
+    from .zalo_automation import generate_zalo_qr_login
+    force_refresh = request.method == 'POST' or request.query_params.get('refresh') == 'true'
+    res = generate_zalo_qr_login(force_refresh=force_refresh)
+    return Response(res)
+

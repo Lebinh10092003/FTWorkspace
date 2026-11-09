@@ -92,7 +92,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
     setCfgWpUrl(m.site_url || '');
     setCfgWpUsername(m.username || '');
     setCfgWpAppPassword(m.app_password || '');
-    setCfgGroupUrl(m.group_url || m.target_url || '');
+    setCfgGroupUrl(m.group_name || m.group_url || m.target_url || '');
     setCfgNote(m.note || '');
     setError('');
     setModalOpen(true);
@@ -154,6 +154,9 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
       config.app_password = cfgWpAppPassword.trim();
     } else if (formKind === 'manual_facebook_group' || formKind === 'manual_zalo_group') {
       config.group_url = cfgGroupUrl.trim();
+      config.note = cfgNote.trim();
+    } else if (formKind === 'zalo_personal_group') {
+      config.group_name = cfgGroupUrl.trim();
       config.note = cfgNote.trim();
     } else if (formKind === 'manual_other') {
       config.target_url = cfgGroupUrl.trim();
@@ -321,9 +324,12 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                             <div>User: {cfg.username || 'Chưa có'}</div>
                           </>
                         )}
-                        {(channel.kind === 'manual_facebook_group' || channel.kind === 'manual_zalo_group' || channel.kind === 'manual_other') && (
+                        {(channel.kind === 'manual_facebook_group' || channel.kind === 'manual_zalo_group' || channel.kind === 'manual_other' || channel.kind === 'zalo_personal_group') && (
                           <>
-                            <div className="truncate">Link: {cfg.group_url || cfg.target_url || '(Chưa có link)'}</div>
+                            <div className="truncate">
+                              {channel.kind === 'zalo_personal_group' ? 'Nhóm: ' : 'Link: '}
+                              {cfg.group_name || cfg.group_url || cfg.target_url || '(Chưa có)'}
+                            </div>
                             {cfg.note && <div className="truncate">Ghi chú: {cfg.note}</div>}
                           </>
                         )}
@@ -433,6 +439,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                   <option value="web_wordpress">Website WordPress (REST API)</option>
                   <option value="manual_facebook_group">Nhóm Facebook (Hỗ trợ đăng thủ công)</option>
                   <option value="manual_zalo_group">Nhóm Zalo (Hỗ trợ đăng thủ công)</option>
+                  <option value="zalo_personal_group">Nhóm Zalo cá nhân (Tự động VPS)</option>
                   <option value="manual_other">Kênh khác (Thủ công)</option>
                 </select>
                 {editingChannel && (
@@ -546,15 +553,15 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                 </div>
               )}
 
-              {(formKind === 'manual_facebook_group' || formKind === 'manual_zalo_group' || formKind === 'manual_other') && (
+              {(formKind === 'manual_facebook_group' || formKind === 'manual_zalo_group' || formKind === 'manual_other' || formKind === 'zalo_personal_group') && (
                 <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Đường dẫn tới nhóm / kênh (URL)
+                      {formKind === 'zalo_personal_group' ? 'Tên nhóm Zalo chính xác (hoặc Link nhóm)' : 'Đường dẫn tới nhóm / kênh (URL)'}
                     </label>
                     <input
-                      type="url"
-                      placeholder="https://facebook.com/groups/... hoặc https://zalo.me/g/..."
+                      type={formKind === 'zalo_personal_group' ? 'text' : 'url'}
+                      placeholder={formKind === 'zalo_personal_group' ? 'Ví dụ: Nội bộ Fermat' : 'https://facebook.com/groups/... hoặc https://zalo.me/g/...'}
                       value={cfgGroupUrl}
                       onChange={e => setCfgGroupUrl(e.target.value)}
                       className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#0B72CE]"

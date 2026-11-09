@@ -143,6 +143,28 @@ def test_channel_connection(channel: PublishChannel) -> Dict[str, Any]:
             "details": {"group_url": url},
         }
 
+    elif channel.kind == PublishChannel.KIND_ZALO_PERSONAL_GROUP:
+        group_name = str(cfg.get("group_name") or cfg.get("groupName") or channel.name or "").strip()
+        if not group_name:
+            return {
+                "success": False,
+                "message": "Thiếu tên nhóm Zalo cần đăng bài.",
+            }
+        from .zalo_automation import get_zalo_session_status
+
+        status = get_zalo_session_status()
+        if not mock and not status.get("is_authenticated"):
+            return {
+                "success": False,
+                "message": "Chưa kết nối tài khoản Zalo cá nhân trên Server VPS. Vui lòng quét mã QR để đăng nhập.",
+                "details": status,
+            }
+        return {
+            "success": True,
+            "message": f"Kênh Zalo sẵn sàng tự động đăng vào nhóm '{group_name}'.",
+            "details": {"group_name": group_name, **status},
+        }
+
     elif channel.kind == PublishChannel.KIND_ZALO_OA:
         return {
             "success": False,
@@ -193,6 +215,9 @@ def dispatch_variant(variant: PostVariant) -> Dict[str, Any]:
         PublishChannel.KIND_MANUAL_OTHER,
     }:
         return _dispatch_manual_channel(variant, cfg, title, content, link_url, mock)
+
+    elif channel.kind == PublishChannel.KIND_ZALO_PERSONAL_GROUP:
+        return _dispatch_zalo_personal_group(variant, cfg, title, content, link_url, mock)
 
     elif channel.kind == PublishChannel.KIND_ZALO_OA:
         raise PublishAdapterError("Kênh Zalo OA hiện chưa có tài khoản chính thức để kết nối.", retryable=False)
@@ -432,3 +457,41 @@ def _dispatch_manual_channel(
         "status": PostVariant.STATUS_AWAITING_MANUAL,
         "message": f"Đã gửi thông báo nhắc nhở tới tài khoản {creator_email}.",
     }
+
+
+def _dispatch_zalo_personal_group(
+    variant: PostVariant,
+    cfg: Dict[str, Any],
+    title: str,
+    content: str,
+    link_url: str,
+    mock: bool,
+) -> Dict[str, Any]:
+    group_name = str(cfg.get('group_name') or cfg.get('groupName') or variant.channel.name or '').strip()
+    if not group_name:
+        raise PublishAdapterError('Kênh Zalo chưa được cấu hình tên nhóm đích.', retryable=False)
+
+    full_content = f'{title}\n\n{content}'.strip() if title else content
+    if link_url:
+        full_content = f'{full_content}\n\n{link_url}'.strip()
+
+    if mock:
+        return {
+            'external_post_id': f'mock_zalo_{variant.id}',
+            'external_post_url': 'https://chat.zalo.me/',
+            'status': PostVariant.STATUS_PUBLISHED,
+            'message': f"[Mock Mode] Đã gửi bài viết thành công vào nhóm Zalo '{group_name}'.",
+        }
+
+    from .zalo_automation import send_zalo_personal_group_message, ZaloAutomationError
+    try:
+        res = send_zalo_personal_group_message(group_name=group_name, content=full_content)
+        return {
+            'external_post_id': f'zalo_{variant.id}',
+            'external_post_url': 'https://chat.zalo.me/',
+            'status': PostVariant.STATUS_PUBLISHED,
+            'message': res.get('message') or f"Đã gửi bài vào nhóm Zalo '{group_name}'.",
+        }
+    except ZaloAutomationError as exc:
+        raise PublishAdapterError(str(exc), retryable=False) from exc
+
