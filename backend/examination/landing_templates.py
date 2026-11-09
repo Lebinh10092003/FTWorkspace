@@ -191,7 +191,7 @@ SCO_SUBJECTS = {
             ('Từ Quốc gia đến Quốc tế', 'Mùa thi gồm Vòng Chung kết Quốc gia và Vòng Chung kết Quốc tế; điều kiện đi tiếp theo thể lệ SCO.'),
         ],
         'materials': ('SIPhO · Vật lí', 'Thư mục ghi chú học tập môn Vật lí.', drive_folder('17MLVRsmEcNyZ6BK9u6_jSVElCOUt7CIo')),
-        'timeline': [('Vòng Chung kết Quốc gia', '2026-11-01'), ('Vòng Chung kết Quốc tế', '2026-12-20')],
+        'timeline': [('Vòng Chung kết Quốc gia', '2026-11-22'), ('Vòng Chung kết Quốc tế', '2026-12-20')],
     },
     'SIChO': {
         'slug': 'sicho', 'title': 'SIChO · SCO International Chemistry Olympiad', 'subject_name': 'Hóa học',
@@ -204,7 +204,7 @@ SCO_SUBJECTS = {
             ('Từ Quốc gia đến Quốc tế', 'Mùa thi gồm Vòng Chung kết Quốc gia và Vòng Chung kết Quốc tế; điều kiện đi tiếp theo thể lệ SCO.'),
         ],
         'materials': ('SIChO · Hóa học', 'Thư mục ghi chú học tập môn Hóa học.', drive_folder('1yCGh_ncFs3wVoKNIfYW8adxTig0y4g8v')),
-        'timeline': [('Vòng Chung kết Quốc gia', '2026-11-01'), ('Vòng Chung kết Quốc tế', '2026-12-20')],
+        'timeline': [('Vòng Chung kết Quốc gia', '2026-11-22'), ('Vòng Chung kết Quốc tế', '2026-12-20')],
     },
     'SIBO': {
         'slug': 'sibo', 'title': 'SIBO · SCO International Biology Olympiad', 'subject_name': 'Sinh học',
@@ -217,7 +217,7 @@ SCO_SUBJECTS = {
             ('Từ Quốc gia đến Quốc tế', 'Mùa thi gồm Vòng Chung kết Quốc gia và Vòng Chung kết Quốc tế; điều kiện đi tiếp theo thể lệ SCO.'),
         ],
         'materials': ('SIBO · Sinh học', 'Tài liệu học tập song ngữ cho lớp 8–12.', drive_folder('19FffaubVHyfnEEZHhlhpNa_lAb3afw9t')),
-        'timeline': [('Vòng Chung kết Quốc gia', '2026-11-01'), ('Vòng Chung kết Quốc tế', '2026-12-20')],
+        'timeline': [('Vòng Chung kết Quốc gia', '2026-11-22'), ('Vòng Chung kết Quốc tế', '2026-12-20')],
     },
     'SILSO': {
         'slug': 'silso', 'title': 'SILSO · SCO International Life Skill Olympiad SDGs', 'subject_name': 'Kỹ năng sống',
@@ -230,7 +230,7 @@ SCO_SUBJECTS = {
             ('Một vòng thi Quốc gia', 'SILSO mùa 2026–2027 có một vòng thi Quốc gia duy nhất.'),
         ],
         'materials': None,
-        'timeline': [('Vòng thi Quốc gia duy nhất', '2026-11-08')],
+        'timeline': [('Vòng thi Quốc gia duy nhất', '2026-11-29')],
     },
 }
 

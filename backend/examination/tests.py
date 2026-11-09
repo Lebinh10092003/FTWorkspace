@@ -2027,7 +2027,7 @@ class LandingHubTests(TestCase):
         response = APIClient().get('/api/public/landing-sites/silso')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['layout'], 'siaio')
-        self.assertEqual(response.json()['content']['timeline'][0]['date'], '2026-11-08')
+        self.assertEqual(response.json()['content']['timeline'][0]['date'], '2026-11-29')
         hub = {item['slug'] for item in APIClient().get('/api/public/landing-sites').json()['items']}
         self.assertTrue({'sipho', 'sicho', 'sibo', 'silso'} <= hub)
 
