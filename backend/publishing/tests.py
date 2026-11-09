@@ -832,4 +832,70 @@ class PublishChannelConnectionTests(TestCase):
         resp_qr_forbidden = other_client.get(f'/api/publishing/zalo-automation/qr/?channel_id={ch.id}')
         self.assertEqual(resp_qr_forbidden.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_zalo_session_auth_strict_cookie_verification(self):
+        """Kiểm tra is_session_storage_authenticated chỉ chấp nhận cookie xác thực thật (zpw_sek, zpsid),
+        không bị đánh lừa bởi o_cookie hoặc danh sách cookie theo dõi ban đầu (>5 cookies).
+        """
+        import tempfile
+        import json
+        from pathlib import Path
+        from unittest.mock import patch
+        from publishing.zalo_automation import is_session_storage_authenticated
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_dir = Path(tmpdir)
+            state_file = session_dir / 'storage_state.json'
+
+            with patch('publishing.zalo_automation.get_zalo_session_dir', return_value=session_dir):
+                # 1. Trường hợp file chứa nhiều cookie tracking (>5 cookies) nhưng chưa đăng nhập
+                fake_cookies = [
+                    {'name': '_ga', 'value': '123'},
+                    {'name': '_gid', 'value': '456'},
+                    {'name': 'o_cookie', 'value': '789'},
+                    {'name': 'z_uuid', 'value': 'abc'},
+                    {'name': 'theme', 'value': 'light'},
+                    {'name': 'language', 'value': 'vi'},
+                ]
+                state_file.write_text(json.dumps({'cookies': fake_cookies}), encoding='utf-8')
+                self.assertFalse(is_session_storage_authenticated('test_session'))
+                # File rác bị xoá
+                self.assertFalse(state_file.exists())
+
+                # 2. Trường hợp đã đăng nhập thật (có zpw_sek)
+                valid_cookies = fake_cookies + [{'name': 'zpw_sek', 'value': 'secret_auth_token'}]
+                state_file.write_text(json.dumps({'cookies': valid_cookies}), encoding='utf-8')
+                self.assertTrue(is_session_storage_authenticated('test_session'))
+                self.assertTrue(state_file.exists())
+
+    def test_is_browser_authenticated_conditions(self):
+        """Kiểm tra _is_browser_authenticated đòi hỏi giao diện đăng nhập, QR biến mất và cookie zpw_sek."""
+        from unittest.mock import MagicMock
+        from publishing.zalo_automation import _is_browser_authenticated
+
+        mock_page = MagicMock()
+        mock_browser = MagicMock()
+
+        # Giả lập phần tử giao diện
+        mock_tab = MagicMock()
+        mock_tab.is_visible.return_value = True
+
+        mock_qr = MagicMock()
+        mock_qr.is_visible.return_value = True
+
+        # Khi QR code vẫn còn hiển thị -> False (chưa quét xong)
+        mock_page.query_selector.side_effect = lambda sel: mock_tab if '#main-tab' in sel else (mock_qr if '.qrcode-img' in sel else None)
+        mock_browser.cookies.return_value = [{'name': 'zpw_sek', 'value': '123'}]
+        self.assertFalse(_is_browser_authenticated(mock_page, mock_browser))
+
+        # Khi QR code đã biến mất nhưng không có cookie xác thực -> False
+        mock_qr.is_visible.return_value = False
+        mock_browser.cookies.return_value = [{'name': '_ga', 'value': '123'}]
+        mock_page.context.cookies.return_value = []
+        mock_browser.storage_state.return_value = {'cookies': []}
+        self.assertFalse(_is_browser_authenticated(mock_page, mock_browser))
+
+        # Khi QR code biến mất, có giao diện #main-tab VÀ có cookie zpw_sek -> True
+        mock_browser.cookies.return_value = [{'name': 'zpw_sek', 'value': 'valid_session'}]
+        self.assertTrue(_is_browser_authenticated(mock_page, mock_browser))
+
 
