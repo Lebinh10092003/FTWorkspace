@@ -6,6 +6,7 @@ import SiaioLandingView from './SiaioLandingView';
 import { publicRegistrationLink } from './publicRegistrationLink';
 import { countdownLabel, describeMilestones, statusLabel, type MilestoneSummary, type MilestoneView } from './landingTimeline';
 import { useActiveSection, usePointerTilt, useRevealScope, useScrollProgress, useScrolledPast } from './landingMotion';
+import CompetitionEssentials, { AcademicFragments } from './CompetitionEssentials';
 
 export type LinkButton = { label: string; url: string };
 export type LandingContent = {
@@ -174,7 +175,7 @@ function OlympiadLandingView({ site, preview = false }: { site: LandingSite; pre
   }
 
   const callNumber = (contact.phone || '0969 627 162').replace(/\D/g, '');
-  return <div ref={rootRef} style={pageStyle} className={`landing-site ${motion ? 'landing-motion' : ''} relative min-h-screen [scroll-behavior:smooth]`}>
+  return <div ref={rootRef} style={pageStyle} className={`landing-site editorial-landing ${motion ? 'landing-motion' : ''} relative min-h-screen [scroll-behavior:smooth]`}>
     <header className="lp-header sticky top-0 z-40">
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-5 py-3 lg:px-8">
         <a href="#dau-trang" className="lp-brand flex min-w-0 items-center gap-3">
@@ -194,13 +195,14 @@ function OlympiadLandingView({ site, preview = false }: { site: LandingSite; pre
 
     <main id="dau-trang">
       <section className="lp-hero relative overflow-hidden">
+        <AcademicFragments />
         <div className="lp-hero-grid pointer-events-none absolute inset-0" />
         <div className="lp-hero-aurora lp-hero-aurora--one pointer-events-none absolute" />
         <div className="lp-hero-aurora lp-hero-aurora--two pointer-events-none absolute" />
         <div className="relative mx-auto grid max-w-7xl gap-12 px-5 py-20 lg:grid-cols-[1.08fr_.92fr] lg:items-center lg:px-8 lg:py-28">
           <div className="lp-hero-copy">
             <span className="lp-badge inline-flex items-center gap-2" data-reveal style={delay(40)}><Sparkles className="h-3.5 w-3.5" />{c.badge || 'Olympiad · FermatTech'}</span>
-            <h1 className="lp-hero-title" data-reveal style={delay(110)}>{c.headline || site.title}</h1>
+            <h1 className="lp-hero-title" data-reveal="slice" style={delay(110)}>{c.headline || site.title}</h1>
             <p className="lp-hero-intro" data-reveal style={delay(180)}>{c.intro}</p>
             <div className="lp-hero-actions" data-reveal style={delay(250)}>
               {heroButtons.map((button, index) => <Action key={index} url={button.url} className={`lp-cta lp-sheen ${index === 0 ? 'lp-cta--primary' : 'lp-cta--ghost'}`}>{button.label}<ArrowRight className="h-4 w-4" /></Action>)}
@@ -219,6 +221,8 @@ function OlympiadLandingView({ site, preview = false }: { site: LandingSite; pre
           </div>
         </div>
       </section>
+
+      <CompetitionEssentials code={subject || site.slug} next={schedule.next} />
 
       {!!schedule.items.length && <section className="lp-season-strip" aria-label="Các mốc chính của mùa thi">
         <div className="lp-season-inner">

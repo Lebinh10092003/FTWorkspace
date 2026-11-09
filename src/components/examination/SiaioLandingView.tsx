@@ -6,6 +6,8 @@ import './LandingMotion.css';
 import { countdownLabel, describeMilestones, statusLabel, type MilestoneSummary } from './landingTimeline';
 import { useActiveSection, usePointerTilt, useRevealScope, useScrollProgress, useScrolledPast } from './landingMotion';
 import ScoArt, { type ScoArtKind } from './ScoArt';
+import CompetitionEssentials, { AcademicFragments } from './CompetitionEssentials';
+import { profileFor } from './competitionProfiles';
 
 /** Bố cục chung cho các cuộc thi SCO. Mỗi môn có hình minh họa, màu nhấn và vài câu chữ riêng;
  *  phần còn lại (đề mẫu, lộ trình, đăng ký, liên hệ) dùng chung. */
@@ -81,7 +83,11 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
   const [menuOpen, setMenuOpen] = useState(false);
   const subjects = (c.paperSubjects?.length ? c.paperSubjects : Object.keys(c.papers || {})).filter(Boolean);
   const [chosenSubject, setChosenSubject] = useState('');
-  const [grade, setGrade] = useState(1);
+  const profile = profileFor(code);
+  const minGrade = profile?.minGrade || 1;
+  const maxGrade = profile?.maxGrade || 12;
+  const [chosenGrade, setGrade] = useState(minGrade);
+  const grade = Math.max(minGrade, Math.min(maxGrade, chosenGrade));
   const subject = subjects.includes(chosenSubject) ? chosenSubject : subjects[0] || '';
   const paperUrl = c.papers?.[subject]?.[String(grade)] || '';
   const [form, setForm] = useState({ fullName: '', phone: '', email: '', schoolCity: '', message: '', website: '' });
@@ -133,7 +139,7 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
 
   const paperFolder = c.resources?.find(item => /^đề/i.test(item.category || '') && safeUrl(item.url))?.url || '';
 
-  return <div ref={rootRef} className={`siaio-site ${motion ? 'landing-motion' : ''}`} data-sco={theme.art} style={pageStyle}>
+  return <div ref={rootRef} className={`siaio-site editorial-landing ${motion ? 'landing-motion' : ''}`} data-sco={theme.art} style={pageStyle}>
     <header className={`siaio-header ${preview ? '' : 'is-sticky'}`}>
       <a href="#dau-trang" className="siaio-brand" aria-label={`${code} về đầu trang`}><span className="siaio-brand-mark">S<span>✳</span></span><span><strong>{code}</strong><small>FermatTech · SCO</small></span></a>
       <nav className="siaio-nav" aria-label={`Điều hướng ${code}`}>{navItems.map(([id, label]) => <a key={id} href={`#${id}`} aria-current={activeSection === id ? 'true' : undefined} className={activeSection === id ? 'is-active' : ''}>{label}</a>)}{!preview && <a href="/cuoc-thi">Các cuộc thi</a>}</nav>
@@ -145,13 +151,14 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
 
     <main id="dau-trang">
       <section className="siaio-hero">
+        <AcademicFragments />
         <div className="siaio-grid-overlay" aria-hidden="true" />
         <div className="siaio-hero-aurora" aria-hidden="true" />
         <div className="siaio-hero-inner">
           <div className="siaio-hero-copy">
             <span className="siaio-kicker" data-reveal style={delay(40)}><span className="siaio-pulse" />{c.badge || `SCO · ${code}`}</span>
             <p className="siaio-hero-overline" data-reveal style={delay(110)}>THE NEXT GENERATION / 2026—2027</p>
-            <h1 data-reveal style={delay(170)}>{headlineParts ? <><span className="siaio-title-code">{headlineParts[1]}</span><span className="siaio-title-rest">{headlineParts[2]}</span></> : headline}</h1>
+            <h1 data-reveal="slice" style={delay(170)}>{headlineParts ? <><span className="siaio-title-code">{headlineParts[1]}</span><span className="siaio-title-rest">{headlineParts[2]}</span></> : headline}</h1>
             <p className="siaio-hero-intro" data-reveal style={delay(240)}>{c.intro}</p>
             <div className="siaio-hero-actions" data-reveal style={delay(310)}>{buttons.map((button, index) => <Action key={index} url={button.url} className={`siaio-button lp-sheen ${index ? 'siaio-button--outline' : 'siaio-button--primary'}`}>{button.label} {index ? <ArrowDownRight size={18} /> : <ArrowUpRight size={18} />}</Action>)}</div>
             <div className="siaio-hero-caption" data-reveal style={delay(380)}><span>01 / 04</span><span>KHÁM PHÁ · THỬ THÁCH · SÁNG TẠO</span></div>
@@ -160,6 +167,8 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
         </div>
         {!!highlights.length && <div className="siaio-signal-strip">{highlights.map((item, index) => <div key={index} className="siaio-signal" data-reveal style={delay(index * 70)}><span className="siaio-signal-index">0{index + 1}</span><strong>{item.value}</strong><span>{item.label}</span></div>)}</div>}
       </section>
+
+      <CompetitionEssentials code={code} next={schedule.next} accent="var(--siaio-accent)" />
 
       <section id="gioi-thieu" className="siaio-about siaio-section">
         <div className="siaio-section-lead" data-reveal><span className="siaio-section-code">// 01 · GIỚI THIỆU</span><h2>{theme.about[0]} <em>{theme.about[1]}</em></h2><p>{c.intro}</p></div>
@@ -171,7 +180,7 @@ export default function SiaioLandingView({ site, preview = false }: { site: Land
 
       <section id="de-mau" className="siaio-paper-section siaio-section">
         <div className="siaio-paper-heading" data-reveal><div><span className="siaio-section-code">// 02 · TÀI LIỆU</span><h2>Chọn môn.<br /><em>Chọn lớp.</em> Xem đề.</h2></div><p>Một khu vực tra cứu gọn cho các môn thi và khối lớp. Chọn thông tin phù hợp để mở đúng đề mẫu.</p></div>
-        <div className="siaio-paper-console" data-reveal="zoom"><div className="siaio-console-bar"><div><i /><i /><i /></div><span>{code.toUpperCase()} / PAPER_EXPLORER</span><span>● ONLINE</span></div><div className="siaio-console-body"><div className="siaio-console-prompt"><span>01 / CONFIGURE</span><h3>Thiết lập đề mẫu</h3><p>Chọn môn thi và lớp muốn xem.</p></div><div className="siaio-console-controls"><label>Môn thi<span className="siaio-select-wrap"><select aria-label="Chọn môn thi" value={subject} onChange={event => setChosenSubject(event.target.value)} disabled={!subjects.length}>{subjects.length ? subjects.map(item => <option key={item} value={item}>{item}</option>) : <option>Chưa có môn thi</option>}</select><ChevronDown size={18} /></span></label><label>Lớp<span className="siaio-select-wrap"><select aria-label="Chọn lớp xem đề mẫu" value={grade} onChange={event => setGrade(Number(event.target.value))}>{Array.from({ length: 12 }, (_, i) => i + 1).map(value => <option value={value} key={value}>Lớp {value}</option>)}</select><ChevronDown size={18} /></span></label></div><div className="siaio-paper-result"><div className="siaio-document-icon"><FileText size={30} /></div><div><span>02 / RESULT</span><h4>{subject || 'Môn thi'} · Lớp {grade}</h4><p>{paperUrl ? 'Đề mẫu PDF đã sẵn sàng' : paperFolder ? 'Xem đề tham khảo trong thư mục chung của SCO' : 'Đề mẫu đang được cập nhật'}</p></div><Action url={paperUrl || paperFolder} newTab className="siaio-button siaio-button--primary lp-sheen">{paperUrl ? 'Xem đề mẫu' : 'Mở thư mục đề'} <ArrowUpRight size={18} /></Action></div></div></div>
+        <div className="siaio-paper-console" data-reveal="zoom"><div className="siaio-console-bar"><div><i /><i /><i /></div><span>{code.toUpperCase()} / PAPER_EXPLORER</span><span>● ONLINE</span></div><div className="siaio-console-body"><div className="siaio-console-prompt"><span>01 / CONFIGURE</span><h3>Thiết lập đề mẫu</h3><p>Chọn môn thi và lớp muốn xem.</p></div><div className="siaio-console-controls"><label>Môn thi<span className="siaio-select-wrap"><select aria-label="Chọn môn thi" value={subject} onChange={event => setChosenSubject(event.target.value)} disabled={!subjects.length}>{subjects.length ? subjects.map(item => <option key={item} value={item}>{item}</option>) : <option>Chưa có môn thi</option>}</select><ChevronDown size={18} /></span></label><label>Lớp<span className="siaio-select-wrap"><select aria-label="Chọn lớp xem đề mẫu" value={grade} onChange={event => setGrade(Number(event.target.value))}>{Array.from({ length: maxGrade - minGrade + 1 }, (_, i) => minGrade + i).map(value => <option value={value} key={value}>Lớp {value}</option>)}</select><ChevronDown size={18} /></span></label></div><div className="siaio-paper-result"><div className="siaio-document-icon"><FileText size={30} /></div><div><span>02 / RESULT</span><h4>{subject || 'Môn thi'} · Lớp {grade}</h4><p>{paperUrl ? 'Đề mẫu PDF đã sẵn sàng' : paperFolder ? 'Xem đề tham khảo trong thư mục chung của SCO' : 'Đề mẫu đang được cập nhật'}</p></div><Action url={paperUrl || paperFolder} newTab className="siaio-button siaio-button--primary lp-sheen">{paperUrl ? 'Xem đề mẫu' : 'Mở thư mục đề'} <ArrowUpRight size={18} /></Action></div></div></div>
       </section>
 
       {!!c.resources?.length && <section id="tai-lieu" className="siaio-resources siaio-section"><div className="siaio-resource-heading" data-reveal><span className="siaio-section-code">// TÀI LIỆU CHÍNH THỨC</span><h2>Học liệu và <em>hồ sơ tổ chức.</em></h2><p>Tra cứu thể lệ {code}, thông tin Ban tổ chức và học liệu các môn trong hệ SCO.</p></div><div className="siaio-resource-grid">{c.resources.filter(item => safeUrl(item.url)).map((item, index) => <article key={`${item.title}-${index}`} className="siaio-resource-card" data-reveal style={delay(index * 70)}><span>{item.category}</span><h3>{item.title}</h3><p>{item.body}</p><Action url={item.url} newTab className="siaio-text-link">Xem tài liệu <ArrowUpRight size={17} /></Action></article>)}</div></section>}
