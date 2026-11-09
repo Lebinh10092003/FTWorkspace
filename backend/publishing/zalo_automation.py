@@ -3,6 +3,11 @@ import json
 import logging
 import threading
 import time
+import re
+import urllib.request
+import urllib.parse
+import urllib.error
+import http.cookiejar
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from django.conf import settings
@@ -218,89 +223,159 @@ class ZaloLoginSessionManager:
     def _run_login_worker(self, session_id: str, session_info: Dict[str, Any]):
         session_dir = get_zalo_session_dir(session_id)
         state_file = session_dir / 'storage_state.json'
+        active_file = session_dir / 'active_qr_session.json'
         stop_event: threading.Event = session_info['stop_event']
         qr_event: threading.Event = session_info['qr_event']
 
-        browser = None
+        if is_session_storage_authenticated(session_id):
+            session_info['is_authenticated'] = True
+            qr_event.set()
+            return
+
+        cj = http.cookiejar.CookieJar()
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+        base_headers = {
+            'User-Agent': user_agent,
+            'accept-language': 'vi-VN,vi;q=0.9,en-US;q=0.6,en;q=0.5',
+            'sec-ch-ua': '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'Origin': 'https://id.zalo.me',
+            'Referer': 'https://id.zalo.me/account?continue=https%3A%2F%2Fzalo.me%2Fpc',
+        }
+
         try:
-            from playwright.sync_api import sync_playwright
-            import base64
+            # Bước 1: Trích xuất version JS đăng nhập của Zalo
+            req = urllib.request.Request('https://id.zalo.me/account?continue=https%3A%2F%2Fchat.zalo.me%2F', headers={'User-Agent': user_agent})
+            with opener.open(req, timeout=15) as resp:
+                html = resp.read().decode('utf-8')
+            match = re.search(r'https://stc-zlogin\.zdn\.vn/main-([\d.]+)\.js', html)
+            version = match.group(1) if match else '2606161423'
 
-            with sync_playwright() as p:
-                browser = p.chromium.launch_persistent_context(
-                    user_data_dir=str(session_dir),
-                    headless=True,
-                    args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-                )
-                page = browser.new_page()
-                page.goto('https://chat.zalo.me/', timeout=30000)
-                page.wait_for_timeout(3000)
+            # Bước 2: Gọi logininfo
+            logininfo_data = urllib.parse.urlencode({'continue': 'https://zalo.me/pc', 'v': version}).encode('utf-8')
+            req_info = urllib.request.Request('https://id.zalo.me/account/logininfo', data=logininfo_data, headers=base_headers)
+            with opener.open(req_info, timeout=15) as resp:
+                pass
 
-                # Kiểm tra nếu phiên đã có sẵn đăng nhập
-                if _is_browser_authenticated(page, browser):
-                    browser.storage_state(path=str(state_file))
-                    session_info['is_authenticated'] = True
-                    qr_event.set()
-                    return
+            # Bước 3: Tạo mã QR đăng nhập qua Zalo Web API trực tiếp (không dùng headless browser)
+            gen_data = urllib.parse.urlencode({'continue': 'https://zalo.me/pc', 'v': version}).encode('utf-8')
+            req_gen = urllib.request.Request('https://id.zalo.me/account/authen/qr/generate', data=gen_data, headers=base_headers)
+            with opener.open(req_gen, timeout=15) as resp:
+                gen_res = json.loads(resp.read().decode('utf-8'))
 
-                # Tìm phần tử mã QR trên trang Zalo
-                qr_elem = None
-                selectors = ['.qrcode-img', 'canvas.qrcode', '.qr-container img', '.qr-container', 'div[data-translate-inner="STR_LOGIN_VIA_QR"]']
-                for sel in selectors:
-                    try:
-                        elem = page.query_selector(sel)
-                        if elem and elem.is_visible():
-                            qr_elem = elem
-                            break
-                    except Exception:
-                        pass
-
-                try:
-                    if qr_elem:
-                        screenshot_bytes = qr_elem.screenshot()
-                    else:
-                        screenshot_bytes = page.screenshot()
-                    session_info['qr_data'] = 'data:image/png;base64,' + base64.b64encode(screenshot_bytes).decode('utf-8')
-                except Exception as exc:
-                    session_info['error'] = f'Không thể chụp ảnh mã QR: {exc}'
-                    qr_event.set()
-                    return
-
-                # Báo hiệu mã QR đã sẵn sàng để frontend hiển thị
+            if gen_res.get('error_code') != 0 or not gen_res.get('data'):
+                err_msg = gen_res.get('error_message') or 'Không thể khởi tạo mã QR từ Zalo'
+                session_info['error'] = err_msg
                 qr_event.set()
+                return
 
-                # Duy trì trình duyệt mở tối đa 120 giây để chờ điện thoại quét và phê duyệt
-                poll_deadline = time.time() + 120
-                last_qr_refresh = time.time()
-                while time.time() < poll_deadline and not stop_event.is_set():
+            qr_info = gen_res['data']
+            code = qr_info['code']
+            qr_image = qr_info['image']
+
+            session_info['qr_data'] = qr_image
+            try:
+                active_file.write_text(json.dumps({
+                    'session_id': session_id,
+                    'qr_data': qr_image,
+                    'created_at': time.time(),
+                    'is_authenticated': False,
+                    'status': 'qr_ready',
+                }), encoding='utf-8')
+            except Exception:
+                pass
+
+            qr_event.set()
+
+            # Bước 4: Vòng lặp polling chờ điện thoại quét và xác nhận (tối đa 120s)
+            poll_headers = dict(base_headers)
+            poll_headers['Referer'] = 'https://id.zalo.me/account?continue=https%3A%2F%2Fchat.zalo.me%2F'
+            poll_deadline = time.time() + 120
+            scanned = False
+
+            while time.time() < poll_deadline and not stop_event.is_set():
+                if not scanned:
                     try:
-                        page.wait_for_timeout(2000)
-                        if _is_browser_authenticated(page, browser):
-                            browser.storage_state(path=str(state_file))
-                            session_info['is_authenticated'] = True
-                            logger.info("Zalo login successful for session %s", session_id)
-                            break
-                        # Cập nhật lại ảnh mã QR mỗi 15 giây nếu Zalo tự làm mới mã
-                        if qr_elem and time.time() - last_qr_refresh > 15:
-                            try:
-                                if qr_elem.is_visible():
-                                    screenshot_bytes = qr_elem.screenshot()
-                                    session_info['qr_data'] = 'data:image/png;base64,' + base64.b64encode(screenshot_bytes).decode('utf-8')
-                                    last_qr_refresh = time.time()
-                            except Exception:
+                        scan_payload = urllib.parse.urlencode({'code': code, 'continue': 'https://chat.zalo.me/', 'v': version}).encode('utf-8')
+                        req_scan = urllib.request.Request('https://id.zalo.me/account/authen/qr/waiting-scan', data=scan_payload, headers=poll_headers)
+                        with opener.open(req_scan, timeout=25) as resp:
+                            scan_res = json.loads(resp.read().decode('utf-8'))
+                            err_code = scan_res.get('error_code', -1)
+                            if err_code == 0:
+                                scanned = True
+                            elif err_code == 8:
+                                # Timeout chờ quét, tiếp tục chu kỳ
                                 pass
-                    except Exception:
-                        break
+                            else:
+                                time.sleep(1)
+                    except (urllib.error.URLError, TimeoutError, OSError):
+                        time.sleep(1)
+
+                if scanned:
+                    try:
+                        confirm_payload = urllib.parse.urlencode({
+                            'code': code,
+                            'gToken': '',
+                            'gAction': 'CONFIRM_QR',
+                            'continue': 'https://chat.zalo.me/',
+                            'v': version,
+                        }).encode('utf-8')
+                        req_confirm = urllib.request.Request('https://id.zalo.me/account/authen/qr/waiting-confirm', data=confirm_payload, headers=poll_headers)
+                        with opener.open(req_confirm, timeout=35) as resp:
+                            confirm_res = json.loads(resp.read().decode('utf-8'))
+                            if confirm_res.get('error_code') == 0:
+                                # Người dùng bấm Đồng ý đăng nhập trên điện thoại thành công
+                                check_req = urllib.request.Request('https://id.zalo.me/account/checksession?continue=https%3A%2F%2Fchat.zalo.me%2Findex.html', headers=poll_headers)
+                                with opener.open(check_req, timeout=15) as check_resp:
+                                    pass
+
+                                # Trích xuất toàn bộ cookies xác thực sang định dạng storage_state của Playwright
+                                cookies_list = []
+                                for c in cj:
+                                    c_domain = c.domain if c.domain.startswith('.') else f".{c.domain}"
+                                    cookies_list.append({
+                                        'name': c.name,
+                                        'value': c.value,
+                                        'domain': c_domain,
+                                        'path': c.path,
+                                        'expires': c.expires if c.expires else int(time.time() + 86400 * 30),
+                                        'httpOnly': True if 'HttpOnly' in getattr(c, '_rest', {}) else False,
+                                        'secure': bool(c.secure),
+                                        'sameSite': 'Lax',
+                                    })
+                                storage_data = {'cookies': cookies_list, 'origins': []}
+                                state_file.write_text(json.dumps(storage_data), encoding='utf-8')
+                                session_info['is_authenticated'] = True
+
+                                try:
+                                    active_file.write_text(json.dumps({
+                                        'session_id': session_id,
+                                        'is_authenticated': True,
+                                        'status': 'authenticated',
+                                        'updated_at': time.time(),
+                                    }), encoding='utf-8')
+                                except Exception:
+                                    pass
+
+                                logger.info("Zalo direct API login successful for session %s", session_id)
+                                break
+                            elif confirm_res.get('error_code') == -13:
+                                # Người dùng từ chối đăng nhập trên điện thoại
+                                session_info['error'] = 'Người dùng đã từ chối đăng nhập trên điện thoại.'
+                                break
+                            else:
+                                time.sleep(1)
+                    except (urllib.error.URLError, TimeoutError, OSError):
+                        time.sleep(1)
+
+                time.sleep(0.5)
+
         except Exception as exc:
-            logger.exception("Lỗi trong worker quét QR Zalo: %s", exc)
+            logger.exception("Lỗi trong worker QR Zalo API: %s", exc)
             session_info['error'] = str(exc)
             qr_event.set()
-        finally:
-            if browser:
-                try:
-                    browser.close()
-                except Exception:
-                    pass
 
 _login_session_manager = ZaloLoginSessionManager()
 
@@ -312,15 +387,22 @@ def get_zalo_session_status(session_id: str = 'default') -> Dict[str, Any]:
     is_authenticated = is_session_authenticated(session_id)
     has_browser = is_playwright_available()
 
-    if not has_browser:
-        status = 'missing_browser'
-        msg = 'Trình duyệt Chromium/Playwright chưa được cài đặt trên VPS.'
-    elif not is_authenticated:
-        status = 'unauthenticated'
-        msg = 'Chưa đăng nhập tài khoản Zalo cá nhân. Cần quét mã QR.'
-    else:
+    if not is_authenticated:
+        active_file = session_dir / 'active_qr_session.json'
+        if active_file.exists():
+            try:
+                active_data = json.loads(active_file.read_text(encoding='utf-8'))
+                if active_data.get('is_authenticated') and is_session_storage_authenticated(session_id):
+                    is_authenticated = True
+            except Exception:
+                pass
+
+    if is_authenticated:
         status = 'ready'
         msg = 'Phiên Zalo cá nhân đã sẵn sàng tự động hóa.'
+    else:
+        status = 'unauthenticated'
+        msg = 'Chưa đăng nhập tài khoản Zalo cá nhân. Cần quét mã QR.'
 
     return {
         'is_authenticated': is_authenticated,
@@ -332,12 +414,6 @@ def get_zalo_session_status(session_id: str = 'default') -> Dict[str, Any]:
     }
 
 def generate_zalo_qr_login(session_id: str = 'default', force_refresh: bool = False) -> Dict[str, Any]:
-    if not is_playwright_available():
-        return {
-            'status': 'missing_browser',
-            'qr_data': None,
-            'message': 'Playwright chưa được cài đặt trên VPS. Cần cài đặt để sinh mã QR.',
-        }
     return _login_session_manager.get_or_start_qr_session(session_id=session_id, force_refresh=force_refresh)
 
 def send_zalo_personal_group_message(
@@ -363,7 +439,16 @@ def send_zalo_personal_group_message(
             browser = p.chromium.launch_persistent_context(
                 user_data_dir=str(session_dir),
                 headless=True,
-                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-blink-features=AutomationControlled',
+                ],
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+                viewport={'width': 1280, 'height': 800},
+                locale='vi-VN',
+                timezone_id='Asia/Ho_Chi_Minh',
             )
             try:
                 page = browser.new_page()

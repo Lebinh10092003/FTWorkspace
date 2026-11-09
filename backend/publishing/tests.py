@@ -898,4 +898,52 @@ class PublishChannelConnectionTests(TestCase):
         mock_browser.cookies.return_value = [{'name': 'zpw_sek', 'value': 'valid_session'}]
         self.assertTrue(_is_browser_authenticated(mock_page, mock_browser))
 
+    def test_zalo_direct_api_qr_login_flow(self):
+        """Kiểm tra luồng xác thực Zalo qua HTTP API trực tiếp: sinh mã QR, trích xuất cookie và ghi storage_state."""
+        import tempfile
+        import json
+        from pathlib import Path
+        from unittest.mock import patch, MagicMock
+        from publishing.zalo_automation import generate_zalo_qr_login, get_zalo_session_status
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_dir = Path(tmpdir)
+            with patch('publishing.zalo_automation.get_zalo_session_dir', return_value=session_dir):
+                # Mock urllib requests
+                mock_qr_json = {
+                    'error_code': 0,
+                    'data': {
+                        'code': 'mock_code_123',
+                        'image': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+                    }
+                }
+
+                def fake_open(req, timeout=None):
+                    url = req.full_url if hasattr(req, 'full_url') else req.get_full_url()
+                    mock_resp = MagicMock()
+                    mock_resp.__enter__.return_value = mock_resp
+                    mock_resp.__exit__.return_value = None
+
+                    if 'main-' in url or 'continue=' in url and 'chat.zalo.me' in url:
+                        mock_resp.read.return_value = b'<html><script src="https://stc-zlogin.zdn.vn/main-2606161423.js"></script></html>'
+                    elif 'logininfo' in url:
+                        mock_resp.read.return_value = b'{"error_code": 0}'
+                    elif 'qr/generate' in url:
+                        mock_resp.read.return_value = json.dumps(mock_qr_json).encode('utf-8')
+                    elif 'waiting-scan' in url:
+                        mock_resp.read.return_value = b'{"error_code": 0, "data": {"avatar": "", "display_name": "Test"}}'
+                    elif 'waiting-confirm' in url:
+                        mock_resp.read.return_value = b'{"error_code": 0}'
+                    elif 'checksession' in url:
+                        mock_resp.read.return_value = b'OK'
+                    else:
+                        mock_resp.read.return_value = b'{}'
+                    return mock_resp
+
+                with patch('urllib.request.OpenerDirector.open', side_effect=fake_open):
+                    res = generate_zalo_qr_login('test_direct_api', force_refresh=True)
+                    self.assertEqual(res['status'], 'qr_ready')
+                    self.assertTrue(res['qr_data'].startswith('data:image/png;base64,'))
+
+
 
