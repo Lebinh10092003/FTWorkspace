@@ -945,5 +945,13 @@ class PublishChannelConnectionTests(TestCase):
                     self.assertEqual(res['status'], 'qr_ready')
                     self.assertTrue(res['qr_data'].startswith('data:image/png;base64,'))
 
+                    # Chờ worker thread xử lý xong các bước xác thực
+                    import time
+                    for _ in range(50):
+                        if (session_dir / 'active_qr_session.json').exists():
+                            break
+                        time.sleep(0.05)
+                    self.assertTrue((session_dir / 'active_qr_session.json').exists())
+
 
 

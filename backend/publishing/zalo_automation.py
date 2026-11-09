@@ -334,14 +334,14 @@ class ZaloLoginSessionManager:
                                 # Trích xuất toàn bộ cookies xác thực sang định dạng storage_state của Playwright
                                 cookies_list = []
                                 for c in cj:
-                                    c_domain = c.domain if c.domain.startswith('.') else f".{c.domain}"
+                                    is_http_only = any(k.lower() == 'httponly' for k in getattr(c, '_rest', {}))
                                     cookies_list.append({
                                         'name': c.name,
                                         'value': c.value,
-                                        'domain': c_domain,
+                                        'domain': c.domain,
                                         'path': c.path,
                                         'expires': c.expires if c.expires else int(time.time() + 86400 * 30),
-                                        'httpOnly': True if 'HttpOnly' in getattr(c, '_rest', {}) else False,
+                                        'httpOnly': is_http_only,
                                         'secure': bool(c.secure),
                                         'sameSite': 'Lax',
                                     })
@@ -372,6 +372,20 @@ class ZaloLoginSessionManager:
 
                 time.sleep(0.5)
 
+            if not session_info.get('is_authenticated') and not session_info.get('error'):
+                if time.time() >= poll_deadline:
+                    session_info['error'] = 'Mã QR đã hết hạn. Vui lòng làm mới mã.'
+                    try:
+                        active_file.write_text(json.dumps({
+                            'session_id': session_id,
+                            'is_authenticated': False,
+                            'status': 'expired',
+                            'error': 'Mã QR đã hết hạn.',
+                            'updated_at': time.time(),
+                        }), encoding='utf-8')
+                    except Exception:
+                        pass
+
         except Exception as exc:
             logger.exception("Lỗi trong worker QR Zalo API: %s", exc)
             session_info['error'] = str(exc)
@@ -394,6 +408,15 @@ def get_zalo_session_status(session_id: str = 'default') -> Dict[str, Any]:
                 active_data = json.loads(active_file.read_text(encoding='utf-8'))
                 if active_data.get('is_authenticated') and is_session_storage_authenticated(session_id):
                     is_authenticated = True
+                elif active_data.get('status') == 'expired':
+                    return {
+                        'is_authenticated': False,
+                        'browser_available': has_browser,
+                        'session_dir': str(session_dir),
+                        'session_id': session_id,
+                        'status': 'expired',
+                        'message': 'Mã QR đã hết hạn. Vui lòng làm mới mã.',
+                    }
             except Exception:
                 pass
 
