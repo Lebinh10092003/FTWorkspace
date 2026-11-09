@@ -15,4 +15,6 @@ urlpatterns = [
     path("variants/<int:pk>/", views.post_variant_detail, name="publishing_variant_detail"),
     path("variants/<int:pk>/mark-published/", views.post_variant_mark_published, name="publishing_variant_mark_published"),
     path("jobs/<int:pk>/", views.publish_job_status, name="publishing_job_status"),
+    path('zalo-automation/status/', views.zalo_automation_status, name='publishing_zalo_status'),
+    path('zalo-automation/qr/', views.zalo_automation_qr, name='publishing_zalo_qr'),
 ]

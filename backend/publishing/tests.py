@@ -747,3 +747,60 @@ class PublishChannelConnectionTests(TestCase):
         self.assertIn("message", resp_fail.data)
         self.assertEqual(resp_fail.data["error"], resp_fail.data["message"])
 
+    @patch('publishing.zalo_automation.get_zalo_session_status')
+    def test_zalo_personal_group_connection(self, mock_status):
+        mock_status.return_value = {
+            'is_authenticated': True,
+            'browser_available': True,
+            'session_dir': '/tmp/test',
+            'status': 'ready',
+            'message': 'OK',
+        }
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name='Nhóm Zalo Nội Bộ',
+            kind=PublishChannel.KIND_ZALO_PERSONAL_GROUP,
+        )
+        ch.set_config({'group_name': 'Nội bộ Fermat'})
+        ch.save()
+
+        resp = self.client.post(f'/api/publishing/channels/{ch.id}/test/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertTrue(resp.data['success'])
+
+    def test_zalo_personal_group_dispatch_mock(self):
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name='Nhóm Zalo Mock',
+            kind=PublishChannel.KIND_ZALO_PERSONAL_GROUP,
+        )
+        ch.set_config({'group_name': 'Test Group'})
+        ch.save()
+
+        plan = PostPlan.objects.create(
+            title='Bài Test Zalo',
+            base_content='Nội dung test',
+            creator=self.user,
+            status=PostPlan.STATUS_APPROVED,
+        )
+        variant = PostVariant.objects.create(
+            plan=plan,
+            channel=ch,
+            title='Bài Test Zalo',
+            content='Nội dung test',
+            status=PostVariant.STATUS_APPROVED,
+        )
+        from publishing.adapters import _dispatch_zalo_personal_group
+        res = _dispatch_zalo_personal_group(variant, ch.get_config(), variant.title, variant.content, '', mock=True)
+        self.assertEqual(res['status'], PostVariant.STATUS_PUBLISHED)
+        self.assertIn('mock_zalo_', res['external_post_id'])
+
+    def test_zalo_automation_status_and_qr_api(self):
+        resp_status = self.client.get('/api/publishing/zalo-automation/status/')
+        self.assertEqual(resp_status.status_code, status.HTTP_200_OK)
+        self.assertIn('is_authenticated', resp_status.data)
+
+        resp_qr = self.client.get('/api/publishing/zalo-automation/qr/')
+        self.assertEqual(resp_qr.status_code, status.HTTP_200_OK)
+        self.assertIn('status', resp_qr.data)
+

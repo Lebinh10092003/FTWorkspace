@@ -5,7 +5,8 @@ export type ChannelKind =
   | 'manual_facebook_group'
   | 'manual_zalo_group'
   | 'manual_other'
-  | 'zalo_oa';
+  | 'zalo_oa'
+  | 'zalo_personal_group';
 
 export type PlanStatus =
   | 'draft'
@@ -133,7 +134,15 @@ export const CHANNEL_KIND_MAP: Record<ChannelKind, ChannelKindInfo> = {
     category: 'api',
     color: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-200 dark:border-cyan-900',
   },
+  zalo_personal_group: {
+    label: 'Nhóm Zalo cá nhân (Tự động VPS)',
+    description: 'Tự động hoá 100% qua VPS headless browser với tài khoản Zalo cá nhân',
+    category: 'api',
+    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900',
+  },
 };
+
+export const CHANNEL_KIND_META = CHANNEL_KIND_MAP;
 
 export const PLAN_STATUS_MAP: Record<PlanStatus, { label: string; color: string }> = {
   draft: {

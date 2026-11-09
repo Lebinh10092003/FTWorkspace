@@ -27,6 +27,7 @@ class PublishChannel(models.Model):
     KIND_FACEBOOK_PAGE = "facebook_page"
     KIND_MANUAL_FB_GROUP = "manual_facebook_group"
     KIND_MANUAL_ZALO_GROUP = "manual_zalo_group"
+    KIND_ZALO_PERSONAL_GROUP = "zalo_personal_group"
     KIND_MANUAL_OTHER = "manual_other"
     KIND_ZALO_OA = "zalo_oa"
 
@@ -36,6 +37,7 @@ class PublishChannel(models.Model):
         (KIND_FACEBOOK_PAGE, "Fanpage Facebook (API chính thức)"),
         (KIND_MANUAL_FB_GROUP, "Nhóm Facebook (Nhắc thủ công)"),
         (KIND_MANUAL_ZALO_GROUP, "Nhóm Zalo cá nhân (Nhắc thủ công)"),
+        (KIND_ZALO_PERSONAL_GROUP, "Nhóm Zalo cá nhân (Tự động VPS)"),
         (KIND_MANUAL_OTHER, "Kênh thủ công khác"),
         (KIND_ZALO_OA, "Zalo Official Account (Adapter mở rộng)"),
     ]
