@@ -29,26 +29,111 @@ def is_playwright_available() -> bool:
     except ImportError:
         return False
 
+def is_session_storage_authenticated(session_id: str = 'default') -> bool:
+    session_dir = get_zalo_session_dir(session_id)
+    state_file = session_dir / 'storage_state.json'
+    if not state_file.exists():
+        return False
+    try:
+        data = json.loads(state_file.read_text(encoding='utf-8'))
+        cookies = data.get('cookies', [])
+        for c in cookies:
+            name = c.get('name', '')
+            if name in ('zpw_sek', 'zpsid'):
+                return True
+        # File tồn tại nhưng không có cookie xác thực hợp lệ (phiên giả hoặc hết hạn)
+        try:
+            state_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return False
+    except Exception:
+        return False
+
+def _is_browser_authenticated(page: Any, browser: Any) -> bool:
+    """Kiểm tra điều kiện đăng nhập thành công của Zalo Web:
+    1. Selector giao diện sau đăng nhập: #main-tab, .nav__tabs, div[data-id="div_Tab_All"], .chat-list
+    2. ĐỒNG THỜI selector mã QR (.qrcode-img, canvas.qrcode, .qr-container) không còn hiển thị.
+    3. ĐỒNG THỜI trong cookies của browser context hoặc storage_state có cookie xác thực 'zpw_sek' hoặc 'zpsid'.
+    """
+    try:
+        # 1. Selector giao diện sau đăng nhập hiển thị
+        logged_in_selectors = ['#main-tab', '.nav__tabs', 'div[data-id="div_Tab_All"]', '.chat-list']
+        has_logged_in_ui = False
+        for sel in logged_in_selectors:
+            try:
+                el = page.query_selector(sel)
+                if el and el.is_visible():
+                    has_logged_in_ui = True
+                    break
+            except Exception:
+                pass
+        if not has_logged_in_ui:
+            return False
+
+        # 2. Selector mã QR không còn hiển thị
+        qr_selectors = ['.qrcode-img', 'canvas.qrcode', '.qr-container']
+        for sel in qr_selectors:
+            try:
+                el = page.query_selector(sel)
+                if el and el.is_visible():
+                    return False
+            except Exception:
+                pass
+
+        # 3. Cookie xác thực 'zpw_sek' hoặc 'zpsid' trong browser context hoặc storage_state
+        has_auth_cookie = False
+        try:
+            cookies = browser.cookies() if hasattr(browser, 'cookies') else []
+            if any(c.get('name') in ('zpw_sek', 'zpsid') for c in cookies):
+                has_auth_cookie = True
+        except Exception:
+            pass
+
+        if not has_auth_cookie:
+            try:
+                if hasattr(page, 'context') and hasattr(page.context, 'cookies'):
+                    ctx_cookies = page.context.cookies()
+                    if any(c.get('name') in ('zpw_sek', 'zpsid') for c in ctx_cookies):
+                        has_auth_cookie = True
+            except Exception:
+                pass
+
+        if not has_auth_cookie:
+            try:
+                state = browser.storage_state() if hasattr(browser, 'storage_state') else {}
+                state_cookies = state.get('cookies', []) if isinstance(state, dict) else []
+                if any(c.get('name') in ('zpw_sek', 'zpsid') for c in state_cookies):
+                    has_auth_cookie = True
+            except Exception:
+                pass
+
+        return has_auth_cookie
+    except Exception:
+        return False
+
 class ZaloLoginSessionManager:
     """Quản lý phiên đăng nhập QR Zalo Web qua Playwright headless.
     Giữ kết nối trình duyệt mở để nhận tín hiệu xác thực từ điện thoại quét QR.
     """
     def __init__(self):
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._sessions: Dict[str, Dict[str, Any]] = {}
 
     def is_session_authenticated(self, session_id: str) -> bool:
         with self._lock:
             sess = self._sessions.get(session_id)
             if sess and sess.get('is_authenticated'):
-                return True
-        return False
+                if is_session_storage_authenticated(session_id):
+                    return True
+                sess['is_authenticated'] = False
+        return is_session_storage_authenticated(session_id)
 
     def get_or_start_qr_session(self, session_id: str, force_refresh: bool = False) -> Dict[str, Any]:
         with self._lock:
             existing = self._sessions.get(session_id)
             if existing and not force_refresh:
-                if existing.get('is_authenticated'):
+                if self.is_session_authenticated(session_id):
                     return {
                         'status': 'already_authenticated',
                         'qr_data': None,
@@ -69,6 +154,14 @@ class ZaloLoginSessionManager:
             if existing and existing.get('stop_event'):
                 existing['stop_event'].set()
 
+            if not force_refresh and self.is_session_authenticated(session_id):
+                return {
+                    'status': 'already_authenticated',
+                    'qr_data': None,
+                    'session_id': session_id,
+                    'message': 'Tài khoản Zalo đã đăng nhập sẵn trong phiên này.',
+                }
+
             session_info = self._start_new_session_locked(session_id)
 
         # Chờ thread nền lấy mã QR (tối đa 25s)
@@ -77,7 +170,7 @@ class ZaloLoginSessionManager:
             err = session_info.get('error') or 'Quá thời gian chờ tải mã QR từ Zalo Web. Vui lòng bấm Thử lại.'
             return {'status': 'error', 'qr_data': None, 'session_id': session_id, 'message': err}
 
-        if session_info.get('is_authenticated'):
+        if self.is_session_authenticated(session_id):
             return {
                 'status': 'already_authenticated',
                 'qr_data': None,
@@ -144,8 +237,7 @@ class ZaloLoginSessionManager:
                 page.wait_for_timeout(3000)
 
                 # Kiểm tra nếu phiên đã có sẵn đăng nhập
-                content = page.content()
-                if 'chat.zalo.me' in page.url and any(token in content for token in ['nav__tabs', 'chat-list', 'chat-message']):
+                if _is_browser_authenticated(page, browser):
                     browser.storage_state(path=str(state_file))
                     session_info['is_authenticated'] = True
                     qr_event.set()
@@ -179,16 +271,24 @@ class ZaloLoginSessionManager:
 
                 # Duy trì trình duyệt mở tối đa 120 giây để chờ điện thoại quét và phê duyệt
                 poll_deadline = time.time() + 120
+                last_qr_refresh = time.time()
                 while time.time() < poll_deadline and not stop_event.is_set():
                     try:
                         page.wait_for_timeout(2000)
-                        current_url = page.url
-                        page_content = page.content()
-                        if any(token in page_content for token in ['nav__tabs', 'chat-list', 'chat-message']) or ('id.zalo.me' not in current_url and 'chat.zalo.me' in current_url and 'login' not in current_url):
+                        if _is_browser_authenticated(page, browser):
                             browser.storage_state(path=str(state_file))
                             session_info['is_authenticated'] = True
                             logger.info("Zalo login successful for session %s", session_id)
                             break
+                        # Cập nhật lại ảnh mã QR mỗi 15 giây nếu Zalo tự làm mới mã
+                        if qr_elem and time.time() - last_qr_refresh > 15:
+                            try:
+                                if qr_elem.is_visible():
+                                    screenshot_bytes = qr_elem.screenshot()
+                                    session_info['qr_data'] = 'data:image/png;base64,' + base64.b64encode(screenshot_bytes).decode('utf-8')
+                                    last_qr_refresh = time.time()
+                            except Exception:
+                                pass
                     except Exception:
                         break
         except Exception as exc:
@@ -205,22 +305,7 @@ class ZaloLoginSessionManager:
 _login_session_manager = ZaloLoginSessionManager()
 
 def is_session_authenticated(session_id: str = 'default') -> bool:
-    if _login_session_manager.is_session_authenticated(session_id):
-        return True
-    session_dir = get_zalo_session_dir(session_id)
-    state_file = session_dir / 'storage_state.json'
-    if not state_file.exists():
-        return False
-    try:
-        data = json.loads(state_file.read_text(encoding='utf-8'))
-        cookies = data.get('cookies', [])
-        for c in cookies:
-            name = c.get('name', '')
-            if name in ('zpw_sek', 'zpsid', 'o_cookie', 'z_auth'):
-                return True
-        return len(cookies) > 5
-    except Exception:
-        return False
+    return _login_session_manager.is_session_authenticated(session_id)
 
 def get_zalo_session_status(session_id: str = 'default') -> Dict[str, Any]:
     session_dir = get_zalo_session_dir(session_id)
