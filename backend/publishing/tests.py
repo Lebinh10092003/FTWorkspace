@@ -898,4 +898,62 @@ class PublishChannelConnectionTests(TestCase):
         mock_browser.cookies.return_value = [{'name': 'zpw_sek', 'value': 'valid_session'}]
         self.assertTrue(_is_browser_authenticated(mock_page, mock_browser))
 
+    def test_zalo_direct_api_qr_login_flow(self):
+        """Kiểm tra luồng xác thực Zalo qua HTTP API trực tiếp: sinh mã QR, trích xuất cookie và ghi storage_state."""
+        import tempfile
+        import json
+        from pathlib import Path
+        from unittest.mock import patch, MagicMock
+        from publishing.zalo_automation import generate_zalo_qr_login, get_zalo_session_status, _login_session_manager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_dir = Path(tmpdir)
+            with patch('publishing.zalo_automation.get_zalo_session_dir', return_value=session_dir):
+                # Mock urllib requests
+                mock_qr_json = {
+                    'error_code': 0,
+                    'data': {
+                        'code': 'mock_code_123',
+                        'image': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+                    }
+                }
+
+                def fake_open(req, timeout=None):
+                    url = req.full_url if hasattr(req, 'full_url') else req.get_full_url()
+                    mock_resp = MagicMock()
+                    mock_resp.__enter__.return_value = mock_resp
+                    mock_resp.__exit__.return_value = None
+
+                    if 'checksession' in url:
+                        mock_resp.read.return_value = b'OK'
+                    elif 'waiting-confirm' in url:
+                        mock_resp.read.return_value = b'{"error_code": 0}'
+                    elif 'waiting-scan' in url:
+                        mock_resp.read.return_value = b'{"error_code": 0, "data": {"avatar": "", "display_name": "Test"}}'
+                    elif 'qr/generate' in url:
+                        mock_resp.read.return_value = json.dumps(mock_qr_json).encode('utf-8')
+                    elif 'logininfo' in url:
+                        mock_resp.read.return_value = b'{"error_code": 0}'
+                    else:
+                        mock_resp.read.return_value = b'<html><script src="https://stc-zlogin.zdn.vn/main-2606161423.js"></script></html>'
+                    return mock_resp
+
+                with patch('urllib.request.OpenerDirector.open', side_effect=fake_open):
+                    res = generate_zalo_qr_login('test_direct_api', force_refresh=True)
+                    self.assertEqual(res['status'], 'qr_ready')
+                    self.assertTrue(res['qr_data'].startswith('data:image/png;base64,'))
+
+                    # Chờ worker thread xử lý xong các bước xác thực và ghi storage_state
+                    import time
+                    for _ in range(50):
+                        if (session_dir / 'storage_state.json').exists():
+                            break
+                        time.sleep(0.05)
+                    sess_info = _login_session_manager._sessions.get('test_direct_api', {})
+                    err = sess_info.get('error')
+                    self.assertIsNone(err, f"Worker failed with error: {err}")
+                    self.assertTrue((session_dir / 'storage_state.json').exists())
+                    self.assertTrue((session_dir / 'active_qr_session.json').exists())
+
+
 

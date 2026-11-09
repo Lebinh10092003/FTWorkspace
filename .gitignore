@@ -18,6 +18,7 @@ staticfiles/
 # Runtime data
 uploads/
 media/
+backend/storage/
 
 # Environment files
 .env
