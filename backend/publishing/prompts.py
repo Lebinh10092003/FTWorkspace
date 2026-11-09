@@ -44,6 +44,12 @@ def build_variant_generation_prompt(plan: PostPlan, channels: List[PublishChanne
                 "NHÓM ZALO CÁ NHÂN / CÔNG VIỆC: Định dạng tin nhắn gửi Zalo cực kỳ ngắn gọn, súc tích, đi thẳng vào "
                 "trọng tâm (thời gian, địa điểm, hành động cụ thể), dễ đọc lướt trên màn hình điện thoại di động."
             )
+        elif kind == PublishChannel.KIND_EMAIL_NEWSLETTER:
+            style_desc = (
+                "EMAIL NEWSLETTER / BẢN TIN EMAIL: Tiêu đề cuốn hút như email chuyên nghiệp, có lời chào đầu thư "
+                "(Kính gửi Quý đối tác / Quý đồng nghiệp), cấu trúc gồm lời mở đầu, các ý chính nổi bật bằng gạch đầu dòng, "
+                "nút/liên kết hành động (CTA), và lời kết kèm chữ ký trân trọng. Sử dụng định dạng văn bản trang nhã."
+            )
         else:
             style_desc = "KÊNH TRUYỀN THÔNG: Nội dung súc tích, truyền tải đầy đủ các thông tin cốt lõi."
 

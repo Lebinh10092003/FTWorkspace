@@ -956,4 +956,152 @@ class PublishChannelConnectionTests(TestCase):
                     self.assertTrue((session_dir / 'active_qr_session.json').exists())
 
 
+class EmailNewsletterChannelTests(TestCase):
+    def setUp(self):
+        self.user = UserProfile.objects.create(
+            username="newsletter_author",
+            email="author@fermat.vn",
+            name="Newsletter Author",
+            role="ADMIN",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_email_newsletter_test_connection_smtp_missing_sender(self):
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name="Newsletter Missing From",
+            kind=PublishChannel.KIND_EMAIL_NEWSLETTER,
+        )
+        ch.set_config({"mode": "smtp", "from_email": ""})
+        ch.save()
+
+        res = test_channel_connection(ch)
+        self.assertFalse(res["success"])
+        self.assertIn("Vui lòng nhập Email người gửi", res["message"])
+
+    def test_email_newsletter_test_connection_mock_mode(self):
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name="Newsletter Mock",
+            kind=PublishChannel.KIND_EMAIL_NEWSLETTER,
+        )
+        ch.set_config({
+            "mode": "smtp",
+            "from_email": "newsletter@fermat.vn",
+            "smtp_host": "smtp.gmail.com",
+            "smtp_port": 587,
+        })
+        ch.save()
+
+        with patch.dict("os.environ", {"MOCK_EXTERNAL_SERVICES": "true"}):
+            res = test_channel_connection(ch)
+            self.assertTrue(res["success"])
+            self.assertIn("[Mock Mode]", res["message"])
+
+    @patch("smtplib.SMTP")
+    def test_email_newsletter_test_connection_smtp_success(self, mock_smtp_cls):
+        mock_server = MagicMock()
+        mock_smtp_cls.return_value = mock_server
+
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name="Newsletter SMTP Live",
+            kind=PublishChannel.KIND_EMAIL_NEWSLETTER,
+        )
+        ch.set_config({
+            "mode": "smtp",
+            "from_email": "newsletter@fermat.vn",
+            "smtp_host": "smtp.gmail.com",
+            "smtp_port": 587,
+            "smtp_password": "app_pwd_secret",
+        })
+        ch.save()
+
+        res = test_channel_connection(ch)
+        self.assertTrue(res["success"])
+        mock_smtp_cls.assert_called_once_with("smtp.gmail.com", 587, timeout=10)
+        mock_server.starttls.assert_called_once()
+        mock_server.login.assert_called_once_with("newsletter@fermat.vn", "app_pwd_secret")
+        mock_server.quit.assert_called_once()
+
+    def test_email_newsletter_dispatch_mock(self):
+        plan = PostPlan.objects.create(
+            creator=self.user,
+            title="Bản tin tuần 45",
+            base_content="Nội dung tổng kết tuần...",
+            status=PostPlan.STATUS_APPROVED,
+        )
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name="Bản tin Fermat",
+            kind=PublishChannel.KIND_EMAIL_NEWSLETTER,
+        )
+        ch.set_config({
+            "mode": "smtp",
+            "from_email": "newsletter@fermat.vn",
+            "recipients": ["client1@gmail.com", "client2@gmail.com"],
+        })
+        ch.save()
+
+        variant = PostVariant.objects.create(
+            plan=plan,
+            channel=ch,
+            title="Chào mừng Bản tin #45",
+            content="Nội dung chi tiết newsletter...",
+            status=PostVariant.STATUS_APPROVED,
+        )
+
+        with patch.dict("os.environ", {"MOCK_EXTERNAL_SERVICES": "true"}):
+            res = dispatch_variant(variant)
+            self.assertEqual(res["status"], PostVariant.STATUS_PUBLISHED)
+            self.assertIn("mock_email_", res["external_post_id"])
+            self.assertIn("[Mock Mode]", res["message"])
+
+    @patch("smtplib.SMTP")
+    def test_email_newsletter_dispatch_smtp_success(self, mock_smtp_cls):
+        mock_server = MagicMock()
+        mock_smtp_cls.return_value = mock_server
+
+        plan = PostPlan.objects.create(
+            creator=self.user,
+            title="Bản tin công nghệ",
+            base_content="Ra mắt tính năng mới",
+            status=PostPlan.STATUS_APPROVED,
+        )
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name="Bản tin SMTP Real",
+            kind=PublishChannel.KIND_EMAIL_NEWSLETTER,
+        )
+        ch.set_config({
+            "mode": "smtp",
+            "from_name": "FermatTech HQ",
+            "from_email": "newsletter@fermat.vn",
+            "smtp_host": "smtp.company.com",
+            "smtp_port": 587,
+            "smtp_password": "my_secret_pass",
+            "recipients": "user1@example.com, user2@example.com",
+        })
+        ch.save()
+
+        variant = PostVariant.objects.create(
+            plan=plan,
+            channel=ch,
+            title="Cập nhật hệ thống v2",
+            content="Chi tiết nội dung cập nhật",
+            status=PostVariant.STATUS_APPROVED,
+        )
+
+        res = dispatch_variant(variant)
+        self.assertEqual(res["status"], PostVariant.STATUS_PUBLISHED)
+        mock_smtp_cls.assert_called_once_with("smtp.company.com", 587, timeout=15)
+        mock_server.sendmail.assert_called_once()
+        args, kwargs = mock_server.sendmail.call_args
+        self.assertEqual(args[0], "newsletter@fermat.vn")
+        self.assertEqual(args[1], ["user1@example.com", "user2@example.com"])
+        self.assertIn("Subject: Cập nhật hệ thống v2", args[2])
+
+
+
 

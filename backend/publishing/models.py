@@ -30,6 +30,7 @@ class PublishChannel(models.Model):
     KIND_ZALO_PERSONAL_GROUP = "zalo_personal_group"
     KIND_MANUAL_OTHER = "manual_other"
     KIND_ZALO_OA = "zalo_oa"
+    KIND_EMAIL_NEWSLETTER = "email_newsletter"
 
     KIND_CHOICES = [
         (KIND_WEB_WEBHOOK, "Web (Webhook JSON)"),
@@ -40,6 +41,7 @@ class PublishChannel(models.Model):
         (KIND_ZALO_PERSONAL_GROUP, "Nhóm Zalo cá nhân (Tự động VPS)"),
         (KIND_MANUAL_OTHER, "Kênh thủ công khác"),
         (KIND_ZALO_OA, "Zalo Official Account (Adapter mở rộng)"),
+        (KIND_EMAIL_NEWSLETTER, "Email Newsletter (Bản tin Email / Gmail)"),
     ]
 
     owner = models.ForeignKey(

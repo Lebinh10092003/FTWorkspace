@@ -82,5 +82,7 @@ def mask_config_for_display(config: Dict[str, Any], kind: str) -> Dict[str, Any]
         masked["app_password"] = mask_secret(masked["app_password"])
     if "password" in masked:
         masked["password"] = mask_secret(masked["password"])
+    if "smtp_password" in masked:
+        masked["smtp_password"] = mask_secret(masked["smtp_password"])
 
     return masked
