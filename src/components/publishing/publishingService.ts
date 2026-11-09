@@ -173,6 +173,29 @@ export const publishingService = {
     return data?.variant || data;
   },
 
+  // Zalo Automation VPS API
+  async getZaloAutomationStatus(idToken: string, channelId?: number): Promise<{
+    status: string;
+    is_authenticated: boolean;
+    browser_available: boolean;
+    message: string;
+  }> {
+    const qs = channelId ? `?channel_id=${channelId}` : '';
+    return await request<any>(`${API_BASE}/zalo-automation/status/${qs}`, idToken);
+  },
+
+  async getZaloAutomationQr(idToken: string, channelId?: number, refresh: boolean = false): Promise<{
+    status: string;
+    qr_data?: string | null;
+    message: string;
+  }> {
+    const params = new URLSearchParams();
+    if (channelId) params.set('channel_id', String(channelId));
+    if (refresh) params.set('refresh', 'true');
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return await request<any>(`${API_BASE}/zalo-automation/qr/${qs}`, idToken);
+  },
+
   // Fetch NewsPosts for quick link/selection
   async getNewsPosts(idToken: string): Promise<Array<{ id: number; title: string; post_type: string; excerpt?: string }>> {
     try {

@@ -14,6 +14,8 @@ import {
   ShieldCheck,
   X,
   HelpCircle,
+  QrCode,
+  RefreshCw,
 } from 'lucide-react';
 import type { PublishChannel, ChannelKind } from './publishingTypes';
 import { CHANNEL_KIND_MAP } from './publishingTypes';
@@ -57,6 +59,69 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
   const [cfgWpAppPassword, setCfgWpAppPassword] = useState('');
   const [cfgGroupUrl, setCfgGroupUrl] = useState('');
   const [cfgNote, setCfgNote] = useState('');
+
+  // Zalo QR Modal state
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrChannel, setQrChannel] = useState<PublishChannel | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrRefreshing, setQrRefreshing] = useState(false);
+  const [qrData, setQrData] = useState<string | null>(null);
+  const [qrMessage, setQrMessage] = useState('');
+  const [qrStatus, setQrStatus] = useState<'idle' | 'loading' | 'ready' | 'authenticated' | 'error'>('idle');
+
+  const openZaloQrModal = async (channel: PublishChannel, refresh: boolean = false) => {
+    setQrChannel(channel);
+    setQrModalOpen(true);
+    if (refresh) {
+      setQrRefreshing(true);
+    } else {
+      setQrLoading(true);
+      setQrData(null);
+    }
+    setQrStatus('loading');
+    setQrMessage('Đang khởi tạo trình duyệt VPS và lấy mã QR Zalo...');
+
+    try {
+      const res = await publishingService.getZaloAutomationQr(idToken, channel.id, refresh);
+      if (res.status === 'already_authenticated') {
+        setQrStatus('authenticated');
+        setQrMessage('Tài khoản Zalo đã được kết nối và xác thực trên VPS.');
+      } else if (res.qr_data) {
+        setQrData(res.qr_data);
+        setQrStatus('ready');
+        setQrMessage(res.message || 'Mở app Zalo trên điện thoại và quét mã QR này để đăng nhập.');
+      } else {
+        setQrStatus('error');
+        setQrMessage(res.message || 'Không thể tạo mã QR lúc này. Vui lòng thử lại.');
+      }
+    } catch (err: any) {
+      setQrStatus('error');
+      setQrMessage(err?.message || 'Lỗi kết nối khi tải mã QR từ VPS.');
+    } finally {
+      setQrLoading(false);
+      setQrRefreshing(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (!qrModalOpen || !qrChannel || qrStatus !== 'ready') return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await publishingService.getZaloAutomationStatus(idToken, qrChannel.id);
+        if (res.is_authenticated) {
+          setQrStatus('authenticated');
+          setQrMessage('Đã liên kết tài khoản Zalo cá nhân thành công!');
+          onRefresh();
+          clearInterval(interval);
+        }
+      } catch {
+        // Retry polling on next interval
+      }
+    }, 3500);
+
+    return () => clearInterval(interval);
+  }, [qrModalOpen, qrChannel, qrStatus, idToken, onRefresh]);
 
   const openAddModal = () => {
     setEditingChannel(null);
@@ -221,13 +286,26 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
               : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 text-rose-800 dark:text-rose-300'
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {testResult.success ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             ) : (
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             )}
             <span>{testResult.message}</span>
+            {channels.find((c: PublishChannel) => c.id === testResult.id)?.kind === 'zalo_personal_group' && (
+              <button
+                type="button"
+                onClick={() => {
+                  const targetCh = channels.find((c: PublishChannel) => c.id === testResult.id);
+                  if (targetCh) openZaloQrModal(targetCh);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 cursor-pointer shadow-xs ml-2"
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                <span>Quét mã QR ngay</span>
+              </button>
+            )}
           </div>
           <button
             type="button"
@@ -340,19 +418,33 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
 
                 {/* Card Actions */}
                 <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/60">
-                  <button
-                    type="button"
-                    onClick={() => handleTestConnection(channel.id)}
-                    disabled={isTesting}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#0B72CE] dark:text-blue-400 hover:underline cursor-pointer disabled:opacity-50"
-                  >
-                    {isTesting ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Radio className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleTestConnection(channel.id)}
+                      disabled={isTesting}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#0B72CE] dark:text-blue-400 hover:underline cursor-pointer disabled:opacity-50"
+                    >
+                      {isTesting ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Radio className="w-3.5 h-3.5" />
+                      )}
+                      <span>{isTesting ? 'Đang thử...' : 'Test kết nối'}</span>
+                    </button>
+
+                    {channel.kind === 'zalo_personal_group' && (
+                      <button
+                        type="button"
+                        onClick={() => openZaloQrModal(channel)}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                        title="Quét mã QR liên kết tài khoản Zalo cá nhân trên VPS"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        <span>Quét mã QR</span>
+                      </button>
                     )}
-                    <span>{isTesting ? 'Đang thử...' : 'Test kết nối'}</span>
-                  </button>
+                  </div>
 
                   <div className="flex items-center gap-1">
                     <button
@@ -582,6 +674,31 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                 </div>
               )}
 
+              {editingChannel && formKind === 'zalo_personal_group' && (
+                <div className="p-3.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                      <QrCode className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      Kết nối phiên Zalo cá nhân (VPS)
+                    </div>
+                    <div className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5">
+                      Quét mã QR bằng ứng dụng Zalo trên điện thoại để bot có quyền tự động gửi bài vào nhóm.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalOpen(false);
+                      openZaloQrModal(editingChannel);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shrink-0 shadow-xs cursor-pointer"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>Quét mã QR</span>
+                  </button>
+                </div>
+              )}
+
               {/* Tùy chọn quyền & trạng thái */}
               <div className="flex items-center gap-6 pt-2">
                 <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300">
@@ -624,6 +741,123 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Zalo QR Code Modal */}
+      {qrModalOpen && qrChannel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col gap-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    Quét mã QR đăng nhập Zalo
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Kênh: <span className="font-semibold text-slate-700 dark:text-slate-200">{qrChannel.name}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQrModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* QR Content Body */}
+            <div className="flex flex-col items-center justify-center min-h-[260px] gap-4">
+              {qrLoading ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center gap-3">
+                  <Loader2 className="w-10 h-10 text-[#0B72CE] animate-spin" />
+                  <p className="text-xs font-medium text-slate-600 dark:text-slate-300 max-w-xs">
+                    Đang khởi tạo trình duyệt headless trên VPS và tải mã QR Zalo...
+                  </p>
+                  <span className="text-[11px] text-slate-400">(Có thể mất từ 3 đến 8 giây)</span>
+                </div>
+              ) : qrStatus === 'authenticated' ? (
+                <div className="flex flex-col items-center justify-center py-6 text-center gap-3">
+                  <div className="p-3 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="w-12 h-12" />
+                  </div>
+                  <h4 className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                    Kết nối tài khoản Zalo thành công!
+                  </h4>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 max-w-xs">
+                    Phiên Zalo cá nhân đã được lưu an toàn trên máy chủ VPS. Hệ thống đã sẵn sàng tự động đăng bài vào nhóm Zalo.
+                  </p>
+                </div>
+              ) : qrStatus === 'error' ? (
+                <div className="flex flex-col items-center justify-center py-6 text-center gap-3">
+                  <div className="p-3 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">
+                    <AlertCircle className="w-10 h-10" />
+                  </div>
+                  <p className="text-xs font-semibold text-rose-700 dark:text-rose-300 max-w-xs text-center">
+                    {qrMessage}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => openZaloQrModal(qrChannel, true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Thử lại</span>
+                  </button>
+                </div>
+              ) : qrData ? (
+                <div className="flex flex-col items-center gap-3 w-full">
+                  <div className="p-2 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                    <img
+                      src={qrData}
+                      alt="Zalo Login QR Code"
+                      className="w-56 h-56 object-contain rounded-xl"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                    <span>Đang chờ bạn quét và xác nhận trên điện thoại...</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-[11px] text-slate-600 dark:text-slate-300 w-full flex flex-col gap-1">
+                    <div className="font-semibold text-slate-800 dark:text-slate-200">Hướng dẫn quét mã:</div>
+                    <ol className="list-decimal pl-4 space-y-0.5">
+                      <li>Mở ứng dụng <strong>Zalo</strong> trên điện thoại.</li>
+                      <li>Bấm vào biểu tượng <strong>Quét mã QR</strong> ở góc phải ô tìm kiếm.</li>
+                      <li>Quét mã QR ở trên và bấm <strong>Đăng nhập</strong> xác nhận.</li>
+                    </ol>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-700">
+              {qrStatus === 'ready' ? (
+                <button
+                  type="button"
+                  onClick={() => openZaloQrModal(qrChannel, true)}
+                  disabled={qrRefreshing}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${qrRefreshing ? 'animate-spin' : ''}`} />
+                  <span>{qrRefreshing ? 'Đang tải lại...' : 'Làm mới mã QR'}</span>
+                </button>
+              ) : <div />}
+
+              <button
+                type="button"
+                onClick={() => setQrModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 cursor-pointer"
+              >
+                {qrStatus === 'authenticated' ? 'Hoàn tất' : 'Đóng'}
+              </button>
+            </div>
           </div>
         </div>
       )}
