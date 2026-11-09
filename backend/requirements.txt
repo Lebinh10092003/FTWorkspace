@@ -15,3 +15,4 @@ cryptography>=43,<45
 jsonschema>=4.23,<5
 pypdf>=5,<6
 python-docx>=1.1,<2
+playwright>=1.40.0,<2

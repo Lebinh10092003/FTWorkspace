@@ -152,7 +152,7 @@ def test_channel_connection(channel: PublishChannel) -> Dict[str, Any]:
             }
         from .zalo_automation import get_zalo_session_status
 
-        status = get_zalo_session_status()
+        status = get_zalo_session_status(session_id=str(channel.id))
         if not mock and not status.get("is_authenticated"):
             return {
                 "success": False,
@@ -485,7 +485,7 @@ def _dispatch_zalo_personal_group(
 
     from .zalo_automation import send_zalo_personal_group_message, ZaloAutomationError
     try:
-        res = send_zalo_personal_group_message(group_name=group_name, content=full_content)
+        res = send_zalo_personal_group_message(group_name=group_name, content=full_content, session_id=str(variant.channel_id))
         return {
             'external_post_id': f'zalo_{variant.id}',
             'external_post_url': 'https://chat.zalo.me/',
