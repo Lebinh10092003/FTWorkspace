@@ -542,12 +542,16 @@ from django.db.models import Q as models_Q
 def zalo_automation_status(request):
     """Lấy trạng thái phiên kết nối Zalo Web trên Server VPS."""
     channel_id = str(request.query_params.get('channel_id') or 'default')
-    if channel_id != 'default':
-        ch = PublishChannel.objects.filter(id=channel_id).first()
-        if ch and not ch.is_shared and ch.owner_id != request.user.id and not request.user.is_staff:
+    if channel_id != 'default' and channel_id.isdigit():
+        ch = PublishChannel.objects.filter(id=int(channel_id)).first()
+        if ch and not ch.is_shared and ch.owner != request.user and not _is_manager_or_admin(request):
             return Response({'error': 'Không có quyền truy cập kênh này.'}, status=status.HTTP_403_FORBIDDEN)
-    from .zalo_automation import get_zalo_session_status
-    return Response(get_zalo_session_status(session_id=channel_id))
+    try:
+        from .zalo_automation import get_zalo_session_status
+        return Response(get_zalo_session_status(session_id=channel_id))
+    except Exception as exc:
+        logger.exception("Lỗi khi lấy trạng thái phiên Zalo: %s", exc)
+        return Response({'status': 'error', 'is_authenticated': False, 'message': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET', 'POST'])
@@ -555,12 +559,16 @@ def zalo_automation_status(request):
 def zalo_automation_qr(request):
     """Sinh hoặc làm mới mã QR để quét đăng nhập Zalo Web trên VPS."""
     channel_id = str(request.query_params.get('channel_id') or (request.data.get('channel_id') if isinstance(request.data, dict) else None) or 'default')
-    if channel_id != 'default':
-        ch = PublishChannel.objects.filter(id=channel_id).first()
-        if ch and not ch.is_shared and ch.owner_id != request.user.id and not request.user.is_staff:
+    if channel_id != 'default' and channel_id.isdigit():
+        ch = PublishChannel.objects.filter(id=int(channel_id)).first()
+        if ch and not ch.is_shared and ch.owner != request.user and not _is_manager_or_admin(request):
             return Response({'error': 'Không có quyền truy cập kênh này.'}, status=status.HTTP_403_FORBIDDEN)
-    from .zalo_automation import generate_zalo_qr_login
-    force_refresh = request.method == 'POST' or request.query_params.get('refresh') == 'true'
-    res = generate_zalo_qr_login(session_id=channel_id, force_refresh=force_refresh)
-    return Response(res)
+    try:
+        from .zalo_automation import generate_zalo_qr_login
+        force_refresh = request.method == 'POST' or request.query_params.get('refresh') == 'true'
+        res = generate_zalo_qr_login(session_id=channel_id, force_refresh=force_refresh)
+        return Response(res)
+    except Exception as exc:
+        logger.exception("Lỗi khi sinh mã QR Zalo: %s", exc)
+        return Response({'status': 'error', 'message': f'Lỗi khi sinh mã QR: {exc}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

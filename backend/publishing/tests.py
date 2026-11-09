@@ -804,3 +804,32 @@ class PublishChannelConnectionTests(TestCase):
         self.assertEqual(resp_qr.status_code, status.HTTP_200_OK)
         self.assertIn('status', resp_qr.data)
 
+    def test_zalo_automation_status_and_qr_with_channel_id(self):
+        ch = PublishChannel.objects.create(
+            owner=self.user,
+            name='Kênh Zalo Riêng',
+            kind=PublishChannel.KIND_ZALO_PERSONAL_GROUP,
+            is_shared=False,
+        )
+        # Chủ sở hữu truy cập kênh của mình -> 200 OK
+        resp = self.client.get(f'/api/publishing/zalo-automation/status/?channel_id={ch.id}')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        resp_qr = self.client.get(f'/api/publishing/zalo-automation/qr/?channel_id={ch.id}')
+        self.assertEqual(resp_qr.status_code, status.HTTP_200_OK)
+
+        # Người dùng khác (không phải admin) truy cập -> 403 Forbidden
+        other_user = UserProfile.objects.create(
+            email='other_person@fermat.vn',
+            name='Other Person',
+            role='EMPLOYEE',
+        )
+        other_client = APIClient()
+        other_client.force_authenticate(user=other_user)
+        resp_forbidden = other_client.get(f'/api/publishing/zalo-automation/status/?channel_id={ch.id}')
+        self.assertEqual(resp_forbidden.status_code, status.HTTP_403_FORBIDDEN)
+
+        resp_qr_forbidden = other_client.get(f'/api/publishing/zalo-automation/qr/?channel_id={ch.id}')
+        self.assertEqual(resp_qr_forbidden.status_code, status.HTTP_403_FORBIDDEN)
+
+
