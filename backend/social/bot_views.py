@@ -201,6 +201,7 @@ def bot_publish_draft(request):
         body = json.loads(request.body.decode("utf-8"))
         draft_id = body.get("id") or body.get("draft_id")
         target_id = body.get("target_id")
+        force_republish = bool(body.get('force') or body.get('republish'))
 
         try:
             draft = FbDraftPost.objects.get(id=draft_id)
@@ -211,7 +212,7 @@ def bot_publish_draft(request):
             if not draft:
                 return JsonResponse({"error": "Không tìm thấy bài viết"}, status=404)
 
-        res = bot_publishing_service.publish_draft_to_facebook(draft, target_id=target_id)
+        res = bot_publishing_service.publish_draft_to_facebook(draft, target_id=target_id, force_republish=force_republish)
 
         return JsonResponse({
             "status": "ok",
@@ -224,6 +225,8 @@ def bot_publish_draft(request):
         return JsonResponse({"error": "Không tìm thấy bài viết"}, status=404)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
+
+bot_draft_publish = bot_publish_draft
 
 @csrf_exempt
 def bot_targets_list_create(request):

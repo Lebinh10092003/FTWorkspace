@@ -1127,4 +1127,91 @@ class EmailNewsletterChannelTests(TestCase):
         self.assertIn("Subject: System Update v2", args[2])
 
 
+class PublishRepublishTests(TestCase):
+    def setUp(self):
+        self.user = UserProfile.objects.create(
+            email="republish_tester@fermat.vn",
+            name="Republish Tester",
+            role="ADMIN",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.channel = PublishChannel.objects.create(
+            owner=self.user,
+            name="Republish Fanpage",
+            kind=PublishChannel.KIND_FACEBOOK_PAGE,
+            is_shared=True,
+        )
+        self.channel.set_config({"page_id": "12345", "access_token": "token_12345"})
+        self.channel.save()
+
+    @patch("publishing.views.dispatch_variant")
+    def test_post_plan_publish_now_with_republish(self, mock_dispatch):
+        mock_dispatch.return_value = {
+            "status": "published",
+            "external_post_id": "new_123",
+            "external_post_url": "https://fb.com/new_123",
+        }
+        plan = PostPlan.objects.create(
+            title="Bài đã xuất bản",
+            base_content="Nội dung bài viết",
+            creator=self.user,
+            status=PostPlan.STATUS_PUBLISHED,
+        )
+        variant = PostVariant.objects.create(
+            plan=plan,
+            channel=self.channel,
+            title="Variant bài viết",
+            content="Nội dung bài viết trên kênh",
+            status=PostVariant.STATUS_PUBLISHED,
+            external_post_id="old_123",
+            external_post_url="https://fb.com/old_123",
+        )
+
+        resp = self.client.post(
+            f"/api/publishing/plans/{plan.id}/publish-now/",
+            {"republish": True},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        mock_dispatch.assert_called_once_with(variant)
+
+        variant.refresh_from_db()
+        self.assertEqual(variant.status, PostVariant.STATUS_PUBLISHED)
+        self.assertEqual(variant.external_post_id, "new_123")
+        self.assertEqual(variant.external_post_url, "https://fb.com/new_123")
+
+    @patch("publishing.views.dispatch_variant")
+    def test_post_variant_publish_now(self, mock_dispatch):
+        mock_dispatch.return_value = {
+            "status": "published",
+            "external_post_id": "var_new_123",
+            "external_post_url": "https://fb.com/var_new_123",
+        }
+        plan = PostPlan.objects.create(
+            title="Bài kế hoạch",
+            base_content="Nội dung bài kế hoạch",
+            creator=self.user,
+            status=PostPlan.STATUS_PUBLISHED,
+        )
+        variant = PostVariant.objects.create(
+            plan=plan,
+            channel=self.channel,
+            title="Variant thất bại",
+            content="Nội dung cần xuất bản lại",
+            status=PostVariant.STATUS_FAILED,
+        )
+
+        resp = self.client.post(f"/api/publishing/variants/{variant.id}/publish-now/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIs(resp.data["success"], True)
+        mock_dispatch.assert_called_once_with(variant)
+
+        variant.refresh_from_db()
+        self.assertEqual(variant.status, PostVariant.STATUS_PUBLISHED)
+        self.assertEqual(variant.external_post_id, "var_new_123")
+        self.assertEqual(variant.external_post_url, "https://fb.com/var_new_123")
+
+
+
 

@@ -199,18 +199,18 @@ export default function FbBotTeamStudio({
     setTimeout(() => setNotice(''), 6000);
   };
 
-  const handlePublishNow = async (id: number) => {
+  const handlePublishNow = async (id: number, force = false) => {
     try {
       const res = await fetch('/api/social-bot/publish-draft', {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         credentials: 'include',
-        body: JSON.stringify({ id, draft_id: id }),
+        body: JSON.stringify({ id, draft_id: id, force, republish: force }),
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         setDraftPosts((prev: DraftItem[]) => prev.map((p: DraftItem) => (p.id === id || (data.id && p.id === data.id)) ? { ...p, status: 'published', fb_post_url: data.fb_post_url } : p));
-        setNotice('Bot 5 đã đăng bài thành công lên Facebook!');
+        setNotice(force ? 'Bot 5 đã xuất bản lại thành công lên Facebook!' : 'Bot 5 đã đăng bài thành công lên Facebook!');
         setNoticeType('success');
       } else {
         const data = await res.json().catch(() => ({}));
@@ -430,6 +430,15 @@ export default function FbBotTeamStudio({
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => handlePublishNow(post.id, true)}
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                        title="Đăng lại bài này lên Facebook (Republish)"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Đăng lại</span>
+                      </button>
                     </div>
                   )}
                 </div>

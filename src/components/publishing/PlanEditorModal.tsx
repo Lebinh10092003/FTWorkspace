@@ -17,6 +17,8 @@ import {
   FileText,
   ExternalLink,
   RotateCw,
+  Link2,
+  Compass,
 } from 'lucide-react';
 import type { PostPlan, PublishChannel, PostVariant } from './publishingTypes';
 import { PLAN_STATUS_MAP, VARIANT_STATUS_MAP, CHANNEL_KIND_MAP } from './publishingTypes';
@@ -92,9 +94,17 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [generatingAi, setGeneratingAi] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishingVariantId, setPublishingVariantId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [aiJobStatus, setAiJobStatus] = useState<string | null>(plan?.active_job?.status || null);
+
+  // Multi-source resource input state
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [targetAudience, setTargetAudience] = useState('');
+  const [contentTone, setContentTone] = useState('Chuyên sâu kỹ thuật AI');
+  const [showResourceHelper, setShowResourceHelper] = useState(false);
 
   // Sync variants when plan changes
   useEffect(() => {
@@ -343,6 +353,86 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     }
   };
 
+  // Publish / Republish entire plan
+  const handlePublishPlanNow = async (republish = false) => {
+    if (!plan?.id) return;
+    const msg = republish
+      ? 'Bạn có chắc chắn muốn xuất bản lại toàn bộ các kênh cho bài viết này?'
+      : 'Bạn có chắc chắn muốn xuất bản ngay bài viết này lên các kênh đã chọn?';
+    const confirmed = await appDialog.confirm(msg, {
+      tone: republish ? 'warning' : 'info',
+      confirmText: republish ? 'Xuất bản lại' : 'Xuất bản ngay',
+    });
+    if (!confirmed) return;
+
+    setPublishing(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const res = await publishingService.publishPlanNow(idToken, plan.id, { republish });
+      if (res.success) {
+        setSuccessMsg(res.message || (republish ? 'Đã yêu cầu xuất bản lại thành công!' : 'Đã yêu cầu xuất bản thành công!'));
+        await handleRefreshPlan();
+        onSaved();
+      } else {
+        setError(res.message || 'Xuất bản thất bại.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Có lỗi khi xuất bản.');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  // Publish / Republish single variant
+  const handlePublishVariantNow = async (variant: PostVariant) => {
+    if (!variant?.id) return;
+    const isRepublish = variant.status === 'published';
+    const confirmed = await appDialog.confirm(
+      isRepublish
+        ? `Xuất bản lại bài đăng này lên kênh "${variant.channel_name}"?`
+        : `Xuất bản ngay bài đăng này lên kênh "${variant.channel_name}"?`,
+      {
+        tone: isRepublish ? 'warning' : 'info',
+        confirmText: isRepublish ? 'Đăng lại' : 'Đăng ngay',
+      }
+    );
+    if (!confirmed) return;
+
+    setPublishingVariantId(variant.id);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const res = await publishingService.publishVariantNow(idToken, variant.id);
+      if (res.success) {
+        setVariants(prev => prev.map(v => (v.id === res.variant.id ? res.variant : v)));
+        setSuccessMsg(`Đã xử lý phát hành kênh ${variant.channel_name}!`);
+        onSaved();
+      } else {
+        setError(res.error || 'Xuất bản kênh thất bại.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Lỗi khi xuất bản kênh.');
+    } finally {
+      setPublishingVariantId(null);
+    }
+  };
+
+  // Helper to inject resource info into base content
+  const handleApplyResourceToContent = () => {
+    const parts: string[] = [];
+    if (sourceUrl.trim()) parts.push(`📌 Nguồn tài nguyên tham khảo: ${sourceUrl.trim()}`);
+    if (contentTone.trim()) parts.push(`🎯 Định hướng / Phong cách: ${contentTone.trim()}`);
+    if (targetAudience.trim()) parts.push(`👥 Đối tượng độc giả: ${targetAudience.trim()}`);
+
+    if (parts.length === 0) return;
+
+    const block = `\n\n--- THÔNG TIN NGUỒN TÀI NGUYÊN ---\n${parts.join('\n')}\n`;
+    setBaseContent(prev => prev.trim() + block);
+    setSuccessMsg('Đã tích hợp thông tin tài nguyên vào nội dung gốc!');
+    setShowResourceHelper(false);
+  };
+
   const activeVariant = variants.find(v => v.channel_id === activeVariantChannelId);
   const activeChannel = channels.find(c => c.id === activeVariantChannelId);
 
@@ -530,11 +620,86 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             )}
           </div>
 
-          {/* Section 3: Nội dung gốc */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-              Nội dung gốc (Dùng làm tư liệu để AI biến thể hoặc xuất sang các kênh)
-            </label>
+          {/* Section 3: Nội dung gốc & Tài nguyên đa nguồn */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Nội dung gốc (Dùng làm tư liệu để AI biến thể hoặc xuất sang các kênh)
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowResourceHelper(!showResourceHelper)}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#0B72CE] dark:text-blue-400 hover:underline cursor-pointer"
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                <span>{showResourceHelper ? 'Ẩn tài nguyên' : '+ Nguồn tham khảo & Định hướng'}</span>
+              </button>
+            </div>
+
+            {/* Multi-source resource helper panel */}
+            {showResourceHelper && (
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex flex-col gap-2.5">
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Compass className="w-4 h-4 text-[#0B72CE]" />
+                  <span>Cung cấp tài nguyên đa nguồn cho nội dung bài</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Đường dẫn tài nguyên (URL bài báo, arXiv, GitHub, tài liệu...)
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://example.com/ai-article-2026..."
+                      value={sourceUrl}
+                      onChange={e => setSourceUrl(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#0B72CE]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Định hướng góc nhìn bài viết
+                    </label>
+                    <select
+                      value={contentTone}
+                      onChange={e => setContentTone(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#0B72CE]"
+                    >
+                      <option value="Chuyên sâu kỹ thuật AI & Công nghệ">Chuyên sâu kỹ thuật AI & Công nghệ</option>
+                      <option value="Tóm tắt tin tức ngắn gọn, súc tích">Tóm tắt tin tức ngắn gọn, súc tích</option>
+                      <option value="Góc nhìn thị trường & Phân tích kinh doanh">Góc nhìn thị trường & Phân tích kinh doanh</option>
+                      <option value="Thực chiến, Hướng dẫn từng bước & Case study">Thực chiến, Hướng dẫn từng bước & Case study</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Đối tượng độc giả mục tiêu
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: Kỹ sư AI, Nhà phát triển phần mềm, Quản lý sản phẩm..."
+                    value={targetAudience}
+                    onChange={e => setTargetAudience(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#0B72CE]"
+                  />
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={handleApplyResourceToContent}
+                    className="px-3 py-1.5 rounded-xl bg-[#0B72CE] hover:bg-[#075CA8] text-white text-xs font-semibold transition cursor-pointer"
+                  >
+                    Tích hợp thông tin vào nội dung gốc
+                  </button>
+                </div>
+              </div>
+            )}
+
             <textarea
               rows={4}
               placeholder="Nhập thông tin sự kiện, nội dung thông báo, thời hạn nộp bài..."
@@ -589,16 +754,50 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
               {/* Active Variant Editor */}
               {activeChannel && (
                 <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex flex-col gap-3 shadow-xs">
-                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">
-                      Soạn bài cho: {activeChannel.name} ({CHANNEL_KIND_MAP[activeChannel.kind]?.label})
-                    </span>
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        Soạn bài cho: {activeChannel.name} ({CHANNEL_KIND_MAP[activeChannel.kind]?.label})
+                      </span>
+                      {activeVariant?.status && (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${VARIANT_STATUS_MAP[activeVariant.status]?.color || 'bg-slate-100 text-slate-700'}`}>
+                          {VARIANT_STATUS_MAP[activeVariant.status]?.label || activeVariant.status}
+                        </span>
+                      )}
+                    </div>
                     {activeVariant && (
-                      <span className="text-[11px] font-mono">
+                      <span className="text-[11px] font-mono text-slate-500">
                         Độ dài: {activeVariant.content?.length || 0} ký tự
                       </span>
                     )}
                   </div>
+
+                  {/* External published URL notice */}
+                  {activeVariant?.external_post_url && (
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs">
+                      <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 font-medium">
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span>Bài viết đã được xuất bản thành công trên kênh này</span>
+                      </div>
+                      <a
+                        href={activeVariant.external_post_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition shadow-2xs"
+                      >
+                        <span>Xem bài đăng</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Error notice if publish failed */}
+                  {activeVariant?.error_message && (
+                    <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                      <span><strong>Lỗi phát hành:</strong> {activeVariant.error_message}</span>
+                    </div>
+                  )}
 
                   {/* Variant Title */}
                   <div>
@@ -648,9 +847,62 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                     />
                   </div>
 
-                  {/* Save variant button if variant exists in DB */}
+                  {/* Variant action buttons */}
                   {activeVariant && activeVariant.id && (
-                    <div className="flex justify-end pt-2">
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center gap-2">
+                        {isManagerOrAdmin && (
+                          <>
+                            {activeVariant.status === 'published' ? (
+                              <button
+                                type="button"
+                                onClick={() => handlePublishVariantNow(activeVariant)}
+                                disabled={publishingVariantId === activeVariant.id}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                                title="Đăng lại biến thể này lên kênh"
+                              >
+                                {publishingVariantId === activeVariant.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <RotateCw className="w-3.5 h-3.5" />
+                                )}
+                                <span>Xuất bản lại kênh này</span>
+                              </button>
+                            ) : activeVariant.status === 'failed' ? (
+                              <button
+                                type="button"
+                                onClick={() => handlePublishVariantNow(activeVariant)}
+                                disabled={publishingVariantId === activeVariant.id}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                                title="Thử xuất bản lại sau lỗi"
+                              >
+                                {publishingVariantId === activeVariant.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <RotateCw className="w-3.5 h-3.5" />
+                                )}
+                                <span>Thử lại kênh này</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handlePublishVariantNow(activeVariant)}
+                                disabled={publishingVariantId === activeVariant.id}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                                title="Xuất bản ngay bài viết lên kênh này"
+                              >
+                                {publishingVariantId === activeVariant.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Send className="w-3.5 h-3.5" />
+                                )}
+                                <span>Xuất bản ngay kênh này</span>
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+
                       <button
                         type="button"
                         onClick={() => handleSaveVariant(activeVariant)}
@@ -773,6 +1025,41 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>Duyệt & Đặt lịch ngay</span>
+              </button>
+            )}
+
+            {/* Quản lý / Admin: Xuất bản ngay khi đã được duyệt hoặc lên lịch */}
+            {isManagerOrAdmin && plan && (plan.status === 'approved' || plan.status === 'scheduled') && (
+              <button
+                type="button"
+                onClick={() => handlePublishPlanNow(false)}
+                disabled={publishing}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {publishing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span>Xuất bản ngay</span>
+              </button>
+            )}
+
+            {/* Quản lý / Admin: Xuất bản lại toàn bộ các kênh khi đã published/partial/failed */}
+            {isManagerOrAdmin && plan && (plan.status === 'published' || plan.status === 'partial' || plan.status === 'failed') && (
+              <button
+                type="button"
+                onClick={() => handlePublishPlanNow(true)}
+                disabled={publishing}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-xs cursor-pointer disabled:opacity-50"
+                title="Đăng lại bài viết lên tất cả các kênh được chọn"
+              >
+                {publishing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <RotateCw className="w-3.5 h-3.5" />
+                )}
+                <span>Xuất bản lại các kênh</span>
               </button>
             )}
           </div>
