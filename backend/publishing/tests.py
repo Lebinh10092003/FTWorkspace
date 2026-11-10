@@ -938,18 +938,17 @@ class PublishChannelConnectionTests(TestCase):
                         mock_resp.read.return_value = b'<html><script src="https://stc-zlogin.zdn.vn/main-2606161423.js"></script></html>'
                     return mock_resp
 
-                with patch('urllib.request.OpenerDirector.open', side_effect=fake_open):
+                with patch('urllib.request.OpenerDirector.open', side_effect=fake_open), \
+                     patch('publishing.zalo_automation.time.sleep', return_value=None):
                     res = generate_zalo_qr_login('test_direct_api', force_refresh=True)
                     self.assertEqual(res['status'], 'qr_ready')
                     self.assertTrue(res['qr_data'].startswith('data:image/png;base64,'))
 
-                    # Chờ worker thread xử lý xong các bước xác thực và ghi storage_state
-                    import time
-                    for _ in range(100):
-                        if (session_dir / 'storage_state.json').exists():
-                            break
-                        time.sleep(0.05)
                     sess_info = _login_session_manager._sessions.get('test_direct_api', {})
+                    worker_thread = sess_info.get('thread')
+                    if worker_thread:
+                        worker_thread.join(timeout=5)
+
                     err = sess_info.get('error')
                     self.assertIsNone(err, f"Worker failed with error: {err}")
                     self.assertTrue((session_dir / 'storage_state.json').exists())
