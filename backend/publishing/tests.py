@@ -265,7 +265,7 @@ class PostPlanApprovalAndSafetyTests(TestCase):
         self.client.force_authenticate(user=self.employee)
         res = self.client.get(f"/api/publishing/plans/{plan.id}/")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        data = res.json()["plan"]
+        data = res.json()
 
         # Kiểm tra PostPlan có cả hai định dạng
         self.assertEqual(data["base_content"], "Nội dung gốc đầy đủ")
