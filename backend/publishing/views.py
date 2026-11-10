@@ -411,15 +411,20 @@ def post_plan_publish_now(request, pk: int):
     """Immediately dispatch all variants of an approved plan."""
     plan = get_object_or_404(PostPlan.objects.prefetch_related("variants__channel"), pk=pk)
 
-    if plan.status not in [PostPlan.STATUS_APPROVED, PostPlan.STATUS_SCHEDULED]:
+    republish = bool(request.data.get('republish') or request.data.get('force') or request.query_params.get('republish') in ['true', '1', True])
+    allowed_statuses = [PostPlan.STATUS_APPROVED, PostPlan.STATUS_SCHEDULED]
+    if republish:
+        allowed_statuses.extend([PostPlan.STATUS_PUBLISHED, PostPlan.STATUS_PARTIAL, PostPlan.STATUS_FAILED])
+    if plan.status not in allowed_statuses:
         return Response(
             {"error": "Bài đăng phải được phê duyệt trước khi xuất bản."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
     results = []
+    variants_to_dispatch = plan.variants.all() if republish else plan.variants.exclude(status=PostVariant.STATUS_PUBLISHED)
     with transaction.atomic():
-        for variant in plan.variants.exclude(status=PostVariant.STATUS_PUBLISHED):
+        for variant in variants_to_dispatch:
             try:
                 res = dispatch_variant(variant)
                 variant.status = res["status"]
@@ -438,6 +443,28 @@ def post_plan_publish_now(request, pk: int):
         update_plan_overall_status(plan)
 
     return Response({"plan": _serialize_plan(plan), "dispatched": results})
+
+
+@api_view(['POST'])
+@permission_classes([IsWorkspaceAuthenticated])
+def post_variant_publish_now(request, pk: int):
+    variant = get_object_or_404(PostVariant.objects.select_related('plan', 'channel'), pk=pk)
+    try:
+        res = dispatch_variant(variant)
+        variant.status = res['status']
+        variant.external_post_id = res.get('external_post_id', '')
+        variant.external_post_url = res.get('external_post_url', '')
+        variant.published_at = timezone.now() if res['status'] == PostVariant.STATUS_PUBLISHED else None
+        variant.error_message = ''
+        variant.save()
+        update_plan_overall_status(variant.plan)
+        return Response({'success': True, 'variant': _serialize_variant(variant)})
+    except Exception as exc:
+        variant.status = PostVariant.STATUS_FAILED
+        variant.error_message = str(exc)
+        variant.save()
+        update_plan_overall_status(variant.plan)
+        return Response({'success': False, 'error': str(exc), 'variant': _serialize_variant(variant)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ==============================================================================

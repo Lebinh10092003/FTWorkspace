@@ -76,12 +76,12 @@ def get_fb_target_credentials(target_id=None):
 
     raise ValueError("Chưa cấu hình Fanpage Facebook (Page ID & Access Token) để xuất bản.")
 
-def publish_draft_to_facebook(draft: FbDraftPost, target_id=None):
+def publish_draft_to_facebook(draft: FbDraftPost, target_id=None, force_republish=False):
     """
     Xuất bản bài viết FbDraftPost lên Facebook Fanpage.
     Cập nhật status -> 'published', published_at, fb_post_url.
     """
-    if draft.status == "published" and draft.fb_post_url:
+    if draft.status == "published" and draft.fb_post_url and not force_republish:
         logger.warning("Draft #%s đã xuất bản trước đó tại %s", draft.id, draft.fb_post_url)
         return {
             "id": draft.fb_post_url.rstrip("/").split("/")[-1],

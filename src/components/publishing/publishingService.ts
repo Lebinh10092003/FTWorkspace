@@ -173,6 +173,35 @@ export const publishingService = {
     return data?.variant || data;
   },
 
+  async publishPlanNow(
+    idToken: string,
+    id: number,
+    options?: { republish?: boolean; variant_ids?: number[] }
+  ): Promise<{
+    success: boolean;
+    dispatched_count?: number;
+    results?: any[];
+    message?: string;
+  }> {
+    return await request<any>(`${API_BASE}/plans/${id}/publish-now/`, idToken, {
+      method: 'POST',
+      body: JSON.stringify(options || {}),
+    });
+  },
+
+  async publishVariantNow(
+    idToken: string,
+    id: number
+  ): Promise<{
+    success: boolean;
+    variant: PostVariant;
+    error?: string;
+  }> {
+    return await request<any>(`${API_BASE}/variants/${id}/publish-now/`, idToken, {
+      method: 'POST',
+    });
+  },
+
   // Zalo Automation VPS API
   async getZaloAutomationStatus(idToken: string, channelId?: number): Promise<{
     status: string;
