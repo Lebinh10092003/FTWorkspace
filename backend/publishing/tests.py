@@ -1753,6 +1753,97 @@ class ZaloAutomationAdvancedTests(TestCase):
                 self.assertEqual(res2["status"], "published")
                 mock_conv_candidate.click.assert_called_once()
 
+    def test_zalo_search_query_generation_and_title_matching(self):
+        """Kiểm tra sinh biến thể từ khóa tìm kiếm và logic so khớp tên nhóm có dấu ngoặc/preview đa dòng."""
+        from publishing.zalo_automation import (
+            _generate_zalo_search_queries,
+            _is_matching_group_title,
+            _is_partial_matching_group_title,
+            _normalize_zalo_name,
+        )
+
+        queries = _generate_zalo_search_queries("FT-Công nghệ (Kỹ Thuật)")
+        self.assertIn("FT-Công nghệ (Kỹ Thuật)", queries)
+        self.assertIn("FT-Công nghệ Kỹ Thuật", queries)
+        self.assertIn("FT-Công nghệ", queries)
+        self.assertIn("FT - Công nghệ", queries)
+
+        target_norm = _normalize_zalo_name("FT-Công nghệ (Kỹ Thuật)")
+
+        # Case 1: Multiline chat item text (title + timestamp + preview)
+        multiline_text = "FT-Công nghệ (Kỹ Thuật)\n14:45\nLê Văn Bình: Có cty nào ngon hơn thì gọi em"
+        self.assertTrue(_is_matching_group_title("", multiline_text, target_norm))
+
+        # Case 2: Title attribute on span/div with spacing/dash variation
+        self.assertTrue(_is_matching_group_title("FT – Công nghệ (Kỹ Thuật)", "", target_norm))
+
+        # Case 3: Negative match for different group
+        self.assertFalse(_is_matching_group_title("", "FT-UBP Ba Đình (BTC lớp)\n10:30", target_norm))
+
+        # Case 4: Partial matching fallback
+        self.assertTrue(_is_partial_matching_group_title("", "FT-Công nghệ", target_norm))
+        self.assertFalse(_is_partial_matching_group_title("", "FT Media", target_norm))
+
+    def test_send_zalo_group_found_in_recent_chats_without_search_failure(self):
+        """Kiểm tra mở nhóm trực tiếp từ danh sách hội thoại gần đây (.msg-item) khi tên nhóm có ngoặc đơn."""
+        import json
+        import sys
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import MagicMock, patch
+        from publishing.zalo_automation import send_zalo_personal_group_message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_dir = Path(tmpdir)
+            state_file = session_dir / "storage_state.json"
+            state_file.write_text(json.dumps({"cookies": [{"name": "zpw_sek", "value": "tok"}]}), encoding="utf-8")
+
+            mock_playwright_mod = MagicMock()
+            mock_sync_api = MagicMock()
+            mock_p = MagicMock()
+            mock_browser = MagicMock()
+            mock_page = MagicMock()
+            mock_search_input = MagicMock()
+            mock_chat_input = MagicMock()
+            mock_msg_item = MagicMock()
+
+            mock_msg_item.get_attribute.return_value = None
+            mock_msg_item.inner_text.return_value = (
+                "FT-Công nghệ (Kỹ Thuật)\n14:45\nLê Văn Bình: Có cty nào ngon hơn"
+            )
+
+            mock_sync_api.sync_playwright.return_value.__enter__.return_value = mock_p
+            mock_p.chromium.launch_persistent_context.return_value = mock_browser
+            mock_browser.pages = [mock_page]
+            mock_browser.new_page.return_value = mock_page
+            mock_page.url = "https://chat.zalo.me/"
+            mock_page.wait_for_selector.return_value = mock_search_input
+            mock_page.query_selector_all.return_value = [mock_msg_item]
+
+            def fake_query_selector(selector):
+                if "chat-input-content" in selector:
+                    return mock_chat_input
+                return None
+
+            mock_page.query_selector.side_effect = fake_query_selector
+
+            with patch.dict(sys.modules, {"playwright": mock_playwright_mod, "playwright.sync_api": mock_sync_api}), \
+                 patch("publishing.zalo_automation.is_playwright_available", return_value=True), \
+                 patch("publishing.zalo_automation.get_zalo_session_status", return_value={"is_authenticated": True}), \
+                 patch("publishing.zalo_automation.get_zalo_session_dir", return_value=session_dir), \
+                 patch("publishing.zalo_automation.time.sleep"):
+
+                res = send_zalo_personal_group_message(
+                    group_name="FT-Công nghệ (Kỹ Thuật)",
+                    content="Tin nhắn test",
+                    session_id="test_session",
+                )
+                self.assertEqual(res["status"], "published")
+                mock_msg_item.click.assert_called_once()
+                mock_page.keyboard.insert_text.assert_called_once_with("Tin nhắn test")
+                mock_search_input.fill.assert_not_called()
+
+
 
 
 
