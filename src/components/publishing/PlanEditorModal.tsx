@@ -384,6 +384,51 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     }
   };
 
+  // Direct publish plan immediately without waiting for schedule
+  const handleDirectPublish = async () => {
+    if (!title.trim()) {
+      setError('Vui lòng nhập tiêu đề bài viết.');
+      return;
+    }
+    if (!baseContent.trim()) {
+      setError('Vui lòng nhập nội dung bài viết.');
+      return;
+    }
+    if (selectedChannelIds.length === 0) {
+      setError('Vui lòng chọn ít nhất một kênh xuất bản (Facebook Fanpage, Nhóm Zalo...).');
+      return;
+    }
+
+    const confirmed = await appDialog.confirm('Bạn có chắc chắn muốn đăng bài viết này ngay lập tức lên các kênh đã chọn?', {
+      tone: 'info',
+      confirmText: 'Đăng ngay',
+    });
+    if (!confirmed) return;
+
+    setPublishing(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const saved = await handleSavePlan(false);
+      if (!saved?.id) {
+        throw new Error('Không thể lưu dữ liệu bài viết trước khi đăng.');
+      }
+      const res = await publishingService.publishPlanNow(idToken, saved.id, { republish: false });
+      if (res.success) {
+        setSuccessMsg(res.message || 'Đã xuất bản bài viết thành công lên các kênh!');
+        onSaved();
+        setTimeout(onClose, 1200);
+      } else {
+        setError(res.message || 'Xuất bản bài viết thất bại.');
+        onSaved();
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Có lỗi khi xuất bản bài đăng ngay.');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   // Publish / Republish single variant
   const handlePublishVariantNow = async (variant: PostVariant) => {
     if (!variant?.id) return;
@@ -958,19 +1003,37 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             <button
               type="button"
               onClick={() => handleSavePlan(false)}
-              disabled={saving}
+              disabled={saving || publishing}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 cursor-pointer disabled:opacity-50"
             >
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
               <span>Lưu bản nháp</span>
             </button>
 
+            {/* Đăng ngay trực tiếp lên các kênh đã chọn */}
+            {(!plan || plan.status === 'draft' || plan.status === 'pending_approval' || plan.status === 'approved' || plan.status === 'scheduled') && (
+              <button
+                type="button"
+                onClick={handleDirectPublish}
+                disabled={saving || publishing}
+                className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer disabled:opacity-50 transition"
+                title="Lưu và phát hành ngay lập tức lên toàn bộ các kênh đã chọn"
+              >
+                {publishing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span>{publishing ? 'Đang gửi đăng...' : 'Đăng ngay'}</span>
+              </button>
+            )}
+
             {/* Gửi phê duyệt (Nhân viên) */}
             {!isManagerOrAdmin && (
               <button
                 type="button"
                 onClick={() => handleSavePlan(true)}
-                disabled={saving}
+                disabled={saving || publishing}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-[#0B72CE] hover:bg-[#075CA8] text-white shadow-xs cursor-pointer disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
@@ -1020,28 +1083,11 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                     setTimeout(onClose, 800);
                   }
                 }}
-                disabled={saving}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer disabled:opacity-50"
+                disabled={saving || publishing}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-[#0B72CE] hover:bg-[#075CA8] text-white shadow-xs cursor-pointer disabled:opacity-50"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Duyệt & Đặt lịch ngay</span>
-              </button>
-            )}
-
-            {/* Quản lý / Admin: Xuất bản ngay khi đã được duyệt hoặc lên lịch */}
-            {isManagerOrAdmin && plan && (plan.status === 'approved' || plan.status === 'scheduled') && (
-              <button
-                type="button"
-                onClick={() => handlePublishPlanNow(false)}
-                disabled={publishing}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer disabled:opacity-50"
-              >
-                {publishing ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Send className="w-3.5 h-3.5" />
-                )}
-                <span>Xuất bản ngay</span>
+                <span>Duyệt & Lên lịch</span>
               </button>
             )}
 

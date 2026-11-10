@@ -408,10 +408,27 @@ def post_plan_generate_variants(request, pk: int):
 @api_view(["POST"])
 @permission_classes([IsWorkspaceAuthenticated])
 def post_plan_publish_now(request, pk: int):
-    """Immediately dispatch all variants of an approved plan."""
+    """Immediately dispatch all variants of an approved plan (or direct publish for draft)."""
     plan = get_object_or_404(PostPlan.objects.prefetch_related("variants__channel"), pk=pk)
 
     republish = bool(request.data.get('republish') or request.data.get('force') or request.query_params.get('republish') in ['true', '1', True])
+
+    # Auto-approve draft or pending plans when direct publish is triggered by creator or manager/admin
+    if plan.status in [PostPlan.STATUS_DRAFT, PostPlan.STATUS_PENDING_APPROVAL]:
+        role = str(getattr(request, "user_role", "") or getattr(request.user, "role", "") or "").upper()
+        is_admin_or_mgr = role in {"ADMIN", "MANAGER", "LEADER"} or getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False)
+        if is_admin_or_mgr or plan.creator_id == request.user.id or not plan.creator:
+            plan.status = PostPlan.STATUS_APPROVED
+            plan.approved_by = request.user
+            plan.approved_at = timezone.now()
+            plan.save(update_fields=["status", "approved_by", "approved_at", "updated_at"])
+            plan.variants.update(status=PostVariant.STATUS_APPROVED)
+        else:
+            return Response(
+                {"error": "Bài đăng phải được phê duyệt trước khi xuất bản."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
     allowed_statuses = [PostPlan.STATUS_APPROVED, PostPlan.STATUS_SCHEDULED]
     if republish:
         allowed_statuses.extend([PostPlan.STATUS_PUBLISHED, PostPlan.STATUS_PARTIAL, PostPlan.STATUS_FAILED])
