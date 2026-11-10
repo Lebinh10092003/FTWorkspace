@@ -462,6 +462,7 @@ def post_plan_publish_now(request, pk: int):
                 variant.save()
                 results.append({"variantId": variant.id, "success": False, "error": str(exc)})
 
+        plan.refresh_from_db()
         update_plan_overall_status(plan)
 
     success_count = sum(1 for r in results if r.get("success"))

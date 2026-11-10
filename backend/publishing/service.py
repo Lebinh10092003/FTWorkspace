@@ -156,7 +156,7 @@ def process_publish_ai_job(job_id: int) -> None:
 
 def update_plan_overall_status(plan: PostPlan) -> None:
     """Recalculate plan status based on the current state of its variants."""
-    variants = list(plan.variants.all())
+    variants = list(PostVariant.objects.filter(plan_id=plan.id))
     if not variants:
         return
 
