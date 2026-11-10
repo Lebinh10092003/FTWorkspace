@@ -25,6 +25,7 @@ import { WeeklyCalendarView } from './WeeklyCalendarView';
 import { ChannelManager } from './ChannelManager';
 import { PlanEditorModal } from './PlanEditorModal';
 import FbBotTeamStudio from './FbBotTeamStudio';
+import { TechDiscoveryStudio } from './TechDiscoveryStudio';
 import { appDialog } from '../AppDialog';
 
 interface PublishingCenterProps {
@@ -45,7 +46,7 @@ export default function PublishingCenter({
   onClearInitialNewsPost,
 }: PublishingCenterProps) {
   // Navigation sub-tabs inside PublishingCenter
-  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'list' | 'channels' | 'ai-bots'>('calendar');
+  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'list' | 'channels' | 'ai-bots' | 'tech-discovery'>('calendar');
 
   // Data state
   const [plans, setPlans] = useState<PostPlan[]>([]);
@@ -260,6 +261,18 @@ export default function PublishingCenter({
             </button>
             <button
               type="button"
+              onClick={() => setActiveSubTab('tech-discovery')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                activeSubTab === 'tech-discovery'
+                  ? 'bg-white dark:bg-slate-800 text-[#0B72CE] shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Gợi ý Xu hướng AI</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveSubTab('ai-bots')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 activeSubTab === 'ai-bots'
@@ -398,6 +411,23 @@ export default function PublishingCenter({
           channels={channels}
           onRefresh={() => loadData(true)}
           userRole={userRole}
+        />
+      ) : activeSubTab === 'tech-discovery' ? (
+        <TechDiscoveryStudio
+          idToken={idToken}
+          onPlanCreated={(newPlan) => {
+            setPlans(prev => [newPlan, ...prev]);
+            handleOpenEditPlan(newPlan);
+          }}
+          onOpenPlanById={(planId) => {
+            const found = plans.find(p => p.id === planId);
+            if (found) {
+              handleOpenEditPlan(found);
+            } else {
+              loadData(true);
+              setActiveSubTab('list');
+            }
+          }}
         />
       ) : activeSubTab === 'ai-bots' ? (
         <FbBotTeamStudio

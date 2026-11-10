@@ -27,7 +27,7 @@ from .adapters import (
     is_mock_mode,
     test_channel_connection,
 )
-from .models import PostPlan, PostVariant, PublishAiJob, PublishChannel
+from .models import PostPlan, PostVariant, PublishAiJob, PublishChannel, TechTopicSuggestion
 from .prompts import build_variant_generation_prompt, parse_and_validate_ai_variants
 from .security import decrypt_config, encrypt_config, mask_secret
 from .service import process_publish_ai_job, run_scheduled_posts
@@ -1211,6 +1211,211 @@ class PublishRepublishTests(TestCase):
         self.assertEqual(variant.status, PostVariant.STATUS_PUBLISHED)
         self.assertEqual(variant.external_post_id, "var_new_123")
         self.assertEqual(variant.external_post_url, "https://fb.com/var_new_123")
+
+
+class TechDiscoveryTests(TestCase):
+    def setUp(self):
+        self.user = UserProfile.objects.create(
+            email="tech_editor@fermat.vn",
+            name="Tech Editor",
+            role="ADMIN",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.channel = PublishChannel.objects.create(
+            owner=self.user,
+            name="Kênh Tech News",
+            kind=PublishChannel.KIND_FACEBOOK_PAGE,
+            is_active=True,
+            is_shared=True,
+        )
+
+    def test_topic_model_and_str(self):
+        topic = TechTopicSuggestion.objects.create(
+            title="Reasoning Advances in LLMs",
+            source=TechTopicSuggestion.SOURCE_ARXIV,
+            source_url="https://arxiv.org/abs/2410.00001",
+            category=TechTopicSuggestion.CATEGORY_AI_ML,
+            key_takeaways=["Takeaway 1", "Takeaway 2"],
+        )
+        self.assertIn("arXiv AI/ML", str(topic))
+        self.assertIn("Reasoning Advances", str(topic))
+        self.assertFalse(topic.is_converted_to_plan)
+
+    @patch("urllib.request.urlopen")
+    def test_fetch_arxiv_papers(self, mock_urlopen):
+        sample_xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <id>http://arxiv.org/abs/2410.12345v1</id>
+                <title>Multi-Agent Reasoning for Complex Math</title>
+                <summary>We propose an autonomous agent workflow for reasoning.</summary>
+                <published>2026-11-10T00:00:00Z</published>
+                <author><name>Jane Doe</name></author>
+                <link rel="alternate" href="http://arxiv.org/abs/2410.12345v1" type="text/html"/>
+            </entry>
+        </feed>"""
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = sample_xml
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        from .tech_discovery import fetch_arxiv_papers
+        items = fetch_arxiv_papers(limit=2)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["title"], "Multi-Agent Reasoning for Complex Math")
+        self.assertEqual(items[0]["author"], "Jane Doe")
+        self.assertEqual(items[0]["category"], TechTopicSuggestion.CATEGORY_AGENTIC)
+
+    @patch("publishing.tech_discovery.execute_ai_command")
+    def test_deep_analyze_topic(self, mock_ai):
+        mock_ai.return_value = json.dumps({
+            "key_takeaways": ["Đột phá tính toán suy luận", "Giảm 40% chi phí"],
+            "suggested_angle": "Phù hợp ứng dụng vào EdTech khảo thí.",
+            "target_audience": "Lập trình viên và chuyên gia EdTech",
+            "recommended_base_post": "Nội dung bài viết mẫu",
+        })
+        from .tech_discovery import deep_analyze_topic
+        res = deep_analyze_topic({
+            "title": "Test Title",
+            "raw_summary": "Test Summary",
+            "source_url": "https://example.com",
+            "category": "ai_ml",
+        })
+        self.assertEqual(len(res["key_takeaways"]), 2)
+        self.assertIn("EdTech khảo thí", res["suggested_angle"])
+
+    @patch("publishing.tech_discovery.fetch_huggingface_daily_papers")
+    @patch("publishing.tech_discovery.fetch_hacker_news_ai")
+    @patch("publishing.tech_discovery.fetch_arxiv_papers")
+    def test_crawl_and_suggest_daily_topics(self, mock_arxiv, mock_hn, mock_hf):
+        mock_arxiv.return_value = [{
+            "source": TechTopicSuggestion.SOURCE_ARXIV,
+            "external_id": "test_arxiv_1",
+            "title": "Scalable Reasoning Model",
+            "source_url": "https://arxiv.org/abs/1",
+            "author": "Alice",
+            "raw_summary": "Summary text",
+            "category": "ai_ml",
+        }]
+        mock_hn.return_value = []
+        mock_hf.return_value = []
+
+        from .tech_discovery import crawl_and_suggest_daily_topics
+        topics = crawl_and_suggest_daily_topics(limit_per_source=1)
+        self.assertEqual(len(topics), 1)
+        self.assertEqual(topics[0].external_id, "test_arxiv_1")
+        self.assertEqual(topics[0].title, "Scalable Reasoning Model")
+
+        # Deduplication check
+        topics_again = crawl_and_suggest_daily_topics(limit_per_source=1)
+        self.assertEqual(len(topics_again), 1)
+        self.assertEqual(TechTopicSuggestion.objects.count(), 1)
+
+    def test_convert_topic_to_post_plan(self):
+        topic = TechTopicSuggestion.objects.create(
+            title="Agentic Workflows 2026",
+            source=TechTopicSuggestion.SOURCE_ARXIV,
+            source_url="https://arxiv.org/abs/2026.001",
+            category=TechTopicSuggestion.CATEGORY_AGENTIC,
+            key_takeaways=["Tự động hóa", "Phân quyền an toàn"],
+            suggested_angle="Thích hợp triển khai tại doanh nghiệp Việt Nam.",
+        )
+        from .tech_discovery import convert_topic_to_post_plan
+        plan = convert_topic_to_post_plan(topic, user=self.user, auto_generate_variants=False)
+        self.assertIsNotNone(plan.id)
+        self.assertIn("[Công nghệ] Agentic Workflows 2026", plan.title)
+        self.assertIn("Tự động hóa", plan.base_content)
+        self.assertEqual(plan.status, PostPlan.STATUS_DRAFT)
+
+        topic.refresh_from_db()
+        self.assertTrue(topic.is_converted_to_plan)
+        self.assertEqual(topic.created_plan_id, plan.id)
+
+    def test_api_tech_discovery_topics_list_and_filters(self):
+        TechTopicSuggestion.objects.create(
+            title="Topic 1 AI",
+            source=TechTopicSuggestion.SOURCE_ARXIV,
+            source_url="https://arxiv.org/1",
+            category=TechTopicSuggestion.CATEGORY_AI_ML,
+        )
+        TechTopicSuggestion.objects.create(
+            title="Topic 2 Agent",
+            source=TechTopicSuggestion.SOURCE_HACKERNEWS,
+            source_url="https://hn.com/2",
+            category=TechTopicSuggestion.CATEGORY_AGENTIC,
+            is_converted_to_plan=True,
+        )
+
+        resp = self.client.get("/api/publishing/tech-discovery/topics/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(resp.data), 2)
+
+        resp_filtered = self.client.get("/api/publishing/tech-discovery/topics/?category=agentic")
+        self.assertEqual(resp_filtered.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(resp_filtered.data), 1)
+        self.assertEqual(resp_filtered.data[0]["title"], "Topic 2 Agent")
+
+    @patch("publishing.tech_discovery.crawl_and_suggest_daily_topics")
+    def test_api_tech_discovery_trigger(self, mock_crawl):
+        mock_topic = TechTopicSuggestion.objects.create(
+            title="Triggered Topic",
+            source=TechTopicSuggestion.SOURCE_ARXIV,
+            source_url="https://arxiv.org/trig",
+            category=TechTopicSuggestion.CATEGORY_AI_ML,
+        )
+        mock_crawl.return_value = [mock_topic]
+
+        resp = self.client.post("/api/publishing/tech-discovery/trigger/", {"limit_per_source": 2}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn("topics", resp.data)
+        self.assertEqual(len(resp.data["topics"]), 1)
+        self.assertEqual(resp.data["topics"][0]["title"], "Triggered Topic")
+
+    def test_api_tech_discovery_create_plan(self):
+        topic = TechTopicSuggestion.objects.create(
+            title="API Topic To Plan",
+            source=TechTopicSuggestion.SOURCE_HUGGINGFACE,
+            source_url="https://huggingface.co/papers/123",
+            category=TechTopicSuggestion.CATEGORY_AI_ML,
+            key_takeaways=["Takeaway API"],
+        )
+        resp = self.client.post(
+            f"/api/publishing/tech-discovery/{topic.id}/create-plan/",
+            {"auto_generate_variants": False, "custom_instructions": "Lưu ý định dạng chuyên sâu"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertIn("[Công nghệ] API Topic To Plan", resp.data["title"])
+        self.assertIn("Lưu ý định dạng chuyên sâu", resp.data["baseContent"])
+
+    @patch("publishing.tech_discovery.fetch_arxiv_papers")
+    @patch("publishing.tech_discovery.fetch_hacker_news_ai")
+    @patch("publishing.tech_discovery.fetch_huggingface_daily_papers")
+    def test_management_command_auto_suggest_tech_posts(self, mock_hf, mock_hn, mock_arxiv):
+        mock_arxiv.return_value = [{
+            "source": TechTopicSuggestion.SOURCE_ARXIV,
+            "external_id": "cmd_arxiv_1",
+            "title": "Command Line AI Topic",
+            "source_url": "https://arxiv.org/cmd",
+            "author": "Command Author",
+            "raw_summary": "Summary text",
+            "category": "ai_ml",
+        }]
+        mock_hn.return_value = []
+        mock_hf.return_value = []
+
+        from django.core.management import call_command
+        import io
+
+        out = io.StringIO()
+        call_command("auto_suggest_tech_posts", "--limit=1", "--auto-plan", stdout=out)
+        output_str = out.getvalue()
+        self.assertIn("Thu thập thành công 1 chủ đề", output_str)
+        self.assertIn("Đã tạo PostPlan", output_str)
+
+        self.assertEqual(PostPlan.objects.filter(title__contains="Command Line AI Topic").count(), 1)
+
 
 
 
