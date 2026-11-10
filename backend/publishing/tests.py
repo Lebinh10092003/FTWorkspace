@@ -1417,6 +1417,250 @@ class TechDiscoveryTests(TestCase):
         self.assertEqual(PostPlan.objects.filter(title__contains="Command Line AI Topic").count(), 1)
 
 
+class ZaloAutomationAdvancedTests(TestCase):
+    def setUp(self):
+        self.user = UserProfile.objects.create(
+            email="zalo_tester@fermat.vn",
+            name="Zalo Tester",
+            role="ADMIN",
+        )
+
+    def test_zalo_expired_cookie_rejected(self):
+        """Kiểm tra is_session_storage_authenticated từ chối cookie đã hết hạn (expires < now) và xóa file storage."""
+        import json
+        import tempfile
+        import time
+        from pathlib import Path
+        from unittest.mock import patch
+        from publishing.zalo_automation import is_session_storage_authenticated
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_dir = Path(tmpdir)
+            state_file = session_dir / "storage_state.json"
+
+            with patch("publishing.zalo_automation.get_zalo_session_dir", return_value=session_dir):
+                # 1. Cookie xác thực đã hết hạn
+                expired_cookies = [
+                    {
+                        "name": "zpw_sek",
+                        "value": "expired_sek_token",
+                        "expires": time.time() - 3600,
+                    }
+                ]
+                state_file.write_text(json.dumps({"cookies": expired_cookies}), encoding="utf-8")
+                self.assertFalse(is_session_storage_authenticated("test_session"))
+                self.assertFalse(state_file.exists())
+
+                # 2. Cookie xác thực còn hạn
+                valid_cookies = [
+                    {
+                        "name": "zpw_sek",
+                        "value": "valid_sek_token",
+                        "expires": time.time() + 3600,
+                    }
+                ]
+                state_file.write_text(json.dumps({"cookies": valid_cookies}), encoding="utf-8")
+                self.assertTrue(is_session_storage_authenticated("test_session"))
+                self.assertTrue(state_file.exists())
+
+    def test_send_zalo_personal_group_message_injects_cookies(self):
+        """Kiểm tra send_zalo_personal_group_message inject cookie từ storage_state vào persistent browser context."""
+        import json
+        import sys
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import MagicMock, patch
+        from publishing.zalo_automation import send_zalo_personal_group_message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_dir = Path(tmpdir)
+            state_file = session_dir / "storage_state.json"
+            cookies_data = [
+                {
+                    "name": "zpw_sek",
+                    "value": "active_sek_token_123",
+                    "domain": ".zalo.me",
+                    "path": "/",
+                    "httpOnly": True,
+                    "secure": True,
+                    "expires": 1999999999,
+                    "sameSite": "lax",
+                },
+                {
+                    "name": "zpsid",
+                    "value": "active_zpsid_token_456",
+                },
+                {
+                    "name": "",  # invalid cookie, no name
+                    "value": "ignore_me",
+                },
+                {
+                    "name": "broken_val",  # invalid cookie, value None
+                    "value": None,
+                },
+            ]
+            state_file.write_text(json.dumps({"cookies": cookies_data}), encoding="utf-8")
+
+            mock_sync_playwright = MagicMock()
+            mock_playwright_mod = MagicMock()
+            mock_sync_api = MagicMock()
+            mock_sync_api.sync_playwright = mock_sync_playwright
+            mock_playwright_mod.sync_api = mock_sync_api
+
+            mock_p = MagicMock()
+            mock_sync_playwright.return_value.__enter__.return_value = mock_p
+            mock_browser = MagicMock()
+            mock_p.chromium.launch_persistent_context.return_value = mock_browser
+
+            mock_page = MagicMock()
+            mock_page.url = "https://chat.zalo.me/"
+            mock_browser.new_page.return_value = mock_page
+
+            mock_search_input = MagicMock()
+            mock_page.wait_for_selector.return_value = mock_search_input
+
+            mock_conv_item = MagicMock()
+            mock_chat_input = MagicMock()
+
+            def fake_query_selector(selector):
+                if "chat-input-content" in selector:
+                    return mock_chat_input
+                return mock_conv_item
+
+            mock_page.query_selector.side_effect = fake_query_selector
+
+            with patch.dict(sys.modules, {"playwright": mock_playwright_mod, "playwright.sync_api": mock_sync_api}), \
+                 patch("publishing.zalo_automation.is_playwright_available", return_value=True), \
+                 patch("publishing.zalo_automation.get_zalo_session_status", return_value={"is_authenticated": True}), \
+                 patch("publishing.zalo_automation.get_zalo_session_dir", return_value=session_dir), \
+                 patch("publishing.zalo_automation.time.sleep"):
+
+                res = send_zalo_personal_group_message(
+                    group_name="Nhóm Fermat Ban Giám Đốc",
+                    content="Thông báo nội bộ quan trọng\nNội dung dòng 2",
+                    session_id="test_session",
+                )
+
+                self.assertEqual(res["status"], "published")
+                self.assertEqual(res["group_name"], "Nhóm Fermat Ban Giám Đốc")
+
+                # Kiểm tra cookies đã được inject vào browser
+                mock_browser.add_cookies.assert_called_once()
+                injected = mock_browser.add_cookies.call_args[0][0]
+                self.assertEqual(len(injected), 2)
+
+                c1 = next(c for c in injected if c["name"] == "zpw_sek")
+                self.assertEqual(c1["value"], "active_sek_token_123")
+                self.assertEqual(c1["domain"], ".zalo.me")
+                self.assertEqual(c1["path"], "/")
+                self.assertTrue(c1["httpOnly"])
+                self.assertTrue(c1["secure"])
+                self.assertEqual(c1["expires"], 1999999999.0)
+                self.assertEqual(c1["sameSite"], "Lax")
+
+                c2 = next(c for c in injected if c["name"] == "zpsid")
+                self.assertEqual(c2["value"], "active_zpsid_token_456")
+                self.assertEqual(c2["domain"], ".zalo.me")
+                self.assertEqual(c2["path"], "/")
+
+    def test_send_zalo_group_name_dash_fallback(self):
+        """Kiểm tra fallback tìm kiếm nhóm khi tên nhóm chứa các loại dấu gạch ngang khác nhau (–, —, −)."""
+        import json
+        import sys
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import MagicMock, patch
+        from publishing.zalo_automation import _normalize_zalo_name, send_zalo_personal_group_message
+
+        # 1. Kiểm tra hàm chuẩn hóa _normalize_zalo_name
+        self.assertEqual(_normalize_zalo_name("Fermat – Toán  Học — Lớp  −  10"), "fermat - toán học - lớp - 10")
+        self.assertEqual(_normalize_zalo_name(None), "")
+
+        # 2. Kiểm tra fallback trong send_zalo_personal_group_message
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_dir = Path(tmpdir)
+            state_file = session_dir / "storage_state.json"
+            state_file.write_text(json.dumps({"cookies": [{"name": "zpw_sek", "value": "val"}]}), encoding="utf-8")
+
+            mock_sync_playwright = MagicMock()
+            mock_playwright_mod = MagicMock()
+            mock_sync_api = MagicMock()
+            mock_sync_api.sync_playwright = mock_sync_playwright
+            mock_playwright_mod.sync_api = mock_sync_api
+
+            mock_p = MagicMock()
+            mock_sync_playwright.return_value.__enter__.return_value = mock_p
+            mock_browser = MagicMock()
+            mock_p.chromium.launch_persistent_context.return_value = mock_browser
+
+            mock_page = MagicMock()
+            mock_page.url = "https://chat.zalo.me/"
+            mock_browser.new_page.return_value = mock_page
+
+            mock_search_input = MagicMock()
+            mock_page.wait_for_selector.return_value = mock_search_input
+
+            mock_conv_item = MagicMock()
+            mock_chat_input = MagicMock()
+
+            # Lần tìm kiếm đầu tiên với safe_group (chứa '–') trả về None.
+            # Lần tìm kiếm fallback với alt_group (chứa '-') trả về mock_conv_item.
+            def fake_query_selector(selector):
+                if "chat-input-content" in selector:
+                    return mock_chat_input
+                if "Fermat - Thông Báo" in selector:
+                    return mock_conv_item
+                return None
+
+            mock_page.query_selector.side_effect = fake_query_selector
+
+            with patch.dict(sys.modules, {"playwright": mock_playwright_mod, "playwright.sync_api": mock_sync_api}), \
+                 patch("publishing.zalo_automation.is_playwright_available", return_value=True), \
+                 patch("publishing.zalo_automation.get_zalo_session_status", return_value={"is_authenticated": True}), \
+                 patch("publishing.zalo_automation.get_zalo_session_dir", return_value=session_dir), \
+                 patch("publishing.zalo_automation.time.sleep"):
+
+                res = send_zalo_personal_group_message(
+                    group_name="Fermat – Thông Báo",  # Chứa dấu en-dash '–'
+                    content="Nội dung gửi nhóm fallback",
+                    session_id="test_session",
+                )
+
+                self.assertEqual(res["status"], "published")
+                fill_calls = [call.args[0] for call in mock_search_input.fill.call_args_list]
+                self.assertIn("Fermat – Thông Báo", fill_calls)
+                self.assertIn("Fermat - Thông Báo", fill_calls)
+                mock_conv_item.click.assert_called_once()
+
+            # 3. Kiểm tra fallback thông qua candidates và _normalize_zalo_name
+            mock_search_input.reset_mock()
+            mock_conv_candidate = MagicMock()
+            mock_conv_candidate.get_attribute.return_value = "Fermat   -   Thông   Báo"
+            mock_page.query_selector_all.return_value = [mock_conv_candidate]
+
+            def fake_query_selector_cand(selector):
+                if "chat-input-content" in selector:
+                    return mock_chat_input
+                return None
+
+            mock_page.query_selector.side_effect = fake_query_selector_cand
+
+            with patch.dict(sys.modules, {"playwright": mock_playwright_mod, "playwright.sync_api": mock_sync_api}), \
+                 patch("publishing.zalo_automation.is_playwright_available", return_value=True), \
+                 patch("publishing.zalo_automation.get_zalo_session_status", return_value={"is_authenticated": True}), \
+                 patch("publishing.zalo_automation.get_zalo_session_dir", return_value=session_dir), \
+                 patch("publishing.zalo_automation.time.sleep"):
+
+                res2 = send_zalo_personal_group_message(
+                    group_name="Fermat — Thông Báo",  # em-dash
+                    content="Nội dung gửi candidate",
+                    session_id="test_session",
+                )
+                self.assertEqual(res2["status"], "published")
+                mock_conv_candidate.click.assert_called_once()
+
+
+
 
 
 

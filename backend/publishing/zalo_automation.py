@@ -34,6 +34,12 @@ def is_playwright_available() -> bool:
     except ImportError:
         return False
 
+def _normalize_zalo_name(name: str) -> str:
+    s = (name or '').lower()
+    for ch in ('–', '—', '−'):
+        s = s.replace(ch, '-')
+    return ' '.join(s.split())
+
 def is_session_storage_authenticated(session_id: str = 'default') -> bool:
     session_dir = get_zalo_session_dir(session_id)
     state_file = session_dir / 'storage_state.json'
@@ -42,9 +48,13 @@ def is_session_storage_authenticated(session_id: str = 'default') -> bool:
     try:
         data = json.loads(state_file.read_text(encoding='utf-8'))
         cookies = data.get('cookies', [])
+        now = time.time()
         for c in cookies:
             name = c.get('name', '')
             if name in ('zpw_sek', 'zpsid'):
+                expires = c.get('expires')
+                if isinstance(expires, (int, float)) and not isinstance(expires, bool) and expires > 0 and expires < now:
+                    continue
                 return True
         # File tồn tại nhưng không có cookie xác thực hợp lệ (phiên giả hoặc hết hạn)
         try:
@@ -456,7 +466,6 @@ def send_zalo_personal_group_message(
 
     try:
         from playwright.sync_api import sync_playwright
-        import time
 
         with sync_playwright() as p:
             browser = p.chromium.launch_persistent_context(
@@ -473,13 +482,87 @@ def send_zalo_personal_group_message(
                 locale='vi-VN',
                 timezone_id='Asia/Ho_Chi_Minh',
             )
+            valid_cookies: List[Dict[str, Any]] = []
+            if state_file.exists():
+                try:
+                    storage_data = json.loads(state_file.read_text(encoding='utf-8'))
+                    for c in storage_data.get('cookies', []):
+                        c_name = c.get('name')
+                        c_val = c.get('value')
+                        if not c_name or c_val is None:
+                            continue
+                        cookie_dict: Dict[str, Any] = {
+                            'name': str(c_name),
+                            'value': str(c_val),
+                            'domain': str(c.get('domain') or '.zalo.me'),
+                            'path': str(c.get('path') or '/'),
+                            'httpOnly': bool(c.get('httpOnly', False)),
+                            'secure': bool(c.get('secure', False)),
+                        }
+                        expires = c.get('expires')
+                        if isinstance(expires, (int, float)) and not isinstance(expires, bool) and expires > 0:
+                            cookie_dict['expires'] = float(expires)
+                        elif expires is not None and not isinstance(expires, bool):
+                            try:
+                                exp_float = float(expires)
+                                if exp_float > 0:
+                                    cookie_dict['expires'] = exp_float
+                            except (TypeError, ValueError):
+                                pass
+
+                        same_site = c.get('sameSite')
+                        if same_site in ('Strict', 'Lax', 'None'):
+                            cookie_dict['sameSite'] = same_site
+                        elif isinstance(same_site, str) and same_site.capitalize() in ('Strict', 'Lax', 'None'):
+                            cookie_dict['sameSite'] = same_site.capitalize()
+
+                        valid_cookies.append(cookie_dict)
+                except Exception as exc:
+                    logger.warning('Lỗi khi đọc cookie từ state_file: %s', exc)
+
+            if valid_cookies:
+                browser.add_cookies(valid_cookies)
+
             try:
                 page = browser.new_page()
                 page.goto('https://chat.zalo.me/', timeout=45000)
-                page.wait_for_timeout(4000)
+                if 'id.zalo.me' in (getattr(page, 'url', '') or ''):
+                    try:
+                        state_file.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    raise ZaloAutomationError('Phiên đăng nhập Zalo trên VPS đã hết hạn hoặc không hợp lệ. Vui lòng quét lại mã QR tại tab Kênh xuất bản.')
 
-                search_input = page.query_selector('input#contact-search-input, input[placeholder*="Tìm kiếm"]')
+                page.wait_for_timeout(2000)
+                if 'id.zalo.me' in (getattr(page, 'url', '') or ''):
+                    try:
+                        state_file.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    raise ZaloAutomationError('Phiên đăng nhập Zalo trên VPS đã hết hạn hoặc không hợp lệ. Vui lòng quét lại mã QR tại tab Kênh xuất bản.')
+
+                try:
+                    search_input = page.wait_for_selector(
+                        'input#contact-search-input, input[placeholder*="Tìm kiếm"]',
+                        timeout=15000,
+                    )
+                except Exception:
+                    search_input = None
+
                 if not search_input:
+                    has_qr = False
+                    try:
+                        qr_el = page.query_selector('.qrcode-img, canvas.qrcode, img[alt*="QR"]')
+                        if qr_el:
+                            has_qr = True
+                    except Exception:
+                        pass
+                    if has_qr or 'id.zalo.me' in (getattr(page, 'url', '') or ''):
+                        try:
+                            state_file.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                        raise ZaloAutomationError('Phiên đăng nhập Zalo trên VPS đã hết hạn hoặc không hợp lệ. Vui lòng quét lại mã QR tại tab Kênh xuất bản.')
                     raise ZaloAutomationError('Không tìm thấy ô tìm kiếm liên hệ trên Zalo Web.')
 
                 safe_group = group_name.replace('"', '').replace("'", '')
@@ -488,6 +571,76 @@ def send_zalo_personal_group_message(
                 page.wait_for_timeout(2000)
 
                 conv_item = page.query_selector(f'div[title*="{safe_group}"], .conv-item:has-text("{safe_group}")')
+                if not conv_item:
+                    alt_group = safe_group
+                    for ch in ('–', '—', '−'):
+                        alt_group = alt_group.replace(ch, '-')
+                    if alt_group != safe_group:
+                        search_input.fill(alt_group)
+                        page.wait_for_timeout(2000)
+                        conv_item = page.query_selector(f'div[title*="{alt_group}"], .conv-item:has-text("{alt_group}")')
+
+                if not conv_item:
+                    target_norm = _normalize_zalo_name(safe_group)
+                    if target_norm:
+                        candidates = page.query_selector_all('.conv-item, div[title]') or []
+                        for el in candidates:
+                            title_val = ''
+                            try:
+                                t = el.get_attribute('title')
+                                if isinstance(t, str):
+                                    title_val = t
+                            except Exception:
+                                pass
+
+                            text_val = ''
+                            for method_name in ('inner_text', 'text_content'):
+                                try:
+                                    fn = getattr(el, method_name, None)
+                                    if callable(fn):
+                                        val = fn()
+                                        if isinstance(val, str) and val.strip():
+                                            text_val = val
+                                            break
+                                except Exception:
+                                    pass
+
+                            norm_title = _normalize_zalo_name(title_val)
+                            norm_text = _normalize_zalo_name(text_val)
+
+                            if (norm_title and norm_title == target_norm) or (norm_text and norm_text == target_norm):
+                                conv_item = el
+                                break
+
+                        if not conv_item:
+                            for el in candidates:
+                                title_val = ''
+                                try:
+                                    t = el.get_attribute('title')
+                                    if isinstance(t, str):
+                                        title_val = t
+                                except Exception:
+                                    pass
+
+                                text_val = ''
+                                for method_name in ('inner_text', 'text_content'):
+                                    try:
+                                        fn = getattr(el, method_name, None)
+                                        if callable(fn):
+                                            val = fn()
+                                            if isinstance(val, str) and val.strip():
+                                                text_val = val
+                                                break
+                                    except Exception:
+                                        pass
+
+                                norm_title = _normalize_zalo_name(title_val)
+                                norm_text = _normalize_zalo_name(text_val)
+
+                                if (norm_title and target_norm in norm_title) or (norm_text and target_norm in norm_text):
+                                    conv_item = el
+                                    break
+
                 if not conv_item:
                     raise ZaloAutomationError(f'Không tìm thấy nhóm Zalo với tên "{safe_group}" trong danh bạ.')
 
