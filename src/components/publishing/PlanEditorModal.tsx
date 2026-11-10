@@ -375,7 +375,10 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         await handleRefreshPlan();
         onSaved();
       } else {
-        setError(res.message || 'Xuất bản thất bại.');
+        const failedItem = (res as any)?.dispatched?.find((d: any) => !d.success);
+        const errMsg = failedItem?.error || res.message || 'Xuất bản thất bại.';
+        setError(errMsg);
+        await handleRefreshPlan();
       }
     } catch (err: any) {
       setError(err?.message || 'Có lỗi khi xuất bản.');
@@ -419,7 +422,9 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         onSaved();
         setTimeout(onClose, 1200);
       } else {
-        setError(res.message || 'Xuất bản bài viết thất bại.');
+        const failedItem = (res as any)?.dispatched?.find((d: any) => !d.success);
+        const errMsg = failedItem?.error || res.message || 'Xuất bản bài viết thất bại.';
+        setError(errMsg);
         onSaved();
       }
     } catch (err: any) {

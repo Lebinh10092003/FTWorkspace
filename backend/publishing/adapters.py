@@ -233,8 +233,14 @@ def dispatch_variant(variant: PostVariant) -> Dict[str, Any]:
     plan = variant.plan
     channel = variant.channel
 
-    # 1. Safety verification: Must be approved
-    if plan.status not in [PostPlan.STATUS_APPROVED, PostPlan.STATUS_SCHEDULED]:
+    # 1. Safety verification: Must be approved (or in partial/failed/published when retrying/republishing)
+    if plan.status not in [
+        PostPlan.STATUS_APPROVED,
+        PostPlan.STATUS_SCHEDULED,
+        PostPlan.STATUS_PARTIAL,
+        PostPlan.STATUS_FAILED,
+        PostPlan.STATUS_PUBLISHED,
+    ]:
         raise PublishAdapterError(
             f"Bài đăng #{plan.id} chưa được duyệt (trạng thái: {plan.get_status_display()}). Tuyệt đối không thể xuất bản.",
             retryable=False,
