@@ -19,6 +19,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Send,
   Share2,
   Sparkles,
   Trash2,
@@ -52,24 +53,26 @@ import type { PublishChannel } from '../publishing/publishingTypes';
 
 type Props = {
   idToken: string;
-  userName: string;
+  userName?: string;
   userEmail?: string;
   userRole?: string;
   photoURL?: string | null;
-  onAccountClick: () => void;
-  onLogout: () => void;
-  onNavSelect: (id: string) => void;
+  onAccountClick?: () => void;
+  onLogout?: () => void;
+  onNavSelect?: (id: string) => void;
+  embedded?: boolean;
 };
 
 export default function NewsPostCenter({
   idToken,
-  userName,
+  userName = '',
   userEmail,
   userRole,
   photoURL,
   onAccountClick,
   onLogout,
   onNavSelect,
+  embedded = false,
 }: Props) {
   // Navigation / views
   const [viewState, setViewState] = useState<'list' | 'editor' | 'detail'>('list');
@@ -785,20 +788,63 @@ export default function NewsPostCenter({
   };
 
   return (
-    <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 dark:bg-slate-950 font-sans text-[var(--ft-text-main,#0f172a)] transition-colors">
-      <ModuleShellHeader
-        title="Bộ công cụ FermatTech"
-        items={COMMUNICATION_TOOLS_NAV}
-        activeId="news-posts"
-        onSelect={id => onNavSelect(id)}
-        ariaLabel="Điều hướng bộ công cụ FermatTech"
-        actions={
+    <div
+      className={
+        embedded
+          ? 'w-full font-sans text-[var(--ft-text-main,#0f172a)] transition-colors'
+          : 'ft-module-shell flex min-h-dvh flex-col bg-slate-50 dark:bg-slate-950 font-sans text-[var(--ft-text-main,#0f172a)] transition-colors'
+      }
+    >
+      {!embedded ? (
+        <ModuleShellHeader
+          title="Bộ công cụ FermatTech"
+          items={COMMUNICATION_TOOLS_NAV}
+          activeId="news-posts"
+          onSelect={id => onNavSelect?.(id)}
+          ariaLabel="Điều hướng bộ công cụ FermatTech"
+          actions={
+            <div className="flex items-center gap-2">
+              {viewState !== 'list' ? (
+                <button
+                  type="button"
+                  onClick={() => setViewState('list')}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs cursor-pointer min-h-[44px]"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span>Quay lại danh sách</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openEditor()}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B72CE] hover:bg-[#075CA8] text-white px-3.5 py-2 text-xs sm:text-sm font-bold shadow-xs transition active:scale-95 cursor-pointer min-h-[44px]"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Tạo tin bài mới</span>
+                </button>
+              )}
+            </div>
+          }
+        />
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 mb-4 border-b border-slate-200 dark:border-slate-800">
+          <div>
+            <div className="flex items-center gap-2">
+              <Newspaper className="h-5 w-5 text-[#0B72CE]" />
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                Soạn & Đăng tin bài (AI Studio)
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Soạn thảo tin bài sự kiện, khảo sát đối tác và xuất bản trực tiếp lên Facebook / Zalo
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             {viewState !== 'list' ? (
               <button
                 type="button"
                 onClick={() => setViewState('list')}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs cursor-pointer min-h-[44px]"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs cursor-pointer min-h-[40px]"
               >
                 <ArrowLeft className="h-4 w-4" />
                 <span>Quay lại danh sách</span>
@@ -807,32 +853,34 @@ export default function NewsPostCenter({
               <button
                 type="button"
                 onClick={() => openEditor()}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B72CE] hover:bg-[#075CA8] text-white px-3.5 py-2 text-xs sm:text-sm font-bold shadow-xs transition active:scale-95 cursor-pointer min-h-[44px]"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B72CE] hover:bg-[#075CA8] text-white px-3.5 py-2 text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer min-h-[40px]"
               >
                 <Plus className="h-4 w-4" />
                 <span>Tạo tin bài mới</span>
               </button>
             )}
           </div>
-        }
-      />
+        </div>
+      )}
 
       <main className="min-w-0 flex-1">
-        <div className="ft-module-content mx-auto p-4 sm:p-6 md:p-8 max-w-7xl">
+        <div className={embedded ? 'w-full' : 'ft-module-content mx-auto p-4 sm:p-6 md:p-8 max-w-7xl'}>
           {/* Subheader Banner */}
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <Newspaper className="h-5 w-5 text-[#0B72CE]" />
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                  Đăng tin bài truyền thông
-                </h1>
+          {!embedded && (
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Newspaper className="h-5 w-5 text-[#0B72CE]" />
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                    Đăng tin bài truyền thông
+                  </h1>
+                </div>
+                <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+                  Tự động hóa soạn thảo tin bài Facebook và bài báo từ biên bản làm việc, tích hợp xuất ảnh đồ họa báo cáo khảo sát.
+                </p>
               </div>
-              <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-                Tự động hóa soạn thảo tin bài Facebook và bài báo từ biên bản làm việc, tích hợp xuất ảnh đồ họa báo cáo khảo sát.
-              </p>
             </div>
-          </div>
+          )}
 
           {/* Alerts: Error & Notice */}
           {error && (
@@ -1573,6 +1621,16 @@ export default function NewsPostCenter({
                       <FileDown className="h-4 w-4 text-[#0B72CE] dark:text-[#60A5FA]" />
                     )}
                     <span>{downloadingDocx ? 'Đang xuất Word...' : 'Tải Word (.docx)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenSchedulePublish}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-xs font-bold shadow-xs transition cursor-pointer min-h-[44px]"
+                    title="Chọn kênh và đăng trực tiếp bài viết này lên Facebook hoặc Zalo"
+                  >
+                    <Send className="h-4 w-4 text-white" />
+                    <span>Đăng ngay / Chọn kênh</span>
                   </button>
 
                   <button

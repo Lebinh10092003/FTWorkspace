@@ -1182,6 +1182,41 @@ class PublishRepublishTests(TestCase):
         self.assertEqual(variant.external_post_url, "https://fb.com/new_123")
 
     @patch("publishing.views.dispatch_variant")
+    def test_post_plan_publish_now_direct_from_draft(self, mock_dispatch):
+        mock_dispatch.return_value = {
+            "status": "published",
+            "external_post_id": "direct_123",
+            "external_post_url": "https://fb.com/direct_123",
+        }
+        plan = PostPlan.objects.create(
+            title="Bài đăng trực tiếp",
+            base_content="Nội dung đăng ngay từ nháp",
+            creator=self.user,
+            status=PostPlan.STATUS_DRAFT,
+        )
+        variant = PostVariant.objects.create(
+            plan=plan,
+            channel=self.channel,
+            title="Variant đăng trực tiếp",
+            content="Nội dung đăng ngay",
+            status=PostVariant.STATUS_DRAFT,
+        )
+
+        resp = self.client.post(
+            f"/api/publishing/plans/{plan.id}/publish-now/",
+            {},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        mock_dispatch.assert_called_once_with(variant)
+
+        plan.refresh_from_db()
+        variant.refresh_from_db()
+        self.assertEqual(plan.status, PostPlan.STATUS_PUBLISHED)
+        self.assertEqual(variant.status, PostVariant.STATUS_PUBLISHED)
+        self.assertEqual(variant.external_post_id, "direct_123")
+
+    @patch("publishing.views.dispatch_variant")
     def test_post_variant_publish_now(self, mock_dispatch):
         mock_dispatch.return_value = {
             "status": "published",

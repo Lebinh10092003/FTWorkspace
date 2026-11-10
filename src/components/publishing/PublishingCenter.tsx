@@ -17,6 +17,8 @@ import {
   ShieldCheck,
   Megaphone,
   Bot,
+  Send,
+  Newspaper,
 } from 'lucide-react';
 import type { PostPlan, PublishChannel, PostVariant, PlanStatus } from './publishingTypes';
 import { PLAN_STATUS_MAP, VARIANT_STATUS_MAP, CHANNEL_KIND_MAP } from './publishingTypes';
@@ -26,6 +28,7 @@ import { ChannelManager } from './ChannelManager';
 import { PlanEditorModal } from './PlanEditorModal';
 import FbBotTeamStudio from './FbBotTeamStudio';
 import { TechDiscoveryStudio } from './TechDiscoveryStudio';
+import NewsPostCenter from '../news-posts/NewsPostCenter';
 import { appDialog } from '../AppDialog';
 
 interface PublishingCenterProps {
@@ -33,8 +36,10 @@ interface PublishingCenterProps {
   userName?: string;
   userEmail?: string;
   userRole?: string;
+  photoURL?: string | null;
   initialNewsPost?: { id: number; title: string; content: string } | null;
   onClearInitialNewsPost?: () => void;
+  defaultSubTab?: 'calendar' | 'list' | 'news-posts' | 'channels' | 'ai-bots' | 'tech-discovery';
 }
 
 export default function PublishingCenter({
@@ -42,11 +47,15 @@ export default function PublishingCenter({
   userName,
   userEmail,
   userRole,
+  photoURL,
   initialNewsPost,
   onClearInitialNewsPost,
+  defaultSubTab,
 }: PublishingCenterProps) {
   // Navigation sub-tabs inside PublishingCenter
-  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'list' | 'channels' | 'ai-bots' | 'tech-discovery'>('calendar');
+  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'list' | 'news-posts' | 'channels' | 'ai-bots' | 'tech-discovery'>(
+    defaultSubTab || 'calendar'
+  );
 
   // Data state
   const [plans, setPlans] = useState<PostPlan[]>([]);
@@ -249,6 +258,18 @@ export default function PublishingCenter({
             </button>
             <button
               type="button"
+              onClick={() => setActiveSubTab('news-posts')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                activeSubTab === 'news-posts'
+                  ? 'bg-white dark:bg-slate-800 text-[#0B72CE] shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+              }`}
+            >
+              <Newspaper className="w-3.5 h-3.5" />
+              <span>Tin bài (AI)</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveSubTab('channels')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 activeSubTab === 'channels'
@@ -296,14 +317,15 @@ export default function PublishingCenter({
             <RotateCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-[#0B72CE]' : ''}`} />
           </button>
 
-          {/* Create Button */}
+          {/* Create / Direct Publish Button */}
           <button
             type="button"
             onClick={() => handleOpenCreatePlan()}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-[#0B72CE] hover:bg-[#075CA8] text-white text-xs font-bold shadow-xs transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+            title="Soạn thảo và phát hành bài viết ngay hoặc lên lịch"
           >
-            <Plus className="w-4 h-4" />
-            Tạo kế hoạch đăng
+            <Send className="w-3.5 h-3.5" />
+            <span>Soạn bài & Đăng ngay</span>
           </button>
         </div>
       </div>
@@ -547,6 +569,20 @@ export default function PublishingCenter({
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Sub-view: Tin bài sự kiện & báo cáo (AI Studio) */}
+      {activeSubTab === 'news-posts' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 shadow-xs">
+          <NewsPostCenter
+            idToken={idToken}
+            userName={userName}
+            userEmail={userEmail}
+            userRole={userRole}
+            photoURL={photoURL}
+            embedded={true}
+          />
         </div>
       )}
 
