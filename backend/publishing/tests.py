@@ -245,6 +245,44 @@ class PostPlanApprovalAndSafetyTests(TestCase):
         self.assertIsNone(plan.approved_at)
         self.assertEqual(variant.status, PostVariant.STATUS_PENDING_APPROVAL)
 
+    def test_plan_and_variant_serialization_supports_both_camel_and_snake_case(self):
+        """Kiểm tra API trả về cả camelCase và snake_case cho PostPlan và PostVariant để frontend không bị lỗi undefined."""
+        plan = PostPlan.objects.create(
+            title="Kế hoạch kiểm tra serialization",
+            base_content="Nội dung gốc đầy đủ",
+            creator=self.employee,
+            status=PostPlan.STATUS_DRAFT,
+        )
+        variant = PostVariant.objects.create(
+            plan=plan,
+            channel=self.channel,
+            title="Biến thể Facebook",
+            content="Nội dung biến thể Facebook",
+            status=PostVariant.STATUS_DRAFT,
+            external_post_url="https://facebook.com/posts/12345",
+        )
+
+        self.client.force_authenticate(user=self.employee)
+        res = self.client.get(f"/api/publishing/plans/{plan.id}/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.json()["plan"]
+
+        # Kiểm tra PostPlan có cả hai định dạng
+        self.assertEqual(data["base_content"], "Nội dung gốc đầy đủ")
+        self.assertEqual(data["baseContent"], "Nội dung gốc đầy đủ")
+        self.assertEqual(data["created_by_email"], self.employee.email)
+        self.assertEqual(data["creatorEmail"], self.employee.email)
+
+        # Kiểm tra PostVariant có cả hai định dạng
+        self.assertEqual(len(data["variants"]), 1)
+        v_data = data["variants"][0]
+        self.assertEqual(v_data["channel_id"], self.channel.id)
+        self.assertEqual(v_data["channelId"], self.channel.id)
+        self.assertEqual(v_data["channel_name"], self.channel.name)
+        self.assertEqual(v_data["channelName"], self.channel.name)
+        self.assertEqual(v_data["external_post_url"], "https://facebook.com/posts/12345")
+        self.assertEqual(v_data["externalPostUrl"], "https://facebook.com/posts/12345")
+
     def test_unapproved_variant_cannot_be_dispatched(self):
         """Cố gắng dispatch variant khi plan chưa được duyệt sẽ bị chặn ngay lập tức."""
         plan = PostPlan.objects.create(
