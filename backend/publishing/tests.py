@@ -938,7 +938,27 @@ class PublishChannelConnectionTests(TestCase):
                         mock_resp.read.return_value = b'<html><script src="https://stc-zlogin.zdn.vn/main-2606161423.js"></script></html>'
                     return mock_resp
 
-                with patch('urllib.request.OpenerDirector.open', side_effect=fake_open), \
+                import http.cookiejar
+                fake_cookie = http.cookiejar.Cookie(
+                    version=0, name='zpw_sek', value='test_sek', port=None, port_specified=False,
+                    domain='.zalo.me', domain_specified=True, domain_initial_dot=True, path='/',
+                    path_specified=True, secure=True, expires=None, discard=False, comment=None,
+                    comment_url=None, rest={'HttpOnly': 'true'}, rfc2109=False
+                )
+
+                def fake_build_opener(*handlers):
+                    for h in handlers:
+                        if hasattr(h, 'cookiejar'):
+                            h.cookiejar.set_cookie(fake_cookie)
+                    mock_opener = MagicMock()
+                    mock_opener.open.side_effect = fake_open
+                    return mock_opener
+
+                old_sess = _login_session_manager._sessions.pop('test_direct_api', None)
+                if old_sess and old_sess.get('stop_event'):
+                    old_sess['stop_event'].set()
+
+                with patch('urllib.request.build_opener', side_effect=fake_build_opener), \
                      patch('publishing.zalo_automation.time.sleep', return_value=None):
                     res = generate_zalo_qr_login('test_direct_api', force_refresh=True)
                     self.assertEqual(res['status'], 'qr_ready')
@@ -953,6 +973,10 @@ class PublishChannelConnectionTests(TestCase):
                     self.assertIsNone(err, f"Worker failed with error: {err}")
                     self.assertTrue((session_dir / 'storage_state.json').exists())
                     self.assertTrue((session_dir / 'active_qr_session.json').exists())
+
+                cleanup_sess = _login_session_manager._sessions.pop('test_direct_api', None)
+                if cleanup_sess and cleanup_sess.get('stop_event'):
+                    cleanup_sess['stop_event'].set()
 
 
 class EmailNewsletterChannelTests(TestCase):
