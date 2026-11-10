@@ -7,6 +7,8 @@ import './CompetitionHub.css';
 import { publicRegistrationLink } from './publicRegistrationLink';
 import { countdownLabel, describeMilestones, parseLandingDate, type MilestoneSummary } from './landingTimeline';
 import { usePointerTilt, useRevealScope, useScrollProgress } from './landingMotion';
+import { AcademicFragments } from './CompetitionEssentials';
+import { profileFor, type CompetitionCategory } from './competitionProfiles';
 
 type HubContent = {
   subject?: string; badge?: string; headline?: string; intro?: string; logoUrl?: string; accentColor?: string;
@@ -181,6 +183,7 @@ function NextRoundCard({ entry, competition }: { entry: SeasonEntry; competition
 }
 
 function CompetitionCard({ item, order }: { item: Competition; order: number }) {
+  const profile = profileFor(item.code);
   const tilt = usePointerTilt<HTMLElement>(true, 5);
   const next = item.summary.next;
   const progress = item.summary.total ? item.summary.done / item.summary.total : 0;
@@ -195,17 +198,18 @@ function CompetitionCard({ item, order }: { item: Competition; order: number }) 
     <article
       ref={tilt}
       onMouseMove={spotlight}
-      className={`hub-card lp-tilt ${ended ? 'is-ended' : ''}`}
+      className={`hub-card hub-card--${order % 3} lp-tilt ${ended ? 'is-ended' : ''}`}
       style={{ '--hub-accent': item.accent, ...delay(order * 90) } as CSSProperties}
       data-reveal
     >
       <span className="hub-card-watermark" aria-hidden="true">{item.code}</span>
       <div className="hub-card-top">
-        {item.logoUrl ? <img src={item.logoUrl} alt="" className="hub-card-logo" loading="lazy" /> : <span className="hub-card-logo is-empty"><Trophy className="h-5 w-5" /></span>}
+        <span className="hub-card-symbol" aria-hidden="true">{profile?.glyph || <Trophy className="h-5 w-5" />}</span>
         <span className={`hub-chip ${next?.daysAway !== null && next && next.daysAway <= 14 ? 'is-hot' : ''}`}>
           {ended ? 'Đã kết thúc mùa thi' : next ? countdownLabel(next.daysAway) : 'Lịch đang cập nhật'}
         </span>
       </div>
+      {profile && <p className="hub-card-field"><span>{profile.area}</span><strong>{profile.grades}</strong></p>}
       <p className="hub-card-code">{item.code}</p>
       <h3 className="hub-card-name">{item.name}</h3>
       {item.badge && <p className="hub-card-badge">{item.badge}</p>}
@@ -309,6 +313,8 @@ function SeasonStrip({ entries }: { entries: SeasonEntry[] }) {
 export default function CompetitionHub() {
   const [sites, setSites] = useState<HubSite[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [category, setCategory] = useState<'all' | CompetitionCategory>('all');
+  const [grade, setGrade] = useState('');
   const progress = useScrollProgress();
 
   useEffect(() => {
@@ -325,7 +331,12 @@ export default function CompetitionHub() {
   }, []);
 
   const competitions = useMemo(() => (sites || []).map(toCompetition).sort(byNextMilestone), [sites]);
-  const revealRef = useRevealScope<HTMLDivElement>(!reducedMotion(), competitions.length);
+  const revealRef = useRevealScope<HTMLDivElement>(!reducedMotion(), `${competitions.length}-${category}-${grade}`);
+  const visibleCompetitions = useMemo(() => competitions.filter(item => {
+    const profile = profileFor(item.code);
+    return (category === 'all' || profile?.category === category)
+      && (!grade || !!profile && Number(grade) >= profile.minGrade && Number(grade) <= profile.maxGrade);
+  }), [competitions, category, grade]);
 
   const season = useMemo(() => {
     const entries: SeasonEntry[] = [];
@@ -352,9 +363,11 @@ export default function CompetitionHub() {
   const upcomingCount = season.entries.filter(entry => !entry.past).length;
   const nextDays = upcoming ? Math.max(0, Math.round((upcoming.date.getTime() - new Date(new Date().toDateString()).getTime()) / DAY_MS)) : 0;
   const orbs = competitions.slice(0, 4);
+  const nextDates = season.entries.filter((entry, index, all) => !entry.past && entry.iso !== upcoming?.iso
+    && all.findIndex(other => other.iso === entry.iso) === index).slice(0, 2);
 
   return (
-    <div ref={revealRef} className="competition-hub landing-motion">
+    <div ref={revealRef} className="competition-hub editorial-hub landing-motion">
       <header className="hub-header">
         <div className="hub-shell hub-header-row">
           <a href="/cuoc-thi" className="hub-brand">
@@ -373,6 +386,7 @@ export default function CompetitionHub() {
       </header>
 
       <section className="hub-hero">
+        <AcademicFragments />
         <div className="hub-hero-grid" aria-hidden="true" />
         <div className="hub-hero-orbs" aria-hidden="true">
           {orbs.map((item, index) => <span key={item.slug} style={{ '--hub-accent': item.accent, '--orb-index': index } as CSSProperties} />)}
@@ -395,7 +409,16 @@ export default function CompetitionHub() {
             </div>
           </div>
 
-          {upcoming && upcomingCompetition && <NextRoundCard entry={upcoming} competition={upcomingCompetition} />}
+          {upcoming && upcomingCompetition && <div className="hub-hero-side">
+            <span className="hub-hero-edition" aria-hidden="true">EXPLORE / 26—27</span>
+            <NextRoundCard entry={upcoming} competition={upcomingCompetition} />
+            <div className="hub-date-tickets" aria-label="Những ngày thi tiếp theo">
+              {nextDates.map(entry => <a key={entry.key} href={`/cuoc-thi/${entry.slug}`} style={{ '--hub-accent': entry.accent } as CSSProperties}>
+                <span>{String(entry.date.getDate()).padStart(2, '0')}/{String(entry.date.getMonth() + 1).padStart(2, '0')}</span>
+                <div><small>Tiếp theo</small><strong>{entry.code}</strong></div><ArrowUpRight size={19} />
+              </a>)}
+            </div>
+          </div>}
         </div>
 
         {competitions.length > 0 && (
@@ -421,8 +444,15 @@ export default function CompetitionHub() {
       <section id="cuoc-thi" className="hub-section hub-shell">
         <div className="hub-heading" data-reveal>
           <p>Cuộc thi</p>
-          <h2>Các cuộc thi{season.label ? ` mùa ${season.label}` : ''}</h2>
-          <span>Mỗi cuộc thi có trang riêng với đề mẫu, thể lệ, lịch thi chi tiết và giải thưởng.</span>
+          <h2>Một thế mạnh.<br />Một hành trình để khám phá.</h2>
+          <span>Chọn lĩnh vực và khối lớp để tìm cuộc thi phù hợp. Mỗi trang riêng có đề mẫu, thể lệ, lịch thi và hướng dẫn đăng ký.</span>
+        </div>
+        <div className="hub-finder" data-reveal="slice">
+          <div className="hub-finder-categories" role="group" aria-label="Lọc theo lĩnh vực">
+            {([['all', 'Tất cả'], ['academic', 'Toán & Tiếng Anh'], ['science', 'Khoa học & AI'], ['life', 'Kỹ năng sống']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={category === value} onClick={() => setCategory(value)}>{label}</button>)}
+          </div>
+          <label className="hub-grade-filter"><span>Khối lớp</span><select aria-label="Lọc theo khối lớp" value={grade} onChange={event => setGrade(event.target.value)}><option value="">Tất cả khối lớp</option>{Array.from({ length: 12 }, (_, i) => i + 1).map(value => <option key={value} value={value}>Lớp {value}</option>)}</select></label>
+          <p className="hub-finder-count" aria-live="polite">{visibleCompetitions.length} cuộc thi phù hợp</p>
         </div>
         {sites === null && <div className="hub-grid">{[0, 1, 2].map(index => <div key={index} className="hub-card is-loading" />)}</div>}
         {sites !== null && competitions.length === 0 && (
@@ -430,9 +460,10 @@ export default function CompetitionHub() {
         )}
         {competitions.length > 0 && (
           <div className="hub-grid">
-            {competitions.map((item, index) => <CompetitionCard key={item.slug} item={item} order={index} />)}
+            {visibleCompetitions.map((item, index) => <CompetitionCard key={item.slug} item={item} order={index} />)}
           </div>
         )}
+        {competitions.length > 0 && visibleCompetitions.length === 0 && <div className="hub-no-match"><p>Chưa có cuộc thi phù hợp với lựa chọn này.</p><button type="button" onClick={() => { setCategory('all'); setGrade(''); }}>Xem tất cả cuộc thi <ArrowRight size={16} /></button></div>}
       </section>
 
       {season.entries.length > 0 && (

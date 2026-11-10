@@ -902,6 +902,8 @@ class PublishChannelConnectionTests(TestCase):
         """Kiểm tra luồng xác thực Zalo qua HTTP API trực tiếp: sinh mã QR, trích xuất cookie và ghi storage_state."""
         import tempfile
         import json
+        import threading
+        from http.cookiejar import Cookie, CookieJar
         from pathlib import Path
         from unittest.mock import patch, MagicMock
         from publishing.zalo_automation import generate_zalo_qr_login, get_zalo_session_status, _login_session_manager
@@ -909,6 +911,17 @@ class PublishChannelConnectionTests(TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             session_dir = Path(tmpdir)
             with patch('publishing.zalo_automation.get_zalo_session_dir', return_value=session_dir):
+                # OpenerDirector.open is mocked below, so its cookie processor
+                # cannot populate the jar as a real checksession response would.
+                cookie_jar = CookieJar()
+                cookie_jar.set_cookie(Cookie(
+                    version=0, name='zpw_sek', value='mock_authenticated_session',
+                    port=None, port_specified=False, domain='.zalo.me',
+                    domain_specified=True, domain_initial_dot=True, path='/',
+                    path_specified=True, secure=True, expires=None, discard=True,
+                    comment=None, comment_url=None, rest={'HttpOnly': None},
+                ))
+                allow_scan = threading.Event()
                 # Mock urllib requests
                 mock_qr_json = {
                     'error_code': 0,
@@ -932,7 +945,8 @@ class PublishChannelConnectionTests(TestCase):
                     elif 'waiting-confirm' in url:
                         mock_resp.read.return_value = b'{"error_code": 0}'
                     elif 'waiting-scan' in url:
-                        scan_gate.wait(timeout=5)
+                        if not allow_scan.wait(timeout=5):
+                            raise RuntimeError('Test did not release the QR scan worker.')
                         mock_resp.read.return_value = b'{"error_code": 0, "data": {"avatar": "", "display_name": "Test"}}'
                     elif 'qr/generate' in url:
                         mock_resp.read.return_value = json.dumps(mock_qr_json).encode('utf-8')
@@ -942,48 +956,29 @@ class PublishChannelConnectionTests(TestCase):
                         mock_resp.read.return_value = b'<html><script src="https://stc-zlogin.zdn.vn/main-2606161423.js"></script></html>'
                     return mock_resp
 
-                import http.cookiejar
-                fake_cookie = http.cookiejar.Cookie(
-                    version=0, name='zpw_sek', value='test_sek', port=None, port_specified=False,
-                    domain='.zalo.me', domain_specified=True, domain_initial_dot=True, path='/',
-                    path_specified=True, secure=True, expires=None, discard=False, comment=None,
-                    comment_url=None, rest={'HttpOnly': 'true'}, rfc2109=False
-                )
-
-                def fake_build_opener(*handlers):
-                    for h in handlers:
-                        if hasattr(h, 'cookiejar'):
-                            h.cookiejar.set_cookie(fake_cookie)
-                    mock_opener = MagicMock()
-                    mock_opener.open.side_effect = fake_open
-                    return mock_opener
-
-                old_sess = _login_session_manager._sessions.pop('test_direct_api', None)
-                if old_sess and old_sess.get('stop_event'):
-                    old_sess['stop_event'].set()
-
-                with patch('urllib.request.build_opener', side_effect=fake_build_opener), \
-                     patch('publishing.zalo_automation.time.sleep', return_value=None):
+                with patch('urllib.request.OpenerDirector.open', side_effect=fake_open), patch(
+                    'publishing.zalo_automation.http.cookiejar.CookieJar', return_value=cookie_jar,
+                ):
                     res = generate_zalo_qr_login('test_direct_api', force_refresh=True)
-                    self.assertEqual(res['status'], 'qr_ready')
-                    self.assertTrue(res['qr_data'].startswith('data:image/png;base64,'))
-                    self.assertTrue((session_dir / 'active_qr_session.json').exists())
-
-                    # Cho phép worker tiếp tục bước scan & confirm
-                    scan_gate.set()
-
-                    sess_info = _login_session_manager._sessions.get('test_direct_api', {})
-                    worker_thread = sess_info.get('thread')
-                    if worker_thread:
-                        worker_thread.join(timeout=5)
-
-                    err = sess_info.get('error')
-                    self.assertIsNone(err, f"Worker failed with error: {err}")
-                    self.assertTrue((session_dir / 'storage_state.json').exists())
-
-                cleanup_sess = _login_session_manager._sessions.pop('test_direct_api', None)
-                if cleanup_sess and cleanup_sess.get('stop_event'):
-                    cleanup_sess['stop_event'].set()
+                    sess_info = _login_session_manager._sessions['test_direct_api']
+                    try:
+                        self.assertEqual(res['status'], 'qr_ready')
+                        self.assertTrue(res['qr_data'].startswith('data:image/png;base64,'))
+                        allow_scan.set()
+                        sess_info['thread'].join(timeout=5)
+                        self.assertFalse(sess_info['thread'].is_alive())
+                        self.assertIsNone(sess_info.get('error'))
+                        state = json.loads((session_dir / 'storage_state.json').read_text())
+                        self.assertEqual(state['cookies'][0]['name'], 'zpw_sek')
+                        self.assertTrue(state['cookies'][0]['httpOnly'])
+                        active = json.loads((session_dir / 'active_qr_session.json').read_text())
+                        self.assertEqual(active['status'], 'authenticated')
+                        self.assertTrue(get_zalo_session_status('test_direct_api')['is_authenticated'])
+                    finally:
+                        allow_scan.set()
+                        sess_info['stop_event'].set()
+                        sess_info['thread'].join(timeout=5)
+                        _login_session_manager._sessions.pop('test_direct_api', None)
 
 
 class EmailNewsletterChannelTests(TestCase):
@@ -1130,7 +1125,6 @@ class EmailNewsletterChannelTests(TestCase):
         self.assertEqual(args[0], "newsletter@fermat.vn")
         self.assertEqual(args[1], ["user1@example.com", "user2@example.com"])
         self.assertIn("Subject: System Update v2", args[2])
-
 
 
 

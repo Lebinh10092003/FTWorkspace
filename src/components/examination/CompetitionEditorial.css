@@ -1,0 +1,176 @@
+/* Các mảng giấy, dải màu và khung cắt góc dùng xuyên suốt trang tổng / trang riêng. */
+.editorial-hub, .editorial-landing { --editorial-accent: var(--lp-accent, var(--siaio-accent, #83b9fb)); }
+.academic-fragments { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; }
+.academic-fragment { position:absolute; display:block; color:var(--editorial-accent); }
+.academic-fragment--frame { width:290px; height:290px; right:-125px; top:80px; border:1px solid currentColor; opacity:.2; transform:rotate(24deg); }
+.academic-fragment--tile { width:130px; height:130px; left:46%; bottom:48px; background:currentColor; opacity:.12; clip-path:polygon(0 0,100% 0,100% 62%,62% 100%,0 100%); }
+.academic-fragment--stripe { width:250px; height:28px; left:-75px; bottom:95px; background:repeating-linear-gradient(90deg,currentColor 0 2px,transparent 2px 12px); opacity:.25; transform:rotate(-35deg); }
+.academic-fragment--cross { right:48%; top:80px; font:300 70px/1 system-ui,sans-serif; opacity:.35; }
+.landing-motion .academic-fragment--frame { animation:academic-frame-turn 22s ease-in-out infinite; }
+.landing-motion .academic-fragment--tile { animation:academic-sheet-float 9s ease-in-out infinite; }
+.landing-motion .academic-fragment--cross { animation:academic-cross-turn 16s ease-in-out infinite; }
+@keyframes academic-frame-turn { 50% { transform:translate(-25px,35px) rotate(48deg); } }
+@keyframes academic-sheet-float { 50% { transform:translate3d(18px,-25px,0) rotate(-12deg); } }
+@keyframes academic-cross-turn { 50% { transform:rotate(90deg) scale(.8); } }
+/* Keep the observed element unclipped until IntersectionObserver has seen it. */
+.landing-motion [data-reveal="slice"] { transition:opacity .8s ease,transform .9s cubic-bezier(.2,.8,.2,1); transition-delay:var(--reveal-delay,0ms); }
+.landing-motion [data-reveal="slice"].is-revealed { animation:academic-slice-in 1s cubic-bezier(.2,.8,.2,1) both; animation-delay:var(--reveal-delay,0ms); }
+@keyframes academic-slice-in { from { clip-path:inset(0 0 100% 0); } to { clip-path:inset(0); } }
+
+/* Trang chung: một bìa mùa thi, các tấm vé và danh mục có bộ lọc. */
+.competition-hub.editorial-hub { --hub-page:#f7f6f1; --hub-ink:#12283f; --hub-line:#dadddf; --hub-radius:2px; }
+.editorial-hub .hub-hero-row { position:relative; z-index:1; }
+.editorial-hub .hub-hero { --editorial-accent:#b9db72; }
+.editorial-hub .hub-eyebrow { border-radius:0; border-left:3px solid #b9db72; background:#ffffff05; }
+.editorial-hub .hub-header-cta { border-radius:2px; }
+.editorial-hub .hub-btn-primary { border-radius:2px 18px 2px 2px; background:#a9cc6e; color:#102238; box-shadow:6px 6px 0 #a9cc6e20; }
+.editorial-hub .hub-btn-ghost { border-radius:2px; }
+.editorial-hub .hub-hero-side { position:relative; padding-top:16px; }
+.hub-hero-edition { position:absolute; top:-14px; right:14px; padding:10px 17px; transform:rotate(4deg); color:#172b3d; background:#c5de92; font:800 10px ui-monospace,monospace; letter-spacing:.14em; z-index:2; }
+.editorial-hub .hub-countdown { padding:28px; border-radius:2px 44px 2px 2px; border:0; border-left:5px solid var(--hub-accent); background:#f5f2e9; color:#10283c; box-shadow:12px 12px 0 #ffffff0b; backdrop-filter:none; }
+.editorial-hub .hub-countdown::before { display:none; }
+.editorial-hub .hub-countdown>small,.editorial-hub .hub-countdown-date { color:#577083; }
+.editorial-hub .hub-countdown-code { color:color-mix(in srgb,var(--hub-accent) 55%,#173026); filter:none; }
+.editorial-hub .hub-countdown-title { color:#153047; }
+.editorial-hub .hub-countdown-digits span { border-radius:0; border:0; border-bottom:2px solid #d9dfd6; background:#ffffffa6; }
+.editorial-hub .hub-countdown-digits small { color:#5b7180; }
+.hub-date-tickets { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:20px; }
+.hub-date-tickets>a { display:flex; align-items:center; gap:12px; min-width:0; padding:15px 12px; border-left:3px solid var(--hub-accent); background:#ffffff0a; transition:background .25s,transform .25s; }
+.hub-date-tickets>a:nth-child(2) { transform:translateY(12px); }
+.hub-date-tickets>a:hover { background:#ffffff15; transform:translateY(-3px); }
+.hub-date-tickets>a>span { font-size:24px; font-weight:850; letter-spacing:-.05em; color:#f6f5e9; }
+.hub-date-tickets small { display:block; font-size:10px; color:#a6b6c6; }
+.hub-date-tickets strong { display:block; font-size:13px; color:var(--hub-accent); }
+.hub-date-tickets svg { margin-left:auto; flex-shrink:0; color:#b6c6d7; }
+.editorial-hub .hub-marquee { transform:rotate(-1deg) scale(1.02); background:#ffffff08; border-top:1px solid #ffffff20; border-bottom:1px solid #ffffff20; }
+.editorial-hub .hub-marquee-track { animation-duration:28s; }
+.editorial-hub .hub-stats { gap:2px; padding-top:32px; }
+.editorial-hub .hub-stats>div { border-radius:0; border:0; border-bottom:3px solid #2f6bff; padding:24px; background:#eaf0fb; box-shadow:none; }
+.editorial-hub .hub-stats>div:nth-child(2) { background:#f4e9df; border-color:#d88a52; }
+.editorial-hub .hub-stats>div:nth-child(3) { background:#e9eddf; border-color:#72954e; }
+.editorial-hub .hub-stats>div:nth-child(4) { background:#e8e9f0; border-color:#77769c; }
+.editorial-hub .hub-stats b { background:none; color:#203c5c; font-weight:850; }
+.editorial-hub .hub-heading h2 { font-size:clamp(30px,4.3vw,50px); line-height:1.15; letter-spacing:-.045em; }
+.editorial-hub .hub-heading p { display:flex; align-items:center; gap:14px; }
+.editorial-hub .hub-heading p::before { content:''; width:42px; height:2px; background:currentColor; }
+.hub-finder { display:flex; align-items:center; flex-wrap:wrap; gap:16px 24px; padding:20px 0; margin-bottom:28px; border-top:1px solid #cbd3d7; border-bottom:1px solid #cbd3d7; }
+.hub-finder-categories { display:flex; align-items:center; flex-wrap:wrap; gap:5px; }
+.hub-finder-categories button { padding:12px 14px; font-size:13px; font-weight:750; color:#5a6a76; border-bottom:2px solid transparent; transition:background .2s,color .2s,border-color .2s; }
+.hub-finder-categories button:hover { color:#10283c; background:#e8ebe7; }
+.hub-finder-categories button[aria-pressed="true"] { background:#17344d; border-color:#98bb68; color:#fff; }
+.hub-grade-filter { display:flex; align-items:center; gap:9px; margin-left:auto; }
+.hub-grade-filter>span { font-size:12px; font-weight:750; color:#58697a; }
+.hub-grade-filter select { min-width:150px; padding:11px 30px 11px 12px; border:1px solid #c6d0d6; background:#fff; color:#20384b; font-size:13px; font-weight:650; border-radius:0; }
+.hub-finder-count { width:100%; color:#687882; font-size:12px; }
+.hub-no-match { padding:48px 24px; text-align:center; background:#fff; border:1px dashed #bfcbd2; }
+.hub-no-match button { display:inline-flex; align-items:center; gap:10px; margin-top:18px; color:#244b73; font-weight:750; }
+.editorial-hub .hub-grid { gap:26px; }
+.editorial-hub .hub-card { min-height:520px; padding:28px; border-radius:2px; border:1px solid #d8dfdf; border-top:0; box-shadow:5px 5px 0 #dae1e150; }
+.editorial-hub .hub-card::after { inset:0 0 auto auto; height:145px; width:145px; background:color-mix(in srgb,var(--hub-accent) 12%,#fff); clip-path:polygon(0 0,100% 0,100% 100%); z-index:-1; }
+.editorial-hub .hub-card--0 { border-left:5px solid var(--hub-accent); }
+.editorial-hub .hub-card--1 { border-radius:2px 44px 2px 2px; background:color-mix(in srgb,var(--hub-accent) 3%,white); }
+.editorial-hub .hub-card--2 { border-bottom:5px solid var(--hub-accent); }
+.hub-card-symbol { display:grid; place-items:center; width:55px; height:55px; font-size:30px; font-weight:850; letter-spacing:-.06em; border:1px solid color-mix(in srgb,var(--hub-accent) 55%,#cad4d6); color:color-mix(in srgb,var(--hub-accent) 65%,#172d42); background:#ffffffb3; }
+.hub-card-field { display:flex; align-items:center; gap:12px; margin-top:20px; padding-bottom:12px; border-bottom:1px solid #dbe1e3; color:#5b6e79; font-size:12px; font-weight:650; }
+.hub-card-field strong { margin-left:auto; color:#2b4356; font-weight:800; }
+.editorial-hub .hub-card-code { font-size:38px; color:color-mix(in srgb,var(--hub-accent) 65%,#16304a); }
+.editorial-hub .hub-card-facts div { border-radius:0; background:transparent; border:0; border-left:2px solid color-mix(in srgb,var(--hub-accent) 35%,#dee4e7); }
+.editorial-hub .hub-card-date { border-radius:0 12px 0 0; }
+.editorial-hub .hub-card-link,.editorial-hub .hub-card-register { border-radius:2px; }
+.editorial-hub .hub-card-register { border-bottom:2px solid color-mix(in srgb,var(--hub-accent) 70%,#36516a); }
+.editorial-hub .hub-chip { border-radius:2px; }
+.editorial-hub .hub-chip.is-hot { background:color-mix(in srgb,var(--hub-accent) 60%,#18394b); }
+.editorial-hub .hub-month { border-radius:0; border-top:4px solid #203b56; background:#fffefb; }
+.editorial-hub .hub-month li b { border-radius:2px; color:#14283b; background:color-mix(in srgb,var(--hub-accent) 55%,#fff); }
+.editorial-hub .hub-steps li { border-radius:0; border-top:4px solid #497299; box-shadow:none; background:#eff2f2; }
+.editorial-hub .hub-steps li:nth-child(2) { border-color:#b48b60; background:#f1ece4; border-radius:0 40px 0 0; }
+.editorial-hub .hub-steps li:nth-child(3) { border-color:#9dbb76; background:#e7eddf; }
+.editorial-hub .hub-step-links a { border-radius:2px; }
+.editorial-hub .hub-cta { border-radius:2px 52px 2px 2px; }
+
+/* Trang riêng: ba thông tin chính trên các mảng có nhịp và màu khác nhau. */
+.competition-essentials { position:relative; z-index:2; background:#f3f2ec; color:#1b3449; padding:32px max(20px,5vw); }
+.competition-essentials-inner { display:grid; grid-template-columns:.8fr 1.1fr 1.1fr; max-width:1280px; margin:0 auto; gap:15px; }
+.competition-essential { position:relative; display:flex; flex-direction:column; align-items:flex-start; padding:25px 26px; min-width:0; border:1px solid #d2dbd8; background:#fffef9; overflow:hidden; transition:transform .35s,box-shadow .35s; }
+.competition-essential:hover { transform:translateY(-5px); box-shadow:5px 7px 0 #24475a14; }
+.competition-essential-index { display:flex; justify-content:space-between; align-items:center; gap:12px; width:100%; color:#63757f; font:700 10px ui-monospace,monospace; letter-spacing:.1em; margin-bottom:20px; }
+.competition-essential>svg { margin-bottom:14px; color:#526c73; }
+.competition-essential strong { font-size:clamp(23px,2.5vw,30px); line-height:1.2; letter-spacing:-.04em; font-weight:850; }
+.competition-essential p { margin-top:9px; font-size:12px; line-height:1.7; color:#526c79; }
+.competition-essential--audience { border-left:4px solid color-mix(in srgb,var(--editorial-accent) 70%,#33546a); }
+.competition-essential--focus { border-radius:0 36px 0 0; background:color-mix(in srgb,var(--editorial-accent) 15%,#fffef9); }
+.competition-essential-glyph { position:absolute; right:10px; bottom:-14px; font:900 90px/1 system-ui,sans-serif; letter-spacing:-.08em; color:color-mix(in srgb,var(--editorial-accent) 20%,transparent); pointer-events:none; }
+.competition-essential--focus strong { margin-top:auto; }
+.competition-essential--date { border-top:4px solid #314f65; background:#e8ece9; }
+.competition-essential--date strong { font-variant-numeric:tabular-nums; }
+
+/* Trang FIMO/FIEO: nhịp mảng lớn, khung giấy và các chi tiết bất đối xứng. */
+.landing-site.editorial-landing .lp-hero-art { border-radius:2px 70px 2px 2px; border:1px solid #a3cbdf55; box-shadow:16px 16px 0 #ffffff08; }
+.landing-site.editorial-landing .lp-badge { border-radius:2px; border-left:3px solid var(--lp-accent); }
+.landing-site.editorial-landing .lp-cta { border-radius:2px; }
+.landing-site.editorial-landing .lp-cta--primary { border-radius:2px 20px 2px 2px; }
+.landing-site.editorial-landing .lp-about-panel { border-radius:0 50px 0 0; border-left:6px solid var(--lp-accent); }
+.landing-site.editorial-landing .lp-feature { border-radius:2px; }
+.landing-site.editorial-landing .lp-paper-card { border-radius:2px; border-top:3px solid var(--lp-accent); }
+.landing-site.editorial-landing .lp-paper-card:nth-child(3n+2) { border-radius:2px 30px 2px 2px; background:#f6f4ed; }
+.landing-site.editorial-landing .lp-resource-card { border-radius:0; border-left:3px solid var(--lp-accent); }
+.landing-site.editorial-landing .lp-resource-card:nth-child(even) { background:#f4f2ea; }
+.landing-site.editorial-landing .lp-roadmap-summary { border-radius:0 32px 0 0; }
+.landing-site.editorial-landing .lp-reg-card { border-radius:0; border-top:4px solid var(--lp-accent); }
+.landing-site.editorial-landing .lp-reg-card:nth-child(2) { border-radius:0 44px 0 0; background:#f5f2e9; }
+.landing-site.editorial-landing .lp-form { border-radius:0 36px 0 0; }
+
+/* SCO: couleurs propres au sujet, consoles claires et accents en biseau. */
+.siaio-site.editorial-landing .siaio-hero { overflow:hidden; }
+.siaio-site.editorial-landing .siaio-hero-inner { position:relative; z-index:1; }
+.siaio-site.editorial-landing .siaio-signal-strip { z-index:1; }
+.siaio-site.editorial-landing .siaio-about-feature { border-top:4px solid var(--siaio-accent); border-radius:0 50px 0 0; background:linear-gradient(140deg,color-mix(in srgb,var(--siaio-accent) 14%,#13223b),#111c32); }
+.siaio-site.editorial-landing .siaio-about-tile--graphic { border-radius:0 0 45px 0; background:color-mix(in srgb,var(--siaio-accent) 12%,#17263d); }
+.siaio-site.editorial-landing .siaio-paper-console { border-radius:0 35px 0 0; border-left:5px solid var(--siaio-accent); }
+.siaio-site.editorial-landing .siaio-resource-card { border-top:3px solid var(--siaio-accent); transition:transform .35s,background .35s; }
+.siaio-site.editorial-landing .siaio-resource-card:nth-child(3n+2) { border-radius:0 35px 0 0; background:color-mix(in srgb,var(--siaio-accent) 9%,#17243e); }
+.siaio-site.editorial-landing .siaio-resource-card:hover { transform:translateY(-7px); background:color-mix(in srgb,var(--siaio-accent) 14%,#17243e); }
+.siaio-site.editorial-landing .siaio-registration-grid article:nth-child(2) { border-radius:0 45px 0 0; }
+.siaio-site.editorial-landing .siaio-form { border-radius:0 40px 0 0; }
+.siaio-site.editorial-landing .siaio-signal:nth-child(2) { background:color-mix(in srgb,var(--siaio-accent) 10%,transparent); }
+
+@media(min-width:1100px) { .editorial-hub .hub-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:900px) {
+  .competition-essentials-inner { grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+  .competition-essential { padding:20px 16px; }
+  .competition-essential-index { font-size:9px; letter-spacing:0; }
+  .competition-essential strong { font-size:23px; }
+  .hub-grade-filter { margin-left:0; }
+}
+@media(max-width:640px) {
+  .editorial-hub .hub-hero-row { gap:55px; }
+  .editorial-hub .hub-countdown { padding:24px 20px; }
+  .hub-hero-edition { font-size:9px; }
+  .hub-date-tickets>a { gap:8px; padding:14px 10px; }
+  .hub-date-tickets>a>span { font-size:21px; }
+  .hub-date-tickets svg { width:15px; }
+  .editorial-hub .hub-stats>div { padding:20px 16px; }
+  .editorial-hub .hub-heading h2 { font-size:32px; }
+  .editorial-hub .hub-card { min-height:0; padding:24px 20px; }
+  .editorial-hub .hub-card-next { margin-top:20px; }
+  .hub-finder { gap:14px; }
+  .hub-finder-categories { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); width:100%; }
+  .hub-finder-categories button { text-align:left; padding:12px 10px; }
+  .hub-grade-filter { width:100%; }
+  .hub-grade-filter select { flex:1; }
+  .competition-essentials { padding:24px 20px; }
+  .competition-essentials-inner { grid-template-columns:1fr; gap:10px; }
+  .competition-essential { padding:20px 23px; min-height:0; }
+  .competition-essential-index { margin-bottom:13px; font-size:10px; }
+  .competition-essential>svg { display:none; }
+  .competition-essential strong { font-size:25px; }
+  .competition-essential p { margin-top:6px; }
+  .academic-fragment--tile { left:75%; width:80px; height:80px; }
+  .academic-fragment--cross { top:40px; right:10%; font-size:45px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .landing-motion .academic-fragment { animation:none!important; }
+  .landing-motion [data-reveal="slice"] { clip-path:none!important; animation:none!important; }
+  .editorial-hub .hub-marquee-track { animation:none; }
+  .competition-essential,.hub-date-tickets>a { transition:none; }
+}
