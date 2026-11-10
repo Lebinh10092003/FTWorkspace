@@ -6,7 +6,8 @@ export type ChannelKind =
   | 'manual_zalo_group'
   | 'manual_other'
   | 'zalo_oa'
-  | 'zalo_personal_group';
+  | 'zalo_personal_group'
+  | 'email_newsletter';
 
 export type PlanStatus =
   | 'draft'
@@ -139,6 +140,12 @@ export const CHANNEL_KIND_MAP: Record<ChannelKind, ChannelKindInfo> = {
     description: 'Tự động hoá 100% qua VPS headless browser với tài khoản Zalo cá nhân',
     category: 'api',
     color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900',
+  },
+  email_newsletter: {
+    label: 'Email Newsletter (Bản tin Email / Gmail)',
+    description: 'Gửi bản tin email HTML định dạng chuyên nghiệp qua Gmail OAuth hoặc SMTP',
+    category: 'api',
+    color: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-900',
   },
 };
 

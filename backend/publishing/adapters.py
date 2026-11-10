@@ -33,7 +33,7 @@ FACEBOOK_RATE_LIMIT_ERROR_CODES = {4, 17, 32, 613, 80001}
 
 def is_mock_mode() -> bool:
     """Return True if mock mode is explicitly activated (DEV ONLY)."""
-    val = os.getenv("PUBLISH_MOCK_MODE", "").strip().lower()
+    val = (os.getenv("PUBLISH_MOCK_MODE") or os.getenv("MOCK_EXTERNAL_SERVICES") or "").strip().lower()
     return val in {"1", "true", "yes"}
 
 
@@ -171,6 +171,60 @@ def test_channel_connection(channel: PublishChannel) -> Dict[str, Any]:
             "message": "Zalo Official Account đang ở chế độ adapter mở rộng, vui lòng liên hệ quản trị khi có tài khoản OA.",
         }
 
+    elif channel.kind == PublishChannel.KIND_EMAIL_NEWSLETTER:
+        mode = str(cfg.get("mode") or "smtp").lower()
+        if mode == "gmail_oauth":
+            from gmail_assistant.models import GmailConnection
+            user = channel.owner
+            conn = GmailConnection.objects.filter(user=user, is_active=True).first() if user else None
+            if not mock and not conn:
+                return {
+                    "success": False,
+                    "message": "Người tạo kênh chưa liên kết tài khoản Gmail OAuth trong mục Trợ lý Gmail.",
+                }
+            email_addr = conn.email_address if conn else "demo@fermat.vn"
+            return {
+                "success": True,
+                "message": f"Kênh sẵn sàng gửi bản thảo qua tài khoản Gmail OAuth '{email_addr}'.",
+                "details": {"mode": "gmail_oauth", "email": email_addr},
+            }
+        else:
+            host = str(cfg.get("smtp_host") or "smtp.gmail.com").strip()
+            port = int(cfg.get("smtp_port") or 587)
+            username = str(cfg.get("smtp_username") or cfg.get("from_email") or "").strip()
+            password = str(cfg.get("smtp_password") or cfg.get("app_password") or "").strip()
+            if not username:
+                return {
+                    "success": False,
+                    "message": "Vui lòng nhập Email người gửi (SMTP Username / From Email).",
+                }
+            if mock:
+                return {
+                    "success": True,
+                    "message": f"[Mock Mode] Kết nối máy chủ SMTP {host}:{port} thành công cho '{username}'.",
+                    "details": {"smtp_host": host, "port": port, "username": username},
+                }
+            import smtplib
+            try:
+                if port == 465:
+                    server = smtplib.SMTP_SSL(host, port, timeout=10)
+                else:
+                    server = smtplib.SMTP(host, port, timeout=10)
+                    server.starttls()
+                if password:
+                    server.login(username, password)
+                server.quit()
+                return {
+                    "success": True,
+                    "message": f"Kết nối SMTP {host}:{port} thành công cho tài khoản '{username}'.",
+                    "details": {"smtp_host": host, "port": port, "username": username},
+                }
+            except Exception as exc:
+                return {
+                    "success": False,
+                    "message": f"Không thể kết nối đến máy chủ SMTP ({host}:{port}): {exc}",
+                }
+
     return {"success": False, "message": "Loại kênh chưa được hỗ trợ kiểm tra kết nối."}
 
 
@@ -218,6 +272,9 @@ def dispatch_variant(variant: PostVariant) -> Dict[str, Any]:
 
     elif channel.kind == PublishChannel.KIND_ZALO_PERSONAL_GROUP:
         return _dispatch_zalo_personal_group(variant, cfg, title, content, link_url, mock)
+
+    elif channel.kind == PublishChannel.KIND_EMAIL_NEWSLETTER:
+        return _dispatch_email_newsletter(variant, cfg, title, content, link_url, mock)
 
     elif channel.kind == PublishChannel.KIND_ZALO_OA:
         raise PublishAdapterError("Kênh Zalo OA hiện chưa có tài khoản chính thức để kết nối.", retryable=False)
@@ -494,4 +551,163 @@ def _dispatch_zalo_personal_group(
         }
     except ZaloAutomationError as exc:
         raise PublishAdapterError(str(exc), retryable=False) from exc
+
+
+def _render_email_newsletter_html(title: str, content: str, link_url: str, sender_name: str) -> str:
+    """Render a clean responsive HTML newsletter body for email clients."""
+    import html
+    safe_title = html.escape(title or "Bản tin FermatTech")
+    paragraphs = [p.strip() for p in (content or "").split("\n") if p.strip()]
+    body_html = "".join(f"<p style='margin:0 0 16px 0;line-height:1.6;color:#374151;'>{html.escape(p)}</p>" for p in paragraphs)
+    
+    cta_html = ""
+    if link_url:
+        safe_url = html.escape(link_url)
+        cta_html = (
+            f"<div style='margin:28px 0;text-align:center;'>"
+            f"<a href='{safe_url}' style='background-color:#2563eb;color:#ffffff;padding:12px 24px;"
+            f"border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;'>Xem chi tiết bài viết</a>"
+            f"</div>"
+        )
+    
+    safe_sender = html.escape(sender_name or "FermatTech Team")
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{safe_title}</title>
+</head>
+<body style="margin:0;padding:24px;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0">
+    <tr>
+      <td align="center">
+        <table width="600" border="0" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="padding:32px 32px 16px 32px;background:linear-gradient(135deg,#1e3a8a,#3b82f6);color:#ffffff;">
+              <h1 style="margin:0;font-size:22px;font-weight:700;line-height:1.3;">{safe_title}</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px;">
+              {body_html}
+              {cta_html}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 32px;background-color:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;">
+              <p style="margin:0 0 4px 0;">Bản tin được phát hành tự động từ hệ thống {safe_sender}.</p>
+              <p style="margin:0;">Nếu bạn không muốn nhận email này, vui lòng bỏ qua hoặc liên hệ ban quản trị.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
+def _dispatch_email_newsletter(
+    variant: PostVariant,
+    cfg: Dict[str, Any],
+    title: str,
+    content: str,
+    link_url: str,
+    mock: bool,
+) -> Dict[str, Any]:
+    """Dispatch email newsletter to recipient list using Gmail OAuth or standard SMTP."""
+    mode = str(cfg.get("mode") or "smtp").lower()
+    from_name = str(cfg.get("from_name") or cfg.get("sender_name") or "FermatTech Newsletter").strip()
+    subject = title or "Bản tin FermatTech"
+    
+    recipients_raw = cfg.get("recipients") or cfg.get("to_emails") or []
+    if isinstance(recipients_raw, str):
+        recipients = [e.strip() for e in recipients_raw.replace(";", ",").split(",") if e.strip()]
+    elif isinstance(recipients_raw, list):
+        recipients = [str(e).strip() for e in recipients_raw if str(e).strip()]
+    else:
+        recipients = []
+
+    if not recipients:
+        raise PublishAdapterError("Kênh Email Newsletter chưa có danh sách email người nhận.", retryable=False)
+
+    html_body = _render_email_newsletter_html(title, content, link_url, from_name)
+
+    if mock:
+        return {
+            "external_post_id": f"mock_email_{variant.id}",
+            "external_post_url": f"mailto:{recipients[0]}",
+            "status": PostVariant.STATUS_PUBLISHED,
+            "message": f"[Mock Mode] Đã gửi bản tin email giả lập tới {len(recipients)} người nhận.",
+        }
+
+    if mode == "gmail_oauth":
+        from gmail_assistant.models import GmailConnection
+        from gmail_assistant.gmail_client import GmailClient
+        user = variant.channel.owner
+        conn = GmailConnection.objects.filter(user=user, is_active=True).first() if user else None
+        if not conn:
+            raise PublishAdapterError("Chưa liên kết tài khoản Gmail OAuth trong Trợ lý Gmail.", retryable=False)
+        
+        client = GmailClient(conn)
+        # Note: In accordance with GmailSafetyNoSendCodeScanTests, gmail_assistant creates drafts for safety.
+        # Create draft newsletter for the owner to review/send.
+        draft = client.create_draft(
+            thread_id=f"pub_{variant.id}",
+            to_email=",".join(recipients),
+            subject=subject,
+            body_text=content,
+        )
+        return {
+            "external_post_id": draft.get("id") or f"draft_{variant.id}",
+            "external_post_url": "https://mail.google.com/mail/u/0/#drafts",
+            "status": PostVariant.STATUS_PUBLISHED,
+            "message": f"Đã tạo bản thảo Newsletter trong Gmail ({conn.email_address}) cho {len(recipients)} người nhận.",
+        }
+    else:
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        import smtplib
+
+        host = str(cfg.get("smtp_host") or "smtp.gmail.com").strip()
+        port = int(cfg.get("smtp_port") or 587)
+        username = str(cfg.get("smtp_username") or cfg.get("from_email") or "").strip()
+        password = str(cfg.get("smtp_password") or cfg.get("app_password") or "").strip()
+        from_email = str(cfg.get("from_email") or username).strip()
+
+        if not from_email:
+            raise PublishAdapterError("Thiếu thông tin Email người gửi (From Email / SMTP username).", retryable=False)
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"{from_name} <{from_email}>"
+        msg["To"] = recipients[0]
+        if len(recipients) > 1:
+            msg["Bcc"] = ", ".join(recipients[1:])
+
+        part_text = MIMEText(content or "", "plain", "utf-8")
+        part_html = MIMEText(html_body, "html", "utf-8")
+        msg.attach(part_text)
+        msg.attach(part_html)
+
+        try:
+            if port == 465:
+                server = smtplib.SMTP_SSL(host, port, timeout=15)
+            else:
+                server = smtplib.SMTP(host, port, timeout=15)
+                server.starttls()
+            if password:
+                server.login(username, password)
+            server.sendmail(from_email, recipients, msg.as_string())
+            server.quit()
+        except Exception as exc:
+            raise PublishAdapterError(f"Gửi email qua SMTP ({host}:{port}) thất bại: {exc}", retryable=True) from exc
+
+        return {
+            "external_post_id": f"smtp_{variant.id}",
+            "external_post_url": f"mailto:{recipients[0]}",
+            "status": PostVariant.STATUS_PUBLISHED,
+            "message": f"Đã gửi thành công bản tin email tới {len(recipients)} người nhận.",
+        }
 

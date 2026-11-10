@@ -10,6 +10,7 @@ import {
   Edit3,
   Globe,
   MessageSquare,
+  Mail,
   Share2,
   ShieldCheck,
   X,
@@ -54,11 +55,20 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
   const [cfgFbAccessToken, setCfgFbAccessToken] = useState('');
   const [cfgWebhookUrl, setCfgWebhookUrl] = useState('');
   const [cfgWebhookSecret, setCfgWebhookSecret] = useState('');
-  const [cfgWpUrl, setCfgWpUrl] = useState('');
-  const [cfgWpUsername, setCfgWpUsername] = useState('');
-  const [cfgWpAppPassword, setCfgWpAppPassword] = useState('');
-  const [cfgGroupUrl, setCfgGroupUrl] = useState('');
-  const [cfgNote, setCfgNote] = useState('');
+  const [cfgWpUrl, setCfgWpUrl] = React.useState('');
+  const [cfgWpUsername, setCfgWpUsername] = React.useState('');
+  const [cfgWpAppPassword, setCfgWpAppPassword] = React.useState('');
+  const [cfgGroupUrl, setCfgGroupUrl] = React.useState('');
+  const [cfgNote, setCfgNote] = React.useState('');
+
+  // Email Newsletter fields
+  const [cfgEmailMode, setCfgEmailMode] = React.useState<'smtp' | 'gmail_oauth'>('smtp');
+  const [cfgEmailFromName, setCfgEmailFromName] = React.useState('');
+  const [cfgEmailFromAddress, setCfgEmailFromAddress] = React.useState('');
+  const [cfgEmailRecipients, setCfgEmailRecipients] = React.useState('');
+  const [cfgEmailSmtpHost, setCfgEmailSmtpHost] = React.useState('smtp.gmail.com');
+  const [cfgEmailSmtpPort, setCfgEmailSmtpPort] = React.useState('587');
+  const [cfgEmailSmtpPassword, setCfgEmailSmtpPassword] = React.useState('');
 
   // Zalo QR Modal state
   const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -138,6 +148,13 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
     setCfgWpAppPassword('');
     setCfgGroupUrl('');
     setCfgNote('');
+    setCfgEmailMode('smtp');
+    setCfgEmailFromName('');
+    setCfgEmailFromAddress('');
+    setCfgEmailRecipients('');
+    setCfgEmailSmtpHost('smtp.gmail.com');
+    setCfgEmailSmtpPort('587');
+    setCfgEmailSmtpPassword('');
     setError('');
     setModalOpen(true);
   };
@@ -159,6 +176,15 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
     setCfgWpAppPassword(m.app_password || '');
     setCfgGroupUrl(m.group_name || m.group_url || m.target_url || '');
     setCfgNote(m.note || '');
+    setCfgEmailMode(m.mode === 'gmail_oauth' ? 'gmail_oauth' : 'smtp');
+    setCfgEmailFromName(m.from_name || m.sender_name || '');
+    setCfgEmailFromAddress(m.from_email || m.smtp_username || '');
+    setCfgEmailRecipients(
+      Array.isArray(m.recipients) ? m.recipients.join(', ') : (m.recipients || '')
+    );
+    setCfgEmailSmtpHost(m.smtp_host || 'smtp.gmail.com');
+    setCfgEmailSmtpPort(String(m.smtp_port || 587));
+    setCfgEmailSmtpPassword(m.smtp_password || m.app_password || '');
     setError('');
     setModalOpen(true);
   };
@@ -226,6 +252,20 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
     } else if (formKind === 'manual_other') {
       config.target_url = cfgGroupUrl.trim();
       config.note = cfgNote.trim();
+    } else if (formKind === 'email_newsletter') {
+      config.mode = cfgEmailMode;
+      config.from_name = cfgEmailFromName.trim();
+      config.from_email = cfgEmailFromAddress.trim();
+      config.recipients = cfgEmailRecipients
+        .split(/[,;\n]/)
+        .map((e: string) => e.trim())
+        .filter(Boolean);
+      if (cfgEmailMode === 'smtp') {
+        config.smtp_host = cfgEmailSmtpHost.trim();
+        config.smtp_port = parseInt(cfgEmailSmtpPort, 10) || 587;
+        config.smtp_username = cfgEmailFromAddress.trim();
+        config.smtp_password = cfgEmailSmtpPassword.trim();
+      }
     }
 
     try {
@@ -411,6 +451,21 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                             {cfg.note && <div className="truncate">Ghi chú: {cfg.note}</div>}
                           </>
                         )}
+                        {channel.kind === 'email_newsletter' && (
+                          <>
+                            <div className="truncate">
+                              Chế độ: {cfg.mode === 'gmail_oauth' ? 'Gmail OAuth' : `SMTP (${cfg.smtp_host || 'smtp.gmail.com'})`}
+                            </div>
+                            <div className="truncate">
+                              Gửi từ: {cfg.from_name ? `${cfg.from_name} <${cfg.from_email || cfg.smtp_username || ''}>` : (cfg.from_email || cfg.smtp_username || 'Chưa đặt')}
+                            </div>
+                            {Array.isArray(cfg.recipients) && cfg.recipients.length > 0 && (
+                              <div className="truncate text-slate-400">
+                                {cfg.recipients.length} người nhận mặc định
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                     );
                   })()}
@@ -532,6 +587,7 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                   <option value="manual_facebook_group">Nhóm Facebook (Hỗ trợ đăng thủ công)</option>
                   <option value="manual_zalo_group">Nhóm Zalo (Hỗ trợ đăng thủ công)</option>
                   <option value="zalo_personal_group">Nhóm Zalo cá nhân (Tự động VPS)</option>
+                  <option value="email_newsletter">Email Newsletter (Bản tin Email / Gmail)</option>
                   <option value="manual_other">Kênh khác (Thủ công)</option>
                 </select>
                 {editingChannel && (
@@ -641,6 +697,123 @@ export const ChannelManager: React.FC<ChannelManagerProps> = ({
                         className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#0B72CE]"
                       />
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {formKind === 'email_newsletter' && (
+                <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900">
+                  <div className="flex items-center gap-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    <span>Phương thức gửi:</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="email_mode"
+                        value="smtp"
+                        checked={cfgEmailMode === 'smtp'}
+                        onChange={() => setCfgEmailMode('smtp')}
+                        className="text-[#0B72CE]"
+                      />
+                      <span>Cấu hình SMTP / App Password</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="email_mode"
+                        value="gmail_oauth"
+                        checked={cfgEmailMode === 'gmail_oauth'}
+                        onChange={() => setCfgEmailMode('gmail_oauth')}
+                        className="text-[#0B72CE]"
+                      />
+                      <span>Tài khoản Gmail OAuth cá nhân</span>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Tên người gửi hiển thị (From Name)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ví dụ: FermatTech Newsletter"
+                        value={cfgEmailFromName}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCfgEmailFromName(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#0B72CE]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Email người gửi (From Email / Tài khoản)
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="newsletter@fermat.vn hoặc gmail của bạn"
+                        value={cfgEmailFromAddress}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCfgEmailFromAddress(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#0B72CE]"
+                      />
+                    </div>
+                  </div>
+
+                  {cfgEmailMode === 'smtp' && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 border-t border-rose-200/60 dark:border-rose-900/40">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          SMTP Host
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="smtp.gmail.com"
+                          value={cfgEmailSmtpHost}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCfgEmailSmtpHost(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#0B72CE]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          SMTP Port
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="587 hoặc 465"
+                          value={cfgEmailSmtpPort}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCfgEmailSmtpPort(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#0B72CE]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Mật khẩu ứng dụng (App Password)
+                        </label>
+                        <input
+                          type="password"
+                          placeholder={editingChannel ? '•••••••• (giữ nguyên)' : 'Nhập mật khẩu SMTP'}
+                          value={cfgEmailSmtpPassword}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCfgEmailSmtpPassword(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#0B72CE]"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {cfgEmailMode === 'gmail_oauth' && (
+                    <div className="text-[11px] text-rose-700 dark:text-rose-400 bg-rose-100/50 dark:bg-rose-950/40 p-2.5 rounded-lg">
+                      Chế độ Gmail OAuth sẽ tự động tạo bản thảo (draft) hoặc gửi an toàn qua phiên kết nối Google đã đăng nhập trong mục <strong>Trợ lý Gmail</strong> của bạn.
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Danh sách email người nhận mặc định (cách nhau bởi dấu phẩy hoặc xuống dòng)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="customer1@gmail.com, partner@company.com"
+                      value={cfgEmailRecipients}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCfgEmailRecipients(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#0B72CE]"
+                    />
                   </div>
                 </div>
               )}
