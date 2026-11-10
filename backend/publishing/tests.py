@@ -1208,6 +1208,8 @@ class PublishRepublishTests(TestCase):
             format="json",
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIs(resp.data.get("success"), True)
+        self.assertIn("message", resp.data)
         mock_dispatch.assert_called_once_with(variant)
 
         plan.refresh_from_db()
@@ -1215,6 +1217,63 @@ class PublishRepublishTests(TestCase):
         self.assertEqual(plan.status, PostPlan.STATUS_PUBLISHED)
         self.assertEqual(variant.status, PostVariant.STATUS_PUBLISHED)
         self.assertEqual(variant.external_post_id, "direct_123")
+
+    @patch("publishing.views.dispatch_variant")
+    def test_post_plan_publish_now_from_partial_status(self, mock_dispatch):
+        mock_dispatch.return_value = {
+            "status": "published",
+            "external_post_id": "retry_123",
+            "external_post_url": "https://fb.com/retry_123",
+        }
+        plan = PostPlan.objects.create(
+            title="Bài đang đăng dở dang",
+            base_content="Nội dung đăng lại kênh lỗi",
+            creator=self.user,
+            status=PostPlan.STATUS_PARTIAL,
+        )
+        channel2 = PublishChannel.objects.create(
+            owner=self.user,
+            name="Second Fanpage",
+            kind=PublishChannel.KIND_FACEBOOK_PAGE,
+            is_shared=True,
+        )
+        channel2.set_config({"page_id": "99999", "access_token": "token_99999"})
+        channel2.save()
+
+        # Variant 1 already published
+        PostVariant.objects.create(
+            plan=plan,
+            channel=self.channel,
+            title="Variant 1",
+            content="Nội dung 1",
+            status=PostVariant.STATUS_PUBLISHED,
+            external_post_id="already_done_123",
+        )
+        # Variant 2 failed, needs retry
+        variant2 = PostVariant.objects.create(
+            plan=plan,
+            channel=channel2,
+            title="Variant 2",
+            content="Nội dung 2",
+            status=PostVariant.STATUS_FAILED,
+        )
+
+        resp = self.client.post(
+            f"/api/publishing/plans/{plan.id}/publish-now/",
+            {},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIs(resp.data.get("success"), True)
+        self.assertEqual(resp.data.get("success_count"), 1)
+        self.assertEqual(resp.data.get("fail_count"), 0)
+        # Only variant2 should be dispatched
+        mock_dispatch.assert_called_once_with(variant2)
+
+        plan.refresh_from_db()
+        variant2.refresh_from_db()
+        self.assertEqual(plan.status, PostPlan.STATUS_PUBLISHED)
+        self.assertEqual(variant2.status, PostVariant.STATUS_PUBLISHED)
 
     @patch("publishing.views.dispatch_variant")
     def test_post_variant_publish_now(self, mock_dispatch):

@@ -429,9 +429,14 @@ def post_plan_publish_now(request, pk: int):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    allowed_statuses = [PostPlan.STATUS_APPROVED, PostPlan.STATUS_SCHEDULED]
+    allowed_statuses = [
+        PostPlan.STATUS_APPROVED,
+        PostPlan.STATUS_SCHEDULED,
+        PostPlan.STATUS_PARTIAL,
+        PostPlan.STATUS_FAILED,
+    ]
     if republish:
-        allowed_statuses.extend([PostPlan.STATUS_PUBLISHED, PostPlan.STATUS_PARTIAL, PostPlan.STATUS_FAILED])
+        allowed_statuses.append(PostPlan.STATUS_PUBLISHED)
     if plan.status not in allowed_statuses:
         return Response(
             {"error": "Bài đăng phải được phê duyệt trước khi xuất bản."},
@@ -457,9 +462,28 @@ def post_plan_publish_now(request, pk: int):
                 variant.save()
                 results.append({"variantId": variant.id, "success": False, "error": str(exc)})
 
+        plan.refresh_from_db()
         update_plan_overall_status(plan)
 
-    return Response({"plan": _serialize_plan(plan), "dispatched": results})
+    success_count = sum(1 for r in results if r.get("success"))
+    fail_count = len(results) - success_count
+    overall_success = (fail_count == 0) and (len(results) > 0 or plan.status == PostPlan.STATUS_PUBLISHED)
+    if len(results) == 0:
+        msg = "Tất cả các kênh đã được xuất bản trước đó." if plan.status == PostPlan.STATUS_PUBLISHED else "Không có kênh nào cần xuất bản."
+    elif fail_count == 0:
+        msg = f"Đã xuất bản thành công lên {success_count}/{len(results)} kênh."
+    else:
+        first_err = next((r.get("error") for r in results if not r.get("success")), "Lỗi khi xuất bản.")
+        msg = f"Xuất bản thành công {success_count}/{len(results)} kênh. Lỗi: {first_err}"
+
+    return Response({
+        "success": overall_success,
+        "message": msg,
+        "plan": _serialize_plan(plan),
+        "dispatched": results,
+        "success_count": success_count,
+        "fail_count": fail_count,
+    })
 
 
 @api_view(['POST'])
