@@ -918,6 +918,9 @@ class PublishChannelConnectionTests(TestCase):
                     }
                 }
 
+                import threading
+                scan_gate = threading.Event()
+
                 def fake_open(req, timeout=None):
                     url = req.full_url if hasattr(req, 'full_url') else req.get_full_url()
                     mock_resp = MagicMock()
@@ -929,6 +932,7 @@ class PublishChannelConnectionTests(TestCase):
                     elif 'waiting-confirm' in url:
                         mock_resp.read.return_value = b'{"error_code": 0}'
                     elif 'waiting-scan' in url:
+                        scan_gate.wait(timeout=5)
                         mock_resp.read.return_value = b'{"error_code": 0, "data": {"avatar": "", "display_name": "Test"}}'
                     elif 'qr/generate' in url:
                         mock_resp.read.return_value = json.dumps(mock_qr_json).encode('utf-8')
@@ -963,6 +967,10 @@ class PublishChannelConnectionTests(TestCase):
                     res = generate_zalo_qr_login('test_direct_api', force_refresh=True)
                     self.assertEqual(res['status'], 'qr_ready')
                     self.assertTrue(res['qr_data'].startswith('data:image/png;base64,'))
+                    self.assertTrue((session_dir / 'active_qr_session.json').exists())
+
+                    # Cho phép worker tiếp tục bước scan & confirm
+                    scan_gate.set()
 
                     sess_info = _login_session_manager._sessions.get('test_direct_api', {})
                     worker_thread = sess_info.get('thread')
@@ -972,7 +980,6 @@ class PublishChannelConnectionTests(TestCase):
                     err = sess_info.get('error')
                     self.assertIsNone(err, f"Worker failed with error: {err}")
                     self.assertTrue((session_dir / 'storage_state.json').exists())
-                    self.assertTrue((session_dir / 'active_qr_session.json').exists())
 
                 cleanup_sess = _login_session_manager._sessions.pop('test_direct_api', None)
                 if cleanup_sess and cleanup_sess.get('stop_event'):
