@@ -945,7 +945,7 @@ class PublishChannelConnectionTests(TestCase):
 
                     # Chờ worker thread xử lý xong các bước xác thực và ghi storage_state
                     import time
-                    for _ in range(50):
+                    for _ in range(100):
                         if (session_dir / 'storage_state.json').exists():
                             break
                         time.sleep(0.05)
@@ -959,7 +959,6 @@ class PublishChannelConnectionTests(TestCase):
 class EmailNewsletterChannelTests(TestCase):
     def setUp(self):
         self.user = UserProfile.objects.create(
-            username="newsletter_author",
             email="author@fermat.vn",
             name="Newsletter Author",
             role="ADMIN",
@@ -1088,7 +1087,7 @@ class EmailNewsletterChannelTests(TestCase):
         variant = PostVariant.objects.create(
             plan=plan,
             channel=ch,
-            title="Cập nhật hệ thống v2",
+            title="System Update v2",
             content="Chi tiết nội dung cập nhật",
             status=PostVariant.STATUS_APPROVED,
         )
@@ -1100,7 +1099,7 @@ class EmailNewsletterChannelTests(TestCase):
         args, kwargs = mock_server.sendmail.call_args
         self.assertEqual(args[0], "newsletter@fermat.vn")
         self.assertEqual(args[1], ["user1@example.com", "user2@example.com"])
-        self.assertIn("Subject: Cập nhật hệ thống v2", args[2])
+        self.assertIn("Subject: System Update v2", args[2])
 
 
 

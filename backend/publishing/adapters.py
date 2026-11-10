@@ -33,7 +33,7 @@ FACEBOOK_RATE_LIMIT_ERROR_CODES = {4, 17, 32, 613, 80001}
 
 def is_mock_mode() -> bool:
     """Return True if mock mode is explicitly activated (DEV ONLY)."""
-    val = os.getenv("PUBLISH_MOCK_MODE", "").strip().lower()
+    val = (os.getenv("PUBLISH_MOCK_MODE") or os.getenv("MOCK_EXTERNAL_SERVICES") or "").strip().lower()
     return val in {"1", "true", "yes"}
 
 
