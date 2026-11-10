@@ -40,6 +40,110 @@ def _normalize_zalo_name(name: str) -> str:
         s = s.replace(ch, '-')
     return ' '.join(s.split())
 
+def _generate_zalo_search_queries(target_name: str) -> List[str]:
+    queries: List[str] = []
+
+    def add(q: str):
+        cleaned = ' '.join((q or '').split()).strip()
+        if cleaned and cleaned not in queries:
+            queries.append(cleaned)
+
+    safe = target_name.replace('"', '').replace("'", '').strip()
+    add(safe)
+
+    # Chuẩn hóa các loại dấu gạch ngang
+    for ch in ('–', '—', '−'):
+        safe = safe.replace(ch, '-')
+    add(safe)
+
+    # Bỏ dấu ngoặc đơn / ngoặc vuông: "FT-Công nghệ (Kỹ Thuật)" -> "FT-Công nghệ Kỹ Thuật"
+    no_paren = re.sub(r'[\(\)\[\]]', ' ', safe)
+    add(no_paren)
+
+    # Tiền tố trước dấu ngoặc: "FT-Công nghệ (Kỹ Thuật)" -> "FT-Công nghệ"
+    prefix = safe.split('(')[0].split('[')[0].strip()
+    add(prefix)
+
+    # Thêm khoảng trắng quanh dấu gạch nối: "FT-Công nghệ" -> "FT - Công nghệ"
+    add(safe.replace('-', ' - '))
+    add(prefix.replace('-', ' - '))
+
+    # Bỏ khoảng trắng quanh dấu gạch nối: "FT - Công nghệ" -> "FT-Công nghệ"
+    add(safe.replace(' - ', '-'))
+    add(prefix.replace(' - ', '-'))
+
+    return queries
+
+def _extract_element_title_and_text(el: Any) -> tuple[str, str]:
+    title_val = ''
+    try:
+        t = el.get_attribute('title')
+        if isinstance(t, str):
+            title_val = t.strip()
+    except Exception:
+        pass
+
+    text_val = ''
+    for method_name in ('inner_text', 'text_content'):
+        try:
+            fn = getattr(el, method_name, None)
+            if callable(fn):
+                val = fn()
+                if isinstance(val, str) and val.strip():
+                    text_val = val.strip()
+                    break
+        except Exception:
+            pass
+
+    return title_val, text_val
+
+def _is_matching_group_title(title: str, text: str, target_norm: str) -> bool:
+    if not target_norm:
+        return False
+    target_compact = re.sub(r'[\s\-–—−\(\)]+', '', target_norm)
+
+    if title:
+        t_norm = _normalize_zalo_name(title)
+        if t_norm == target_norm:
+            return True
+        t_compact = re.sub(r'[\s\-–—−\(\)]+', '', t_norm)
+        if t_compact and t_compact == target_compact:
+            return True
+
+    if text:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        for line in lines[:2]:
+            l_norm = _normalize_zalo_name(line)
+            if l_norm == target_norm:
+                return True
+            l_compact = re.sub(r'[\s\-–—−\(\)]+', '', l_norm)
+            if l_compact and l_compact == target_compact:
+                return True
+            if l_norm.startswith(target_norm) or target_norm.startswith(l_norm):
+                if len(l_compact) >= 5 and abs(len(l_compact) - len(target_compact)) <= 2:
+                    return True
+
+    return False
+
+def _is_partial_matching_group_title(title: str, text: str, target_norm: str) -> bool:
+    if not target_norm:
+        return False
+    target_compact = re.sub(r'[\s\-–—−\(\)]+', '', target_norm)
+    for val in (title, text):
+        if not val:
+            continue
+        lines = [line.strip() for line in val.splitlines() if line.strip()]
+        for line in lines[:2]:
+            l_norm = _normalize_zalo_name(line)
+            if target_norm in l_norm or l_norm in target_norm:
+                return True
+            l_compact = re.sub(r'[\s\-–—−\(\)]+', '', l_norm)
+            if target_compact and l_compact:
+                if target_compact in l_compact or l_compact in target_compact:
+                    if min(len(target_compact), len(l_compact)) >= 6:
+                        return True
+    return False
+
 def is_session_storage_authenticated(session_id: str = 'default') -> bool:
     session_dir = get_zalo_session_dir(session_id)
     state_file = session_dir / 'storage_state.json'
@@ -565,81 +669,75 @@ def send_zalo_personal_group_message(
                         raise ZaloAutomationError('Phiên đăng nhập Zalo trên VPS đã hết hạn hoặc không hợp lệ. Vui lòng quét lại mã QR tại tab Kênh xuất bản.')
                     raise ZaloAutomationError('Không tìm thấy ô tìm kiếm liên hệ trên Zalo Web.')
 
-                safe_group = group_name.replace('"', '').replace("'", '')
-                search_input.click()
-                search_input.fill(safe_group)
-                page.wait_for_timeout(2000)
+                safe_group = group_name.replace('"', '').replace("'", '').strip()
+                target_norm = _normalize_zalo_name(safe_group)
+                conv_item = None
 
-                conv_item = page.query_selector(f'div[title*="{safe_group}"], .conv-item:has-text("{safe_group}")')
-                if not conv_item:
-                    alt_group = safe_group
-                    for ch in ('–', '—', '−'):
-                        alt_group = alt_group.replace(ch, '-')
-                    if alt_group != safe_group:
-                        search_input.fill(alt_group)
-                        page.wait_for_timeout(2000)
-                        conv_item = page.query_selector(f'div[title*="{alt_group}"], .conv-item:has-text("{alt_group}")')
+                # 1. Quét nhanh danh sách hội thoại gần đây đang mở trên thanh bên trái (nếu có sẵn)
+                initial_elements = page.query_selector_all(
+                    '.msg-item, .conv-item, div[id^="group-item-"], div[id^="friend-item-"], '
+                    'div[data-id*="conv_"], div[data-id*="group_"], [role="listitem"], '
+                    '.conv-item-title__name, span.truncate, div.truncate, span[title], div[title]'
+                ) or []
+                for el in initial_elements:
+                    title_val, text_val = _extract_element_title_and_text(el)
+                    if _is_matching_group_title(title_val, text_val, target_norm):
+                        conv_item = el
+                        break
 
+                # 2. Nếu chưa thấy ở danh sách hội thoại gần đây, tiến hành tìm kiếm qua ô Search
                 if not conv_item:
-                    target_norm = _normalize_zalo_name(safe_group)
-                    if target_norm:
-                        candidates = page.query_selector_all('.conv-item, div[title]') or []
-                        for el in candidates:
-                            title_val = ''
+                    search_queries = _generate_zalo_search_queries(safe_group)
+                    for q in search_queries:
+                        try:
+                            search_input.click()
+                            search_input.fill(q)
                             try:
-                                t = el.get_attribute('title')
-                                if isinstance(t, str):
-                                    title_val = t
+                                search_input.press('Space')
+                                search_input.press('Backspace')
                             except Exception:
                                 pass
+                            page.wait_for_timeout(1800)
+                        except Exception:
+                            pass
 
-                            text_val = ''
-                            for method_name in ('inner_text', 'text_content'):
-                                try:
-                                    fn = getattr(el, method_name, None)
-                                    if callable(fn):
-                                        val = fn()
-                                        if isinstance(val, str) and val.strip():
-                                            text_val = val
-                                            break
-                                except Exception:
-                                    pass
-
-                            norm_title = _normalize_zalo_name(title_val)
-                            norm_text = _normalize_zalo_name(text_val)
-
-                            if (norm_title and norm_title == target_norm) or (norm_text and norm_text == target_norm):
-                                conv_item = el
+                        # Thử query trực tiếp theo selector nếu từ khóa tương đương tên đầy đủ
+                        if _normalize_zalo_name(q) == target_norm:
+                            conv_item = page.query_selector(
+                                f'div[title*="{q}"], span[title*="{q}"], .conv-item:has-text("{q}"), .msg-item:has-text("{q}")'
+                            )
+                            if conv_item:
                                 break
 
-                        if not conv_item:
-                            for el in candidates:
-                                title_val = ''
-                                try:
-                                    t = el.get_attribute('title')
-                                    if isinstance(t, str):
-                                        title_val = t
-                                except Exception:
-                                    pass
+                        # Quét tất cả các phần tử kết quả tìm kiếm trên DOM
+                        candidates = page.query_selector_all(
+                            '#searchResultList .msg-item, #searchResultList div[id^="group-item-"], '
+                            '#searchResultList div[id^="friend-item-"], #searchResultList div[data-id], '
+                            '#searchResultList div[class*="item"], .search-list .item, '
+                            '.global-search-container .msg-item, .search-result-container [role="listitem"], '
+                            'div[data-id*="div_Search_"], .msg-item, .conv-item, '
+                            'div[id^="group-item-"], div[id^="friend-item-"], '
+                            '.conv-item-title__name, span.truncate, div.truncate, '
+                            'span[title], div[title]'
+                        ) or []
 
-                                text_val = ''
-                                for method_name in ('inner_text', 'text_content'):
-                                    try:
-                                        fn = getattr(el, method_name, None)
-                                        if callable(fn):
-                                            val = fn()
-                                            if isinstance(val, str) and val.strip():
-                                                text_val = val
-                                                break
-                                    except Exception:
-                                        pass
+                        # Thử khớp chính xác
+                        for el in candidates:
+                            title_val, text_val = _extract_element_title_and_text(el)
+                            if _is_matching_group_title(title_val, text_val, target_norm):
+                                conv_item = el
+                                break
+                        if conv_item:
+                            break
 
-                                norm_title = _normalize_zalo_name(title_val)
-                                norm_text = _normalize_zalo_name(text_val)
-
-                                if (norm_title and target_norm in norm_title) or (norm_text and target_norm in norm_text):
-                                    conv_item = el
-                                    break
+                        # Thử khớp tương đối / chứa từ khóa
+                        for el in candidates:
+                            title_val, text_val = _extract_element_title_and_text(el)
+                            if _is_partial_matching_group_title(title_val, text_val, target_norm):
+                                conv_item = el
+                                break
+                        if conv_item:
+                            break
 
                 if not conv_item:
                     raise ZaloAutomationError(f'Không tìm thấy nhóm Zalo với tên "{safe_group}" trong danh bạ.')
@@ -647,7 +745,16 @@ def send_zalo_personal_group_message(
                 conv_item.click()
                 page.wait_for_timeout(2000)
 
-                chat_input = page.query_selector('div#chat-input-content, div[contenteditable="true"]')
+                chat_input = page.query_selector('div#chat-input-content, div[contenteditable="true"], #richInput')
+                if not chat_input:
+                    try:
+                        chat_input = page.wait_for_selector(
+                            'div#chat-input-content, div[contenteditable="true"], #richInput',
+                            timeout=8000,
+                        )
+                    except Exception:
+                        chat_input = None
+
                 if not chat_input:
                     raise ZaloAutomationError('Không tìm thấy ô nhập nội dung tin nhắn nhóm.')
 
@@ -655,7 +762,10 @@ def send_zalo_personal_group_message(
                 lines = content.split('\n')
                 for idx, line in enumerate(lines):
                     if line:
-                        chat_input.type(line, delay=25)
+                        try:
+                            page.keyboard.insert_text(line)
+                        except Exception:
+                            chat_input.type(line, delay=20)
                     if idx < len(lines) - 1:
                         page.keyboard.press('Shift+Enter')
                     page.wait_for_timeout(50)
