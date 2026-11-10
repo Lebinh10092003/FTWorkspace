@@ -55,48 +55,101 @@ def _serialize_channel(channel: PublishChannel) -> Dict[str, Any]:
 
 
 def _serialize_variant(variant: PostVariant) -> Dict[str, Any]:
+    channel = variant.channel
     return {
         "id": variant.id,
         "planId": variant.plan_id,
+        "plan_id": variant.plan_id,
         "channelId": variant.channel_id,
-        "channelName": variant.channel.name,
-        "channelKind": variant.channel.kind,
-        "channelKindDisplay": variant.channel.get_kind_display(),
+        "channel_id": variant.channel_id,
+        "channelName": channel.name if channel else "",
+        "channel_name": channel.name if channel else "",
+        "channelKind": channel.kind if channel else "manual_other",
+        "channel_kind": channel.kind if channel else "manual_other",
+        "channelKindDisplay": channel.get_kind_display() if channel else "",
+        "channel_kind_display": channel.get_kind_display() if channel else "",
         "title": variant.title,
         "content": variant.content,
         "linkUrl": variant.link_url,
+        "link_url": variant.link_url,
         "scheduledAt": variant.scheduled_at.isoformat() if variant.scheduled_at else None,
+        "scheduled_at": variant.scheduled_at.isoformat() if variant.scheduled_at else None,
         "status": variant.status,
         "statusDisplay": variant.get_status_display(),
+        "status_display": variant.get_status_display(),
         "externalPostId": variant.external_post_id,
+        "external_post_id": variant.external_post_id,
         "externalPostUrl": variant.external_post_url,
+        "external_post_url": variant.external_post_url,
         "errorMessage": variant.error_message,
+        "error_message": variant.error_message,
         "retryCount": variant.retry_count,
+        "retry_count": variant.retry_count,
         "publishedAt": variant.published_at.isoformat() if variant.published_at else None,
+        "published_at": variant.published_at.isoformat() if variant.published_at else None,
         "lastAttemptAt": variant.last_attempt_at.isoformat() if variant.last_attempt_at else None,
+        "last_attempt_at": variant.last_attempt_at.isoformat() if variant.last_attempt_at else None,
         "createdAt": variant.created_at.isoformat(),
+        "created_at": variant.created_at.isoformat(),
         "updatedAt": variant.updated_at.isoformat(),
+        "updated_at": variant.updated_at.isoformat(),
     }
 
 
 def _serialize_plan(plan: PostPlan) -> Dict[str, Any]:
+    active_job_obj = (
+        plan.ai_jobs.filter(status__in=[PublishAiJob.STATUS_QUEUED, PublishAiJob.STATUS_RUNNING]).first()
+        or plan.ai_jobs.order_by("-id").first()
+    )
+    active_job_dict = None
+    if active_job_obj:
+        active_job_dict = {
+            "id": active_job_obj.id,
+            "status": "pending" if active_job_obj.status == "queued" else ("processing" if active_job_obj.status == "running" else active_job_obj.status),
+            "errorMessage": active_job_obj.error_message,
+            "error_message": active_job_obj.error_message,
+            "channelIds": active_job_obj.channel_ids,
+            "channel_ids": active_job_obj.channel_ids,
+            "createdAt": active_job_obj.created_at.isoformat(),
+            "created_at": active_job_obj.created_at.isoformat(),
+        }
+
+    creator = plan.creator
+    approved_by = plan.approved_by
+    news_post = getattr(plan, "news_post", None)
     return {
         "id": plan.id,
         "title": plan.title,
         "baseContent": plan.base_content,
+        "base_content": plan.base_content,
         "newsPostId": plan.news_post_id,
-        "creatorEmail": plan.creator.email,
-        "creatorName": plan.creator.name or plan.creator.email,
-        "approvedByEmail": plan.approved_by.email if plan.approved_by else None,
-        "approvedByName": plan.approved_by.name if plan.approved_by else None,
+        "news_post_id": plan.news_post_id,
+        "newsPostTitle": news_post.title if news_post else None,
+        "news_post_title": news_post.title if news_post else None,
+        "creatorEmail": creator.email if creator else "",
+        "created_by_email": creator.email if creator else "",
+        "creatorName": (creator.name or creator.email) if creator else "",
+        "created_by_name": (creator.name or creator.email) if creator else "",
+        "approvedByEmail": approved_by.email if approved_by else None,
+        "approved_by_email": approved_by.email if approved_by else None,
+        "approvedByName": (approved_by.name or approved_by.email) if approved_by else None,
+        "approved_by_name": (approved_by.name or approved_by.email) if approved_by else None,
         "approvedAt": plan.approved_at.isoformat() if plan.approved_at else None,
+        "approved_at": plan.approved_at.isoformat() if plan.approved_at else None,
         "status": plan.status,
         "statusDisplay": plan.get_status_display(),
+        "status_display": plan.get_status_display(),
         "scheduledAt": plan.scheduled_at.isoformat() if plan.scheduled_at else None,
+        "scheduled_at": plan.scheduled_at.isoformat() if plan.scheduled_at else None,
         "metaNotes": plan.meta_notes,
+        "meta_notes": plan.meta_notes,
         "variants": [_serialize_variant(v) for v in plan.variants.select_related("channel").all()],
+        "activeJob": active_job_dict,
+        "active_job": active_job_dict,
         "createdAt": plan.created_at.isoformat(),
+        "created_at": plan.created_at.isoformat(),
         "updatedAt": plan.updated_at.isoformat(),
+        "updated_at": plan.updated_at.isoformat(),
     }
 
 

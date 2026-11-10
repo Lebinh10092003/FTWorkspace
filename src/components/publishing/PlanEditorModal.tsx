@@ -20,7 +20,7 @@ import {
   Link2,
   Compass,
 } from 'lucide-react';
-import type { PostPlan, PublishChannel, PostVariant } from './publishingTypes';
+import type { PostPlan, PublishChannel, PostVariant, ChannelKind } from './publishingTypes';
 import { PLAN_STATUS_MAP, VARIANT_STATUS_MAP, CHANNEL_KIND_MAP } from './publishingTypes';
 import { publishingService } from './publishingService';
 import { appDialog } from '../AppDialog';
@@ -54,13 +54,18 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
 
   // Core plan fields
   const [title, setTitle] = useState(plan?.title || initialNewsPost?.title || '');
-  const [baseContent, setBaseContent] = useState(plan?.base_content || initialNewsPost?.content || '');
-  const [newsPostId, setNewsPostId] = useState<number | null>(plan?.news_post_id || initialNewsPost?.id || null);
+  const [baseContent, setBaseContent] = useState(
+    plan?.base_content ?? (plan as any)?.baseContent ?? initialNewsPost?.content ?? ''
+  );
+  const [newsPostId, setNewsPostId] = useState<number | null>(
+    plan?.news_post_id ?? (plan as any)?.newsPostId ?? initialNewsPost?.id ?? null
+  );
 
   // Scheduled date time (local format YYYY-MM-DDTHH:mm)
   const getInitialSchedule = () => {
-    if (plan?.scheduled_at) {
-      const d = new Date(plan.scheduled_at);
+    const rawSched = plan?.scheduled_at ?? (plan as any)?.scheduledAt;
+    if (rawSched) {
+      const d = new Date(rawSched);
       const pad = (n: number) => String(n).padStart(2, '0');
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
@@ -75,17 +80,31 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
 
   const [scheduledAt, setScheduledAt] = useState(getInitialSchedule);
 
+  const getVariantCid = (v: any): number | null => {
+    const id = v?.channel_id ?? v?.channelId;
+    return typeof id === 'number' && !isNaN(id) ? id : null;
+  };
+
   // Selected channel IDs for the plan
   const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>(() => {
     if (plan?.variants && plan.variants.length > 0) {
-      return plan.variants.map(v => v.channel_id);
+      const ids = plan.variants
+        .map(getVariantCid)
+        .filter((id): id is number => id !== null);
+      if (ids.length > 0) return Array.from(new Set(ids));
     }
     // Default to active shared channels
     return channels.filter(c => c.is_active && c.is_shared).map(c => c.id);
   });
 
   // Current active variant tab
-  const [activeVariantChannelId, setActiveVariantChannelId] = useState<number | null>(null);
+  const [activeVariantChannelId, setActiveVariantChannelId] = useState<number | null>(() => {
+    if (plan?.variants && plan.variants.length > 0) {
+      const firstId = getVariantCid(plan.variants[0]);
+      if (firstId !== null) return firstId;
+    }
+    return null;
+  });
 
   // Local copy of variants for editing
   const [variants, setVariants] = useState<PostVariant[]>(plan?.variants || []);
@@ -98,7 +117,9 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const [publishingVariantId, setPublishingVariantId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [aiJobStatus, setAiJobStatus] = useState<string | null>(plan?.active_job?.status || null);
+  const [aiJobStatus, setAiJobStatus] = useState<string | null>(
+    (plan?.active_job || (plan as any)?.activeJob)?.status || null
+  );
 
   // Multi-source resource input state
   const [sourceUrl, setSourceUrl] = useState('');
@@ -108,10 +129,30 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
 
   // Sync variants when plan changes
   useEffect(() => {
-    if (plan?.variants) {
-      setVariants(plan.variants);
-      if (plan.variants.length > 0 && !activeVariantChannelId) {
-        setActiveVariantChannelId(plan.variants[0].channel_id);
+    if (plan) {
+      if (plan.title !== undefined) setTitle(plan.title || '');
+      if (plan.base_content !== undefined || (plan as any)?.baseContent !== undefined) {
+        setBaseContent(plan.base_content ?? (plan as any)?.baseContent ?? '');
+      }
+      if (plan.news_post_id !== undefined || (plan as any)?.newsPostId !== undefined) {
+        setNewsPostId(plan.news_post_id ?? (plan as any)?.newsPostId ?? null);
+      }
+      if (plan.variants) {
+        setVariants(plan.variants);
+        const ids = plan.variants
+          .map(getVariantCid)
+          .filter((id): id is number => id !== null);
+        if (ids.length > 0) {
+          const uniqueIds = Array.from(new Set(ids));
+          setSelectedChannelIds(uniqueIds);
+          if (!activeVariantChannelId || !uniqueIds.includes(activeVariantChannelId)) {
+            setActiveVariantChannelId(uniqueIds[0]);
+          }
+        }
+      }
+      const rawJob = plan.active_job ?? (plan as any)?.activeJob;
+      if (rawJob?.status) {
+        setAiJobStatus(rawJob.status);
       }
     }
   }, [plan]);
@@ -276,7 +317,10 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   // Update specific variant field locally
   const handleVariantChange = (channelId: number, field: keyof PostVariant, value: string) => {
     setVariants(prev =>
-      prev.map(v => (v.channel_id === channelId ? { ...v, [field]: value } : v))
+      prev.map(v => {
+        const vCid = v.channel_id ?? (v as any).channelId;
+        return vCid === channelId ? { ...v, [field]: value } : v;
+      })
     );
   };
 
@@ -478,13 +522,24 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     if (parts.length === 0) return;
 
     const block = `\n\n--- THÔNG TIN NGUỒN TÀI NGUYÊN ---\n${parts.join('\n')}\n`;
-    setBaseContent(prev => prev.trim() + block);
+    setBaseContent((prev: string) => prev.trim() + block);
     setSuccessMsg('Đã tích hợp thông tin tài nguyên vào nội dung gốc!');
     setShowResourceHelper(false);
   };
 
-  const activeVariant = variants.find(v => v.channel_id === activeVariantChannelId);
-  const activeChannel = channels.find(c => c.id === activeVariantChannelId);
+  const activeVariant = variants.find(v => (v.channel_id ?? (v as any).channelId) === activeVariantChannelId);
+  const fallbackKind = ((activeVariant?.channel_kind ?? (activeVariant as any)?.channelKind) as ChannelKind) || 'manual_other';
+  const activeChannel: PublishChannel | undefined = channels.find(c => c.id === activeVariantChannelId) || (activeVariant ? {
+    id: (activeVariant.channel_id ?? (activeVariant as any).channelId) || 0,
+    name: activeVariant.channel_name ?? (activeVariant as any).channelName ?? `Kênh #${activeVariantChannelId}`,
+    kind: fallbackKind in CHANNEL_KIND_MAP ? fallbackKind : 'manual_other',
+    is_active: true,
+    is_shared: true,
+    created_by_email: '',
+    masked_config: {},
+    created_at: '',
+    updated_at: '',
+  } : undefined);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-slate-900/60 backdrop-blur-xs">
@@ -773,9 +828,10 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
               <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 overflow-x-auto pb-1">
                 {selectedChannelIds.map(channelId => {
                   const ch = channels.find(c => c.id === channelId);
-                  const v = variants.find(item => item.channel_id === channelId);
+                  const v = variants.find(item => (item.channel_id ?? (item as any).channelId) === channelId);
                   const isCurrent = activeVariantChannelId === channelId;
                   const vStatus = v ? VARIANT_STATUS_MAP[v.status] : null;
+                  const displayName = ch?.name || v?.channel_name || (v as any)?.channelName || `Kênh #${channelId}`;
 
                   return (
                     <button
@@ -788,7 +844,7 @@ export const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                           : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                       }`}
                     >
-                      <span>{ch?.name || `Kênh #${channelId}`}</span>
+                      <span>{displayName}</span>
                       {vStatus && (
                         <span
                           className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${vStatus.color}`}

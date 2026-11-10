@@ -30,6 +30,43 @@ const normalizeChannel = (item: any): PublishChannel => ({
   config: item.config || item.masked_config || {},
 });
 
+const normalizeVariant = (item: any): PostVariant => ({
+  ...item,
+  id: item.id,
+  plan_id: item.plan_id ?? item.planId,
+  channel_id: item.channel_id ?? item.channelId,
+  channel_name: item.channel_name ?? item.channelName ?? '',
+  channel_kind: item.channel_kind ?? item.channelKind ?? 'manual_other',
+  title: item.title ?? '',
+  content: item.content ?? '',
+  link_url: item.link_url ?? item.linkUrl ?? '',
+  scheduled_at: item.scheduled_at ?? item.scheduledAt ?? null,
+  status: item.status ?? 'draft',
+  external_post_id: item.external_post_id ?? item.externalPostId ?? '',
+  external_post_url: item.external_post_url ?? item.externalPostUrl ?? '',
+  retry_count: item.retry_count ?? item.retryCount ?? 0,
+  error_message: item.error_message ?? item.errorMessage ?? '',
+  published_at: item.published_at ?? item.publishedAt ?? null,
+  manual_action_url: item.manual_action_url ?? item.manualActionUrl ?? '',
+});
+
+const normalizePlan = (item: any): PostPlan => ({
+  ...item,
+  id: item.id,
+  title: item.title ?? '',
+  base_content: item.base_content ?? item.baseContent ?? '',
+  news_post_id: item.news_post_id ?? item.newsPostId ?? null,
+  news_post_title: item.news_post_title ?? item.newsPostTitle,
+  created_by_email: item.created_by_email ?? item.creatorEmail ?? '',
+  approved_by_email: item.approved_by_email ?? item.approvedByEmail ?? null,
+  status: item.status ?? 'draft',
+  scheduled_at: item.scheduled_at ?? item.scheduledAt ?? null,
+  created_at: item.created_at ?? item.createdAt ?? '',
+  updated_at: item.updated_at ?? item.updatedAt ?? '',
+  variants: Array.isArray(item.variants) ? item.variants.map(normalizeVariant) : [],
+  active_job: item.active_job ?? item.activeJob ?? null,
+});
+
 export const publishingService = {
   // Channels
   async getChannels(idToken: string): Promise<PublishChannel[]> {
@@ -93,13 +130,13 @@ export const publishingService = {
     if (params?.end) query.set('end', params.end);
     const qs = query.toString() ? `?${query.toString()}` : '';
     const data = await request<any>(`${API_BASE}/plans/${qs}`, idToken);
-    if (Array.isArray(data)) return data;
-    return data?.plans || [];
+    const list: any[] = Array.isArray(data) ? data : (data?.plans || []);
+    return list.map(normalizePlan);
   },
 
   async getPlanDetail(idToken: string, id: number): Promise<PostPlan> {
     const data = await request<any>(`${API_BASE}/plans/${id}/`, idToken);
-    return data?.plan || data;
+    return normalizePlan(data?.plan || data);
   },
 
   async createPlan(idToken: string, payload: {
@@ -113,7 +150,7 @@ export const publishingService = {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    return data?.plan || data;
+    return normalizePlan(data?.plan || data);
   },
 
   async updatePlan(idToken: string, id: number, payload: {
@@ -127,7 +164,7 @@ export const publishingService = {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
-    return data?.plan || data;
+    return normalizePlan(data?.plan || data);
   },
 
   async deletePlan(idToken: string, id: number): Promise<void> {
@@ -141,7 +178,7 @@ export const publishingService = {
       method: 'POST',
       body: JSON.stringify({ action, reject_reason }),
     });
-    return data?.plan || data;
+    return normalizePlan(data?.plan || data);
   },
 
   async generateAiVariants(idToken: string, id: number, channel_ids: number[]): Promise<{ job_id: number; message: string }> {
@@ -162,7 +199,7 @@ export const publishingService = {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
-    return data?.variant || data;
+    return normalizeVariant(data?.variant || data);
   },
 
   async markVariantManualDone(idToken: string, id: number, external_post_url?: string): Promise<PostVariant> {
@@ -170,7 +207,7 @@ export const publishingService = {
       method: 'POST',
       body: JSON.stringify({ external_post_url }),
     });
-    return data?.variant || data;
+    return normalizeVariant(data?.variant || data);
   },
 
   async publishPlanNow(
@@ -197,9 +234,14 @@ export const publishingService = {
     variant: PostVariant;
     error?: string;
   }> {
-    return await request<any>(`${API_BASE}/variants/${id}/publish-now/`, idToken, {
+    const res = await request<any>(`${API_BASE}/variants/${id}/publish-now/`, idToken, {
       method: 'POST',
     });
+    return {
+      success: Boolean(res?.success),
+      variant: normalizeVariant(res?.variant || res),
+      error: res?.error,
+    };
   },
 
   // Zalo Automation VPS API
