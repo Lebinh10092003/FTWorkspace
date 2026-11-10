@@ -1,4 +1,4 @@
-import type { PostPlan, PublishChannel, PostVariant } from './publishingTypes';
+import type { PostPlan, PublishChannel, PostVariant, TechTopicSuggestion } from './publishingTypes';
 
 const API_BASE = '/api/publishing';
 
@@ -242,5 +242,48 @@ export const publishingService = {
     } catch {
       return [];
     }
+  },
+
+  // Tech Discovery & Daily AI Topic Suggestions
+  async getTechDiscoveryTopics(
+    idToken: string,
+    params?: { category?: string; source?: string; converted?: boolean; limit?: number }
+  ): Promise<TechTopicSuggestion[]> {
+    const sp = new URLSearchParams();
+    if (params?.category) sp.set('category', params.category);
+    if (params?.source) sp.set('source', params.source);
+    if (params?.converted !== undefined) sp.set('converted', String(params.converted));
+    if (params?.limit) sp.set('limit', String(params.limit));
+    const qs = sp.toString() ? `?${sp.toString()}` : '';
+    return await request<TechTopicSuggestion[]>(`${API_BASE}/tech-discovery/topics/${qs}`, idToken);
+  },
+
+  async triggerTechDiscovery(
+    idToken: string,
+    params?: { limit_per_source?: number }
+  ): Promise<{ message: string; topics: TechTopicSuggestion[] }> {
+    return await request<{ message: string; topics: TechTopicSuggestion[] }>(
+      `${API_BASE}/tech-discovery/trigger/`,
+      idToken,
+      {
+        method: 'POST',
+        body: JSON.stringify(params || {}),
+      }
+    );
+  },
+
+  async convertTechTopicToPlan(
+    idToken: string,
+    topicId: number,
+    data?: { auto_generate_variants?: boolean; custom_instructions?: string }
+  ): Promise<PostPlan> {
+    return await request<PostPlan>(
+      `${API_BASE}/tech-discovery/${topicId}/create-plan/`,
+      idToken,
+      {
+        method: 'POST',
+        body: JSON.stringify(data || {}),
+      }
+    );
   },
 };

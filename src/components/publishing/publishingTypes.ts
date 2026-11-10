@@ -61,6 +61,27 @@ export interface PostVariant {
   manual_action_url: string;
 }
 
+export interface TechTopicSuggestion {
+  id: number;
+  title: string;
+  source: 'arxiv' | 'hackernews' | 'huggingface' | 'technews' | string;
+  sourceDisplay: string;
+  sourceUrl: string;
+  externalId: string;
+  author: string;
+  publishedDate: string | null;
+  rawSummary: string;
+  category: 'ai_ml' | 'agentic' | 'edtech' | 'general_tech' | string;
+  categoryDisplay: string;
+  keyTakeaways: string[];
+  suggestedAngle: string;
+  targetAudience: string;
+  isConvertedToPlan: boolean;
+  createdPlanId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PublishAiJob {
   id: number;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';

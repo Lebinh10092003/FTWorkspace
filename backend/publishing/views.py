@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsWorkspaceAuthenticated
 from news_posts.models import NewsPost
 from .adapters import dispatch_variant, test_channel_connection
-from .models import PostPlan, PostVariant, PublishAiJob, PublishChannel
+from .models import PostPlan, PostVariant, PublishAiJob, PublishChannel, TechTopicSuggestion
 from .security import mask_config_for_display
 from .service import (
     cancel_publish_ai_job,
@@ -598,4 +598,91 @@ def zalo_automation_qr(request):
     except Exception as exc:
         logger.exception("Lỗi khi sinh mã QR Zalo: %s", exc)
         return Response({'status': 'error', 'message': f'Lỗi khi sinh mã QR: {exc}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _serialize_tech_topic(topic: TechTopicSuggestion) -> Dict[str, Any]:
+    return {
+        "id": topic.id,
+        "title": topic.title,
+        "source": topic.source,
+        "sourceDisplay": topic.get_source_display(),
+        "sourceUrl": topic.source_url,
+        "externalId": topic.external_id,
+        "author": topic.author,
+        "publishedDate": topic.published_date.isoformat() if topic.published_date else None,
+        "rawSummary": topic.raw_summary,
+        "category": topic.category,
+        "categoryDisplay": topic.get_category_display(),
+        "keyTakeaways": topic.key_takeaways or [],
+        "suggestedAngle": topic.suggested_angle,
+        "targetAudience": topic.target_audience,
+        "isConvertedToPlan": topic.is_converted_to_plan,
+        "createdPlanId": topic.created_plan_id,
+        "createdAt": topic.created_at.isoformat(),
+        "updatedAt": topic.updated_at.isoformat(),
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsWorkspaceAuthenticated])
+def tech_discovery_topics(request):
+    """Lấy danh sách các chủ đề/nghiên cứu công nghệ đã được thu thập & phân tích."""
+    category = request.query_params.get("category")
+    source = request.query_params.get("source")
+    converted = request.query_params.get("converted")
+    limit = min(int(request.query_params.get("limit") or 30), 100)
+
+    qs = TechTopicSuggestion.objects.all()
+    if category:
+        qs = qs.filter(category=category)
+    if source:
+        qs = qs.filter(source=source)
+    if converted is not None:
+        is_conv = converted.lower() in ("true", "1", "yes")
+        qs = qs.filter(is_converted_to_plan=is_conv)
+
+    topics = list(qs[:limit])
+    return Response([_serialize_tech_topic(t) for t in topics])
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def tech_discovery_trigger(request):
+    """Kích hoạt crawler & AI phân tích chủ đề công nghệ mới theo yêu cầu."""
+    from .tech_discovery import crawl_and_suggest_daily_topics
+
+    limit_per_source = min(int(request.data.get("limit_per_source") or 3), 10)
+    try:
+        topics = crawl_and_suggest_daily_topics(limit_per_source=limit_per_source)
+        return Response({
+            "message": f"Thu thập và phân tích thành công {len(topics)} chủ đề công nghệ.",
+            "topics": [_serialize_tech_topic(t) for t in topics[:20]],
+        })
+    except Exception as exc:
+        logger.exception("Lỗi khi crawl & gợi ý chủ đề công nghệ: %s", exc)
+        return Response({"error": f"Không thể thu thập chủ đề: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsWorkspaceAuthenticated])
+def tech_discovery_create_plan(request, topic_id: int):
+    """Chuyển đổi một chủ đề công nghệ đã phân tích thành PostPlan (kế hoạch đăng bài)."""
+    from .tech_discovery import convert_topic_to_post_plan
+
+    topic = get_object_or_404(TechTopicSuggestion, id=topic_id)
+    auto_generate_variants = bool(request.data.get("auto_generate_variants", True))
+    custom_instructions = str(request.data.get("custom_instructions") or "").strip()
+
+    try:
+        plan = convert_topic_to_post_plan(
+            topic=topic,
+            user=request.user,
+            auto_generate_variants=auto_generate_variants,
+            custom_instructions=custom_instructions,
+        )
+        return Response(_serialize_plan(plan), status=status.HTTP_201_CREATED)
+    except Exception as exc:
+        logger.exception("Lỗi khi tạo PostPlan từ chủ đề #%d: %s", topic_id, exc)
+        return Response({"error": f"Không thể tạo kế hoạch bài viết: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 

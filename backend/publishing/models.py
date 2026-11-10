@@ -290,3 +290,64 @@ class PublishAiJob(models.Model):
 
     def __str__(self) -> str:
         return f"PublishAiJob #{self.pk} · Plan #{self.plan_id} · {self.status}"
+
+
+class TechTopicSuggestion(models.Model):
+    """Gợi ý chủ đề/bài nghiên cứu công nghệ thu thập tự động từ arXiv, HackerNews, HuggingFace..."""
+
+    SOURCE_ARXIV = "arxiv"
+    SOURCE_HACKERNEWS = "hackernews"
+    SOURCE_HUGGINGFACE = "huggingface"
+    SOURCE_TECHNEWS = "technews"
+
+    SOURCE_CHOICES = [
+        (SOURCE_ARXIV, "arXiv AI/ML"),
+        (SOURCE_HACKERNEWS, "Hacker News"),
+        (SOURCE_HUGGINGFACE, "Hugging Face Daily Papers"),
+        (SOURCE_TECHNEWS, "Tech News / RSS"),
+    ]
+
+    CATEGORY_AI_ML = "ai_ml"
+    CATEGORY_AGENTIC = "agentic"
+    CATEGORY_EDTECH = "edtech"
+    CATEGORY_GENERAL_TECH = "general_tech"
+
+    CATEGORY_CHOICES = [
+        (CATEGORY_AI_ML, "Trí tuệ nhân tạo & Mô hình ngôn ngữ"),
+        (CATEGORY_AGENTIC, "Hệ thống Agent & Tự động hóa"),
+        (CATEGORY_EDTECH, "AI trong Khảo thí & Giáo dục"),
+        (CATEGORY_GENERAL_TECH, "Xu hướng công nghệ chung"),
+    ]
+
+    title = models.CharField(max_length=500)
+    source = models.CharField(max_length=64, choices=SOURCE_CHOICES, default=SOURCE_ARXIV, db_index=True)
+    source_url = models.URLField(max_length=1000)
+    external_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    author = models.CharField(max_length=255, blank=True, default="")
+    published_date = models.DateTimeField(null=True, blank=True)
+    raw_summary = models.TextField(blank=True, default="")
+    category = models.CharField(max_length=64, choices=CATEGORY_CHOICES, default=CATEGORY_AI_ML, db_index=True)
+    key_takeaways = models.JSONField(default=list, blank=True)
+    suggested_angle = models.TextField(blank=True, default="")
+    target_audience = models.CharField(max_length=255, blank=True, default="Kỹ sư công nghệ, nhà quản trị và cộng đồng AI")
+    is_converted_to_plan = models.BooleanField(default=False, db_index=True)
+    created_plan = models.ForeignKey(
+        PostPlan,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="origin_tech_topics",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-published_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["source", "is_converted_to_plan"], name="tech_topic_src_conv"),
+            models.Index(fields=["category", "created_at"], name="tech_topic_cat_created"),
+        ]
+
+    def __str__(self) -> str:
+        return f"[{self.get_source_display()}] {self.title[:80]}"
+
