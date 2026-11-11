@@ -7,8 +7,12 @@ import {
   LoaderCircle,
   RefreshCw,
   Sparkles,
-  Users
+  Users,
+  Monitor,
+  Bot,
+  ShieldAlert
 } from 'lucide-react';
+import VirtualDesktopOS from './VirtualDesktopOS';
 
 export function checkWebGLSupport(): boolean {
   if (typeof window === 'undefined') return true;
@@ -97,6 +101,18 @@ export default function OfficeWorkspace({
   const [roster, setRoster] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [webglError, setWebglError] = useState<string | null>(null);
+  const [isDesktopOSOpen, setIsDesktopOSOpen] = useState(false);
+  const [botState, setBotState] = useState<{
+    state: string;
+    botName?: string;
+    targetDesk?: number;
+    queueLength: number;
+  }>({ state: 'IDLE', queueLength: 0 });
+  const [patrolState, setPatrolState] = useState<{
+    active: boolean;
+    phase: string;
+    message?: string;
+  }>({ active: false, phase: 'IDLE' });
 
   const webglSupported = useMemo(() => checkWebGLSupport(), []);
 
@@ -217,6 +233,31 @@ export default function OfficeWorkspace({
     );
   };
 
+  // Điều khiển các sự kiện nâng cao trong 3D
+  const handleCallBot = () => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: 'ft-office:callBot' },
+      window.location.origin
+    );
+  };
+
+  const handleReleaseBot = () => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: 'ft-office:releaseBot' },
+      window.location.origin
+    );
+  };
+
+  const handleTriggerPatrol = () => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: 'ft-office:triggerPatrol' },
+      window.location.origin
+    );
+  };
+
   // Cầu nối postMessage
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -236,6 +277,39 @@ export default function OfficeWorkspace({
         setLoading(false);
         // Gửi thông điệp init
         fetchRoster().then(list => sendInitToIframe(list));
+      }
+
+      // Nhận openDesktopOS (khi click vào Máy tính của tôi trên bàn 3D)
+      if (data.type === 'ft-office:openDesktopOS') {
+        setIsDesktopOSOpen(true);
+      }
+
+      // Nhận botState
+      if (data.type === 'ft-office:botState') {
+        setBotState(prev => ({
+          ...prev,
+          state: data.state || prev.state,
+          botName: data.botName || prev.botName,
+          targetDesk: data.targetDesk ?? prev.targetDesk,
+          queueLength: data.queueLength ?? prev.queueLength,
+        }));
+      }
+
+      // Nhận queueUpdate
+      if (data.type === 'ft-office:queueUpdate') {
+        setBotState(prev => ({
+          ...prev,
+          queueLength: data.queueLength ?? prev.queueLength,
+        }));
+      }
+
+      // Nhận patrolState
+      if (data.type === 'ft-office:patrolState') {
+        setPatrolState({
+          active: Boolean(data.active),
+          phase: data.phase || 'IDLE',
+          message: data.message,
+        });
       }
 
       // Nhận openModule
@@ -322,8 +396,68 @@ export default function OfficeWorkspace({
           </div>
         </div>
 
-        {/* Trạng thái online & Làm mới */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        {/* Trạng thái online & Các hành động nhanh */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            onClick={() => setIsDesktopOSOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-[#D97757] hover:bg-[#c46849] px-2.5 py-1 text-xs font-bold text-white shadow-sm transition cursor-pointer min-h-[34px]"
+            title="Mở máy tính cá nhân dạng Game OS"
+          >
+            <Monitor className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">Máy tính OS</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (botState.state === 'ARRIVED') {
+                handleReleaseBot();
+              } else {
+                handleCallBot();
+              }
+            }}
+            disabled={botState.state === 'MOVING'}
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition cursor-pointer min-h-[34px] ${
+              botState.state === 'ARRIVED'
+                ? 'border-emerald-500/60 bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/60'
+                : botState.state === 'MOVING'
+                ? 'border-amber-500/60 bg-amber-950/60 text-amber-300 animate-pulse'
+                : 'border-cyan-600/50 bg-slate-800/90 text-cyan-300 hover:bg-slate-700'
+            }`}
+            title={
+              botState.state === 'ARRIVED'
+                ? 'Robot đang tại bàn (Bấm để cho robot về trạm)'
+                : 'Gọi Robot AI di chuyển đến bàn làm việc của bạn'
+            }
+          >
+            <Bot className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">
+              {botState.state === 'ARRIVED'
+                ? 'Robot tại bàn'
+                : botState.state === 'MOVING'
+                ? 'Robot đang tới...'
+                : 'Gọi Robot AI'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleTriggerPatrol}
+            disabled={patrolState.active}
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition cursor-pointer min-h-[34px] ${
+              patrolState.active
+                ? 'border-rose-500/60 bg-rose-950/60 text-rose-300 animate-pulse'
+                : 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700'
+            }`}
+            title="Kích hoạt Giám đốc đi tuần tra các phòng ban"
+          >
+            <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
+            <span className="hidden lg:inline">
+              {patrolState.active ? 'Sếp đang tuần tra!' : 'Sếp đi tuần'}
+            </span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowList(v => !v)}
@@ -333,7 +467,7 @@ export default function OfficeWorkspace({
           >
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>
-              <strong className="text-emerald-400 font-bold">{onlineCount}</strong> đang online · Xem danh sách
+              <strong className="text-emerald-400 font-bold">{onlineCount}</strong><span className="hidden sm:inline"> online · Danh sách</span>
             </span>
           </button>
 
@@ -344,7 +478,7 @@ export default function OfficeWorkspace({
               sendInitToIframe(fresh);
             }}
             disabled={refreshing}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition min-h-[34px] min-w-[34px] flex items-center justify-center cursor-pointer"
             title="Làm mới danh sách nhân sự"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-blue-400' : ''}`} />
@@ -386,6 +520,22 @@ export default function OfficeWorkspace({
 
       {/* Vị trí khung 3D (iframe giữ sống nằm ngoài cây React, xếp chồng lên đây) */}
       <div ref={slotRef} className="w-full flex-1 min-h-0" />
+
+      {/* Virtual Desktop OS Modal dạng game */}
+      <VirtualDesktopOS
+        isOpen={isDesktopOSOpen}
+        onClose={() => setIsDesktopOSOpen(false)}
+        onNavigateModule={(mode) => {
+          if (canAccessView(mode)) {
+            onNavigate(mode);
+          }
+        }}
+        onCallBot={handleCallBot}
+        onReleaseBot={handleReleaseBot}
+        onTriggerPatrol={handleTriggerPatrol}
+        botState={botState}
+        patrolState={patrolState}
+      />
     </div>
   );
 }
