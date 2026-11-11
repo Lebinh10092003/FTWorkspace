@@ -129,6 +129,49 @@
   const botQueue = [];
   let activeBotMission = null;
 
+  // CSS quy chuẩn cho tag và bubble không tràn màn hình trên mobile
+  (function injectResponsiveStyles() {
+    const styleId = 'ft-office-responsive-styles';
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      .tag, [class*="tag"] {
+        max-width: 145px !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+      }
+      .bubble, [class*="bubble"] {
+        max-width: 220px !important;
+        word-break: break-word !important;
+        white-space: normal !important;
+        line-height: 1.3 !important;
+      }
+    `;
+    if (document.head) document.head.appendChild(style);
+  })();
+
+  function isAssistantBot(id, session) {
+    if (!session) return false;
+    const strId = id !== undefined && id !== null ? String(id).toLowerCase() : '';
+    const sessionId = session.id !== undefined && session.id !== null ? String(session.id).toLowerCase() : '';
+    const sessionUserId = session.user_id !== undefined && session.user_id !== null ? String(session.user_id).toLowerCase() : '';
+    const name = (session.name || '').toLowerCase();
+    const role = (session.role || '').toLowerCase();
+
+    return Boolean(
+      session.is_assistant ||
+      strId.includes('assistant') ||
+      sessionId.includes('assistant') ||
+      sessionUserId.includes('assistant') ||
+      name.includes('trợ lý') ||
+      role.includes('trợ lý') ||
+      name.includes('hermes') ||
+      role.includes('hermes')
+    );
+  }
+
   function isBotSession(id, session) {
     if (!session) return false;
     const strId = id !== undefined && id !== null ? String(id) : '';
@@ -137,6 +180,7 @@
     return Boolean(
       session.is_bot ||
       session.isBot ||
+      session.is_assistant ||
       botUserIds.has(strId) ||
       (sessionId && botUserIds.has(sessionId)) ||
       (sessionUserId && botUserIds.has(sessionUserId)) ||
@@ -202,6 +246,7 @@
       if (!session) continue;
 
       const isBot = isBotSession(id, session);
+      const isAssistant = isAssistantBot(id, session);
 
       // Gắn click listener vào tagEl của nhân viên để tương tác xem danh thiếp
       if (worker.tagEl && !worker.tagEl._ftClickBound) {
@@ -224,8 +269,18 @@
         });
       }
 
-      if (isBot && !worker._ftRobotUpgraded && worker.P && worker.P.head) {
+      if (isAssistant && !worker._ftRobotUpgraded && worker.P && worker.P.head) {
         transformWorkerToRobot(worker, session);
+      } else if (isBot && !isAssistant && !worker._ftSpecialistTagged) {
+        // Giữ nguyên mô hình 3D đầy đủ cho các bot chuyên viên tại phòng Khảo thí (không ẩn mesh tránh lỗi tàng hình)
+        worker._ftSpecialistTagged = true;
+        if (worker.tagDot) {
+          worker.tagDot.style.background = '#10B981';
+          worker.tagDot.style.boxShadow = '0 0 8px #10B981';
+        }
+        if (worker.tagEl) {
+          worker.tagEl.title = `[Chuyên viên AI] ${session.name}`;
+        }
       }
     }
   }
@@ -233,46 +288,23 @@
   function transformWorkerToRobot(worker, session) {
     try {
       if (worker._ftRobotUpgraded) return;
-      worker._ftRobotUpgraded = true;
+      if (typeof THREE === 'undefined' || !worker.P?.head || !worker.P?.torso) return;
 
-      // Duyệt qua các bộ phận người cũ để ẩn toàn bộ mesh (giữ nguyên Group pivot cho animation)
-      const humanPartGroups = [
-        worker.P?.head,
-        worker.P?.torso,
-        worker.P?.armL?.sh,
-        worker.P?.armL?.el,
-        worker.P?.armR?.sh,
-        worker.P?.armR?.el,
-        worker.P?.legL?.hip,
-        worker.P?.legL?.knee,
-        worker.P?.legR?.hip,
-        worker.P?.legR?.knee
-      ];
-
-      humanPartGroups.forEach(grp => {
-        if (!grp) return;
-        grp.traverse(child => {
-          if (child.isMesh) {
-            child.visible = false;
-          }
-        });
-      });
-
-      // Vật liệu kim loại cao cấp
+      // Vật liệu Robot Trợ lý Trắng Sứ & Titanium Cyan cao cấp
       const titaniumMat = new THREE.MeshStandardMaterial({
-        color: '#1E293B',
-        metalness: 0.88,
+        color: '#E2E8F0',
+        metalness: 0.72,
         roughness: 0.22
       });
       const slateArmorMat = new THREE.MeshStandardMaterial({
-        color: '#334155',
-        metalness: 0.82,
-        roughness: 0.28
+        color: '#F8FAFC',
+        metalness: 0.45,
+        roughness: 0.18
       });
       const accentMat = new THREE.MeshStandardMaterial({
         color: '#0EA5E9',
-        metalness: 0.7,
-        roughness: 0.3
+        metalness: 0.65,
+        roughness: 0.25
       });
       const neonVisorMat = new THREE.MeshStandardMaterial({
         color: '#00F0FF',
@@ -408,6 +440,7 @@
       // 3. Gắn vào worker.P.armL.sh / el và worker.P.armR.sh / el: Ống giáp cánh tay cơ khí và càng kẹp bàn tay robot
       function buildUpperArmArmor() {
         const grp = new THREE.Group();
+        grp.name = 'ft_robot_arm_upper';
         const armorGeo = new THREE.BoxGeometry(0.11, 0.18, 0.11);
         const armorMesh = new THREE.Mesh(armorGeo, titaniumMat);
         armorMesh.position.set(0, -0.09, 0);
@@ -423,6 +456,7 @@
 
       function buildForearmAndClaw() {
         const grp = new THREE.Group();
+        grp.name = 'ft_robot_arm_lower';
         const armGeo = new THREE.BoxGeometry(0.10, 0.16, 0.10);
         const armMesh = new THREE.Mesh(armGeo, slateArmorMat);
         armMesh.position.set(0, -0.08, 0);
@@ -451,6 +485,7 @@
       // 4. Gắn vào worker.P.legL.hip / knee và worker.P.legR.hip / knee: Giáp ống chân mech
       function buildThighArmor() {
         const grp = new THREE.Group();
+        grp.name = 'ft_robot_thigh';
         const thighGeo = new THREE.BoxGeometry(0.13, 0.22, 0.13);
         const thighMesh = new THREE.Mesh(thighGeo, titaniumMat);
         thighMesh.position.set(0, -0.11, 0);
@@ -466,6 +501,7 @@
 
       function buildShinArmor() {
         const grp = new THREE.Group();
+        grp.name = 'ft_robot_shin';
         const shinGeo = new THREE.BoxGeometry(0.12, 0.22, 0.13);
         const shinMesh = new THREE.Mesh(shinGeo, slateArmorMat);
         shinMesh.position.set(0, -0.11, 0);
@@ -521,16 +557,50 @@
         worker._ftRepulsorDiscMat = ringMat;
       }
 
+      // Chỉ ẩn các bộ phận người cũ SAU KHI đã gắn thành công toàn bộ phần giáp Mech (tránh lỗi tàng hình)
+      const humanPartGroups = [
+        worker.P?.head,
+        worker.P?.torso,
+        worker.P?.armL?.sh,
+        worker.P?.armL?.el,
+        worker.P?.armR?.sh,
+        worker.P?.armR?.el,
+        worker.P?.legL?.hip,
+        worker.P?.legL?.knee,
+        worker.P?.legR?.hip,
+        worker.P?.legR?.knee
+      ];
+
+      humanPartGroups.forEach(grp => {
+        if (!grp) return;
+        grp.traverse(child => {
+          if (child.isMesh && !isInsideRobotGroup(child)) {
+            child.visible = false;
+          }
+        });
+      });
+
+      function isInsideRobotGroup(obj) {
+        let cur = obj;
+        while (cur) {
+          if (cur.name && cur.name.startsWith('ft_robot_')) return true;
+          cur = cur.parent;
+        }
+        return false;
+      }
+
+      worker._ftRobotUpgraded = true;
+
       // Cập nhật tag hiển thị trên đầu
       if (worker.tagDot) {
         worker.tagDot.style.background = '#00F0FF';
         worker.tagDot.style.boxShadow = '0 0 10px #00F0FF';
       }
       if (worker.tagEl) {
-        worker.tagEl.title = `[Robot AI Mech] ${session.name}`;
+        worker.tagEl.title = `[Robot Trợ lý AI] ${session.name}`;
       }
 
-      console.log(`[FT Office] Transformed bot ${session.name} (${session.id}) to 3D Mech Robot!`);
+      console.log(`[FT Office] Transformed assistant bot ${session.name} (${session.id}) to 3D Mech Robot!`);
     } catch (err) {
       console.warn('[FT Office] Failed to transform bot:', err);
     }
@@ -619,12 +689,11 @@
     const workers = ftOffice.getWorkers();
     const sessions = ftOffice.getSessions();
 
+    // Chỉ gọi Robot Trợ lý AI chuyên trách (KHÔNG gọi bot phòng Khảo thí)
     for (const [id, worker] of workers.entries()) {
       const session = sessions.get(id);
       if (!session) continue;
-      const isBot = isBotSession(id, session);
-
-      if (isBot && !worker._ftServing && !worker._ftMovingToUser && !worker.leaving) {
+      if (isAssistantBot(id, session) && !worker._ftServing && !worker._ftMovingToUser && !worker.leaving) {
         return worker;
       }
     }

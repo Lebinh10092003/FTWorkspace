@@ -25,7 +25,22 @@ import {
   Users,
   Plus,
   Check,
-  Calendar
+  Calendar,
+  Settings,
+  LayoutGrid,
+  Palette,
+  Sun,
+  Wifi,
+  HardDrive,
+  Search,
+  ExternalLink,
+  Globe,
+  Laptop,
+  ShieldCheck,
+  Share2,
+  Layers,
+  Wallet,
+  Wrench
 } from 'lucide-react';
 
 export type VirtualDesktopOSProps = {
@@ -53,7 +68,7 @@ export type VirtualDesktopOSProps = {
   idToken?: string | null;
 };
 
-type WindowId = 'assistant' | 'exam' | 'reports' | 'docs' | 'terminal' | 'game';
+export type WindowId = 'assistant' | 'exam' | 'reports' | 'docs' | 'terminal' | 'game' | 'settings' | 'apps' | 'browser';
 
 interface OSWindow {
   id: WindowId;
@@ -119,6 +134,183 @@ class VirtualDesktopErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
+
+const WALLPAPERS = [
+  {
+    id: 'sequoia-sunrise',
+    name: 'macOS Sequoia Rạng đông',
+    subtitle: 'Sắc cam hổ phách & tím thạch anh chính thức macOS 15',
+    gradientClass: 'from-[#1e0a38] via-[#3b1259] to-[#0c051f]',
+    previewBg: 'bg-gradient-to-tr from-amber-500 via-purple-700 to-indigo-950',
+  },
+  {
+    id: 'sequoia-dark',
+    name: 'macOS Sequoia Đêm sâu',
+    subtitle: 'Xanh chàm tĩnh lặng, tương phản sắc nét',
+    gradientClass: 'from-[#0B1120] via-[#121A32] to-[#060B19]',
+    previewBg: 'bg-gradient-to-tr from-sky-900 via-indigo-950 to-slate-950',
+  },
+  {
+    id: 'sonoma-sunset',
+    name: 'macOS Sonoma Hoàng hôn',
+    subtitle: 'Nắng chiều thung lũng Sonoma rực rỡ',
+    gradientClass: 'from-[#2e0c1f] via-[#4a1525] to-[#12050b]',
+    previewBg: 'bg-gradient-to-tr from-yellow-500 via-rose-600 to-purple-900',
+  },
+  {
+    id: 'cyber-matrix',
+    name: 'Fermat Cyberpunk Neon',
+    subtitle: 'Ngọc lục bảo & cyan phát quang công nghệ',
+    gradientClass: 'from-[#031d28] via-[#062c3f] to-[#020e14]',
+    previewBg: 'bg-gradient-to-tr from-emerald-500 via-cyan-700 to-slate-950',
+  },
+  {
+    id: 'dark-obsidian',
+    name: 'Fermat Luxury Obsidian',
+    subtitle: 'Đen kim cương tối giản thanh lịch',
+    gradientClass: 'from-[#0c0d10] via-[#16181f] to-[#07070a]',
+    previewBg: 'bg-gradient-to-tr from-zinc-800 via-slate-900 to-black',
+  },
+  {
+    id: 'high-sierra',
+    name: 'Cupertino High Sierra',
+    subtitle: 'Núi tuyết xanh lam trong trẻo',
+    gradientClass: 'from-[#0c2340] via-[#1d3d63] to-[#081321]',
+    previewBg: 'bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-950',
+  },
+];
+
+const ALL_WORKSPACE_MODULES = [
+  {
+    id: 'examination',
+    name: 'Khảo thí & Đề thi số',
+    category: 'Đào tạo & Khảo thí',
+    desc: 'Ngân hàng câu hỏi, tạo đề thi tự động, xuất PDF/Word và quản lý kỳ thi chuẩn hóa.',
+    icon: GraduationCap,
+    color: 'from-sky-500 to-blue-600',
+    badge: 'Trọng yếu',
+    moduleKey: 'examination',
+  },
+  {
+    id: 'digital-training',
+    name: 'Công nghệ & Đào tạo số',
+    category: 'Đào tạo & Khảo thí',
+    desc: 'Lộ trình phát triển năng lực, khóa học số, bài giảng e-learning và tài liệu đào tạo nội bộ.',
+    icon: Layers,
+    color: 'from-indigo-500 to-purple-600',
+    badge: 'AI Powered',
+    moduleKey: 'digital-training',
+  },
+  {
+    id: 'attendance',
+    name: 'Công ca & Chấm công',
+    category: 'Hành chính & Nhân sự',
+    desc: 'Theo dõi ca làm việc, bảng chấm công cá nhân/phòng ban, tính công tự động theo thời gian thực.',
+    icon: Clock,
+    color: 'from-emerald-500 to-teal-600',
+    moduleKey: 'attendance',
+  },
+  {
+    id: 'weekly-report',
+    name: 'Báo cáo tuần & Tiến độ',
+    category: 'Hành chính & Quản trị',
+    desc: 'Tổng hợp OKRs, báo cáo tiến độ các ban, đánh giá hiệu suất và kế hoạch công tác tuần.',
+    icon: FileText,
+    color: 'from-amber-500 to-orange-600',
+    moduleKey: 'weekly-report',
+  },
+  {
+    id: 'work-schedule',
+    name: 'Lịch công tác & Giao việc',
+    category: 'Hành chính & Quản trị',
+    desc: 'Lịch tuần ban lãnh đạo, giao việc chéo phòng ban, đồng bộ nhắc việc và kiểm soát tiến độ.',
+    icon: Calendar,
+    color: 'from-orange-500 to-rose-500',
+    moduleKey: 'work-schedule',
+  },
+  {
+    id: 'news-posts',
+    name: 'Đăng tin & Truyền thông',
+    category: 'Truyền thông & Đa kênh',
+    desc: 'Biên soạn bài viết, quản lý lịch đăng tin, đồng bộ nội dung đa kênh tự động và kiểm duyệt bài.',
+    icon: Sparkles,
+    color: 'from-rose-500 to-pink-600',
+    badge: 'Đa kênh',
+    moduleKey: 'news-posts',
+  },
+  {
+    id: 'social-dashboard',
+    name: 'Quản trị Kênh Xã hội',
+    category: 'Truyền thông & Đa kênh',
+    desc: 'Kết nối Facebook Fanpage, Zalo OA, đồng bộ dữ liệu tương tác và tự động phản hồi tin nhắn.',
+    icon: Share2,
+    color: 'from-blue-600 to-indigo-700',
+    moduleKey: 'social-dashboard',
+  },
+  {
+    id: 'gmail-assistant',
+    name: 'Hộp thư AI (Gmail)',
+    category: 'Giao tiếp & Thư từ',
+    desc: 'Hộp thư thông minh tích hợp AI soạn thảo, phân loại email quan trọng và trả lời tự động.',
+    icon: Bot,
+    color: 'from-red-500 to-rose-600',
+    moduleKey: 'gmail-assistant',
+  },
+  {
+    id: 'email-builder',
+    name: 'Trình tạo Email Template',
+    category: 'Giao tiếp & Marketing',
+    desc: 'Thiết kế mẫu thư điện tử kéo thả chuẩn thương hiệu FermatTech với bố cục responsive.',
+    icon: FileText,
+    color: 'from-violet-500 to-purple-700',
+    moduleKey: 'email-builder',
+  },
+  {
+    id: 'signature-builder',
+    name: 'Trình tạo Chữ ký số',
+    category: 'Giao tiếp & Thương hiệu',
+    desc: 'Tạo chữ ký email chuẩn nhận diện thương hiệu công ty, sao chép HTML hoặc hình ảnh chỉ bằng 1 chạm.',
+    icon: CheckCircle2,
+    color: 'from-cyan-500 to-blue-600',
+    moduleKey: 'signature-builder',
+  },
+  {
+    id: 'finance-report',
+    name: 'Báo cáo Tài chính & Ngân sách',
+    category: 'Tài chính & Kế toán',
+    desc: 'Theo dõi dòng tiền, dự toán kinh phí dự án, giải ngân đề xuất và báo cáo tài chính nội bộ.',
+    icon: Wallet,
+    color: 'from-emerald-600 to-green-700',
+    moduleKey: 'finance-report',
+  },
+  {
+    id: 'account-management',
+    name: 'Quản lý Nhân sự & Tài khoản',
+    category: 'Hành chính & Nhân sự',
+    desc: 'Hồ sơ nhân viên, phân quyền truy cập, danh bạ nội bộ và quản lý trạng thái tài khoản.',
+    icon: Users,
+    color: 'from-blue-500 to-cyan-600',
+    moduleKey: 'account-management',
+  },
+  {
+    id: 'document-number',
+    name: 'Công văn & Quy chuẩn',
+    category: 'Hành chính & Quản trị',
+    desc: 'Sổ cấp số công văn đi/đến, quản lý mẫu văn bản hành chính và văn bản nội bộ ban hành.',
+    icon: FileText,
+    color: 'from-slate-500 to-slate-700',
+    moduleKey: 'document-number',
+  },
+  {
+    id: 'communication-tools',
+    name: 'Bộ công cụ số FermatTech',
+    category: 'Tiện ích & Công cụ',
+    desc: 'Tạo mã QR thương hiệu, rút gọn liên kết (ShortLink), tra cứu dữ liệu và các tiện ích nội bộ.',
+    icon: Wrench,
+    color: 'from-violet-500 to-fuchsia-600',
+    moduleKey: 'communication-tools',
+  },
+];
 
 export default function VirtualDesktopOS(props: VirtualDesktopOSProps) {
   return (
@@ -437,6 +629,29 @@ function VirtualDesktopOSInner({
   const [matched, setMatched] = useState<number[]>([]);
   const [gameMoves, setGameMoves] = useState(0);
 
+  const [selectedWallpaper, setSelectedWallpaper] = useState<string>(() => {
+    try {
+      return localStorage.getItem('ft_virtual_desktop_wallpaper') || 'sequoia-sunrise';
+    } catch {
+      return 'sequoia-sunrise';
+    }
+  });
+
+  const [screenBrightness, setScreenBrightness] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('ft_virtual_desktop_brightness');
+      return saved ? Number(saved) : 100;
+    } catch {
+      return 100;
+    }
+  });
+
+  const [settingsTab, setSettingsTab] = useState<'wallpaper' | 'display' | 'about' | 'network'>('wallpaper');
+  const [appleMenuOpen, setAppleMenuOpen] = useState(false);
+  const [searchModuleQuery, setSearchModuleQuery] = useState('');
+  const [browserUrl, setBrowserUrl] = useState<string>('/?view=examination');
+  const [browserTitle, setBrowserTitle] = useState<string>('Khảo thí & Đề thi số');
+
   const [windows, setWindows] = useState<Record<WindowId, OSWindow>>({
     assistant: { id: 'assistant', title: 'Trợ lý AI Workstation', icon: Bot, isOpen: true, isMinimized: false, zIndex: 1 },
     exam: { id: 'exam', title: 'Khảo thí & Ngân hàng đề thi', icon: GraduationCap, isOpen: false, isMinimized: false, zIndex: 2 },
@@ -444,7 +659,32 @@ function VirtualDesktopOSInner({
     docs: { id: 'docs', title: 'Kho tài liệu & Quy chuẩn', icon: Folder, isOpen: false, isMinimized: false, zIndex: 4 },
     terminal: { id: 'terminal', title: 'Nhật ký Console Văn phòng', icon: Terminal, isOpen: false, isMinimized: false, zIndex: 5 },
     game: { id: 'game', title: 'Fermat Arcade: Xả Stress', icon: Gamepad2, isOpen: false, isMinimized: false, zIndex: 6 },
+    settings: { id: 'settings', title: 'Cài đặt hệ thống macOS', icon: Settings, isOpen: false, isMinimized: false, zIndex: 7 },
+    apps: { id: 'apps', title: 'Launchpad · Tất cả ứng dụng', icon: LayoutGrid, isOpen: false, isMinimized: false, zIndex: 8 },
+    browser: { id: 'browser', title: 'Fermat Safari · Trình duyệt phân hệ', icon: Globe, isOpen: false, isMinimized: false, zIndex: 9 },
   });
+
+  const handleSelectWallpaper = (wpId: string) => {
+    setSelectedWallpaper(wpId);
+    try {
+      localStorage.setItem('ft_virtual_desktop_wallpaper', wpId);
+    } catch {}
+  };
+
+  const handleBrightnessChange = (val: number) => {
+    setScreenBrightness(val);
+    try {
+      localStorage.setItem('ft_virtual_desktop_brightness', String(val));
+    } catch {}
+  };
+
+  const openModuleInBrowser = (moduleKey: string, moduleName: string) => {
+    setBrowserUrl(`/?view=${moduleKey}&embed=1`);
+    setBrowserTitle(moduleName);
+    focusWindow('browser');
+  };
+
+  const currentWallpaperObj = WALLPAPERS.find(w => w.id === selectedWallpaper) || WALLPAPERS[0];
 
   // Đồng hồ hệ thống
   useEffect(() => {
@@ -734,16 +974,116 @@ function VirtualDesktopOSInner({
         {/* macOS Sequoia Top Menu Bar */}
         <div className="h-8 bg-slate-950/80 backdrop-blur-2xl border-b border-white/10 px-4 flex items-center justify-between text-xs text-slate-200 select-none z-50">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-white hover:text-sky-400 cursor-pointer transition"></span>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setAppleMenuOpen(prev => !prev)}
+                className="text-sm font-bold text-white hover:text-sky-400 cursor-pointer transition px-1.5 py-0.5 rounded hover:bg-white/10"
+                title="Apple Menu"
+              >
+                
+              </button>
+              {appleMenuOpen && (
+                <div
+                  className="absolute top-7 left-0 w-60 bg-slate-900/95 backdrop-blur-2xl border border-white/20 rounded-xl shadow-2xl py-1.5 z-50 text-xs text-slate-200 animate-in fade-in slide-in-from-top-1"
+                  onClick={() => setAppleMenuOpen(false)}
+                >
+                  <button
+                    onClick={() => { setSettingsTab('about'); focusWindow('settings'); }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-sky-500 hover:text-white transition flex items-center justify-between"
+                  >
+                    <span>Giới thiệu về máy Mac này</span>
+                    <span className="text-[10px] text-slate-400"> Sequoia</span>
+                  </button>
+                  <div className="my-1 border-t border-white/10" />
+                  <button
+                    onClick={() => { setSettingsTab('wallpaper'); focusWindow('settings'); }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-sky-500 hover:text-white transition flex items-center gap-2"
+                  >
+                    <Palette className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Đổi hình nền Desktop...</span>
+                  </button>
+                  <button
+                    onClick={() => { setSettingsTab('display'); focusWindow('settings'); }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-sky-500 hover:text-white transition flex items-center gap-2"
+                  >
+                    <Sun className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Cài đặt độ sáng màn hình...</span>
+                  </button>
+                  <button
+                    onClick={() => focusWindow('apps')}
+                    className="w-full text-left px-3 py-1.5 hover:bg-sky-500 hover:text-white transition flex items-center gap-2"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Tất cả ứng dụng (Launchpad)</span>
+                  </button>
+                  <div className="my-1 border-t border-white/10" />
+                  <button
+                    onClick={() => {
+                      setWindows({
+                        assistant: { id: 'assistant', title: 'Trợ lý AI Workstation', icon: Bot, isOpen: true, isMinimized: false, zIndex: 1 },
+                        exam: { id: 'exam', title: 'Khảo thí & Ngân hàng đề thi', icon: GraduationCap, isOpen: false, isMinimized: false, zIndex: 2 },
+                        reports: { id: 'reports', title: 'Báo cáo tuần & Tiến độ', icon: FileText, isOpen: false, isMinimized: false, zIndex: 3 },
+                        docs: { id: 'docs', title: 'Kho tài liệu & Quy chuẩn', icon: Folder, isOpen: false, isMinimized: false, zIndex: 4 },
+                        terminal: { id: 'terminal', title: 'Nhật ký Console Văn phòng', icon: Terminal, isOpen: false, isMinimized: false, zIndex: 5 },
+                        game: { id: 'game', title: 'Fermat Arcade: Xả Stress', icon: Gamepad2, isOpen: false, isMinimized: false, zIndex: 6 },
+                        settings: { id: 'settings', title: 'Cài đặt hệ thống macOS', icon: Settings, isOpen: false, isMinimized: false, zIndex: 7 },
+                        apps: { id: 'apps', title: 'Launchpad · Tất cả ứng dụng', icon: LayoutGrid, isOpen: false, isMinimized: false, zIndex: 8 },
+                        browser: { id: 'browser', title: 'Fermat Safari · Trình duyệt phân hệ', icon: Globe, isOpen: false, isMinimized: false, zIndex: 9 },
+                      });
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-sky-500 hover:text-white transition flex items-center gap-2"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-slate-300" />
+                    <span>Khởi động lại Desktop OS</span>
+                  </button>
+                  <div className="my-1 border-t border-white/10" />
+                  <button
+                    onClick={onClose}
+                    className="w-full text-left px-3 py-1.5 hover:bg-rose-500 hover:text-white transition flex items-center justify-between text-rose-300"
+                  >
+                    <span>Đóng Desktop OS</span>
+                    <span className="text-[10px] opacity-70">Esc</span>
+                  </button>
+                </div>
+              )}
+            </div>
             <span className="font-bold text-white tracking-wide">Workspace OS</span>
-            <span className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition">Tệp</span>
-            <span className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition">Chỉnh sửa</span>
-            <span className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition">Hiển thị</span>
-            <span className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition">Cửa sổ</span>
-            <span className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition">Trợ giúp</span>
+            <span
+              onClick={() => focusWindow('apps')}
+              className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition"
+            >
+              Ứng dụng
+            </span>
+            <span
+              onClick={() => { setSettingsTab('wallpaper'); focusWindow('settings'); }}
+              className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition"
+            >
+              Hình nền
+            </span>
+            <span
+              onClick={() => { setSettingsTab('display'); focusWindow('settings'); }}
+              className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition"
+            >
+              Độ sáng ({screenBrightness}%)
+            </span>
+            <span
+              onClick={() => focusWindow('terminal')}
+              className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition"
+            >
+              Console
+            </span>
           </div>
 
           <div className="flex items-center gap-3 text-[11px] font-mono text-slate-300">
+            <button
+              onClick={() => { setSettingsTab('wallpaper'); focusWindow('settings'); }}
+              className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition cursor-pointer"
+              title="Đổi hình nền macOS"
+            >
+              <Palette className="w-3 h-3 text-sky-400" />
+              <span className="text-[10px] font-sans">{currentWallpaperObj.name}</span>
+            </button>
             <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px]">
               <span className={`w-2 h-2 rounded-full ${botState.state === 'ARRIVED' ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'}`} />
               <span className="font-sans font-semibold text-slate-300">
@@ -762,18 +1102,21 @@ function VirtualDesktopOSInner({
         </div>
 
         {/* Màn hình Desktop macOS Sequoia */}
-        <div className="relative flex-1 bg-gradient-to-br from-[#0B1120] via-[#121A32] to-[#060B19] overflow-hidden p-4 pb-20 flex">
+        <div
+          className={`relative flex-1 bg-gradient-to-br ${currentWallpaperObj.gradientClass} overflow-hidden p-4 pb-20 flex transition-all duration-300`}
+          style={{ filter: `brightness(${screenBrightness}%)` }}
+        >
           {/* Ánh sáng kính mờ Sequoia */}
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(56,189,248,0.14),transparent_45%),radial-gradient(circle_at_75%_70%,rgba(217,119,87,0.10),transparent_45%)] pointer-events-none" />
 
           {/* Cột Desktop Icons bên trái */}
-          <div className="relative z-10 flex flex-col gap-3 w-28">
+          <div className="relative z-10 flex flex-col gap-2.5 w-28 overflow-y-auto pr-1 no-scrollbar max-h-full">
             <button
               onClick={() => focusWindow('assistant')}
               className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all text-center group ${
                 activeWindow === 'assistant' && windows.assistant.isOpen
                   ? 'bg-slate-900/80 border-[#D97757] shadow-sm'
-                  : 'border-transparent hover:bg-slate-900/80/50 hover:border-white/10/30'
+                  : 'border-transparent hover:bg-slate-900/50 hover:border-white/10'
               }`}
             >
               <div className="w-12 h-12 rounded-xl bg-[#D97757] text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
@@ -781,6 +1124,22 @@ function VirtualDesktopOSInner({
               </div>
               <span className="text-[11px] font-bold text-slate-100 mt-1 leading-tight">
                 Trợ lý AI
+              </span>
+            </button>
+
+            <button
+              onClick={() => focusWindow('apps')}
+              className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all text-center group ${
+                activeWindow === 'apps' && windows.apps.isOpen
+                  ? 'bg-slate-900/80 border-[#38BDF8] shadow-sm'
+                  : 'border-transparent hover:bg-slate-900/50 hover:border-white/10'
+              }`}
+            >
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                <LayoutGrid className="w-6 h-6" />
+              </div>
+              <span className="text-[11px] font-bold text-slate-100 mt-1 leading-tight">
+                Launchpad
               </span>
             </button>
 
@@ -845,6 +1204,22 @@ function VirtualDesktopOSInner({
               </div>
               <span className="text-[11px] font-bold text-slate-100 mt-1 leading-tight">
                 Mini Game
+              </span>
+            </button>
+
+            <button
+              onClick={() => focusWindow('settings')}
+              className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all text-center group ${
+                activeWindow === 'settings' && windows.settings.isOpen
+                  ? 'bg-slate-900/80 border-[#38BDF8] shadow-sm'
+                  : 'border-transparent hover:bg-slate-900/50 hover:border-white/10'
+              }`}
+            >
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-slate-600 to-zinc-800 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                <Settings className="w-6 h-6 text-slate-200" />
+              </div>
+              <span className="text-[11px] font-bold text-slate-100 mt-1 leading-tight">
+                Cài đặt OS
               </span>
             </button>
           </div>
@@ -1535,6 +1910,444 @@ function VirtualDesktopOSInner({
               </div>
             )}
 
+            {/* CỬA SỔ 6: CÀI ĐẶT HỆ THỐNG (SYSTEM SETTINGS) */}
+            {windows.settings.isOpen && !windows.settings.isMinimized && (
+              <div
+                onClick={() => focusWindow('settings')}
+                style={{ zIndex: windows.settings.zIndex }}
+                className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+              >
+                {/* macOS Window Titlebar */}
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/80 border-b border-white/10 text-xs select-none">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); closeWindow('settings'); }}
+                      className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Đóng (Close)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">×</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleMinimize('settings'); }}
+                      className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Thu nhỏ (Minimize)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">−</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); focusWindow('settings'); }}
+                      className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Phóng to / Lấy nét (Zoom)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">+</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <Settings className="w-4 h-4 text-sky-400" />
+                    <span>CÀI ĐẶT HỆ THỐNG // MACOS SEQUOIA WORKSTATION</span>
+                  </div>
+                  <div className="w-12" />
+                </div>
+
+                {/* Content: Sidebar + Main Panel */}
+                <div className="flex-1 flex overflow-hidden">
+                  {/* Left Sidebar */}
+                  <div className="w-48 bg-slate-950/60 border-r border-white/10 p-3 flex flex-col gap-1 text-xs">
+                    <button
+                      onClick={() => setSettingsTab('wallpaper')}
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition font-medium ${
+                        settingsTab === 'wallpaper'
+                          ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Palette className="w-4 h-4" />
+                      <span>Hình nền Desktop</span>
+                    </button>
+
+                    <button
+                      onClick={() => setSettingsTab('display')}
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition font-medium ${
+                        settingsTab === 'display'
+                          ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Sun className="w-4 h-4" />
+                      <span>Màn hình & Độ sáng</span>
+                    </button>
+
+                    <button
+                      onClick={() => setSettingsTab('about')}
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition font-medium ${
+                        settingsTab === 'about'
+                          ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Laptop className="w-4 h-4" />
+                      <span>Giới thiệu về máy</span>
+                    </button>
+                  </div>
+
+                  {/* Right Panel */}
+                  <div className="flex-1 p-5 overflow-y-auto text-slate-200">
+                    {/* Tab Hình nền */}
+                    {settingsTab === 'wallpaper' && (
+                      <div>
+                        <div className="mb-4">
+                          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                            <Palette className="w-4 h-4 text-sky-400" />
+                            Bộ sưu tập hình nền macOS Sequoia & Fermat
+                          </h3>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Chọn giao diện nền hiển thị trên màn hình máy tính ảo. Cài đặt được lưu tự động trên trình duyệt.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                          {WALLPAPERS.map(wp => {
+                            const isSelected = selectedWallpaper === wp.id;
+                            return (
+                              <div
+                                key={wp.id}
+                                onClick={() => handleSelectWallpaper(wp.id)}
+                                className={`group p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                                  isSelected
+                                    ? 'bg-sky-950/40 border-sky-400 shadow-lg shadow-sky-500/10'
+                                    : 'bg-slate-900/60 border-white/10 hover:border-white/25 hover:bg-slate-800/60'
+                                }`}
+                              >
+                                <div>
+                                  <div className={`h-24 rounded-xl ${wp.previewBg} shadow-inner flex items-center justify-center relative overflow-hidden border border-white/10`}>
+                                    {isSelected && (
+                                      <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-white text-[10px] font-bold border border-white/30 flex items-center gap-1">
+                                        <Check className="w-3 h-3 text-emerald-400" /> Đang dùng
+                                      </span>
+                                    )}
+                                  </div>
+                                  <h4 className="font-bold text-xs text-white mt-2.5">{wp.name}</h4>
+                                  <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{wp.subtitle}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleSelectWallpaper(wp.id); }}
+                                  className={`mt-3 w-full py-1.5 rounded-xl text-xs font-semibold transition ${
+                                    isSelected
+                                      ? 'bg-sky-500 text-white shadow-sm'
+                                      : 'bg-white/5 hover:bg-white/15 text-slate-300'
+                                  }`}
+                                >
+                                  {isSelected ? 'Đang chọn' : 'Áp dụng hình nền'}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tab Độ sáng */}
+                    {settingsTab === 'display' && (
+                      <div className="max-w-md space-y-5">
+                        <div>
+                          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                            <Sun className="w-4 h-4 text-amber-400" />
+                            Độ sáng màn hình ảo
+                          </h3>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Điều chỉnh cường độ ánh sáng của không gian Desktop OS cho phù hợp môi trường làm việc.
+                          </p>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-slate-950/60 border border-white/10 space-y-3">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-300 font-medium">Mức sáng hiện tại</span>
+                            <span className="font-mono font-bold text-sky-400">{screenBrightness}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="50"
+                            max="130"
+                            value={screenBrightness}
+                            onChange={(e) => handleBrightnessChange(Number(e.target.value))}
+                            className="w-full accent-sky-400 cursor-pointer"
+                          />
+                          <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                            <span>50% (Dịu tối)</span>
+                            <span>100% (Chuẩn)</span>
+                            <span>130% (Rực rỡ)</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleBrightnessChange(75)}
+                            className="flex-1 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium transition"
+                          >
+                            🌙 Chế độ ban đêm (75%)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleBrightnessChange(100)}
+                            className="flex-1 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium transition"
+                          >
+                            ☀️ Tiêu chuẩn (100%)
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tab Giới thiệu */}
+                    {settingsTab === 'about' && (
+                      <div className="max-w-md text-center py-4 space-y-4">
+                        <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-600 mx-auto flex items-center justify-center text-3xl shadow-xl shadow-sky-500/20 text-white">
+                          
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold text-white">macOS Sequoia Workstation</h3>
+                          <p className="text-xs text-slate-400 mt-0.5">Phiên bản ảo hoá 15.1 (Fermat Tech Edition)</p>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-slate-950/60 border border-white/10 text-left space-y-2 text-xs">
+                          <div className="flex justify-between py-1 border-b border-white/5">
+                            <span className="text-slate-400">Bộ vi xử lý:</span>
+                            <span className="font-semibold text-white">Fermat M3 Neural Engine (8-core)</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-white/5">
+                            <span className="text-slate-400">Bộ nhớ RAM:</span>
+                            <span className="font-semibold text-white">8 GB Unified RAM</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-white/5">
+                            <span className="text-slate-400">Ổ đĩa lưu trữ:</span>
+                            <span className="font-semibold text-white">50 GB Cloud NVMe SSD</span>
+                          </div>
+                          <div className="flex justify-between py-1">
+                            <span className="text-slate-400">Tăng tốc 3D:</span>
+                            <span className="font-semibold text-emerald-400">WebGL 2.0 / Three.js Kích hoạt</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* CỬA SỔ 7: LAUNCHPAD (TẤT CẢ ỨNG DỤNG & PHÂN HỆ) */}
+            {windows.apps.isOpen && !windows.apps.isMinimized && (
+              <div
+                onClick={() => focusWindow('apps')}
+                style={{ zIndex: windows.apps.zIndex }}
+                className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+              >
+                {/* macOS Window Titlebar */}
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/80 border-b border-white/10 text-xs select-none">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); closeWindow('apps'); }}
+                      className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Đóng (Close)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">×</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleMinimize('apps'); }}
+                      className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Thu nhỏ (Minimize)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">−</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); focusWindow('apps'); }}
+                      className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Phóng to / Lấy nét (Zoom)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">+</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <LayoutGrid className="w-4 h-4 text-emerald-400" />
+                    <span>LAUNCHPAD // TẤT CẢ ỨNG DỤNG & PHÂN HỆ FERMAT WORKSPACE</span>
+                  </div>
+                  <div className="w-12" />
+                </div>
+
+                {/* Thanh tìm kiếm Launchpad */}
+                <div className="p-4 bg-slate-950/50 border-b border-white/10 flex items-center justify-between gap-4">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Tìm kiếm ứng dụng, phân hệ làm việc..."
+                      value={searchModuleQuery}
+                      onChange={(e) => setSearchModuleQuery(e.target.value)}
+                      className="w-full bg-slate-900 border border-white/15 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-sky-400 transition"
+                    />
+                  </div>
+                  <span className="text-xs text-slate-400">
+                    Hiển thị {ALL_WORKSPACE_MODULES.filter(m => m.name.toLowerCase().includes(searchModuleQuery.toLowerCase()) || m.desc.toLowerCase().includes(searchModuleQuery.toLowerCase())).length} phân hệ
+                  </span>
+                </div>
+
+                {/* Danh sách ứng dụng */}
+                <div className="flex-1 p-5 overflow-y-auto">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+                    {ALL_WORKSPACE_MODULES
+                      .filter(m =>
+                        m.name.toLowerCase().includes(searchModuleQuery.toLowerCase()) ||
+                        m.desc.toLowerCase().includes(searchModuleQuery.toLowerCase()) ||
+                        m.category.toLowerCase().includes(searchModuleQuery.toLowerCase())
+                      )
+                      .map(mod => {
+                        const ModIcon = mod.icon;
+                        return (
+                          <div
+                            key={mod.id}
+                            className="p-3.5 rounded-2xl bg-slate-900/70 border border-white/10 hover:border-white/20 transition-all hover:bg-slate-850/80 flex flex-col justify-between group"
+                          >
+                            <div>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${mod.color} flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform`}>
+                                  <ModIcon className="w-5 h-5" />
+                                </div>
+                                {mod.badge && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-sky-300 border border-white/15">
+                                    {mod.badge}
+                                  </span>
+                                )}
+                              </div>
+                              <h4 className="font-bold text-xs text-white mt-2.5">{mod.name}</h4>
+                              <span className="text-[10px] text-slate-400 block font-medium">{mod.category}</span>
+                              <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">{mod.desc}</p>
+                            </div>
+
+                            <div className="mt-3.5 flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openModuleInBrowser(mod.moduleKey, mod.name)}
+                                className="flex-1 py-1.5 px-2 rounded-xl bg-sky-500/20 hover:bg-sky-500 text-sky-300 hover:text-white border border-sky-500/30 text-xs font-semibold transition flex items-center justify-center gap-1.5"
+                              >
+                                <Globe className="w-3 h-3" />
+                                <span>Mở trên OS</span>
+                              </button>
+                              {onNavigateModule && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onClose();
+                                    onNavigateModule(mod.moduleKey);
+                                  }}
+                                  className="p-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-300 border border-white/10 transition"
+                                  title="Chuyển sang phân hệ 2D toàn màn hình"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* CỬA SỔ 8: FERMAT SAFARI (TRÌNH DUYỆT PHÂN HỆ) */}
+            {windows.browser.isOpen && !windows.browser.isMinimized && (
+              <div
+                onClick={() => focusWindow('browser')}
+                style={{ zIndex: windows.browser.zIndex }}
+                className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+              >
+                {/* macOS Window Titlebar */}
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/80 border-b border-white/10 text-xs select-none">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); closeWindow('browser'); }}
+                      className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Đóng (Close)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">×</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleMinimize('browser'); }}
+                      className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Thu nhỏ (Minimize)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">−</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); focusWindow('browser'); }}
+                      className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Phóng to / Lấy nét (Zoom)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">+</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <Globe className="w-4 h-4 text-sky-400" />
+                    <span>FERMAT SAFARI // {browserTitle.toUpperCase()}</span>
+                  </div>
+                  <div className="w-12" />
+                </div>
+
+                {/* Thanh điều hướng URL Safari */}
+                <div className="px-3.5 py-2 bg-slate-950/60 border-b border-white/10 flex items-center gap-3 text-xs">
+                  <div className="flex items-center gap-1.5 text-slate-400">
+                    <button
+                      type="button"
+                      onClick={() => focusWindow('apps')}
+                      className="p-1 hover:bg-white/10 rounded-lg text-slate-300 transition"
+                      title="Quay lại Launchpad"
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 flex items-center gap-2 bg-slate-900 border border-white/15 rounded-xl px-3 py-1 text-slate-200">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-[11px] font-mono text-slate-300 select-all flex-1 truncate">
+                      {typeof window !== 'undefined' ? window.location.origin : ''}{browserUrl}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        window.open(browserUrl, '_blank');
+                      }
+                    }}
+                    className="p-1.5 bg-white/5 hover:bg-white/15 rounded-xl text-slate-300 border border-white/10 transition flex items-center gap-1 text-[11px]"
+                    title="Mở trong tab trình duyệt mới"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Mở tab ngoài</span>
+                  </button>
+                </div>
+
+                {/* Viewport phân hệ */}
+                <div className="flex-1 relative bg-slate-950/80">
+                  <iframe
+                    src={browserUrl}
+                    title={browserTitle}
+                    className="w-full h-full border-none bg-slate-900"
+                  />
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
 
@@ -1568,7 +2381,7 @@ function VirtualDesktopOSInner({
                   <span className="w-1 h-1 rounded-full bg-white/90 shadow-sm mt-1" />
                 )}
                 <div className="absolute -top-8 px-2 py-0.5 rounded-md bg-slate-900 border border-white/10 text-[10px] text-white opacity-0 group-hover:opacity-100 transition pointer-events-none whitespace-nowrap shadow-lg">
-                  {w.title.split(' ')[0]}
+                  {w.title.split('·')[0].split(':')[0].trim()}
                 </div>
               </div>
             );
