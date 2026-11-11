@@ -124,6 +124,7 @@ class OfficeRosterView(APIView):
                 'id': member_id,
                 'seat': seat_data,
                 'online': display_online,
+                'is_bot': is_bot,
                 'is_me': is_me,
                 'avatar': avatar_cfg,
             }
