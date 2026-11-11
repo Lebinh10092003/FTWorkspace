@@ -262,8 +262,8 @@ export default function WorkspaceHome({
       },
       {
         mode: 'work-schedule',
-        title: 'Lịch làm việc',
-        description: 'Lập lịch cá nhân, theo dõi việc đội nhóm và nhắc hạn.',
+        title: 'Hành chính',
+        description: 'Lịch làm việc, công ca, đề xuất kinh phí, công văn và báo cáo.',
         icon: CalendarRange,
       },
       {
@@ -328,7 +328,7 @@ export default function WorkspaceHome({
       },
       {
         mode: 'finance-report',
-        title: 'Báo cáo thu chi',
+        title: 'Tài chính, kế toán',
         description: 'Theo dõi dòng tiền, đối soát khảo thí và hợp đồng.',
         icon: BadgeDollarSign,
       },

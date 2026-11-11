@@ -112,14 +112,14 @@ export default function CommandPalette({
       subtitle: 'Lập lịch cá nhân, giao việc và theo dõi tiến độ nhóm',
       icon: Calendar,
       action: () => {
-        onNavigate ? onNavigate('/work-schedule') : (window.location.href = '/work-schedule');
+        onNavigate ? onNavigate('/administration/work-schedule') : (window.location.href = '/administration/work-schedule');
         onClose();
       }
     },
     {
       id: 'nav-finance',
       category: 'Phân hệ',
-      title: 'Báo cáo thu chi',
+      title: 'Tài chính, kế toán',
       subtitle: 'Tổng thu, chi, công nợ và tình trạng xử lý tài chính',
       icon: Briefcase,
       action: () => {

@@ -2,10 +2,50 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from authentication.models import UserProfile
-from .models import Competition, CompetitionLandingPage, LandingLead, LandingSite, LandingTemplate
+from .models import Competition, CompetitionLandingPage, LandingHubSettings, LandingLead, LandingSite, LandingTemplate
 
 
 class LandingSiteTests(TestCase):
+    def test_overview_settings_are_authenticated_and_independent_of_competitions(self):
+        self.assertIn(APIClient().put('/api/landing-hub', {'content': {'intro': 'changed'}}, format='json').status_code, (401, 403))
+        before = LandingSite.objects.get(slug='fimo').content
+        self.assertEqual(self.client.get('/api/landing-hub').data['content'], {})
+        self.assertFalse(LandingHubSettings.objects.exists())
+        updated = self.client.put('/api/landing-hub', {'content': {
+            'title': 'Khám phá cùng FT', 'intro': 'Giới thiệu FT',
+            'individualUrl': '/dang-ky-du-thi', 'scoIntro': 'Các Olympic SCO',
+        }}, format='json')
+        self.assertEqual(updated.status_code, 200, updated.data)
+        public = APIClient().get('/api/public/landing-sites').data
+        self.assertEqual(public['overview']['title'], 'Khám phá cùng FT')
+        self.assertEqual(self.client.get('/api/landing-hub').data['content'], public['overview'])
+        self.assertEqual(LandingSite.objects.get(slug='fimo').content, before)
+
+    def test_overview_rejects_unsafe_registration_links_without_overwriting(self):
+        self.client.put('/api/landing-hub', {'content': {'title': 'Keep me'}}, format='json')
+        response = self.client.put('/api/landing-hub', {'content': {'individualUrl': 'javascript:alert(1)'}}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.client.get('/api/landing-hub').data['content']['title'], 'Keep me')
+
+    def test_catalogue_page_can_be_managed_without_resurrecting_after_unpublish(self):
+        content = {'subject': 'SIMO', 'intro': 'New intro', 'display': {
+            'name': 'Olympic Toán', 'area': 'Toán học', 'context': 'Chủ đề nâng cao',
+            'topics': ['Số học', 'Hình học'], 'hoverSummary': 'Tư duy toán',
+        }, 'style': {'accentColor': '#123abc'}, 'registration': {'individualUrl': '/dang-ky-du-thi'}}
+        created = self.client.post('/api/landing-sites', {'title': 'SIMO', 'slug': 'simo',
+            'published': True, 'content': content}, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        page = APIClient().get('/api/public/landing-sites/simo').data
+        self.assertEqual(page['content'], content)
+        summary = next(item for item in APIClient().get('/api/public/landing-sites').data['items'] if item['slug'] == 'simo')
+        self.assertEqual(summary['content']['display'], content['display'])
+        self.assertEqual(summary['content']['registration']['individualUrl'], '/dang-ky-du-thi')
+        self.client.put(f"/api/landing-sites/{created.data['id']}", {**created.data, 'published': False}, format='json')
+        missing = APIClient().get('/api/public/landing-sites/simo')
+        self.assertEqual(missing.status_code, 404)
+        self.assertTrue(missing.data['managed'])
+        self.assertIn('simo', APIClient().get('/api/public/landing-sites').data['hiddenSlugs'])
+
     def test_siaio_starter_is_draft_with_subject_picker(self):
         site = LandingSite.objects.get(slug='siaio')
         self.assertFalse(site.published)

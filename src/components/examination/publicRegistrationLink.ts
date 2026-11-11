@@ -1,4 +1,6 @@
-const publicCodes = ['SIAIO', 'SIPHO', 'SICHO', 'SIBO', 'SILSO', 'FIMO', 'FIEO'];
+import { competitionOrder } from './competitionIdentity';
+
+const publicCodes = competitionOrder;
 
 export function publicRegistrationLink(slug: string, title = ''): string {
   const tokens = `${slug} ${title}`.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);

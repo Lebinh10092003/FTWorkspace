@@ -154,7 +154,7 @@ export default function ModuleTopNav({ items, activeId, onSelect, ariaLabel = 'Ä
         ref={scrollContainerRef}
         onScroll={handleScroll}
         className="w-full flex items-center overflow-x-auto scrollbar-none scroll-smooth px-1 py-1"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', justifyContent: 'safe center' }}
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', justifyContent: 'flex-start' }}
       >
         <nav
           className="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs shrink-0"

@@ -5,6 +5,7 @@ import Time24Input from './Time24Input';
 import { appDialog } from './AppDialog';
 import MonthlySheetLinkEditor from './MonthlySheetLinkEditor';
 import ModuleShellHeader from './layout/ModuleShellHeader';
+import type { ModuleNavItem } from '../config/workspaceNavigation';
 import SearchableSelect from './SearchableSelect';
 import { filterModuleNav, ATTENDANCE_NAV } from '../config/workspaceNavigation';
 import { pastDateVN, todayVN } from '../lib/vnDate';
@@ -81,6 +82,8 @@ type AttendanceProps = {
   onAccountClick: () => void;
   onLogout: () => void;
   initialEditDate?: string;
+  administrationNav?: ModuleNavItem[];
+  onNavSelect?: (id: string) => void;
   onInitialEditOpened?: () => void;
 };
 
@@ -144,7 +147,7 @@ const editLogText = (log: EditLog) => {
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
-export default function Attendance({ idToken, userName, userEmail, userRole, photoURL, onAccountClick, onLogout, initialEditDate, onInitialEditOpened }: AttendanceProps) {
+export default function Attendance({ idToken, userName, userEmail, userRole, photoURL, onAccountClick, onLogout, initialEditDate, onInitialEditOpened, administrationNav, onNavSelect }: AttendanceProps) {
   const initialMonth = currentMonth();
   const cached = cache?.owner === idToken && cache.month === initialMonth && Date.now() - cache.savedAt < CACHE_TTL ? cache : null;
 
@@ -449,9 +452,9 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
       <ModuleShellHeader
         title="Công ca"
         eyebrow={selectedEmpName ? `Bảng công của ${selectedEmpName}` : undefined}
-        items={navItems}
-        activeId={tab}
-        onSelect={id => setTab(id as AttendanceTab)}
+        items={administrationNav || navItems}
+        activeId={administrationNav ? 'attendance' : tab}
+        onSelect={id => onNavSelect ? onNavSelect(id) : setTab(id as AttendanceTab)}
         ariaLabel="Điều hướng Công ca"
         actions={isPrivileged ? (
           <label className="min-w-0">
@@ -467,6 +470,8 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
           </label>
         ) : null}
       />
+      {administrationNav && <nav className="flex gap-2 border-b border-slate-200 bg-white px-5 py-2" aria-label="Bảng công">{navItems.map(item => <button key={item.id} type="button" onClick={() => setTab(item.id as AttendanceTab)} aria-current={tab === item.id ? 'page' : undefined} className={`rounded-lg px-3 py-2 text-sm font-semibold ${tab === item.id ? 'bg-sky-50 text-sky-700' : 'text-slate-600'}`}>{item.label}</button>)}</nav>}
+
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
           {tab === 'sheet' ? (

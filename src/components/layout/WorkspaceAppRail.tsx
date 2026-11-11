@@ -118,19 +118,7 @@ export default function WorkspaceAppRail({
     );
   };
 
-  // Grouping according to Direction A
-  // 1. Home
   const homeArea = visibleAreas.find(area => area.id === 'workspace');
-
-  // 2. Nhóm "Của tôi": Lịch công tác, Chấm công, Báo cáo tuần
-  const myAreasOrder: WorkspaceAreaId[] = ['work-schedule', 'attendance', 'weekly-report'];
-  const myAreas = myAreasOrder
-    .map(id => visibleAreas.find(a => a.id === id))
-    .filter((a): a is WorkspaceArea => Boolean(a));
-
-  // 3. Nhóm "Phân hệ": Tất cả các phân hệ & công cụ còn lại
-  const myAreaIds = new Set(['workspace', ...myAreasOrder]);
-  const departmentAreas = visibleAreas.filter(area => !myAreaIds.has(area.id));
 
   return (
     <nav
@@ -180,46 +168,7 @@ export default function WorkspaceAppRail({
 
       {/* 2. Navigation Groups */}
       <div className="flex-1 overflow-y-auto space-y-2 pt-2 overscroll-contain pr-0.5 scrollbar-thin">
-        {/* Trang chủ */}
-        {homeArea && (
-          <div className="space-y-1">
-            {renderItem(homeArea)}
-          </div>
-        )}
-
-        {/* Divider between Home and Của tôi */}
-        {homeArea && myAreas.length > 0 && compact && (
-          <div className="my-2 border-t border-white/10 mx-auto w-8" role="separator" />
-        )}
-
-        {/* Nhóm CỦA TÔI */}
-        {myAreas.length > 0 && (
-          <div className="space-y-1">
-            {!compact && (
-              <p className="px-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-[#8FA6C0]">
-                Của tôi
-              </p>
-            )}
-            {myAreas.map(renderItem)}
-          </div>
-        )}
-
-        {/* Divider between Của tôi and Phân hệ */}
-        {myAreas.length > 0 && departmentAreas.length > 0 && compact && (
-          <div className="my-2 border-t border-white/10 mx-auto w-8" role="separator" />
-        )}
-
-        {/* Nhóm PHÂN HỆ */}
-        {departmentAreas.length > 0 && (
-          <div className="space-y-1">
-            {!compact && (
-              <p className="px-2 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#8FA6C0]">
-                Phân hệ
-              </p>
-            )}
-            {departmentAreas.map(renderItem)}
-          </div>
-        )}
+        {visibleAreas.map(renderItem)}
       </div>
 
       {/* 3. Bottom User Profile & Rail Toggle */}

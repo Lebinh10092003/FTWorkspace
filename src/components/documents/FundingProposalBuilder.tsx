@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Loader2, Plus, RotateCcw, Save, Trash2, TriangleAlert, ZoomIn, ZoomOut } from 'lucide-react';
 import { appDialog } from '../AppDialog';
 import ModuleShellHeader from '../layout/ModuleShellHeader';
-import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
+import { ADMINISTRATION_NAV, type ModuleNavItem } from '../../config/workspaceNavigation';
 import FundingProposalPreview from './FundingProposalPreview';
 import {
   ATTACHMENT_OPTIONS, CURRENCIES, DECISION_OPTIONS, FundingProposal, ProposalItem,
@@ -18,6 +18,7 @@ type Props = {
   onAccountClick: () => void;
   onLogout: () => void;
   onNavSelect: (id: string) => void;
+  navItems?: ModuleNavItem[];
 };
 
 const FIELD = 'ft-input';
@@ -59,7 +60,7 @@ function readDraft(key: string): FundingProposal {
 }
 
 export default function FundingProposalBuilder({
-  idToken, userName, userRole, photoURL, onAccountClick, onLogout, onNavSelect,
+  idToken, userName, userRole, photoURL, onAccountClick, onLogout, navItems = ADMINISTRATION_NAV, onNavSelect,
 }: Props) {
   const storageKey = useMemo(() => draftKey(idToken, userName), [idToken, userName]);
   const currentStorageKey = useRef(storageKey);
@@ -230,12 +231,12 @@ export default function FundingProposalBuilder({
   return (
     <div className="ft-module-shell flex min-h-dvh flex-col font-sans text-slate-900">
       <ModuleShellHeader
-        eyebrow="Bộ công cụ FermatTech"
+        eyebrow="Hành chính"
         title="Phiếu đề xuất kinh phí"
-        items={COMMUNICATION_TOOLS_NAV}
+        items={navItems}
         activeId="funding-proposal"
         onSelect={onNavSelect}
-        ariaLabel="Điều hướng bộ công cụ FermatTech"
+        ariaLabel="Điều hướng Hành chính"
         actions={(
           <>
             <button type="button" onClick={async () => {

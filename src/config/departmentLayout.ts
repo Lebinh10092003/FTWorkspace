@@ -26,13 +26,13 @@ const DEPARTMENT_RULES: DepartmentRule[] = [
   { keywords: ['dao tao so', 'cong nghe', 'chuyen doi so', 'cntt'], label: 'Công nghệ & Đào tạo số', areas: ['digital-training', 'training-assessments'] },
   { keywords: ['truyen thong', 'marketing'], label: 'Truyền thông', areas: ['social-dashboard', 'communication-tools'] },
   { keywords: ['ke toan', 'tai chinh'], label: 'Kế toán', areas: ['finance-report'] },
-  { keywords: ['hanh chinh', 'nhan su'], label: 'Hành chính – Nhân sự', areas: ['account-management', 'attendance'] },
+  { keywords: ['hanh chinh', 'nhan su'], label: 'Hành chính – Nhân sự', areas: ['administration', 'account-management'] },
 ];
 
 const LEADERSHIP_KEYWORDS = ['giam doc', 'lanh dao', 'ban giam', 'bgd', 'chu tich'];
 
 /** Tools everyone uses for their own work, whatever their department. */
-export const PERSONAL_AREAS = ['work-schedule', 'attendance', 'examination-invigilation'];
+export const PERSONAL_AREAS = ['administration', 'examination-invigilation'];
 
 export function normaliseDepartment(value: string) {
   return normalizeSearchText(value);

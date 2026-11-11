@@ -10,5 +10,7 @@ export type RegistrationContent = {
   paymentDeclaration: string; confirmationTitle: string; consent: string; submitLabel: string; submitNote: string;
   successTitle: string; successMessage: string; blocks: { title: string; body: string }[];
   competitionCodes: string[]; fields: RegistrationField[];
+  sessionLinks?: Record<string, string>; fees?: Record<string, number>;
 };
-export type CompetitionOption = { code: string; displayCode?: string; name: string; sessionId: string; time: string };
+export type CompetitionOption = { code: string; displayCode?: string; name: string; sessionId: string; time: string; fee?: number | null; requiredFields?: string[]; proofRequired?: boolean; minGrade?: number; maxGrade?: number };
+export type RegistrationSessionOption = CompetitionOption & { phase: string };

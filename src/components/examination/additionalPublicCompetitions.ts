@@ -48,8 +48,8 @@ export function additionalPublicCompetition(slug: string) {
   return additionalPublicCompetitions.find(site => site.slug === slug);
 }
 
-export function withAdditionalCompetitions<T extends { slug: string; content?: { subject?: string } }>(items: T[]) {
-  return [...items, ...additionalPublicCompetitions.filter(site => !items.some(item =>
+export function withAdditionalCompetitions<T extends { slug: string; content?: { subject?: string } }>(items: T[], hiddenSlugs: string[] = []) {
+  return [...items, ...additionalPublicCompetitions.filter(site => !hiddenSlugs.includes(site.slug) && !items.some(item =>
     item.slug === site.slug || (!!item.content?.subject && item.content.subject.toUpperCase() === site.content.subject?.toUpperCase())
   ))];
 }

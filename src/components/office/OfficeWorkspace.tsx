@@ -33,12 +33,12 @@ export type OfficeWorkspaceProps = {
 
 const OFFICE_MODULE_ITEMS: { id: string; label: string; mode: string }[] = [
   { id: 'workspace', label: 'Trang chủ', mode: 'workspace' },
-  { id: 'work-schedule', label: 'Lịch làm việc', mode: 'work-schedule' },
+  { id: 'work-schedule', label: 'Hành chính · Lịch làm việc', mode: 'work-schedule' },
   { id: 'attendance', label: 'Công ca', mode: 'attendance' },
   { id: 'weekly-report', label: 'Báo cáo tuần', mode: 'weekly-report' },
   { id: 'examination', label: 'Khảo thí', mode: 'examination' },
   { id: 'digital-training', label: 'Công nghệ & Đào tạo số', mode: 'digital-training' },
-  { id: 'finance-report', label: 'Báo cáo thu chi', mode: 'finance-report' },
+  { id: 'finance-report', label: 'Tài chính, kế toán', mode: 'finance-report' },
   { id: 'social-dashboard', label: 'Truyền thông', mode: 'social-dashboard' },
   { id: 'communication-tools', label: 'Bộ công cụ', mode: 'communication-tools' },
   { id: 'account-management', label: 'Quản lý nhân viên', mode: 'account-management' },

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Copy, ExternalLink, FileSignature, Loader2, RefreshCw, TriangleAlert } from 'lucide-react';
 import ModuleShellHeader from '../layout/ModuleShellHeader';
 import SearchableSelect from '../SearchableSelect';
-import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
+import { ADMINISTRATION_NAV, type ModuleNavItem } from '../../config/workspaceNavigation';
 import { todayVN } from '../../lib/vnDate';
 
 type DocumentType = { label: string; code: string };
@@ -24,6 +24,7 @@ type Props = {
   onAccountClick: () => void;
   onLogout: () => void;
   onNavSelect: (id: string) => void;
+  navItems?: ModuleNavItem[];
 };
 
 const todayIso = todayVN;
@@ -59,7 +60,7 @@ const formatNumber = (sequence: number, code: string) => {
 };
 
 export default function DocumentNumberGenerator({
-  idToken, userName, userRole, photoURL, onAccountClick, onLogout, onNavSelect,
+  idToken, userName, userRole, photoURL, onAccountClick, onLogout, navItems = ADMINISTRATION_NAV, onNavSelect,
 }: Props) {
   const [state, setState] = useState<RegisterState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,12 +153,12 @@ export default function DocumentNumberGenerator({
   return (
     <div className="ft-module-shell flex min-h-dvh flex-col font-sans text-slate-900">
       <ModuleShellHeader
-        eyebrow="Bộ công cụ FermatTech"
+        eyebrow="Hành chính"
         title="Trình tạo số Công văn"
-        items={COMMUNICATION_TOOLS_NAV}
+        items={navItems}
         activeId="document-number"
         onSelect={onNavSelect}
-        ariaLabel="Điều hướng bộ công cụ FermatTech"
+        ariaLabel="Điều hướng Hành chính"
         actions={(
           <button type="button" onClick={() => void load()} disabled={loading}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">

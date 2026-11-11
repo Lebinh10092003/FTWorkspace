@@ -17,6 +17,7 @@ import {
 import {
   ACCOUNT_MANAGEMENT_NAV,
   ATTENDANCE_NAV,
+  ADMINISTRATION_NAV,
   COMMUNICATION_TOOLS_NAV,
   DIGITAL_TRAINING_NAV,
   EXAMINATION_NAV,
@@ -144,11 +145,12 @@ export default function ChatbotAssistant({
     };
 
     addNavItems(COMMUNICATION_TOOLS_NAV, 'Bộ công cụ', '/communication-tools');
-    addNavItems(WORK_SCHEDULE_NAV, 'Lịch làm việc', '/work-schedule');
+    addNavItems(ADMINISTRATION_NAV, 'Hành chính', '/administration');
+    addNavItems(WORK_SCHEDULE_NAV, 'Hành chính · Lịch làm việc', '/administration/work-schedule');
     addNavItems(EXAMINATION_NAV, 'Khảo thí', '/examination');
     addNavItems(DIGITAL_TRAINING_NAV, 'Công nghệ & Đào tạo số', '/digital-training');
     addNavItems(ATTENDANCE_NAV, 'Công ca', '/attendance');
-    addNavItems(FINANCE_NAV, 'Báo cáo thu chi', '/finance-report');
+    addNavItems(FINANCE_NAV, 'Tài chính, kế toán', '/finance-report');
     addNavItems(ACCOUNT_MANAGEMENT_NAV, 'Quản lý nhân viên', '/account-management');
     addNavItems(SOCIAL_DASHBOARD_NAV, 'Truyền thông', '/social-dashboard');
 

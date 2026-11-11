@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { LandingContent } from './LandingSiteView';
-import { competitionIdentity } from './competitionIdentity';
+import { landingPresentation } from './landingPresentation';
+import { publicLink } from './CompetitionPublicLayout';
 import { programmeCategories } from './programmeCategories';
 import { publicRegistrationLink } from './publicRegistrationLink';
-import { competitionContext } from './competitionEditorial';
 import './CompetitionIntroDialog.css';
 
 export default function CompetitionIntroDialog({ site, onClose }: {
@@ -13,13 +13,13 @@ export default function CompetitionIntroDialog({ site, onClose }: {
   const heading = useRef<HTMLHeadingElement>(null);
   const timer = useRef<number | undefined>(undefined);
   const [closing, setClosing] = useState(false);
-  const identity = competitionIdentity(site.content.subject || site.slug, site.title);
+  const identity = landingPresentation(site);
   const code = identity.code.toUpperCase();
   const categories = programmeCategories[code];
-  const topics = categories?.map(item => item.name) || identity.profile?.focus.split(' · ') || [];
+  const topics = site.content.display?.topics || categories?.map(item => item.name) || identity.topics;
   const intro = (site.content.intro || '').replace(/\s*Vòng loại Quốc gia đợt 2 diễn ra vào Chủ nhật, ngày \d{2}\/\d{2}\/\d{4}\./, '');
-  const register = publicRegistrationLink(site.slug, `${site.title} ${identity.code}`);
-  const grades = identity.profile?.grades;
+  const register = publicLink(site.content.registration?.individualUrl) || publicRegistrationLink(site.slug, `${site.title} ${identity.code}`);
+  const grades = identity.audience;
 
   useEffect(() => {
     const element = dialog.current;
@@ -79,7 +79,7 @@ export default function CompetitionIntroDialog({ site, onClose }: {
     <div className="ch-dialog-content">
       <div className="ch-dialog-heading"><div><p>{identity.code}</p><h2 ref={heading} id="ch-dialog-title" tabIndex={-1}>{identity.name}</h2></div>{identity.logo ? <img src={identity.logo} alt={identity.code} width="92" height="92" /> : <img src="/competition-logos/sco.png" alt="School Connect Olympiad" width="104" height="48" />}</div>
       {intro && <p className="ch-dialog-intro">{intro}</p>}
-      {competitionContext[code] && <p className="ch-dialog-context">{competitionContext[code]}</p>}
+      {identity.context && <p className="ch-dialog-context">{identity.context}</p>}
       {!!topics.length && <section className="ch-dialog-topics"><h3>{categories ? 'Các hạng mục' : 'Chủ đề khám phá'}</h3><ul>{topics.map(topic => <li key={topic}>{topic}</li>)}</ul></section>}
       {grades && !/^Theo thể lệ/i.test(grades) && <p className="ch-dialog-audience"><span>Đối tượng tham gia</span><strong>{grades}</strong></p>}
     </div>

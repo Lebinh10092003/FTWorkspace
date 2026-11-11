@@ -25,17 +25,19 @@ from .models import Candidate, CandidateParticipation, Competition, ExamSession,
 from .public_registration_sheet import row_for
 from .sync import format_person_name, merge_contest_codes, next_code, sync_session_candidate_totals, valid_candidate_name
 from .registration_page import get_page, page_content, competitions
+from .registration_requirements import FERMAT_CODES, effective_fields
 
 
-MAX_PROOF_BYTES = 5 * 1024 * 1024
+MAX_PROOF_BYTES = 10 * 1024 * 1024
 PHONE_PATTERN = re.compile(r'^\+?\d{9,12}$')
 GRADE_PATTERN = re.compile(r'^(?:[1-9]|1[0-2])$')
 
 
-def open_sessions():
-    sessions = ExamSession.objects.filter(pk__in=SESSION_IDS.values())
+def open_sessions(content=None):
+    links = (content or {}).get('sessionLinks') or SESSION_IDS
+    sessions = ExamSession.objects.filter(pk__in=links.values())
     by_id = {item.id: item for item in sessions}
-    return [(code, by_id[session_id]) for code, session_id in SESSION_IDS.items() if session_id in by_id]
+    return [(code, by_id[session_id]) for code, session_id in links.items() if session_id in by_id]
 
 
 def clean(data, key, limit):
@@ -56,16 +58,20 @@ def proof_type(upload):
     if not upload:
         return '', None
     if upload.size > MAX_PROOF_BYTES:
-        raise ValueError('Tệp xác nhận tối đa 5 MB.')
+        raise ValueError('Tệp xác nhận tối đa 10 MB.')
     content = upload.read(MAX_PROOF_BYTES + 1)
     if len(content) > MAX_PROOF_BYTES:
-        raise ValueError('Tệp xác nhận tối đa 5 MB.')
+        raise ValueError('Tệp xác nhận tối đa 10 MB.')
     if content.startswith(b'\x89PNG\r\n\x1a\n'):
         return 'image/png', content
     if content.startswith(b'\xff\xd8\xff'):
         return 'image/jpeg', content
     if content.startswith(b'RIFF') and content[8:12] == b'WEBP':
         return 'image/webp', content
+    if content.startswith((b'GIF87a', b'GIF89a')):
+        return 'image/gif', content
+    if content.startswith(b'BM'):
+        return 'image/bmp', content
     if content.startswith(b'%PDF-'):
         return 'application/pdf', content
     raise ValueError('Chỉ nhận ảnh PNG, JPEG, WebP hoặc PDF.')
@@ -100,7 +106,9 @@ def submission_values(content, data):
                 elif field['type'] == 'date':
                     timezone.datetime.strptime(value, '%Y-%m-%d')
                 elif field['type'] == 'select' and value not in field['options']:
-                    raise ValueError()
+                    normalize_city = lambda city: re.sub(r'^(?:tp[.\s]*|thành phố\s+|tỉnh\s+)', '', city, flags=re.I).strip().casefold()
+                    if key != 'city' or normalize_city(value) not in {normalize_city(item) for item in field['options']}:
+                        raise ValueError()
             except (ValueError, ValidationError):
                 raise ValueError(f'{field["label"]} không hợp lệ.')
         if key in BUILTIN_FIELDS:
@@ -139,13 +147,14 @@ def public_registration(request):
         codes = json.loads(str(data.get('contestCodes') or '[]'))
     except (TypeError, ValueError):
         codes = None
-    available = dict(open_sessions())
+    available = dict(open_sessions(content))
     if content['competitionCodes']:
         available = {code: session for code, session in available.items() if code in content['competitionCodes']}
     if not isinstance(codes, list) or not codes or any(not isinstance(code, str) for code in codes) or len(codes) > len(available) or len(set(codes)) != len(codes) or any(code not in available for code in codes):
         return Response({'error': 'Vui lòng chọn ít nhất một cuộc thi đang nhận đăng ký.'}, status=400)
 
     try:
+        content = {**content, 'fields': effective_fields(content, codes)}
         values, custom_answers = submission_values(content, data)
     except ValueError as exc:
         return Response({'error': str(exc)}, status=400)
@@ -158,20 +167,36 @@ def public_registration(request):
     phone = format_phone(clean(data, 'phone', 32))
     school = clean(data, 'school', 255)
     grade = clean(data, 'grade', 2)
+    submitter_email = clean(data, 'submitterEmail', 255).casefold()
+    class_name = clean(data, 'className', 100)
+    parent_name = format_person_name(clean(data, 'parentName', 255))
     city = clean(data, 'city', 100)
     ward = clean(data, 'ward', 255)
     address = clean(data, 'address', 1000)
     try:
         birthday = timezone.datetime.strptime(dob, '%Y-%m-%d').date() if dob else None
-        mime, proof = proof_type(request.FILES.get('proof') if content['paymentEnabled'] else None)
     except (ValueError, ValidationError):
-        return Response({'error': 'Ngày sinh, email hoặc tệp xác nhận không hợp lệ.'}, status=400)
+        return Response({'error': 'Ngày sinh không hợp lệ.'}, status=400)
+    try:
+        mime, proof = proof_type(request.FILES.get('proof') if content['paymentEnabled'] else None)
+    except ValueError as error:
+        return Response({'error': str(error)}, status=400)
     if not valid_candidate_name(name) or (birthday and (birthday >= timezone.localdate() or birthday.year < 1900)):
         return Response({'error': 'Vui lòng kiểm tra họ tên và ngày sinh.'}, status=400)
     if (phone and not PHONE_PATTERN.fullmatch(phone)) or (grade and not GRADE_PATTERN.fullmatch(grade)):
         return Response({'error': 'Số điện thoại hoặc khối lớp không hợp lệ.'}, status=400)
     if identity and (len(identity) < 6 or len(identity) > 100):
         return Response({'error': 'CCCD/Hộ chiếu không hợp lệ.'}, status=400)
+    if FERMAT_CODES & set(codes):
+        if not grade or not 1 <= int(grade) <= 9:
+            return Response({'error': 'FIMO và FIEO nhận đăng ký cho học sinh lớp 1 đến lớp 9.'}, status=400)
+        if not proof:
+            return Response({'error': 'Vui lòng tải ảnh hoặc PDF xác nhận nộp lệ phí theo yêu cầu FIMO/FIEO.'}, status=400)
+    if class_name:
+        from .sync import form_grade_and_class
+        class_grade, _ = form_grade_and_class(class_name)
+        if class_grade and grade and class_grade != grade:
+            return Response({'error': 'Khối lớp và tên lớp chưa khớp nhau.'}, status=400)
 
     ip = request.META.get('HTTP_X_REAL_IP') or request.META.get('REMOTE_ADDR') or ''
     ip_hash = hashlib.sha256(f'{settings.SECRET_KEY}:{ip}'.encode()).hexdigest()
@@ -193,6 +218,7 @@ def public_registration(request):
             candidate = Candidate.objects.create(
                 id=candidate_code, code=candidate_code, name=name, birth_date=dob,
                 identity=identity, email=email, phone=phone, school=school, grade=grade,
+                class_name=class_name, parent=parent_name,
                 city=city, ward=ward, address=address, contests=merge_contest_codes(', '.join(codes)),
                 session_ids=[available[code].id for code in codes],
                 sort_key=f'{name.lower()}_{identity or candidate_code}',
@@ -204,7 +230,7 @@ def public_registration(request):
             from .sync import form_grade_and_class
             if grade and form_grade_and_class(candidate.grade)[0] != grade:
                 candidate.class_name = ''
-            for key, value in {'identity': identity, 'email': email, 'phone': phone, 'school': school, 'grade': grade, 'city': city, 'ward': ward, 'address': address}.items():
+            for key, value in {'identity': identity, 'email': email, 'phone': phone, 'school': school, 'grade': grade, 'class_name': class_name, 'parent': parent_name, 'city': city, 'ward': ward, 'address': address}.items():
                 if value:
                     setattr(candidate, key, value)
             candidate.save()
@@ -222,8 +248,16 @@ def public_registration(request):
                     'paymentProof': f'Workspace #{registration.id}' if proof else '',
                     'paymentDeclared': registration.payment_declared,
                     'customAnswers': custom_answers,
+                    'parentName': parent_name, 'className': class_name,
+                    'submitterEmail': submitter_email,
+                    'registrationFee': content.get('fees', {}).get(code),
                 },
             )
+            fee = content.get('fees', {}).get(code)
+            if fee is not None:
+                billing = participation.billing
+                billing.amount = fee
+                billing.save(update_fields=['amount', 'updated_at'])
             if proof:
                 TransferProof.objects.create(billing=participation.billing, session=available[code], image=proof, image_type=mime,
                                             filename=f'registration-{registration.id}', created_by=email)

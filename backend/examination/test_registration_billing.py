@@ -47,6 +47,8 @@ class RegistrationAndBillingTests(TestCase):
             'school': 'Trường A', 'grade': '3', 'city': 'Hà Nội',
             'ward': 'Phường A', 'address': 'Số 1, đường B',
             'paymentDeclared': 'true',
+            'identity': '001201012345', 'className': '3A1', 'submitterEmail': 'registrant@example.test',
+            'proof': SimpleUploadedFile('proof.png', b'\x89PNG\r\n\x1a\n' + b'x' * 20, content_type='image/png'),
         }
 
     def test_public_form_creates_one_candidate_two_billing_records_and_is_idempotent(self):

@@ -336,6 +336,8 @@ export default function CompetitionLandingPublic({ slug }: { slug: string }) {
           return;
         }
         const additional = additionalPublicCompetition(slug);
+        const missing = await siteResponse.json().catch(() => ({}));
+        if (missing.managed) { setError(missing.error || 'Trang chưa công bố.'); return; }
         if (siteResponse.status === 404 && additional) {
           setSite(additional);
           return;

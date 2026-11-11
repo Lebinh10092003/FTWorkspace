@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 import ModuleShellHeader from '../layout/ModuleShellHeader';
-import { COMMUNICATION_TOOLS_NAV } from '../../config/workspaceNavigation';
+import { ADMINISTRATION_NAV, type ModuleNavItem } from '../../config/workspaceNavigation';
 
 type ReportGroup = {
   name: string;
@@ -121,6 +121,7 @@ type Props = {
   onAccountClick: () => void;
   onLogout: () => void;
   onNavSelect: (id: string) => void;
+  navItems?: ModuleNavItem[];
 };
 
 const moveItemInArray = (list: string[], fromIndex: number, toIndex: number): string[] => {
@@ -145,7 +146,7 @@ export default function WeeklyReportCenter({
   photoURL,
   onAccountClick,
   onLogout,
-  onNavSelect,
+  navItems = ADMINISTRATION_NAV, onNavSelect,
 }: Props) {
   const [reports, setReports] = useState<Report[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -778,12 +779,12 @@ export default function WeeklyReportCenter({
   return (
     <div className="ft-module-shell flex min-h-dvh flex-col bg-slate-50 font-sans text-slate-900">
       <ModuleShellHeader
-        eyebrow="Bộ công cụ FermatTech"
+        eyebrow="Hành chính"
         title="Báo cáo cuối tuần"
-        items={COMMUNICATION_TOOLS_NAV}
+        items={navItems}
         activeId="weekly-report"
         onSelect={onNavSelect}
-        ariaLabel="Điều hướng bộ công cụ FermatTech"
+        ariaLabel="Điều hướng Hành chính"
       />
 
       <main className="min-w-0 flex-1">

@@ -3,6 +3,7 @@ import CompetitionInformation from './CompetitionInformation';
 export type LinkButton = { label: string; url: string };
 export type LandingContent = {
   badge?: string; headline?: string; intro?: string; logoUrl?: string; subject?: string; season?: string;
+  display?: { name?: string; area?: string; audience?: string; context?: string; topics?: string[]; hoverSummary?: string };
   paperSubjects?: string[];
   style?: { heroTitleSize?: number; introSize?: number; buttonSize?: number; buttonPadding?: number; sectionTitleSize?: number; accentColor?: string };
   buttons?: LinkButton[];

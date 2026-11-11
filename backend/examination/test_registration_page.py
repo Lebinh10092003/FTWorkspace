@@ -5,6 +5,7 @@ from copy import deepcopy
 from unittest.mock import MagicMock, patch
 from django.apps import apps
 from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework.test import APIClient
 from authentication.models import UserProfile
@@ -14,6 +15,70 @@ from .registration_page import DEFAULT_CONTENT
 
 
 class RegistrationPageTests(TestCase):
+    def test_verified_fermat_form_requires_identity_class_submitter_email_and_proof(self):
+        public = APIClient()
+        option = next(item for item in public.get('/api/public/examination/registration').data['competitions'] if item['code'] == 'FIMO')
+        self.assertTrue(option['proofRequired'])
+        self.assertEqual(option['maxGrade'], 9)
+        self.assertEqual(option['fee'], 250000)
+        self.assertIn('identity', option['requiredFields'])
+        payload = self.payload() | {'contestCodes': '["FIMO"]', 'identity': '001201012345',
+            'className': '3A1', 'submitterEmail': 'registrant@example.test'}
+        missing_proof = public.post('/api/public/examination/registration', payload, format='multipart')
+        self.assertEqual(missing_proof.status_code, 400)
+        for key in ('identity', 'className', 'submitterEmail'):
+            with self.subTest(key=key):
+                incomplete = {**payload, key: ''}
+                self.assertEqual(public.post('/api/public/examination/registration', incomplete, format='multipart').status_code, 400)
+        payload['proof'] = SimpleUploadedFile('proof.png', b'\x89PNG\r\n\x1a\n' + b'x' * (6 * 1024 * 1024), content_type='image/png')
+        valid = public.post('/api/public/examination/registration', payload, format='multipart')
+        self.assertEqual(valid.status_code, 201, valid.data)
+        self.assertEqual(CandidateParticipation.objects.get().registration_data['submitterEmail'], 'registrant@example.test')
+
+    def test_editor_uses_public_sco_codes_for_legacy_named_competitions(self):
+        session = ExamSession.objects.create(id='imo-future', competition_id='legacy-imo', code='IMO',
+            name='IMO mùa mới', parent='SCO', organizer='SCO', time='2028', sort_key='imo')
+        response = self.client.get('/api/examination/registration-page')
+        option = next(item for item in response.data['sessionOptions'] if item['sessionId'] == session.id)
+        self.assertEqual(option['code'], 'SIMO')
+
+    def test_registration_can_target_a_configured_session_outside_the_old_form_list(self):
+        session = ExamSession.objects.create(id='simo-new-season', competition_id='simo', code='SIMO',
+            name='SIMO mùa mới', parent='SCO', organizer='SCO', time='2027–2028', sort_key='simo')
+        content = deepcopy(DEFAULT_CONTENT)
+        content['sessionLinks'] = {'SIMO': session.id}
+        content['competitionCodes'] = ['SIMO']
+        content['fees'] = {'SIMO': 250000}
+        self.assertEqual(self.publish(content).status_code, 200)
+        public = APIClient()
+        option = public.get('/api/public/examination/registration').data['competitions'][0]
+        self.assertEqual(option['sessionId'], session.id)
+        self.assertEqual(option['fee'], 250000)
+        payload = self.payload() | {'contestCodes': '["SIMO"]', 'parentName': 'Trần Minh', 'className': '3A1'}
+        result = public.post('/api/public/examination/registration', payload, format='multipart')
+        self.assertEqual(result.status_code, 201, result.data)
+        participation = CandidateParticipation.objects.get()
+        self.assertEqual(participation.session_id, session.id)
+        self.assertEqual(participation.candidate.parent, 'Trần Minh')
+        self.assertEqual(participation.candidate.class_name, '3A1')
+        self.assertEqual(participation.billing.amount, 250000)
+        self.assertEqual(participation.billing.transfer_status, 'pending')
+        self.assertEqual(participation.registration_data['registrationFee'], 250000)
+        self.assertFalse(participation.candidate.exam_history)
+
+    def test_invalid_session_fee_and_mismatched_class_are_rejected(self):
+        content = deepcopy(DEFAULT_CONTENT)
+        content['sessionLinks'] = {'SIMO': 'does-not-exist'}
+        self.assertEqual(self.publish(content).status_code, 400)
+        content['sessionLinks'] = {}
+        content['fees'] = {'SIAIO': -1}
+        self.assertEqual(self.publish(content).status_code, 400)
+        content['fees'] = {'SIAIO': 250000.5}
+        self.assertEqual(self.publish(content).status_code, 400)
+        response = APIClient().post('/api/public/examination/registration', self.payload() | {'className': '6A1'}, format='multipart')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(CandidateParticipation.objects.exists())
+
     def setUp(self):
         self.client = APIClient()
         self.admin = UserProfile.objects.create(email='page-admin@example.test', role='ADMIN')

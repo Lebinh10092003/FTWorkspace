@@ -15,7 +15,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAuthenticated
 from .landing_templates import olympiad_content, siaio_content
-from .models import CompetitionLandingPage, LandingLead, LandingSite, LandingTemplate
+from .models import CompetitionLandingPage, LandingHubSettings, LandingLead, LandingSite, LandingTemplate
 
 
 URL_KEYS = {'url', 'logoUrl', 'schoolUrl', 'excelUrl', 'individualUrl',
@@ -172,7 +172,7 @@ def landing_sites(request):
         return Response({'error': str(error)}, status=400)
     site = LandingSite.objects.create(
         title=title, slug=slug, template=template.key, layout=template.layout, content=content,
-        published=False, updated_by=getattr(request.user, 'email', '') or '',
+        published=data.get('published') is True, updated_by=getattr(request.user, 'email', '') or '',
     )
     return Response(_payload(site), status=status.HTTP_201_CREATED)
 
@@ -204,9 +204,28 @@ def landing_site_detail(request, site_id):
     return Response(_payload(site))
 
 
-HUB_CONTENT_KEYS = ('subject', 'badge', 'headline', 'intro', 'logoUrl', 'highlights', 'timeline')
+HUB_CONTENT_KEYS = ('subject', 'badge', 'headline', 'intro', 'logoUrl', 'highlights', 'timeline', 'display', 'style')
 HUB_CONTACT_KEYS = ('email', 'phone', 'address')
-HUB_REGISTRATION_KEYS = ('excelUrl', 'handbookUrl', 'schoolUrl')
+HUB_REGISTRATION_KEYS = ('excelUrl', 'handbookUrl', 'schoolUrl', 'individualUrl')
+
+
+@api_view(['GET', 'PUT'])
+@permission_classes([IsAuthenticated])
+def landing_hub_settings(request):
+    settings = LandingHubSettings.objects.filter(pk=1).first()
+    if request.method == 'PUT':
+        if not isinstance(request.data.get('content'), dict):
+            return Response({'error': 'Nội dung trang tổng quan không hợp lệ.'}, status=400)
+        try:
+            content = _clean_content(request.data['content'])
+        except ValueError as error:
+            return Response({'error': str(error)}, status=400)
+        settings, _ = LandingHubSettings.objects.update_or_create(pk=1, defaults={
+            'content': content, 'updated_by': getattr(request.user, 'email', '') or '',
+        })
+    return Response({'content': settings.content if settings else {},
+                     'updatedAt': settings.updated_at.isoformat() if settings else '',
+                     'updatedBy': settings.updated_by if settings else ''})
 
 
 @api_view(['GET'])
@@ -224,7 +243,9 @@ def public_landing_hub(request):
             block = content.get(key) if isinstance(content.get(key), dict) else {}
             summary[key] = {name: block[name] for name in keys if block.get(name)}
         items.append({'slug': site.slug, 'title': site.title, 'layout': site.layout, 'content': summary})
-    return Response({'items': items})
+    settings = LandingHubSettings.objects.filter(pk=1).first()
+    return Response({'items': items, 'overview': settings.content if settings else {},
+                     'hiddenSlugs': list(LandingSite.objects.filter(published=False).values_list('slug', flat=True))})
 
 
 @api_view(['GET'])
@@ -232,7 +253,8 @@ def public_landing_hub(request):
 def public_landing_site(request, slug):
     site = LandingSite.objects.filter(slug=slug, published=True).first()
     if not site:
-        return Response({'error': 'Trang không tồn tại hoặc chưa công bố.'}, status=404)
+        return Response({'error': 'Trang không tồn tại hoặc chưa công bố.',
+                         'managed': LandingSite.objects.filter(slug=slug).exists()}, status=404)
     return Response(_payload(site))
 
 

@@ -106,11 +106,11 @@ export default function FinanceWorkspace({
   return (
     <div className="ft-module-shell flex min-h-screen flex-col text-slate-800">
       <ModuleShellHeader
-        title="Báo cáo thu chi"
+        title="Tài chính, kế toán"
         items={navItems}
         activeId={tab}
         onSelect={(id) => goTab(id as FinanceTab)}
-        ariaLabel="Điều hướng Báo cáo thu chi"
+        ariaLabel="Điều hướng Tài chính, kế toán"
       />
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
@@ -127,7 +127,7 @@ export default function FinanceWorkspace({
               onReportTransfer={() => goTab('unmatched-transfers')}
             />
           ) : loading ? (
-            <div className="py-20 text-center text-sm text-slate-500">Đang tải Báo cáo thu chi...</div>
+            <div className="py-20 text-center text-sm text-slate-500">Đang tải Tài chính, kế toán...</div>
           ) : notice ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700">{notice}</div>
           ) : (

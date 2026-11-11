@@ -774,6 +774,14 @@ class LandingSite(models.Model):
         ordering = ['title']
 
 
+class LandingHubSettings(models.Model):
+    """Editable copy for the public overview, separate from competition pages."""
+
+    content = models.JSONField(default=dict)
+    updated_by = models.CharField(max_length=255, blank=True, default='')
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class LandingLead(models.Model):
     site = models.ForeignKey(LandingSite, on_delete=models.CASCADE, related_name='leads')
     full_name = models.CharField(max_length=200)

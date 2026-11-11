@@ -1,6 +1,6 @@
 import React, { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { appDialog } from './components/AppDialog';
-import { Bot, CalendarDays, ClipboardList, ContactRound, FileSignature, Link2, ReceiptText, Mail, Moon, Newspaper, QrCode, Presentation, TriangleAlert } from 'lucide-react';
+import { Bot, CalendarDays, ContactRound, Link2, Mail, Moon, Newspaper, QrCode, Presentation, TriangleAlert } from 'lucide-react';
 
 import { Channel, UserRole } from './types';
 import LoginModal from './components/LoginModal';
@@ -10,7 +10,7 @@ import { readWorkspaceAppearance, WorkspaceAppearance } from './components/Appea
 import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
 import ModuleShellHeader from './components/layout/ModuleShellHeader';
 import { resolveDepartmentLayout } from './config/departmentLayout';
-import { ACCOUNT_MANAGEMENT_NAV, RESOURCES_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
+import { ACCOUNT_MANAGEMENT_NAV, ADMINISTRATION_NAV, RESOURCES_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
 import { normalizeSearchText } from './lib/searchText';
 
 const lazyWithRecovery = <T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) => lazy(async () => {
@@ -67,7 +67,7 @@ const AccountProfileModal = lazyWithRecovery(() => import('./components/AccountP
 const OfficeWorkspace = lazyWithRecovery(() => import('./components/office/OfficeWorkspace'));
 import { useOfficeHeartbeat } from './components/office/useOfficeHeartbeat';
 
-type ViewMode = 'workspace' | 'office' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'short-link' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'news-posts' | 'gmail-assistant' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
+type ViewMode = 'administration' | 'workspace' | 'office' | 'work-schedule' | 'social-dashboard' | 'communication-tools' | 'email-builder' | 'signature-builder' | 'examination' | 'examination-invigilation' | 'digital-training' | 'finance-report' | 'training-assessments' | 'training-assessment-public' | 'qr-generator' | 'short-link' | 'funding-proposal' | 'document-number' | 'weekly-report' | 'news-posts' | 'gmail-assistant' | 'competition-landing' | 'competition-landing-public' | 'competition-hub' | 'guest-invigilation' | 'public-exam-registration' | 'attendance' | 'account-management' | 'resources';
 
 const SOCIAL_TABS = ['dashboard', 'media', 'posts', 'publishing', 'sync', 'config'] as const;
 type SocialTab = typeof SOCIAL_TABS[number];
@@ -187,6 +187,11 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/digital-training')) return 'digital-training';
   if (path.startsWith('/work-schedule')) return 'work-schedule';
   if (path.startsWith('/social-dashboard')) return 'social-dashboard';
+  if (path.startsWith('/administration/attendance')) return 'attendance';
+  if (path.startsWith('/administration/funding-proposal')) return 'funding-proposal';
+  if (path.startsWith('/administration/document-number')) return 'document-number';
+  if (path.startsWith('/administration/weekly-report')) return 'weekly-report';
+  if (path.startsWith('/administration')) return 'work-schedule';
   if (path.startsWith('/communication-tools/email')) return 'email-builder';
   if (path.startsWith('/communication-tools/signature')) return 'signature-builder';
   if (path.startsWith('/communication-tools/qr')) return 'qr-generator';
@@ -306,7 +311,7 @@ export default function App() {
   const canViewFinance = !isGuest && hasModuleAccess('finance-report') && (userRole === 'ADMIN' || userRole === 'MANAGER' || isAccountant || normalisedEmployeeIdentity.includes('giam doc') || normalisedEmployeeIdentity.includes('quan ly'));
   const canEditFinance = canViewFinance && (userRole === 'ADMIN' || isAccountant);
   const moduleForView: Partial<Record<ViewMode, string>> = { 'social-dashboard': 'social-dashboard', attendance: 'attendance', 'email-builder': 'email-builder', 'signature-builder': 'signature-builder', 'qr-generator': 'qr-generator', 'competition-landing': 'examination', examination: 'examination', 'digital-training': 'digital-training', 'training-assessments': 'digital-training' };
-  const canAccessView = (mode: ViewMode) => { if (mode === 'office') return !isGuest; if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'social-dashboard' || mode === 'short-link' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report' || mode === 'news-posts' || mode === 'gmail-assistant') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
+  const canAccessView = (mode: ViewMode) => { if (mode === 'office') return !isGuest; if (mode === 'examination-invigilation') return !isGuest; if (mode === 'account-management') return userRole === 'ADMIN'; if (mode === 'finance-report') return canViewFinance; if (mode === 'administration' || mode === 'resources' || mode === 'work-schedule' || mode === 'communication-tools' || mode === 'social-dashboard' || mode === 'short-link' || mode === 'funding-proposal' || mode === 'document-number' || mode === 'weekly-report' || mode === 'news-posts' || mode === 'gmail-assistant') return !isGuest; if (isGuest) return false; const module = moduleForView[mode]; return !!module && hasModuleAccess(module); };
   const googleAccessToken = null;
 
   // Gắn nhịp online vào gốc ứng dụng
@@ -378,19 +383,22 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
-  const setViewMode = (mode: ViewMode) => {
+  const setViewMode = (requestedMode: ViewMode) => {
+    const mode = requestedMode === 'administration' ? 'work-schedule' : requestedMode;
     setViewModeState(mode);
     const paths: Partial<Record<ViewMode, string>> = {
       workspace: '/',
       'examination-invigilation': '/examination/invigilation',
+      'work-schedule': '/administration/work-schedule',
+      'attendance': '/administration/attendance',
       'communication-tools': '/communication-tools',
       'email-builder': '/communication-tools/email',
       'signature-builder': '/communication-tools/signature',
       'qr-generator': '/communication-tools/qr',
       'short-link': '/communication-tools/short-link',
-      'funding-proposal': '/communication-tools/funding-proposal',
-      'document-number': '/communication-tools/document-number',
-      'weekly-report': '/communication-tools/weekly-report',
+      'funding-proposal': '/administration/funding-proposal',
+      'document-number': '/administration/document-number',
+      'weekly-report': '/administration/weekly-report',
       'news-posts': '/communication-tools/news-posts',
       'gmail-assistant': '/communication-tools/gmail',
       'competition-landing': '/communication-tools/competition-landing',
@@ -586,6 +594,7 @@ export default function App() {
   };
 
   // The tools area shares one horizontal menu across all of its screens.
+  const administrationNav = ADMINISTRATION_NAV.filter(item => canAccessView(item.id as ViewMode));
   const communicationToolsNav = COMMUNICATION_TOOLS_NAV
     .filter(item => item.id === 'communication-tools' || canAccessView(item.id as ViewMode));
 
@@ -818,14 +827,11 @@ export default function App() {
 
   if (viewMode === 'communication-tools') {
     const tools = [
-      { mode: 'social-dashboard' as ViewMode, tab: 'publishing', title: 'Tổ Bot AI Khảo thí (Facebook)', description: 'Tổ 5 Bot AI phòng Khảo thí: Săn tin, xử lý tư liệu, viết bài và tự động đăng Facebook.', icon: Bot, color: 'from-blue-600 to-indigo-700', allowed: canAccessView('social-dashboard') },
+      { mode: 'social-dashboard' as ViewMode, tab: 'publishing', title: 'Tổ Bot AI Truyền thông (Facebook)', description: 'Tổ 5 Bot AI Truyền thông: Săn tin, xử lý tư liệu, viết bài và tự động đăng Facebook.', icon: Bot, color: 'from-blue-600 to-indigo-700', allowed: canAccessView('social-dashboard') },
       { mode: 'email-builder' as ViewMode, title: 'Thiết kế Email', description: 'Tạo, quản lý mẫu Email và chữ ký dùng chung.', icon: Mail, color: 'from-pink-500 to-violet-600', allowed: canAccessView('email-builder') },
       { mode: 'signature-builder' as ViewMode, title: 'Tạo chữ ký Email', description: 'Tùy biến thông tin, mạng xã hội và sao chép chữ ký dùng cho Gmail hoặc Outlook.', icon: ContactRound, color: 'from-[#104581] to-[#1473D1]', allowed: canAccessView('signature-builder') },
       { mode: 'qr-generator' as ViewMode, title: 'Tạo mã QR', description: 'Tạo mã QR, kiểm tra đường dẫn và xuất poster truyền thông.', icon: QrCode, color: 'from-blue-600 to-cyan-500', allowed: canAccessView('qr-generator') },
       { mode: 'short-link' as ViewMode, title: 'Rút gọn liên kết', description: 'Tạo link rút gọn tùy chỉnh tên hoặc sinh mã ngẫu nhiên, theo dõi lượt nhấp và lấy mã QR.', icon: Link2, color: 'from-indigo-600 to-blue-500', allowed: canAccessView('short-link') },
-      { mode: 'funding-proposal' as ViewMode, title: 'Phiếu đề xuất kinh phí', description: 'Nhập dự toán, xem trước bản in A4 và tải phiếu Word để trình ký.', icon: ReceiptText, color: 'from-emerald-600 to-teal-500', allowed: canAccessView('funding-proposal') },
-      { mode: 'document-number' as ViewMode, title: 'Trình tạo số Công văn', description: 'Lấy số văn bản mới nhất theo loại và ghi thẳng vào sổ trên Google Sheets.', icon: FileSignature, color: 'from-[#0055DA] to-[#00C68D]', allowed: canAccessView('document-number') },
-      { mode: 'weekly-report' as ViewMode, title: 'Báo cáo cuối tuần', description: 'Xem báo cáo AI của từng nhân viên, tự làm mới từ Google Docs và tải file Word.', icon: ClipboardList, color: 'from-amber-500 to-orange-600', allowed: canAccessView('weekly-report') },
       { mode: 'news-posts' as ViewMode, title: 'Đăng tin bài', description: 'Tự động hóa soạn thảo tin bài truyền thông sự kiện, đối tác và đồ họa khảo sát.', icon: Newspaper, color: 'from-blue-700 to-indigo-600', allowed: canAccessView('news-posts') },
       { mode: 'gmail-assistant' as ViewMode, title: 'Hộp thư AI', description: 'Nối Gmail cá nhân, tự động tóm tắt phân tích thư, nhắc việc và tạo bản nháp phản hồi.', icon: Mail, color: 'from-rose-500 to-red-600', allowed: canAccessView('gmail-assistant') },
       { mode: 'competition-landing' as ViewMode, title: 'Landing page', description: 'Tạo landing page từ mẫu, chỉnh sửa nội dung và công bố qua URL riêng.', icon: Presentation, color: 'from-[#001E40] to-[#0055DA]', allowed: canAccessView('competition-landing') },
@@ -859,11 +865,13 @@ export default function App() {
 
   if (viewMode === 'work-schedule' && !canAccessView('work-schedule')) return null;
 
-  if (viewMode === 'work-schedule') {
+  if (viewMode === 'work-schedule' || viewMode === 'administration') {
     return (
       <>
         <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Lịch làm việc...</div>}>
           <WorkSchedule
+            administrationNav={administrationNav}
+            onNavSelect={id => openProtectedView(id as ViewMode)}
             idToken={idToken || ''}
             onBackToWorkspace={() => setViewMode('workspace')}
             onAccountClick={openAccount}
@@ -882,7 +890,7 @@ export default function App() {
   if (viewMode === 'finance-report') {
     return (
       <>
-        <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Báo cáo thu chi...</div>}>
+        <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Tài chính, kế toán...</div>}>
           <FinanceWorkspace
             onBackToWorkspace={() => setViewMode('workspace')}
             onAccountClick={openAccount}
@@ -1076,6 +1084,7 @@ export default function App() {
       <>
         <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Phiếu đề xuất kinh phí...</div>}>
           <FundingProposalBuilder
+            navItems={administrationNav}
             idToken={idToken || ''}
             userName={user.displayName}
             userRole={userRole}
@@ -1097,6 +1106,7 @@ export default function App() {
       <>
         <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Trình tạo số Công văn...</div>}>
           <DocumentNumberGenerator
+            navItems={administrationNav}
             idToken={idToken || ''}
             userName={user.displayName}
             userRole={userRole}
@@ -1118,6 +1128,7 @@ export default function App() {
       <>
         <Suspense fallback={<div className="grid h-screen place-items-center bg-slate-50">Đang nạp Báo cáo cuối tuần...</div>}>
           <WeeklyReportCenter
+            navItems={administrationNav}
             idToken={idToken || ''}
             userName={user.displayName}
             userEmail={user.email}
@@ -1192,6 +1203,8 @@ export default function App() {
           onLogout={handleLogout}
           initialEditDate={attendanceEditDate}
           onInitialEditOpened={() => setAttendanceEditDate('')}
+          administrationNav={administrationNav}
+          onNavSelect={id => openProtectedView(id as ViewMode)}
         />
       </Suspense>
     );
@@ -1398,6 +1411,12 @@ export default function App() {
       'communication-tools/qr-generator': 'qr-generator',
       'communication-tools/short-link': 'short-link',
       'short-link': 'short-link',
+      'administration': 'work-schedule',
+      'administration/work-schedule': 'work-schedule',
+      'administration/attendance': 'attendance',
+      'administration/funding-proposal': 'funding-proposal',
+      'administration/document-number': 'document-number',
+      'administration/weekly-report': 'weekly-report',
       'communication-tools/funding-proposal': 'funding-proposal',
       'communication-tools/document-number': 'document-number',
       'communication-tools/competition-landing': 'competition-landing',

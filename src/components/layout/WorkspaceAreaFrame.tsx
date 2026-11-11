@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  CalendarCheck,
-  CalendarRange,
-  ClipboardList,
+  FileText,
+  Box,
   Compass,
   LayoutGrid, MoreHorizontal,
   Search,
@@ -64,9 +63,8 @@ export default function WorkspaceAreaFrame({
   const findArea = (id: WorkspaceAreaId) => visibleAreas.find(a => a.id === id);
 
   const homeArea = findArea('workspace');
-  const scheduleArea = findArea('work-schedule');
-  const attendanceArea = findArea('attendance');
-  const weeklyReportArea = findArea('weekly-report');
+  const administrationArea = findArea('administration');
+  const officeArea = findArea('office');
 
   const bottomTabs = [
     {
@@ -77,25 +75,18 @@ export default function WorkspaceAreaFrame({
       isActive: activeAreaId === 'workspace' || !activeAreaId,
     },
     {
-      id: 'work-schedule',
-      label: 'Lịch',
-      icon: CalendarRange,
-      area: scheduleArea,
-      isActive: activeAreaId === 'work-schedule',
+      id: 'administration',
+      label: 'Hành chính',
+      icon: FileText,
+      area: administrationArea,
+      isActive: activeAreaId === 'administration',
     },
     {
-      id: 'attendance',
-      label: 'Chấm công',
-      icon: CalendarCheck,
-      area: attendanceArea,
-      isActive: activeAreaId === 'attendance',
-    },
-    {
-      id: 'weekly-report',
-      label: 'Báo cáo',
-      icon: ClipboardList,
-      area: weeklyReportArea,
-      isActive: activeAreaId === 'weekly-report',
+      id: 'office',
+      label: 'Văn phòng',
+      icon: Box,
+      area: officeArea,
+      isActive: activeAreaId === 'office',
     },
     {
       id: 'more',
@@ -104,7 +95,7 @@ export default function WorkspaceAreaFrame({
       area: null,
       isActive:
         Boolean(activeAreaId) &&
-        !['workspace', 'work-schedule', 'attendance', 'weekly-report'].includes(
+        !['workspace', 'administration', 'office'].includes(
           activeAreaId || ''
         ),
     },
@@ -122,7 +113,7 @@ export default function WorkspaceAreaFrame({
 
   // Remaining areas for "Thêm" drawer
   const moreAreas = visibleAreas.filter(
-    area => !['workspace', 'work-schedule', 'attendance', 'weekly-report'].includes(area.id)
+    area => !['workspace', 'administration', 'office'].includes(area.id)
   );
 
   return (

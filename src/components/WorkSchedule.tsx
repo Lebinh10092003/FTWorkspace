@@ -5,7 +5,7 @@ import { appDialog } from "./AppDialog";
 import Time24Input from "./Time24Input";
 import MonthlySheetLinkEditor from "./MonthlySheetLinkEditor";
 import ModuleShellHeader from "./layout/ModuleShellHeader";
-import { WORK_SCHEDULE_NAV, filterModuleNav } from "../config/workspaceNavigation";
+import { WORK_SCHEDULE_NAV, filterModuleNav, type ModuleNavItem } from "../config/workspaceNavigation";
 import { bearerHeaders } from '../lib/format';
 
 type WorkStatus = "todo" | "doing" | "completed" | "reviewed";
@@ -82,6 +82,8 @@ type DayEditorRow = { key: string; id?: number; title: string; status: WorkStatu
 type Props = {
   idToken: string;
   onBackToWorkspace: () => void;
+  administrationNav?: ModuleNavItem[];
+  onNavSelect?: (id: string) => void;
   onAccountClick: () => void;
   onLogout: () => void;
   userName: string;
@@ -130,10 +132,10 @@ function scheduleLocation() {
 }
 
 function schedulePath(view: View, period: "week" | "month" = "week") {
-  if (view === "week") return `/work-schedule/${period}`;
-  if (view === "team") return "/work-schedule/team";
-  if (view === "sheet") return "/work-schedule/sheets";
-  return "/work-schedule/personal";
+  if (view === "week") return `/administration/work-schedule/${period}`;
+  if (view === "team") return "/administration/work-schedule/team";
+  if (view === "sheet") return "/administration/work-schedule/sheets";
+  return "/administration/work-schedule/personal";
 }
 
 const statuses: Array<{
@@ -445,7 +447,7 @@ function TaskCard({ task, displayOrder, selected, onSelect, onOpen, onDelete, on
   );
 }
 
-export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClick, onLogout, userName, userEmail, userRole, photoURL }: Props) {
+export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClick, onLogout, userName, userEmail, userRole, photoURL, administrationNav, onNavSelect }: Props) {
   const initialLocation = scheduleLocation();
   const cachedSnapshot = workScheduleSnapshot?.owner === userEmail && Date.now() - workScheduleSnapshot.savedAt < WORK_SCHEDULE_MEMORY_TTL_MS
     ? workScheduleSnapshot
@@ -902,9 +904,10 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
     <div className="ft-module-shell flex min-h-dvh flex-col text-slate-900">
       <ModuleShellHeader
         title="Lịch làm việc"
-        items={navItems}
-        activeId={view}
-        onSelect={(nextView) => openScheduleSection(nextView as View)}
+        eyebrow="Hành chính"
+        items={administrationNav || navItems}
+        activeId={administrationNav ? "work-schedule" : view}
+        onSelect={(nextView) => onNavSelect ? onNavSelect(nextView) : openScheduleSection(nextView as View)}
         ariaLabel="Điều hướng Lịch làm việc"
         quickSearch={view === "team"}
         actions={view !== "team" ? (
@@ -920,6 +923,8 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
           </>
         ) : null}
       />
+      {administrationNav && <nav className="flex flex-wrap gap-2 border-b border-slate-200 bg-white px-5 py-2" aria-label="Chế độ lịch làm việc">{navItems.map(item => <button key={item.id} type="button" onClick={() => openScheduleSection(item.id as View)} aria-current={view === item.id ? 'page' : undefined} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === item.id ? 'bg-sky-50 text-sky-700' : 'text-slate-600'}`}>{item.label}</button>)}</nav>}
+
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto max-w-[1680px] p-4 sm:p-6 lg:p-8">
           {error && (

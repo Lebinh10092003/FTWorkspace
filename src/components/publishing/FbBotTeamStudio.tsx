@@ -247,7 +247,7 @@ export default function FbBotTeamStudio({
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
               <Bot className="w-5 h-5 text-[#0B72CE]" />
-              Tổ Bot AI Facebook (Phòng Khảo thí)
+              Tổ Bot AI Truyền thông (Facebook)
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               5 nhân sự AI trực tiếp làm việc tại cụm bàn Khảo thí trên Văn phòng 3D.

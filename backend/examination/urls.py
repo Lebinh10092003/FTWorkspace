@@ -24,6 +24,7 @@ urlpatterns = [
     path('public/landing-sites/<slug:slug>/leads', landing_site_views.landing_site_lead),
     path('public/landing-sites/<slug:slug>', landing_site_views.public_landing_site),
     path('landing-sites', landing_site_views.landing_sites),
+    path('landing-hub', landing_site_views.landing_hub_settings),
     path('landing-templates', landing_site_views.landing_templates),
     path('landing-templates/<slug:key>', landing_site_views.landing_template_detail),
     path('landing-sites/<int:site_id>/leads', landing_site_views.landing_site_leads),

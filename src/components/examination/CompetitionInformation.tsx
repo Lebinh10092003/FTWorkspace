@@ -1,15 +1,14 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import type { LandingSite } from './LandingSiteView';
-import { competitionIdentity } from './competitionIdentity';
+import { landingPresentation } from './landingPresentation';
 import { describeMilestones } from './landingTimeline';
 import { useRevealScope } from './landingMotion';
 import { publicRegistrationLink } from './publicRegistrationLink';
 import { PublicDateTable, PublicFooter, PublicHeader, PublicLink, PublicRegistration, publicLink } from './CompetitionPublicLayout';
-import { competitionContext } from './competitionEditorial';
 
 export default function CompetitionInformation({ site, preview = false }: { site: LandingSite; preview?: boolean }) {
   const content = site.content || {};
-  const identity = competitionIdentity(content.subject || site.slug, site.title);
+  const identity = landingPresentation(site);
   const root = useRevealScope<HTMLDivElement>(!preview, site.id);
   const schedule = useMemo(() => describeMilestones(content.timeline), [content.timeline]);
   const subjects = content.paperSubjects?.length ? content.paperSubjects : Object.keys(content.papers || {});
@@ -22,14 +21,14 @@ export default function CompetitionInformation({ site, preview = false }: { site
   const paper = publicLink(content.papers?.[subject]?.[String(grade)]);
   const folder = content.resources?.find(item => /^đề/i.test(item.category || '') && publicLink(item.url))?.url;
   const reg = content.registration || {};
-  const registration = publicRegistrationLink(site.slug, `${site.title} ${identity.code}`) || publicLink(reg.individualUrl);
+  const registration = publicLink(reg.individualUrl) || publicRegistrationLink(site.slug, `${site.title} ${identity.code}`);
   const resources = (content.resources || []).filter(item => publicLink(item.url));
   const contact = content.contact || {};
   const intro = (content.intro || '').replace(/\s*Vòng loại Quốc gia đợt 2 diễn ra vào Chủ nhật, ngày \d{2}\/\d{2}\/\d{4}\./, '');
-  const logo = identity.logo || (content.logoUrl !== '/logo.png' ? publicLink(content.logoUrl) : '');
+  const logo = identity.logo;
   const hasPapers = subjects.length > 0 || !!folder;
-  const context = competitionContext[identity.code.toUpperCase()];
-  const topics = identity.profile?.focus.split(' · ') || [];
+  const context = identity.context;
+  const topics = identity.topics;
 
   return <div ref={root} className="competition-public cp-detail" style={{ '--cp-accent': identity.accent, '--cp-tint': identity.tint } as CSSProperties}>
     <a href="#noi-dung" className="cp-skip">Đến nội dung cuộc thi</a>
@@ -41,7 +40,7 @@ export default function CompetitionInformation({ site, preview = false }: { site
           <p className="cp-overline">{identity.family || 'Cuộc thi quốc tế'}{content.season || schedule.season ? ` · ${content.season || schedule.season}` : ''}</p>
           <h1>{identity.code}<span>{identity.name}</span></h1>
           {intro && <p className="cp-detail-intro">{intro}</p>}
-          <dl className="cp-hero-facts"><div><dt>Đối tượng</dt><dd>{identity.profile?.grades || 'Theo thể lệ cuộc thi'}</dd></div>{identity.profile && <div><dt>Lĩnh vực</dt><dd>{identity.profile.area}</dd></div>}</dl>
+          <dl className="cp-hero-facts"><div><dt>Đối tượng</dt><dd>{identity.audience}</dd></div><div><dt>Lĩnh vực</dt><dd>{identity.area}</dd></div></dl>
         </div>
         <div className="cp-logo-panel" data-reveal>
           {logo ? <img src={logo} alt={`Logo ${identity.code}`} width="320" height="320" decoding="async" /> : <div className="cp-sco-wordmark"><img src="/competition-logos/sco.png" alt="School Connect Olympiad" /><strong>{identity.code}</strong><p>{identity.profile?.area}</p></div>}
@@ -72,7 +71,7 @@ export default function CompetitionInformation({ site, preview = false }: { site
 
       <section id="tai-lieu" className="cp-section" data-reveal>
         <div className="cp-section-heading"><div><p className="cp-overline">Thông tin chính thức</p><h2>Thể lệ & tài liệu</h2></div></div>
-        {resources.length ? <div className="cp-resource-list">{resources.map((resource, index) => <PublicLink href={resource.url} className="cp-resource" key={`${resource.url}-${index}`}><span>{resource.category}</span><strong>{resource.title}</strong></PublicLink>)}</div> : <p className="cp-empty">Thể lệ và tài liệu sẽ được cập nhật tại đây.</p>}
+        {resources.length ? <div className="cp-resource-list">{resources.map((resource, index) => <PublicLink href={resource.url} className="cp-resource" key={`${resource.url}-${index}`}><span>{resource.category}</span><strong>{resource.title}</strong>{resource.body && <p>{resource.body}</p>}</PublicLink>)}</div> : <p className="cp-empty">Thể lệ và tài liệu sẽ được cập nhật tại đây.</p>}
       </section>
 
       {!!content.awards?.length && <section className="cp-section cp-awards" data-reveal><h2>Giải thưởng</h2><div>{content.awards.map((award, index) => <article key={index}><h3>{award.title}</h3>{award.percent && <strong>{award.percent}</strong>}{award.description && <p>{award.description}</p>}</article>)}</div></section>}

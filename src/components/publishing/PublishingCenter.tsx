@@ -302,7 +302,7 @@ export default function PublishingCenter({
               }`}
             >
               <Bot className="w-3.5 h-3.5" />
-              <span>Tổ Bot AI Khảo thí</span>
+              <span>Tổ Bot AI Truyền thông</span>
             </button>
           </div>
 

@@ -61,6 +61,7 @@ export type WorkspaceAreaId =
   | 'digital-training'
   | 'social-dashboard'
   | 'communication-tools'
+  | 'administration'
   | 'account-management'
   | 'resources'
   | 'finance-report'
@@ -98,14 +99,6 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     path: '/office',
   },
   {
-    id: 'work-schedule',
-    label: 'Lịch làm việc',
-    shortLabel: 'Lịch việc',
-    description: 'Lập lịch cá nhân, quản lý nhiệm vụ và theo dõi công việc đội nhóm.',
-    icon: CalendarRange,
-    path: '/work-schedule',
-  },
-  {
     id: 'examination',
     label: 'Khảo thí',
     shortLabel: 'Khảo thí',
@@ -138,7 +131,16 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
     description: 'Thiết kế Email, chữ ký, mã QR, rút gọn link và trang giới thiệu cuộc thi.',
     icon: Megaphone,
     path: '/communication-tools',
-    relatedViews: ['email-builder', 'signature-builder', 'qr-generator', 'short-link', 'funding-proposal', 'document-number', 'weekly-report', 'competition-landing', 'news-posts', 'gmail-assistant'],
+    relatedViews: ['email-builder', 'signature-builder', 'qr-generator', 'short-link', 'competition-landing', 'news-posts', 'gmail-assistant'],
+  },
+  {
+    id: 'administration',
+    label: 'Hành chính',
+    shortLabel: 'Hành chính',
+    description: 'Lịch làm việc, công ca, đề xuất kinh phí, công văn và báo cáo cuối tuần.',
+    icon: FileText,
+    path: '/administration/work-schedule',
+    relatedViews: ['work-schedule', 'attendance', 'funding-proposal', 'document-number', 'weekly-report'],
   },
   {
     id: 'account-management',
@@ -158,27 +160,11 @@ export const WORKSPACE_AREAS: WorkspaceArea[] = [
   },
   {
     id: 'finance-report',
-    label: 'Báo cáo thu chi',
-    shortLabel: 'Thu chi',
+    label: 'Tài chính, kế toán',
+    shortLabel: 'Tài chính',
     description: 'Tổng thu, tổng chi, công nợ, đối soát khảo thí và hạn hợp đồng.',
     icon: BadgeDollarSign,
     path: '/finance-report',
-  },
-  {
-    id: 'attendance',
-    label: 'Công ca',
-    shortLabel: 'Công ca',
-    description: 'Ghi nhận giờ vào, giờ ra và theo dõi dữ liệu công ca theo tháng.',
-    icon: CalendarCheck,
-    path: '/attendance',
-  },
-  {
-    id: 'weekly-report',
-    label: 'Báo cáo tuần',
-    shortLabel: 'Báo cáo',
-    description: 'Bản nháp và xuất file Word báo cáo cuối tuần chuẩn công ty.',
-    icon: ClipboardList,
-    path: '/communication-tools/weekly-report',
   },
 ];
 
@@ -279,12 +265,18 @@ export const COMMUNICATION_TOOLS_NAV: ModuleNavItem[] = [
   { id: 'signature-builder', label: 'Tạo chữ ký Email', icon: ContactRound },
   { id: 'qr-generator', label: 'Tạo mã QR', icon: QrCode },
   { id: 'short-link', label: 'Rút gọn link', icon: Link2 },
-  { id: 'funding-proposal', label: 'Phiếu đề xuất kinh phí', icon: ReceiptText },
-  { id: 'document-number', label: 'Trình tạo số Công văn', icon: FileSignature },
-  { id: 'weekly-report', label: 'Báo cáo cuối tuần', icon: ClipboardList },
   { id: 'news-posts', label: 'Đăng tin bài', icon: Newspaper },
   { id: 'gmail-assistant', label: 'Hộp thư AI', icon: Mail },
   { id: 'competition-landing', label: 'Trang giới thiệu cuộc thi', icon: Presentation },
+];
+
+/** Shared navigation for administrative work. Permissions are filtered by App. */
+export const ADMINISTRATION_NAV: ModuleNavItem[] = [
+  { id: 'work-schedule', label: 'Lịch làm việc', icon: CalendarRange },
+  { id: 'attendance', label: 'Công ca', icon: CalendarCheck },
+  { id: 'funding-proposal', label: 'Phiếu đề xuất kinh phí', icon: ReceiptText },
+  { id: 'document-number', label: 'Trình tạo số công văn', icon: FileSignature },
+  { id: 'weekly-report', label: 'Báo cáo cuối tuần', icon: ClipboardList },
 ];
 
 /** Horizontal menu of "Lịch làm việc". Ids match the module views. */
