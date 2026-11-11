@@ -1882,6 +1882,34 @@ class ZaloAutomationAdvancedTests(TestCase):
                 mock_search_input.fill.assert_not_called()
 
 
+class TestFbExtensionDownloadView(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = UserProfile.objects.create(
+            email="ext_tester@fermat.vn",
+            name="Extension Tester",
+            role="EMPLOYEE",
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_download_extension_zip(self):
+        import io
+        import zipfile
+
+        res = self.client.get("/api/publishing/download-extension/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res["Content-Type"], "application/zip")
+        self.assertIn("attachment; filename=", res["Content-Disposition"])
+
+        buf = io.BytesIO(res.content)
+        with zipfile.ZipFile(buf, "r") as zf:
+            namelist = zf.namelist()
+            self.assertTrue(any("manifest.json" in name for name in namelist))
+            self.assertTrue(any("popup.html" in name for name in namelist))
+
+
+
+
 
 
 

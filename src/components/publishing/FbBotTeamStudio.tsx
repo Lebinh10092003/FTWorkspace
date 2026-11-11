@@ -12,7 +12,9 @@ import {
   Upload, 
   Share2,
   Puzzle,
-  AlertCircle
+  AlertCircle,
+  Download,
+  Loader2,
 } from 'lucide-react';
 
 interface FbBotTeamStudioProps {
@@ -65,6 +67,8 @@ export default function FbBotTeamStudio({
   const [notice, setNotice] = useState('');
   const [noticeType, setNoticeType] = useState<'success' | 'error'>('success');
   const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
+  const [downloadingExt, setDownloadingExt] = useState(false);
+  const [downloadExtError, setDownloadExtError] = useState('');
 
   const [draftPosts, setDraftPosts] = useState<DraftItem[]>([
     {
@@ -140,6 +144,33 @@ export default function FbBotTeamStudio({
   useEffect(() => {
     loadDrafts();
   }, [idToken]);
+
+  const handleDownloadExtension = async () => {
+    setDownloadingExt(true);
+    setDownloadExtError('');
+    try {
+      const res = await fetch('/api/publishing/download-extension/', {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error(`Tải tiện ích thất bại (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ft-fb-group-poster.zip';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      setDownloadExtError(err?.message || 'Không thể tải file tiện ích');
+    } finally {
+      setDownloadingExt(false);
+    }
+  };
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -537,24 +568,55 @@ export default function FbBotTeamStudio({
       {/* Tab 3: Chrome Extension for FB Groups */}
       {activeTab === 'extension' && (
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs max-w-3xl">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center text-[#0B72CE]">
-              <Puzzle className="w-5 h-5" />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-4 border-b border-slate-100 dark:border-slate-700/60">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center text-[#0B72CE] shrink-0">
+                <Puzzle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                  Tiện ích FT Workspace - Facebook Group Auto Poster
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Đăng bài viết đã duyệt vào các Nhóm Facebook bằng tài khoản cá nhân, an toàn và trực quan.
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                Tiện ích FT Workspace - Facebook Group Auto Poster
-              </h3>
-              <p className="text-xs text-slate-500">
-                Đăng bài viết đã duyệt vào các Nhóm Facebook bằng chính tài khoản cá nhân của bạn, không lo bị chặn hay checkpoint.
-              </p>
-            </div>
+
+            <button
+              type="button"
+              onClick={handleDownloadExtension}
+              disabled={downloadingExt}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0B72CE] hover:bg-[#095ea8] text-white text-xs font-bold shadow-sm transition cursor-pointer disabled:opacity-60 shrink-0"
+            >
+              {downloadingExt ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Đang nén file...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span>Tải Extension (.zip)</span>
+                </>
+              )}
+            </button>
           </div>
+
+          {downloadExtError && (
+            <div className="mb-4 p-3 rounded-xl bg-rose-50 text-rose-700 text-xs border border-rose-200 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{downloadExtError}</span>
+            </div>
+          )}
 
           <div className="space-y-4 text-xs text-slate-600 dark:text-slate-300">
             <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-100 dark:border-slate-800">
               <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">4 bước cài đặt nhanh vào Google Chrome / Cốc Cốc / Edge:</h4>
               <ol className="list-decimal list-inside space-y-2 text-slate-700 dark:text-slate-300">
+                <li>
+                  Bấm nút <strong>Tải Extension (.zip)</strong> ở trên và giải nén file <code className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 rounded font-mono text-[11px]">ft-fb-group-poster.zip</code> ra một thư mục trên máy tính.
+                </li>
                 <li>
                   Mở trình duyệt truy cập: <code className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 rounded font-mono text-[11px]">chrome://extensions</code>
                 </li>
@@ -562,10 +624,7 @@ export default function FbBotTeamStudio({
                   Bật công tắc <strong>Chế độ dành cho nhà phát triển (Developer mode)</strong> ở góc trên bên phải.
                 </li>
                 <li>
-                  Bấm nút <strong>Tải tiện ích đã giải nén (Load unpacked)</strong>.
-                </li>
-                <li>
-                  Chọn thư mục: <code className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 rounded font-mono text-[11px]">extensions/ft-fb-group-poster</code> trong mã nguồn dự án.
+                  Bấm nút <strong>Tải tiện ích đã giải nén (Load unpacked)</strong> và chọn thư mục <code className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 rounded font-mono text-[11px]">ft-fb-group-poster</code> vừa giải nén.
                 </li>
               </ol>
             </div>

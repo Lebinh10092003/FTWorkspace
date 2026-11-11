@@ -21,4 +21,5 @@ urlpatterns = [
     path("tech-discovery/<int:topic_id>/create-plan/", views.tech_discovery_create_plan, name="publishing_tech_discovery_create_plan"),
     path('zalo-automation/status/', views.zalo_automation_status, name='publishing_zalo_status'),
     path('zalo-automation/qr/', views.zalo_automation_qr, name='publishing_zalo_qr'),
+    path('download-extension/', views.download_fb_extension, name='publishing_download_extension'),
 ]

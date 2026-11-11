@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import io
 import logging
 from typing import Any, Dict, List, Optional
+import zipfile
 
+from django.conf import settings
 from django.db import transaction
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -778,5 +782,35 @@ def tech_discovery_create_plan(request, topic_id: int):
     except Exception as exc:
         logger.exception("Lỗi khi tạo PostPlan từ chủ đề #%d: %s", topic_id, exc)
         return Response({"error": f"Không thể tạo kế hoạch bài viết: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([IsWorkspaceAuthenticated])
+def download_fb_extension(request):
+    """Đóng gói và cho phép tải về tiện ích Chrome FT FB Group Poster (.zip)."""
+    from pathlib import Path
+
+    ext_dir = Path(settings.BASE_DIR).parent / "extensions" / "ft-fb-group-poster"
+    if not ext_dir.exists() or not ext_dir.is_dir():
+        return Response(
+            {"error": "Không tìm thấy thư mục tiện ích ft-fb-group-poster."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    excluded_dirs = {"node_modules", ".git", "__pycache__"}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file_path in sorted(ext_dir.rglob("*")):
+            if not file_path.is_file():
+                continue
+            rel_path = file_path.relative_to(ext_dir)
+            if any(part in excluded_dirs for part in rel_path.parts) or file_path.name == ".DS_Store":
+                continue
+            zf.write(file_path, arcname=f"ft-fb-group-poster/{rel_path.as_posix()}")
+
+    response = HttpResponse(buf.getvalue(), content_type="application/zip")
+    response["Content-Disposition"] = 'attachment; filename="ft-fb-group-poster.zip"'
+    return response
+
 
 
