@@ -576,6 +576,12 @@
         case 'ft-office:queryState':
           broadcastQueueState();
           break;
+        case 'ft-office:switchView':
+          if (data.view) {
+            const segBtn = document.querySelector(`.seg-btn[data-view="${data.view}"]`);
+            if (segBtn) segBtn.click();
+          }
+          break;
       }
     });
   }

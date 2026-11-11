@@ -803,6 +803,16 @@ export default function App() {
             idToken={idToken}
             isDark={workspacePalettes[readWorkspaceAppearance().theme]?.text !== '#0F1F33'}
             canAccessView={canAccessView}
+            userName={user.displayName}
+            userRole={userRole}
+            photoURL={user.photoURL}
+            isGuest={isGuest}
+            onAccountClick={openAccount}
+            onLogout={handleLogout}
+            onLogin={() => {
+              setAuthError('');
+              setShowLoginModal(true);
+            }}
             onNavigate={(mode, tab) => {
               if (mode === 'social-dashboard' && tab) {
                 setSocialTab(tab);
@@ -1425,14 +1435,16 @@ export default function App() {
         <>
           <InvigilationReminders key={user.email} token={idToken} email={user.email} canPreview={userRole === 'ADMIN' || userRole === 'MANAGER'} />
           <Suspense fallback={null}>
-            <ItemBag />
-            <ChatbotAssistant
-              token={idToken}
-              userName={user.displayName}
-              userEmail={user.email}
-              userRole={userRole}
-              onNavigate={handleChatbotNavigate}
-            />
+            {viewMode !== 'office' && <ItemBag />}
+            {viewMode !== 'office' && (
+              <ChatbotAssistant
+                token={idToken}
+                userName={user.displayName}
+                userEmail={user.email}
+                userRole={userRole}
+                onNavigate={handleChatbotNavigate}
+              />
+            )}
           </Suspense>
         </>
       )}

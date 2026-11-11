@@ -16,9 +16,14 @@ import {
   Eye,
   ExternalLink,
   X,
-  ChevronRight
+  ChevronRight,
+  Search
 } from 'lucide-react';
 import VirtualDesktopOS from './VirtualDesktopOS';
+import OfficeSmartphoneGuide from './OfficeSmartphoneGuide';
+import WorkspaceNotifications from '../WorkspaceNotifications';
+import AccountMenu from '../AccountMenu';
+import CommandPalette from '../layout/CommandPalette';
 import { useOfficeHeartbeat } from './useOfficeHeartbeat';
 
 export function checkWebGLSupport(): boolean {
@@ -40,6 +45,14 @@ export type OfficeWorkspaceProps = {
   canAccessView: (mode: any) => boolean;
   onNavigate: (mode: any, tab?: string) => void;
   onBackTo2D: () => void;
+  userName?: string | null;
+  userRole?: string | null;
+  photoURL?: string | null;
+  isGuest?: boolean;
+  onAccountClick?: () => void;
+  onLogout?: () => void;
+  onLogin?: () => void;
+  onOpenCommandPalette?: () => void;
 };
 
 const OFFICE_MODULE_ITEMS: { id: string; label: string; mode: string }[] = [
@@ -97,6 +110,14 @@ export default function OfficeWorkspace({
   canAccessView,
   onNavigate,
   onBackTo2D,
+  userName = 'Thành viên',
+  userRole = 'EMPLOYEE',
+  photoURL = null,
+  isGuest = false,
+  onAccountClick,
+  onLogout,
+  onLogin,
+  onOpenCommandPalette,
 }: OfficeWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const slotRef = useRef<HTMLDivElement | null>(null);
@@ -112,6 +133,7 @@ export default function OfficeWorkspace({
   const [showAppsDrawer, setShowAppsDrawer] = useState(false);
   const [hudCollapsed, setHudCollapsed] = useState(false);
   const [showTips, setShowTips] = useState(true);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [botState, setBotState] = useState<{
     state: string;
     botName?: string;
@@ -271,6 +293,22 @@ export default function OfficeWorkspace({
     );
   };
 
+  const handleFocus3DZone = (zone: string) => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: 'ft-office:switchView', view: zone },
+      window.location.origin
+    );
+  };
+
+  const handleOpenSearch = () => {
+    if (onOpenCommandPalette) {
+      onOpenCommandPalette();
+    } else {
+      setIsCommandPaletteOpen(true);
+    }
+  };
+
   // Cầu nối postMessage
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -396,32 +434,41 @@ export default function OfficeWorkspace({
   }
 
   return (
-    <div ref={boxRef} className="fixed inset-0 w-screen h-screen bg-slate-950 text-white overflow-hidden">
-      {/* Khung 3D Full-bleed lấp đầy 100% viewport (không còn sidebar hay thanh đen ép 2D) */}
-      <div ref={slotRef} className="absolute inset-0 w-full h-full" />
+    <div ref={boxRef} className="fixed inset-0 w-screen h-screen bg-slate-950 text-white overflow-hidden z-20">
+      {/* 1. THANH ĐIỀU HƯỚNG TRÊN CAO (TOP NAVIGATION BAR - GIỮ ĐẦY ĐỦ CHỨC NĂNG CẦN THIẾT) */}
+      <header className="fixed top-0 inset-x-0 h-14 z-30 bg-[#0B192C]/95 backdrop-blur-md border-b border-slate-800 px-3 sm:px-5 flex items-center justify-between select-none shadow-lg">
+        
+        {/* Cụm Trái: Brand + Bộ chuyển đổi 2D / 3D nổi bật + Phân hệ */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Logo FermatTech */}
+          <div className="flex items-center gap-2 font-bold text-white text-sm">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#0B72CE] to-indigo-500 flex items-center justify-center shadow-md shadow-blue-500/20">
+              <Box className="w-4 h-4 text-white" />
+            </div>
+            <div className="hidden xl:block leading-tight">
+              <span className="text-[10px] text-blue-400 font-extrabold uppercase tracking-wider block">FermatTech</span>
+              <span className="text-xs font-bold text-slate-100">Văn phòng 3D</span>
+            </div>
+          </div>
 
-      {/* Loading Overlay */}
-      {loading && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/90 text-white backdrop-blur-sm">
-          <LoaderCircle className="h-9 w-9 animate-spin text-[#D97757]" />
-          <p className="mt-3 text-sm font-semibold text-slate-200">Đang khởi tạo Văn phòng 3D...</p>
-          <p className="mt-1 text-xs text-slate-400">Tải mô hình văn phòng và định vị chỗ ngồi</p>
-        </div>
-      )}
+          <div className="h-5 w-[1px] bg-slate-800 hidden sm:block" />
 
-      {/* Floating Top HUD Overlay */}
-      <div className="pointer-events-none absolute top-3 inset-x-3 sm:inset-x-5 z-20 flex flex-wrap items-center justify-between gap-2">
-        {/* HUD Trái: Nhận diện + Quick App Drawer + Về 2D */}
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-2xl border border-slate-700/70 bg-slate-900/80 px-2.5 py-1.5 shadow-xl backdrop-blur-md">
-          <button
-            type="button"
-            onClick={onBackTo2D}
-            className="flex items-center gap-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700/80 px-2.5 py-1.5 text-xs font-semibold text-slate-200 hover:text-white transition cursor-pointer"
-            title="Quay lại giao diện phẳng 2D"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Giao diện 2D</span>
-          </button>
+          {/* BỘ CHUYỂN ĐỔI 2D / 3D RÕ RÀNG */}
+          <div className="flex items-center p-0.5 rounded-xl bg-slate-900 border border-slate-700/80 shadow-inner">
+            <button
+              type="button"
+              onClick={onBackTo2D}
+              className="flex items-center gap-1.5 rounded-lg bg-[#0B72CE] hover:bg-[#095ca7] px-2.5 sm:px-3 py-1.5 text-xs font-bold text-white shadow transition cursor-pointer"
+              title="Quay lại giao diện phẳng 2D tiêu chuẩn"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Giao diện 2D</span>
+            </button>
+            <div className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/30">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="hidden sm:inline">Văn phòng 3D</span>
+            </div>
+          </div>
 
           <button
             type="button"
@@ -432,32 +479,27 @@ export default function OfficeWorkspace({
             className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition cursor-pointer border ${
               showAppsDrawer
                 ? 'bg-[#D97757] text-white border-[#D97757]'
-                : 'bg-slate-800/90 hover:bg-slate-700 text-slate-100 border-slate-700/80'
+                : 'bg-slate-900/90 hover:bg-slate-800 text-slate-100 border-slate-700/80'
             }`}
-            title="Mở nhanh các phân hệ & ứng dụng"
+            title="Mở nhanh tất cả các phân hệ Workspace"
           >
-            <LayoutGrid className="h-3.5 w-3.5 text-[#D97757] group-hover:text-white" style={showAppsDrawer ? { color: '#fff' } : undefined} />
-            <span>Phân hệ</span>
+            <LayoutGrid className="h-3.5 w-3.5 text-[#D97757]" style={showAppsDrawer ? { color: '#fff' } : undefined} />
+            <span className="hidden sm:inline">Phân hệ</span>
           </button>
-
-          <div className="hidden md:flex items-center gap-1.5 pl-1 pr-2 text-xs font-bold text-slate-200">
-            <Box className="h-3.5 w-3.5 text-[#D97757]" />
-            <span>FermatTech 3D</span>
-          </div>
         </div>
 
-        {/* HUD Phải: Máy tính OS, Robot AI, Sếp đi tuần, Roster, Thu gọn HUD */}
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-2xl border border-slate-700/70 bg-slate-900/80 px-2.5 py-1.5 shadow-xl backdrop-blur-md">
+        {/* Cụm Giữa: Các công cụ tương tác 3D (Máy tính OS, Robot, Sếp, Nhân sự) */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {!hudCollapsed && (
             <>
               <button
                 type="button"
                 onClick={() => setIsDesktopOSOpen(true)}
-                className="flex items-center gap-1.5 rounded-xl bg-[#D97757] hover:bg-[#c46849] px-3 py-1.5 text-xs font-bold text-white shadow-sm transition cursor-pointer"
-                title="Mở máy tính cá nhân dạng Game OS"
+                className="flex items-center gap-1.5 rounded-xl bg-[#D97757] hover:bg-[#c46849] px-2.5 sm:px-3 py-1.5 text-xs font-bold text-white shadow-sm transition cursor-pointer"
+                title="Mở máy tính cá nhân dạng Game OS trên bàn làm việc 3D"
               >
                 <Monitor className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Máy tính OS</span>
+                <span className="hidden md:inline">Máy tính OS</span>
               </button>
 
               <button
@@ -470,12 +512,12 @@ export default function OfficeWorkspace({
                   }
                 }}
                 disabled={botState.state === 'MOVING'}
-                className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                className={`hidden sm:flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
                   botState.state === 'ARRIVED'
                     ? 'border-emerald-500/60 bg-emerald-950/70 text-emerald-300 hover:bg-emerald-900/70'
                     : botState.state === 'MOVING'
                     ? 'border-amber-500/60 bg-amber-950/70 text-amber-300 animate-pulse'
-                    : 'border-cyan-500/40 bg-slate-800/90 text-cyan-300 hover:bg-slate-700'
+                    : 'border-cyan-500/40 bg-slate-900/90 text-cyan-300 hover:bg-slate-800'
                 }`}
                 title={
                   botState.state === 'ARRIVED'
@@ -484,7 +526,7 @@ export default function OfficeWorkspace({
                 }
               >
                 <Bot className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">
+                <span className="hidden lg:inline">
                   {botState.state === 'ARRIVED'
                     ? 'Robot tại bàn'
                     : botState.state === 'MOVING'
@@ -497,15 +539,15 @@ export default function OfficeWorkspace({
                 type="button"
                 onClick={handleTriggerPatrol}
                 disabled={patrolState.active}
-                className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                className={`hidden md:flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
                   patrolState.active
                     ? 'border-rose-500/60 bg-rose-950/70 text-rose-300 animate-pulse'
-                    : 'border-slate-700/80 bg-slate-800/90 text-slate-200 hover:bg-slate-700'
+                    : 'border-slate-700/80 bg-slate-900/90 text-slate-200 hover:bg-slate-800'
                 }`}
                 title="Kích hoạt Giám đốc đi tuần tra các phòng ban"
               >
                 <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
-                <span className="hidden lg:inline">
+                <span className="hidden xl:inline">
                   {patrolState.active ? 'Đang tuần tra!' : 'Sếp đi tuần'}
                 </span>
               </button>
@@ -516,7 +558,11 @@ export default function OfficeWorkspace({
                   setShowList(v => !v);
                   setShowAppsDrawer(false);
                 }}
-                className="flex items-center gap-1.5 rounded-xl bg-slate-800/90 border border-slate-700/80 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 cursor-pointer"
+                className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition cursor-pointer ${
+                  showList
+                    ? 'bg-blue-600 text-white border-blue-500'
+                    : 'bg-slate-900/90 border-slate-700/80 text-slate-200 hover:bg-slate-800'
+                }`}
                 title="Xem danh sách nhân sự đang làm / rảnh"
                 aria-expanded={showList}
               >
@@ -526,21 +572,8 @@ export default function OfficeWorkspace({
                   {idleCount > 0 && (
                     <span className="text-amber-400 font-semibold ml-1">· {idleCount} rảnh</span>
                   )}
-                  <span className="hidden sm:inline text-slate-400 ml-1">· Nhân sự</span>
+                  <span className="hidden lg:inline text-slate-400 ml-1">· Nhân sự</span>
                 </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  const fresh = await fetchRoster();
-                  sendInitToIframe(fresh);
-                }}
-                disabled={refreshing}
-                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition flex items-center justify-center cursor-pointer"
-                title="Làm mới danh sách nhân sự"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-[#D97757]' : ''}`} />
               </button>
             </>
           )}
@@ -552,15 +585,65 @@ export default function OfficeWorkspace({
               setShowList(false);
               setShowAppsDrawer(false);
             }}
-            className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition flex items-center justify-center cursor-pointer"
-            title={hudCollapsed ? 'Mở rộng thanh công cụ' : 'Thu gọn thanh công cụ để ngắm 3D'}
+            className="hidden sm:flex rounded-xl p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition items-center justify-center cursor-pointer"
+            title={hudCollapsed ? 'Hiện công cụ 3D' : 'Thu gọn nút 3D'}
           >
             {hudCollapsed ? <Eye className="h-3.5 w-3.5 text-[#D97757]" /> : <EyeOff className="h-3.5 w-3.5" />}
           </button>
         </div>
-      </div>
 
-      {/* Quick App Launcher Drawer (Thay thế hoàn toàn Sidebar 2D cồng kềnh) */}
+        {/* Cụm Phải: Tìm kiếm (Ctrl+K), Chuông thông báo & Tài khoản cá nhân */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleOpenSearch}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer"
+            title="Tìm kiếm nhanh phân hệ hoặc công việc (Ctrl + K)"
+          >
+            <Search className="h-3.5 w-3.5 text-slate-400" />
+            <span className="hidden lg:inline text-slate-400">Tìm kiếm</span>
+            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-slate-800 rounded text-slate-400 border border-slate-700">
+              Ctrl K
+            </kbd>
+          </button>
+
+          {/* Chuông thông báo Workspace */}
+          <div className="relative">
+            <WorkspaceNotifications />
+          </div>
+
+          <div className="h-5 w-[1px] bg-slate-800" />
+
+          {/* Menu Tài khoản cá nhân */}
+          <AccountMenu
+            userName={userName}
+            userRole={userRole}
+            photoURL={photoURL}
+            isGuest={isGuest}
+            onAccountClick={onAccountClick || (() => {})}
+            onLogout={onLogout}
+            onLogin={onLogin}
+            variant="avatar"
+          />
+        </div>
+      </header>
+
+      {/* 2. KHUNG CHỨA 3D CANVAS (NẰM NGAY DƯỚI THANH ĐIỀU HƯỚNG TRÊN CAO) */}
+      <div
+        ref={slotRef}
+        className="absolute top-14 bottom-0 inset-x-0 w-full h-[calc(100vh-3.5rem)]"
+      />
+
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="absolute inset-0 top-14 z-30 flex flex-col items-center justify-center bg-slate-950/90 text-white backdrop-blur-sm">
+          <LoaderCircle className="h-9 w-9 animate-spin text-[#D97757]" />
+          <p className="mt-3 text-sm font-semibold text-slate-200">Đang khởi tạo Văn phòng 3D...</p>
+          <p className="mt-1 text-xs text-slate-400">Tải mô hình văn phòng và định vị chỗ ngồi</p>
+        </div>
+      )}
+
+      {/* Quick App Launcher Drawer */}
       {showAppsDrawer && (
         <div className="absolute left-3 sm:left-5 top-16 z-30 w-80 sm:w-96 max-h-[75vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="mb-3 flex items-center justify-between">
@@ -613,7 +696,7 @@ export default function OfficeWorkspace({
 
       {/* Danh sách mọi người trong văn phòng (hỗ trợ Đang làm / Rảnh / Ngoại tuyến) */}
       {showList && (
-        <div className="absolute right-3 sm:right-5 top-16 z-30 w-80 max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 shadow-2xl backdrop-blur-xl">
+        <div className="absolute right-3 sm:right-24 top-16 z-30 w-80 max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 shadow-2xl backdrop-blur-xl">
           <div className="mb-2.5 flex items-center justify-between text-xs font-bold text-slate-200">
             <div>
               <span>Nhân sự văn phòng</span>
@@ -621,14 +704,28 @@ export default function OfficeWorkspace({
                 ({onlineCount}/{roster.length} online)
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowList(false)}
-              className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer"
-              aria-label="Đóng danh sách"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  const fresh = await fetchRoster();
+                  sendInitToIframe(fresh);
+                }}
+                disabled={refreshing}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer"
+                title="Làm mới danh sách nhân sự"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-[#D97757]' : ''}`} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowList(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer"
+                aria-label="Đóng danh sách"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
           <div className="mb-2 flex items-center gap-3 text-[11px] text-slate-400 pb-2 border-b border-slate-800">
             <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Đang làm ({workingCount})</span>
@@ -665,9 +762,9 @@ export default function OfficeWorkspace({
         </div>
       )}
 
-      {/* Tips nổi góc dưới nhẹ nhàng */}
+      {/* Tips nổi góc dưới bên trái nhẹ nhàng */}
       {showTips && !loading && (
-        <div className="pointer-events-auto absolute bottom-3 left-3 sm:left-5 z-20 hidden sm:flex items-center gap-2 rounded-xl border border-slate-700/60 bg-slate-900/75 px-3 py-1.5 text-[11px] text-slate-300 backdrop-blur-md shadow-lg">
+        <div className="pointer-events-auto absolute bottom-4 left-4 sm:left-5 z-20 hidden sm:flex items-center gap-2 rounded-xl border border-slate-700/60 bg-slate-900/75 px-3 py-1.5 text-[11px] text-slate-300 backdrop-blur-md shadow-lg">
           <Sparkles className="h-3.5 w-3.5 text-[#D97757] shrink-0" />
           <span>Nhấp màn hình máy tính bàn 3D để mở Desktop OS · Kéo chuột xoay góc nhìn</span>
           <button
@@ -680,6 +777,22 @@ export default function OfficeWorkspace({
           </button>
         </div>
       )}
+
+      {/* 5. CHIẾC ĐIỆN THOẠI THÔNG MINH GÓC PHẢI DƯỚI (CẨM NANG TRỎ HƯỚNG 2D ➔ 3D) */}
+      <OfficeSmartphoneGuide
+        onNavigate2D={onBackTo2D}
+        onOpenDesktopOS={() => setIsDesktopOSOpen(true)}
+        onOpenAppsDrawer={() => setShowAppsDrawer(true)}
+        onCallBot={handleCallBot}
+        onTriggerPatrol={handleTriggerPatrol}
+        onFocus3DZone={handleFocus3DZone}
+        onlineCount={onlineCount}
+        workingCount={workingCount}
+        idleCount={idleCount}
+        onOpenRoster={() => setShowList(true)}
+        canAccessView={canAccessView}
+        onNavigateModule={(mode) => onNavigate(mode)}
+      />
 
       {/* Virtual Desktop OS Modal dạng game */}
       <VirtualDesktopOS
@@ -697,6 +810,21 @@ export default function OfficeWorkspace({
         botState={botState}
         patrolState={patrolState}
       />
+
+      {/* Command Palette khi bấm nút Tìm kiếm (Ctrl+K) trong Văn phòng 3D */}
+      {isCommandPaletteOpen && (
+        <CommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          onNavigate={(path) => {
+            setIsCommandPaletteOpen(false);
+            const target = path.replace(/^\/+/, '');
+            if (target && canAccessView(target)) {
+              onNavigate(target);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
