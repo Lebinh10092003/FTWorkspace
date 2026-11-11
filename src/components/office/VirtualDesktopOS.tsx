@@ -138,22 +138,22 @@ class VirtualDesktopErrorBoundary extends React.Component<
 const WALLPAPERS = [
   {
     id: 'sequoia-sunrise',
-    name: 'macOS Sequoia Rạng đông',
-    subtitle: 'Sắc cam hổ phách & tím thạch anh chính thức macOS 15',
+    name: 'FermatOS Rạng đông',
+    subtitle: 'Sắc cam hổ phách & tím thạch anh chính thức FermatOS',
     gradientClass: 'from-[#1e0a38] via-[#3b1259] to-[#0c051f]',
     previewBg: 'bg-gradient-to-tr from-amber-500 via-purple-700 to-indigo-950',
   },
   {
     id: 'sequoia-dark',
-    name: 'macOS Sequoia Đêm sâu',
+    name: 'FermatOS Đêm sâu',
     subtitle: 'Xanh chàm tĩnh lặng, tương phản sắc nét',
     gradientClass: 'from-[#0B1120] via-[#121A32] to-[#060B19]',
     previewBg: 'bg-gradient-to-tr from-sky-900 via-indigo-950 to-slate-950',
   },
   {
     id: 'sonoma-sunset',
-    name: 'macOS Sonoma Hoàng hôn',
-    subtitle: 'Nắng chiều thung lũng Sonoma rực rỡ',
+    name: 'FermatOS Hoàng hôn',
+    subtitle: 'Nắng chiều hoàng hôn Fermat rực rỡ',
     gradientClass: 'from-[#2e0c1f] via-[#4a1525] to-[#12050b]',
     previewBg: 'bg-gradient-to-tr from-yellow-500 via-rose-600 to-purple-900',
   },
@@ -173,7 +173,7 @@ const WALLPAPERS = [
   },
   {
     id: 'high-sierra',
-    name: 'Cupertino High Sierra',
+    name: 'Fermat High Sierra',
     subtitle: 'Núi tuyết xanh lam trong trẻo',
     gradientClass: 'from-[#0c2340] via-[#1d3d63] to-[#081321]',
     previewBg: 'bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-950',
@@ -659,7 +659,7 @@ function VirtualDesktopOSInner({
     docs: { id: 'docs', title: 'Kho tài liệu & Quy chuẩn', icon: Folder, isOpen: false, isMinimized: false, zIndex: 4 },
     terminal: { id: 'terminal', title: 'Nhật ký Console Văn phòng', icon: Terminal, isOpen: false, isMinimized: false, zIndex: 5 },
     game: { id: 'game', title: 'Fermat Arcade: Xả Stress', icon: Gamepad2, isOpen: false, isMinimized: false, zIndex: 6 },
-    settings: { id: 'settings', title: 'Cài đặt hệ thống macOS', icon: Settings, isOpen: false, isMinimized: false, zIndex: 7 },
+    settings: { id: 'settings', title: 'Cài đặt hệ thống FermatOS', icon: Settings, isOpen: false, isMinimized: false, zIndex: 7 },
     apps: { id: 'apps', title: 'Launchpad · Tất cả ứng dụng', icon: LayoutGrid, isOpen: false, isMinimized: false, zIndex: 8 },
     browser: { id: 'browser', title: 'Fermat Safari · Trình duyệt phân hệ', icon: Globe, isOpen: false, isMinimized: false, zIndex: 9 },
   });
@@ -679,7 +679,7 @@ function VirtualDesktopOSInner({
   };
 
   const openModuleInBrowser = (moduleKey: string, moduleName: string) => {
-    setBrowserUrl(`/?view=${moduleKey}&embed=1`);
+    setBrowserUrl(`/?view=${moduleKey}&embed=1&os=1`);
     setBrowserTitle(moduleName);
     focusWindow('browser');
   };
@@ -968,20 +968,20 @@ function VirtualDesktopOSInner({
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 sm:p-8 animate-in fade-in duration-200">
-      {/* Khung macOS Sequoia Glassmorphism Workstation */}
+      {/* Khung FermatOS Glassmorphism Workstation */}
       <div className="relative w-full max-w-6xl h-[88vh] bg-slate-950/90 border border-white/20 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl flex flex-col overflow-hidden select-none font-sans">
-        
-        {/* macOS Sequoia Top Menu Bar */}
+
+        {/* FermatOS Top Menu Bar */}
         <div className="h-8 bg-slate-950/80 backdrop-blur-2xl border-b border-white/10 px-4 flex items-center justify-between text-xs text-slate-200 select-none z-50">
           <div className="flex items-center gap-3">
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setAppleMenuOpen(prev => !prev)}
-                className="text-sm font-bold text-white hover:text-sky-400 cursor-pointer transition px-1.5 py-0.5 rounded hover:bg-white/10"
-                title="Apple Menu"
+                className="text-sm font-bold text-white hover:text-sky-400 cursor-pointer transition px-1.5 py-0.5 rounded hover:bg-white/10 flex items-center justify-center"
+                title="Fermat Menu"
               >
-                
+                <img src="/logo.png" alt="Fermat" className="w-3.5 h-3.5 object-contain brightness-0 invert inline-block select-none" />
               </button>
               {appleMenuOpen && (
                 <div
@@ -992,8 +992,8 @@ function VirtualDesktopOSInner({
                     onClick={() => { setSettingsTab('about'); focusWindow('settings'); }}
                     className="w-full text-left px-3 py-1.5 hover:bg-sky-500 hover:text-white transition flex items-center justify-between"
                   >
-                    <span>Giới thiệu về máy Mac này</span>
-                    <span className="text-[10px] text-slate-400"> Sequoia</span>
+                    <span>Giới thiệu về FermatOS</span>
+                    <span className="text-[10px] text-slate-300 font-semibold">FermatOS</span>
                   </button>
                   <div className="my-1 border-t border-white/10" />
                   <button
@@ -1027,7 +1027,7 @@ function VirtualDesktopOSInner({
                         docs: { id: 'docs', title: 'Kho tài liệu & Quy chuẩn', icon: Folder, isOpen: false, isMinimized: false, zIndex: 4 },
                         terminal: { id: 'terminal', title: 'Nhật ký Console Văn phòng', icon: Terminal, isOpen: false, isMinimized: false, zIndex: 5 },
                         game: { id: 'game', title: 'Fermat Arcade: Xả Stress', icon: Gamepad2, isOpen: false, isMinimized: false, zIndex: 6 },
-                        settings: { id: 'settings', title: 'Cài đặt hệ thống macOS', icon: Settings, isOpen: false, isMinimized: false, zIndex: 7 },
+                        settings: { id: 'settings', title: 'Cài đặt hệ thống FermatOS', icon: Settings, isOpen: false, isMinimized: false, zIndex: 7 },
                         apps: { id: 'apps', title: 'Launchpad · Tất cả ứng dụng', icon: LayoutGrid, isOpen: false, isMinimized: false, zIndex: 8 },
                         browser: { id: 'browser', title: 'Fermat Safari · Trình duyệt phân hệ', icon: Globe, isOpen: false, isMinimized: false, zIndex: 9 },
                       });
@@ -1079,7 +1079,7 @@ function VirtualDesktopOSInner({
             <button
               onClick={() => { setSettingsTab('wallpaper'); focusWindow('settings'); }}
               className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition cursor-pointer"
-              title="Đổi hình nền macOS"
+              title="Đổi hình nền FermatOS"
             >
               <Palette className="w-3 h-3 text-sky-400" />
               <span className="text-[10px] font-sans">{currentWallpaperObj.name}</span>
@@ -1101,12 +1101,12 @@ function VirtualDesktopOSInner({
           </div>
         </div>
 
-        {/* Màn hình Desktop macOS Sequoia */}
+        {/* Màn hình Desktop FermatOS */}
         <div
           className={`relative flex-1 bg-gradient-to-br ${currentWallpaperObj.gradientClass} overflow-hidden p-4 pb-20 flex transition-all duration-300`}
           style={{ filter: `brightness(${screenBrightness}%)` }}
         >
-          {/* Ánh sáng kính mờ Sequoia */}
+          {/* Ánh sáng kính mờ FermatOS */}
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(56,189,248,0.14),transparent_45%),radial-gradient(circle_at_75%_70%,rgba(217,119,87,0.10),transparent_45%)] pointer-events-none" />
 
           {/* Cột Desktop Icons bên trái */}
@@ -1235,7 +1235,7 @@ function VirtualDesktopOSInner({
                 className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
                 {/* Header Window */}
-                {/* macOS Sequoia Window Titlebar */}
+                {/* FermatOS Window Titlebar */}
                 <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/75 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
                     <button
@@ -1383,7 +1383,6 @@ function VirtualDesktopOSInner({
                         'Mở Khảo thí',
                         'Báo cáo tuần',
                         'Gọi Robot tới bàn',
-                        'Sếp đi tuần',
                         'Xem lịch tuần',
                       ].map((chip) => (
                         <button
@@ -1428,7 +1427,7 @@ function VirtualDesktopOSInner({
                 style={{ zIndex: windows.exam.zIndex }}
                 className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
-                {/* macOS Sequoia Window Titlebar */}
+                {/* FermatOS Window Titlebar */}
                 <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/75 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
                     <button
@@ -1532,7 +1531,7 @@ function VirtualDesktopOSInner({
                 style={{ zIndex: windows.reports.zIndex }}
                 className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
-                {/* macOS Sequoia Window Titlebar */}
+                {/* FermatOS Window Titlebar */}
                 <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/75 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
                     <button
@@ -1678,7 +1677,7 @@ function VirtualDesktopOSInner({
                     )}
                   </div>
 
-                  <div className="p-3 bg-slate-900/60 border border-white/15 rounded-xl flex items-center justify-between">
+                  <div className="p-3 bg-slate-900/60 border border-white/15 rounded-xl flex items-center justify-between gap-3">
                     <div>
                       <h4 className="font-bold">Trạng thái Giám đốc tuần tra</h4>
                       <p className="text-[11px] text-slate-100/70 mt-0.5">
@@ -1687,13 +1686,9 @@ function VirtualDesktopOSInner({
                           : 'Giám đốc đang ở phòng riêng làm việc và duyệt hồ sơ.'}
                       </p>
                     </div>
-                    <button
-                      onClick={onTriggerPatrol}
-                      disabled={patrolState.active}
-                      className="px-3 py-2 bg-[#1E232B] hover:bg-[#2b323d] text-white rounded-xl font-bold text-xs border border-white/10 shadow-[2px_2px_0px_#D97757] disabled:opacity-50"
-                    >
-                      {patrolState.active ? 'Đang tuần tra...' : 'Sếp đi tuần ngay 📋'}
-                    </button>
+                    <span className="px-3 py-1.5 rounded-xl bg-sky-500/15 border border-sky-400/30 text-sky-300 font-semibold text-[11px] shrink-0 text-center">
+                      Giám đốc tuần tra tự động đa phòng ban
+                    </span>
                   </div>
 
                   <div className="p-3 border border-white/15 rounded-xl bg-slate-800/80 space-y-2">
@@ -1778,7 +1773,7 @@ function VirtualDesktopOSInner({
                 style={{ zIndex: windows.terminal.zIndex }}
                 className="absolute inset-2 bg-[#111827] border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 font-mono text-emerald-400"
               >
-                {/* macOS Sequoia Window Titlebar */}
+                {/* FermatOS Window Titlebar */}
                 <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/75 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
                     <button
@@ -1831,7 +1826,7 @@ function VirtualDesktopOSInner({
                 style={{ zIndex: windows.game.zIndex }}
                 className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
-                {/* macOS Sequoia Window Titlebar */}
+                {/* FermatOS Window Titlebar */}
                 <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/75 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
                     <button
@@ -1917,7 +1912,7 @@ function VirtualDesktopOSInner({
                 style={{ zIndex: windows.settings.zIndex }}
                 className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
-                {/* macOS Window Titlebar */}
+                {/* FermatOS Window Titlebar */}
                 <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/80 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
                     <button
@@ -1947,7 +1942,7 @@ function VirtualDesktopOSInner({
                   </div>
                   <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
                     <Settings className="w-4 h-4 text-sky-400" />
-                    <span>CÀI ĐẶT HỆ THỐNG // MACOS SEQUOIA WORKSTATION</span>
+                    <span>CÀI ĐẶT HỆ THỐNG // FERMATOS WORKSTATION</span>
                   </div>
                   <div className="w-12" />
                 </div>
@@ -2001,7 +1996,7 @@ function VirtualDesktopOSInner({
                         <div className="mb-4">
                           <h3 className="text-sm font-bold text-white flex items-center gap-2">
                             <Palette className="w-4 h-4 text-sky-400" />
-                            Bộ sưu tập hình nền macOS Sequoia & Fermat
+                            Bộ sưu tập hình nền FermatOS
                           </h3>
                           <p className="text-xs text-slate-400 mt-1">
                             Chọn giao diện nền hiển thị trên màn hình máy tính ảo. Cài đặt được lưu tự động trên trình duyệt.
@@ -2105,12 +2100,12 @@ function VirtualDesktopOSInner({
                     {/* Tab Giới thiệu */}
                     {settingsTab === 'about' && (
                       <div className="max-w-md text-center py-4 space-y-4">
-                        <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-600 mx-auto flex items-center justify-center text-3xl shadow-xl shadow-sky-500/20 text-white">
-                          
+                        <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-slate-800 via-slate-900 to-black border border-white/20 mx-auto flex items-center justify-center shadow-xl shadow-sky-500/10">
+                          <img src="/logo.png" alt="Fermat" className="w-8 h-8 object-contain brightness-0 invert select-none" />
                         </div>
                         <div>
-                          <h3 className="text-base font-bold text-white">macOS Sequoia Workstation</h3>
-                          <p className="text-xs text-slate-400 mt-0.5">Phiên bản ảo hoá 15.1 (Fermat Tech Edition)</p>
+                          <h3 className="text-base font-bold text-white">FermatOS Workstation</h3>
+                          <p className="text-xs text-slate-400 mt-0.5">Phiên bản ảo hoá FermatOS 2.0 (Fermat Tech Edition)</p>
                         </div>
 
                         <div className="p-4 rounded-2xl bg-slate-950/60 border border-white/10 text-left space-y-2 text-xs">
@@ -2145,7 +2140,7 @@ function VirtualDesktopOSInner({
                 style={{ zIndex: windows.apps.zIndex }}
                 className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
-                {/* macOS Window Titlebar */}
+                {/* FermatOS Window Titlebar */}
                 <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/80 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
                     <button
@@ -2236,21 +2231,8 @@ function VirtualDesktopOSInner({
                                 className="flex-1 py-1.5 px-2 rounded-xl bg-sky-500/20 hover:bg-sky-500 text-sky-300 hover:text-white border border-sky-500/30 text-xs font-semibold transition flex items-center justify-center gap-1.5"
                               >
                                 <Globe className="w-3 h-3" />
-                                <span>Mở trên OS</span>
+                                <span>Mở trên FermatOS</span>
                               </button>
-                              {onNavigateModule && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    onClose();
-                                    onNavigateModule(mod.moduleKey);
-                                  }}
-                                  className="p-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-300 border border-white/10 transition"
-                                  title="Chuyển sang phân hệ 2D toàn màn hình"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </button>
-                              )}
                             </div>
                           </div>
                         );
@@ -2267,7 +2249,7 @@ function VirtualDesktopOSInner({
                 style={{ zIndex: windows.browser.zIndex }}
                 className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
-                {/* macOS Window Titlebar */}
+                {/* FermatOS Window Titlebar */}
                 <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/80 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
                     <button
@@ -2351,7 +2333,7 @@ function VirtualDesktopOSInner({
           </div>
         </div>
 
-        {/* macOS Sequoia Floating Frosted Glass Dock */}
+        {/* FermatOS Floating Frosted Glass Dock */}
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-50 flex items-end gap-2.5 px-4 py-2 rounded-2xl bg-slate-950/70 backdrop-blur-2xl border border-white/20 shadow-2xl">
           {Object.values(windows).map(w => {
             const Icon = w.icon;

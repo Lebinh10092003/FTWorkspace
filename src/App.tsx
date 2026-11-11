@@ -1458,15 +1458,13 @@ export default function App() {
           <InvigilationReminders key={user.email} token={idToken} email={user.email} canPreview={userRole === 'ADMIN' || userRole === 'MANAGER'} />
           <Suspense fallback={null}>
             {viewMode !== 'office' && <ItemBag />}
-            {viewMode !== 'office' && (
-              <ChatbotAssistant
-                token={idToken}
-                userName={user.displayName}
-                userEmail={user.email}
-                userRole={userRole}
-                onNavigate={handleChatbotNavigate}
-              />
-            )}
+            <ChatbotAssistant
+              token={idToken}
+              userName={user.displayName}
+              userEmail={user.email}
+              userRole={userRole}
+              onNavigate={handleChatbotNavigate}
+            />
           </Suspense>
         </>
       )}

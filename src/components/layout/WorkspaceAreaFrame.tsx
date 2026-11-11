@@ -49,6 +49,11 @@ export default function WorkspaceAreaFrame({
   account,
   children,
 }: WorkspaceAreaFrameProps) {
+  const isEmbedded = typeof window !== 'undefined' && (
+    window.self !== window.top ||
+    window.location.search.includes('embed=1') ||
+    window.location.search.includes('os=1')
+  );
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false);
   const [moduleNavigation, registerModuleNavigation] = useState<WorkspaceModuleNavigation | null>(null);
@@ -145,101 +150,109 @@ export default function WorkspaceAreaFrame({
       {/* ========================================================= */}
       {/* MOBILE TOP BAR (<1024px)                                  */}
       {/* ========================================================= */}
-      <header
-        className="lg:hidden fixed top-0 inset-x-0 z-40 flex h-14 items-center justify-between border-b border-[#0B2A4A]/20 bg-[#0B2A4A] px-3 text-white shadow-xs"
-        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
-      >
-        <button
-          type="button"
-          onClick={() => homeArea && onSelect(homeArea)}
-          className="ft-logo-plate flex items-center gap-2 rounded-lg !bg-white px-2 py-1 shadow-xs cursor-pointer"
-          title="Về Trang chủ"
+      {!isEmbedded && (
+        <header
+          className="lg:hidden fixed top-0 inset-x-0 z-40 flex h-14 items-center justify-between border-b border-[#0B2A4A]/20 bg-[#0B2A4A] px-3 text-white shadow-xs"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
-          <img src="/logo.png" alt="FermatTech" className="h-6 w-auto object-contain" />
-        </button>
-
-        <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => setCommandPaletteOpen(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-[#C9D6E6] hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-            aria-label="Tìm kiếm nhanh"
-            title="Tìm kiếm"
+            onClick={() => homeArea && onSelect(homeArea)}
+            className="ft-logo-plate flex items-center gap-2 rounded-lg !bg-white px-2 py-1 shadow-xs cursor-pointer"
+            title="Về Trang chủ"
           >
-            <Search className="h-5 w-5" />
+            <img src="/logo.png" alt="FermatTech" className="h-6 w-auto object-contain" />
           </button>
 
-          <WorkspaceNotifications />
-
-          {account ? (
-            <AccountMenu
-              {...account}
-              placement="below-right"
-              trigger={({ toggle, isOpen }) => (
-                <button
-                  type="button"
-                  onClick={toggle}
-                  aria-expanded={isOpen}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B72CE] text-white font-bold text-xs ml-1 cursor-pointer shadow-xs"
-                  title="Tài khoản"
-                >
-                  {userName.charAt(0).toUpperCase()}
-                </button>
-              )}
-            />
-          ) : onAccountClick && (
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={onAccountClick}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B72CE] text-white font-bold text-xs ml-1 cursor-pointer shadow-xs"
-              title="Tài khoản cá nhân"
+              onClick={() => setCommandPaletteOpen(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-[#C9D6E6] hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+              aria-label="Tìm kiếm nhanh"
+              title="Tìm kiếm"
             >
-              {userName.charAt(0).toUpperCase()}
+              <Search className="h-5 w-5" />
             </button>
-          )}
-        </div>
-      </header>
+
+            <WorkspaceNotifications />
+
+            {account ? (
+              <AccountMenu
+                {...account}
+                placement="below-right"
+                trigger={({ toggle, isOpen }) => (
+                  <button
+                    type="button"
+                    onClick={toggle}
+                    aria-expanded={isOpen}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B72CE] text-white font-bold text-xs ml-1 cursor-pointer shadow-xs"
+                    title="Tài khoản"
+                  >
+                    {userName.charAt(0).toUpperCase()}
+                  </button>
+                )}
+              />
+            ) : onAccountClick && (
+              <button
+                type="button"
+                onClick={onAccountClick}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B72CE] text-white font-bold text-xs ml-1 cursor-pointer shadow-xs"
+                title="Tài khoản cá nhân"
+              >
+                {userName.charAt(0).toUpperCase()}
+              </button>
+            )}
+          </div>
+        </header>
+      )}
 
       {/* ========================================================= */}
       {/* MAIN CONTENT AREA                                         */}
       {/* ========================================================= */}
-      <div className="ft-workspace-frame-body flex-1 min-w-0 pt-14 lg:pt-0 pb-[calc(8.5rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
+      <div
+        className={`ft-workspace-frame-body flex-1 min-w-0 ${
+          isEmbedded ? 'pt-0 pb-0' : 'pt-14 lg:pt-0 pb-[calc(8.5rem+env(safe-area-inset-bottom,0px))] lg:pb-0'
+        }`}
+      >
         {children}
       </div>
 
       {/* ========================================================= */}
       {/* MOBILE BOTTOM TAB BAR (<1024px)                           */}
       {/* ========================================================= */}
-      <nav
-        className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex min-h-[64px] items-center justify-around border-t border-[var(--ft-border,#DDE5EF)] bg-[var(--workspace-card,#FFFFFF)] shadow-lg select-none"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-        aria-label="Điều hướng tab dưới màn hình"
-      >
-        {bottomTabs.map(tab => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleTabClick(tab)}
-              className={`ft-bottom-tab flex flex-1 flex-col items-center justify-center py-1.5 px-1 min-h-[56px] transition-colors cursor-pointer ${
-                tab.isActive
-                  ? 'text-[#075CA8] dark:text-[#60A5FA] font-semibold'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-normal'
-              }`}
-              aria-current={tab.isActive ? 'page' : undefined}
-            >
-              <Icon
-                className={`h-5 w-5 mb-1 transition-transform ${
-                  tab.isActive ? 'scale-110 text-[#075CA8] dark:text-[#60A5FA]' : 'text-slate-500 dark:text-slate-400'
+      {!isEmbedded && (
+        <nav
+          className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex min-h-[64px] items-center justify-around border-t border-[var(--ft-border,#DDE5EF)] bg-[var(--workspace-card,#FFFFFF)] shadow-lg select-none"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+          aria-label="Điều hướng tab dưới màn hình"
+        >
+          {bottomTabs.map(tab => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => handleTabClick(tab)}
+                className={`ft-bottom-tab flex flex-1 flex-col items-center justify-center py-1.5 px-1 min-h-[56px] transition-colors cursor-pointer ${
+                  tab.isActive
+                    ? 'text-[#075CA8] dark:text-[#60A5FA] font-semibold'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-normal'
                 }`}
-                aria-hidden="true"
-              />
-              <span className="text-[11px] leading-tight line-clamp-1">{tab.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+                aria-current={tab.isActive ? 'page' : undefined}
+              >
+                <Icon
+                  className={`h-5 w-5 mb-1 transition-transform ${
+                    tab.isActive ? 'scale-110 text-[#075CA8] dark:text-[#60A5FA]' : 'text-slate-500 dark:text-slate-400'
+                  }`}
+                  aria-hidden="true"
+                />
+                <span className="text-[11px] leading-tight line-clamp-1">{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       {/* ========================================================= */}
       {/* MOBILE "THÊM" BOTTOM SHEET                                */}
