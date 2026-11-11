@@ -1,0 +1,10 @@
+[Unit]
+Description=Run FT Workspace automated tech discovery every morning at 06:30
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+Unit=workspace-tech-discovery.service
+
+[Install]
+WantedBy=timers.target

@@ -15,6 +15,7 @@ import {
   Calendar,
   Users,
   AlertCircle,
+  Clock,
 } from 'lucide-react';
 import type { TechTopicSuggestion, PostPlan } from './publishingTypes';
 import { publishingService } from './publishingService';
@@ -220,9 +221,15 @@ export function TechDiscoveryStudio({
       <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-indigo-900 via-slate-900 to-[#075CA8] p-6 text-white shadow-lg">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div className="max-w-2xl space-y-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-2xs font-bold bg-white/10 backdrop-blur-md text-indigo-200 border border-white/10">
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>Gợi ý chủ đề AI & Xu hướng công nghệ hàng ngày</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-2xs font-bold bg-white/10 backdrop-blur-md text-indigo-200 border border-white/10">
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Gợi ý chủ đề AI & Xu hướng công nghệ hàng ngày</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-2xs font-bold bg-emerald-500/20 backdrop-blur-md text-emerald-200 border border-emerald-400/30">
+                <Clock className="w-3.5 h-3.5 text-emerald-300" />
+                <span>Tự động quét: 06:30 sáng hàng ngày</span>
+              </div>
             </div>
             <h2 className="text-xl md:text-2xl font-black tracking-tight text-white">
               Crawl & Phân tích Đột phá Công nghệ Mới
