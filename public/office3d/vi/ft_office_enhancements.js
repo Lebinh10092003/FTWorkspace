@@ -13,6 +13,52 @@
 
   console.log('[FT Office] Enhancements v2.6 initializing...');
 
+  // Khi ở chế độ nhúng (embed=1 hoặc trong iframe), ẩn thanh tiêu đề, sidebars và panel rườm rà của template cũ
+  function cleanEmbedInterface() {
+    const isEmbedded = window.self !== window.top || window.location.search.includes('embed=1');
+    if (!isEmbedded) return;
+    const style = document.createElement('style');
+    style.id = 'ft-office-embed-clean';
+    style.textContent = `
+      header.topbar,
+      aside.side,
+      .side-left,
+      .side-right,
+      #feed,
+      .kpis,
+      .lp-head,
+      .lite,
+      .chips {
+        display: none !important;
+      }
+      body, html, #stage-wrap, #stage {
+        width: 100% !important;
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        background: #020617 !important;
+      }
+      #stage {
+        position: absolute !important;
+        inset: 0 !important;
+      }
+      #stage canvas {
+        display: block !important;
+        width: 100% !important;
+        height: 100% !important;
+      }
+      .toolbar {
+        bottom: 16px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        z-index: 20 !important;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+  cleanEmbedInterface();
+
   // Kho câu thoại ngẫu nhiên mang đậm bản sắc FermatTech
   const FERMAT_IDLE_QUOTES = {
     tech: [
@@ -137,6 +183,27 @@
         session.role === 'BOT' ||
         (session.name && (session.name.startsWith('AI ') || session.name.toLowerCase().includes('bot'))) ||
         (typeof id === 'string' && id.startsWith('bot-'));
+
+      // Gắn click listener vào tagEl của nhân viên để tương tác xem danh thiếp
+      if (worker.tagEl && !worker.tagEl._ftClickBound) {
+        worker.tagEl._ftClickBound = true;
+        worker.tagEl.style.cursor = 'pointer';
+        worker.tagEl.title = 'Bấm để xem thông tin nhân sự';
+        worker.tagEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          postToParent({
+            type: 'ft-office:selectWorker',
+            worker: {
+              id,
+              name: session.name || 'Đồng nghiệp',
+              role: session.role || 'Thành viên',
+              room: session.room,
+              desk: worker.desk,
+              isIdle: !!worker._ftIsIdle,
+            }
+          });
+        });
+      }
 
       if (isBot && !worker._ftRobotUpgraded && worker.P && worker.P.head) {
         transformWorkerToRobot(worker, session);
@@ -555,6 +622,41 @@
     worker.say('idle', text);
   }
 
+  function handleRosterUpdate(roster) {
+    if (!Array.isArray(roster) || !ftOffice.getWorkers || !ftOffice.getSessions) return;
+    const workers = ftOffice.getWorkers();
+    const sessions = ftOffice.getSessions();
+
+    roster.forEach(r => {
+      for (const [id, worker] of workers.entries()) {
+        const session = sessions.get(id);
+        if (!session) continue;
+        const isMatch = (r.name && session.name && session.name.toLowerCase().includes(r.name.toLowerCase())) ||
+                        (r.user_id && (session.user_id === r.user_id || id === String(r.user_id)));
+        if (isMatch) {
+          const isIdle = Boolean(r.is_idle || r.status === 'idle');
+          if (isIdle) {
+            worker._ftIsIdle = true;
+            if (worker.tagEl && !worker.tagEl.querySelector('.ft-idle-badge')) {
+              const badge = document.createElement('span');
+              badge.className = 'ft-idle-badge';
+              badge.style.cssText = 'margin-left:4px;font-size:11px;filter:drop-shadow(0 0 4px #fbbf24);';
+              badge.textContent = '💤';
+              worker.tagEl.appendChild(badge);
+            }
+            if (Math.random() < 0.25 && typeof worker.say === 'function') {
+              worker.say('idle', 'Khò khò... Zzz 💤');
+            }
+          } else {
+            worker._ftIsIdle = false;
+            const badge = worker.tagEl && worker.tagEl.querySelector('.ft-idle-badge');
+            if (badge) badge.remove();
+          }
+        }
+      }
+    });
+  }
+
   /**
    * 5. LẮNG NGHE SỰ KIỆN TỪ HOST
    */
@@ -564,6 +666,9 @@
       if (!data || typeof data !== 'object') return;
 
       switch (data.type) {
+        case 'ft-office:roster':
+          handleRosterUpdate(data.roster);
+          break;
         case 'ft-office:callBot':
           callBotToUserDesk(data.targetDesk, data.requesterName);
           break;

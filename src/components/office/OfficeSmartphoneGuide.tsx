@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Smartphone,
   X,
@@ -210,11 +211,13 @@ export default function OfficeSmartphoneGuide({
     }
   };
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <>
       {/* 1. NÚT DOCK GÓC DƯỚI BÊN PHẢI (Widget Hình Chiếc Điện Thoại Sang Trọng) */}
       {!isOpen && (
-        <div className="pointer-events-auto fixed bottom-5 right-5 z-40 flex items-center gap-2">
+        <div className="pointer-events-auto fixed bottom-5 right-5 z-[9000] flex items-center gap-2">
           {/* Tag gợi ý nhẹ khi mới vào */}
           <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-slate-200 text-xs shadow-xl backdrop-blur-md animate-pulse">
             <Compass className="w-3.5 h-3.5 text-blue-400" />
@@ -253,7 +256,7 @@ export default function OfficeSmartphoneGuide({
 
       {/* 2. KHUNG CHIẾC ĐIỆN THOẠI THÔNG MINH MỞ RA (Smartphone Mockup Frame) */}
       {isOpen && (
-        <div className="pointer-events-auto fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-[350px] sm:w-[385px] h-[610px] max-h-[calc(100vh-2rem)] rounded-[42px] border-[7px] border-slate-700/95 bg-[#070C16] shadow-[0_25px_80px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-6 fade-in duration-200 text-slate-100">
+        <div className="pointer-events-auto fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[9001] w-[350px] sm:w-[385px] h-[610px] max-h-[calc(100vh-2rem)] rounded-[42px] border-[7px] border-slate-700/95 bg-[#070C16] shadow-[0_25px_80px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-6 fade-in duration-200 text-slate-100">
           
           {/* Dynamic Island & Loa thoại trên cùng */}
           <div className="relative h-7 w-full bg-transparent flex items-center justify-between px-6 pt-2 shrink-0 select-none">
@@ -636,6 +639,7 @@ export default function OfficeSmartphoneGuide({
           </div>
         </div>
       )}
-    </>
+    </>,
+    document.body
   );
 }
