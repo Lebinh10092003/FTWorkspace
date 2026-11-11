@@ -162,12 +162,14 @@ export function TablePagination({ total, page, onPageChange, pageSize = LIST_PAG
   const pages = Array.from(new Set([1, current - 1, current, current + 1, pageCount].filter(item => item >= 1 && item <= pageCount))).sort((a, b) => a - b);
   return <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3"><p className="text-xs font-semibold text-slate-500">Hiển thị {start}–{end} / {total} {label}</p><div className="flex items-center gap-1.5"><button type="button" disabled={current === 1} onClick={() => onPageChange(current - 1)} className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded border px-3 py-2 text-xs font-bold text-[#001e40] disabled:cursor-not-allowed disabled:opacity-40">Trước</button>{pages.map((item, index) => <React.Fragment key={item}>{index > 0 && item - pages[index - 1] > 1 && <span className="px-1 text-xs text-slate-400">…</span>}<button type="button" onClick={() => onPageChange(item)} className={item === current ? 'inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded bg-[#001e40] px-3 py-2 text-xs font-bold text-white' : 'inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded border px-3 py-2 text-xs font-bold text-[#001e40]'}>{item}</button></React.Fragment>)}<button type="button" disabled={current === pageCount} onClick={() => onPageChange(current + 1)} className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded border px-3 py-2 text-xs font-bold text-[#001e40] disabled:cursor-not-allowed disabled:opacity-40">Sau</button></div></div>;
 }
-export function SessionsTable({ items, onSelect, showNearestRoundOnly = false }: { items: ExaminationSession[]; onSelect: (session: ExaminationSession) => void; showNearestRoundOnly?: boolean }) {
-  const [page, setPage] = useState(1);
+export function SessionsTable({ items, onSelect, showNearestRoundOnly = false, page: controlledPage, onPageChange }: { items: ExaminationSession[]; onSelect: (session: ExaminationSession) => void; showNearestRoundOnly?: boolean; page?: number; onPageChange?: (page: number) => void }) {
+  const [localPage, setLocalPage] = useState(1);
+  const page = controlledPage ?? localPage;
+  const setPage = onPageChange || setLocalPage;
   const pageCount = Math.max(1, Math.ceil(items.length / LIST_PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const visibleItems = items.slice((currentPage - 1) * LIST_PAGE_SIZE, currentPage * LIST_PAGE_SIZE);
-  useEffect(() => setPage(1), [items]);
+  useEffect(() => { if (controlledPage === undefined) setLocalPage(1); }, [items, controlledPage]);
   const rounds = (session: ExaminationSession) => sessionRounds(session).sort((a, b) => ((roundDates(a)[0] || a.date || '9999')).localeCompare(roundDates(b)[0] || b.date || '9999'));
   const closestRound = (session: ExaminationSession) => {
     const all = rounds(session);

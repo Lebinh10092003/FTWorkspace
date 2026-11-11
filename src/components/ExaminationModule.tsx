@@ -284,6 +284,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     [selectedCandidateCodes, setSelectedCandidateCodes] = useState<string[]>([]),
     [selectedSessionStudentCodes, setSelectedSessionStudentCodes] = useState<string[]>([]),
     [candidatePage, setCandidatePage] = useState(1),
+    [sessionPage, setSessionPage] = useState(1),
     [competitionPage, setCompetitionPage] = useState(1),
     [teacherPage, setTeacherPage] = useState(1),
     [overviewCompetitionFilter, setOverviewCompetitionFilter] = useState("");
@@ -898,6 +899,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
   const visibleTeachers = filteredTeachers.slice((activeTeacherPage - 1) * LIST_PAGE_SIZE, activeTeacherPage * LIST_PAGE_SIZE);
   useEffect(() => setCandidatePage(1), [query, candidateContestFilter, candidateGradeFilter, candidateSchoolFilter]);
   useEffect(() => setCompetitionPage(1), [query]);
+  useEffect(() => setSessionPage(1), [query, sessionCompetitionFilter, sessionOrganizerFilter, sessionYearFilter, sessionMonthFilter, sessionPhaseFilter, sessionPhaseFilterMode]);
   useEffect(() => setTeacherPage(1), [teacherQuery, teacherSubjectFilter, teacherWorkplaceFilter, teacherAssignmentFilter]);
   const classes = (
     <>
@@ -1270,7 +1272,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
             </div>
           </label>
         </div>
-        <SessionsTable items={search} onSelect={select} />
+        <SessionsTable items={search} onSelect={select} page={sessionPage} onPageChange={setSessionPage} />
       </section>
     </>
   );
