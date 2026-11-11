@@ -58,7 +58,8 @@ export default function WorkspaceAppRail({
     : button(() => onAccountClick?.(), false);
   const [compact, setCompact] = useState(() => readFlag(COMPACT_STORAGE_KEY));
   const [expandedAreaId, setExpandedAreaId] = useState(activeAreaId);
-  useEffect(() => { setExpandedAreaId(activeAreaId); }, [activeAreaId]);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  useEffect(() => { setExpandedAreaId(activeAreaId); setExpandedGroups({}); }, [activeAreaId]);
   const [activeTooltip, setActiveTooltip] = useState<{ label: string; top: number } | null>(null);
   const visibleAreas = WORKSPACE_AREAS.filter(canAccess);
 
@@ -81,10 +82,19 @@ export default function WorkspaceAppRail({
     setActiveTooltip(null);
   };
 
-  const renderFeatures = (items: ModuleNavItem[]): React.ReactNode => items.map(item => item.children?.length ? (
-    <div key={item.id} className="pt-2"><p className="px-3 pb-1 text-[11px] font-semibold text-[#8FA6C0]">{item.label}</p><div className="ml-2 border-l border-white/10 pl-1">{renderFeatures(item.children)}</div></div>
+  const ownsActiveFeature = (item: ModuleNavItem): boolean => item.id === moduleNavigation?.activeId || Boolean(item.children?.some(ownsActiveFeature));
+  const renderFeatures = (items: ModuleNavItem[], parent = ''): React.ReactNode => items.map(item => {
+    const groupKey = `${parent}/${item.id}`;
+    const open = Boolean(expandedGroups[groupKey]);
+    const groupId = `feature-group-${activeAreaId}-${groupKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    return item.children?.length ? (
+    <div key={item.id}><button type="button" aria-expanded={open} aria-controls={groupId} onClick={() => setExpandedGroups(current => ({ ...current, [groupKey]: !current[groupKey] }))}
+      className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-xs leading-5 transition-colors hover:bg-white/8 hover:text-white ${ownsActiveFeature(item) ? 'font-semibold text-white' : 'text-[#C9D6E6]'}`}>
+      <span>{item.label}{item.badge ? <span className="ml-2 rounded bg-white/10 px-1.5 text-[10px]">{item.badge}</span> : null}</span><ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+    </button>{open && <div id={groupId} className="ml-2 border-l border-white/10 pl-1">{renderFeatures(item.children, groupKey)}</div>}</div>
   ) : <button key={item.id} type="button" onClick={() => moduleNavigation?.onSelect(item.id)} aria-current={moduleNavigation?.activeId === item.id ? 'page' : undefined}
-    className={`block min-h-10 w-full rounded-lg px-3 py-2 text-left text-xs leading-5 transition-colors ${moduleNavigation?.activeId === item.id ? 'bg-white/12 font-semibold text-white' : 'text-[#C9D6E6] hover:bg-white/8 hover:text-white'}`}>{item.label}{item.badge ? <span className="ml-2 rounded bg-white/10 px-1.5 text-[10px]">{item.badge}</span> : null}</button>);
+    className={`block min-h-10 w-full rounded-lg px-3 py-2 text-left text-xs leading-5 transition-colors ${moduleNavigation?.activeId === item.id ? 'bg-white/12 font-semibold text-white' : 'text-[#C9D6E6] hover:bg-white/8 hover:text-white'}`}>{item.label}{item.badge ? <span className="ml-2 rounded bg-white/10 px-1.5 text-[10px]">{item.badge}</span> : null}</button>;
+  });
 
   const renderItem = (area: WorkspaceArea) => {
     const Icon = area.icon;

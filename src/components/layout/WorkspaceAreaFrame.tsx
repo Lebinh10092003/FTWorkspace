@@ -52,7 +52,13 @@ export default function WorkspaceAreaFrame({
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false);
   const [moduleNavigation, registerModuleNavigation] = useState<WorkspaceModuleNavigation | null>(null);
-  const moduleContext = useMemo(() => ({ areaId: activeAreaId, areaTitle: WORKSPACE_AREAS.find(area => area.id === activeAreaId)?.label || '', register: registerModuleNavigation }), [activeAreaId]);
+  const moduleContext = useMemo(() => ({
+    areaId: activeAreaId,
+    areaTitle: WORKSPACE_AREAS.find(area => area.id === activeAreaId)?.label || '',
+    areaPath: WORKSPACE_AREAS.find(area => area.id === activeAreaId)?.path || '/',
+    goHome: () => { const home = WORKSPACE_AREAS.find(area => area.id === 'workspace'); if (home) onSelect(home); },
+    register: registerModuleNavigation,
+  }), [activeAreaId, onSelect]);
 
   useEffect(() => {
     const handleToggle = () => setCommandPaletteOpen(prev => !prev);

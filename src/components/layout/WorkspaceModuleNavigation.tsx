@@ -13,5 +13,7 @@ export type WorkspaceModuleNavigation = {
 export const WorkspaceModuleContext = createContext<{
   areaId: WorkspaceAreaId | null;
   areaTitle: string;
+  areaPath: string;
+  goHome: () => void;
   register: (navigation: WorkspaceModuleNavigation | null) => void;
 } | null>(null);

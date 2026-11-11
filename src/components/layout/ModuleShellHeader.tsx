@@ -18,6 +18,9 @@ export type ModuleShellHeaderProps = {
   actions?: React.ReactNode;
   /** Ẩn nút "Tìm nhanh" khi trang đã có ô tìm riêng trên thanh này (Ctrl K vẫn dùng được). */
   quickSearch?: boolean;
+  /** Current record or editor, after its owning list in the breadcrumb. */
+  detailTitle?: string;
+  parentHref?: string;
 };
 
 export default function ModuleShellHeader({
@@ -29,6 +32,8 @@ export default function ModuleShellHeader({
   ariaLabel,
   actions,
   quickSearch = true,
+  detailTitle,
+  parentHref,
 }: ModuleShellHeaderProps) {
   const moduleContext = useContext(WorkspaceModuleContext);
   const register = moduleContext?.register;
@@ -38,7 +43,17 @@ export default function ModuleShellHeader({
     return () => register?.(null);
   }, [register, areaId, items, activeId, onSelect]);
   const currentItem = items.flatMap(item => item.children || [item]).find(item => item.id === activeId);
-  const crumbs = [...new Set([moduleContext?.areaTitle, currentItem?.label || title].filter(Boolean))];
+  const areaTitle = moduleContext?.areaTitle || title;
+  const pageTitle = currentItem?.label || title;
+  const firstLeaf = (rows: ModuleNavItem[]): ModuleNavItem | undefined => {
+    const first = rows[0]; return first?.children?.length ? firstLeaf(first.children) : first;
+  };
+  const rootItem = items.find(item => item.id === areaId) || firstLeaf(items);
+  const navigateLink = (event: React.MouseEvent<HTMLAnchorElement>, action?: () => void) => {
+    if (!action || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault(); action();
+  };
+  const breadcrumbLink = 'rounded px-0.5 py-1 text-left transition-colors hover:text-[var(--ft-blue,#0B72CE)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400';
   const handleOpenSearch = () => {
     window.dispatchEvent(new CustomEvent('toggle-command-palette'));
   };
@@ -59,9 +74,12 @@ export default function ModuleShellHeader({
       </div>
       <div className="w-full border-t border-[var(--ft-border-soft,#e2e8f0)] bg-[var(--ft-page-bg,#F3F6FA)] px-3 py-2 sm:px-6">
         <nav aria-label="Breadcrumb" className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs font-medium text-[var(--workspace-surface-muted,#64748b)]">
-          <a href="/" className="hover:text-[var(--workspace-surface-text,#0F1F33)]">Workspace</a>
-          {crumbs.map((crumb, index) => <React.Fragment key={crumb}><span aria-hidden="true" className="text-slate-300 dark:text-slate-600">/</span><span aria-current={index === crumbs.length - 1 ? 'page' : undefined} className={index === crumbs.length - 1 ? 'font-bold text-[var(--workspace-surface-text,#0F1F33)]' : ''}>{crumb}</span></React.Fragment>)}
-          {eyebrow && !crumbs.includes(eyebrow) && <span className="sr-only">{eyebrow}</span>}
+          <a href="/" onClick={event => navigateLink(event, moduleContext?.goHome)} className={breadcrumbLink}>Workspace</a>
+          <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">/</span>
+          {pageTitle !== areaTitle || detailTitle ? <a href={moduleContext?.areaPath || '#'} onClick={event => navigateLink(event, rootItem ? () => onSelect(rootItem.id) : undefined)} className={breadcrumbLink}>{areaTitle}</a> : <span aria-current="page" className="font-bold">{areaTitle}</span>}
+          {pageTitle !== areaTitle && <><span aria-hidden="true" className="text-slate-300 dark:text-slate-600">/</span>{detailTitle ? parentHref ? <a href={parentHref} onClick={event => navigateLink(event, () => onSelect(activeId))} className={breadcrumbLink}>{pageTitle}</a> : <button type="button" onClick={() => onSelect(activeId)} className={breadcrumbLink}>{pageTitle}</button> : <span aria-current="page" className="font-bold text-[var(--workspace-surface-text,#0F1F33)]">{pageTitle}</span>}</>}
+          {detailTitle && <><span aria-hidden="true" className="text-slate-300 dark:text-slate-600">/</span><span aria-current="page" className="max-w-full break-words font-bold text-[var(--workspace-surface-text,#0F1F33)]">{detailTitle}</span></>}
+          {eyebrow && ![areaTitle, pageTitle, detailTitle].includes(eyebrow) && <span className="sr-only">{eyebrow}</span>}
         </nav>
       </div>
       {actions && <div className="flex w-full items-center justify-start gap-2 overflow-x-auto border-t border-[var(--ft-border-soft,#e2e8f0)] px-3 py-2 scrollbar-none sm:flex-wrap sm:justify-end sm:px-6" aria-label="Công cụ của trang">{actions}</div>}

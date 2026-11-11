@@ -395,7 +395,20 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
   const canEdit = !isGuest && userRole === "ADMIN";
   const canManage = !isGuest && (userRole === "ADMIN" || userRole === "MANAGER");
   const canContribute = !isGuest && Boolean(idToken);
+  const listScrollPositions = useRef<Record<string, number>>({});
+  const pendingListScroll = useRef<number | null>(null);
+  useEffect(() => {
+    if (pendingListScroll.current === null) return;
+    const top = pendingListScroll.current;
+    pendingListScroll.current = null;
+    const frame = window.requestAnimationFrame(() => window.scrollTo({ top, behavior: 'instant' }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [page]);
   const go = (next: Page, id = "") => {
+    const owner = EXAMINATION_PAGE_TO_NAV[page] || page;
+    const nextOwner = EXAMINATION_PAGE_TO_NAV[next] || next;
+    if (page === owner && next !== page) listScrollPositions.current[page] = window.scrollY;
+    if (next !== page) pendingListScroll.current = next === owner && page !== owner ? listScrollPositions.current[next] || 0 : 0;
     const path = examinationPathFor(next, id);
     if (window.location.pathname !== path) {
       window.history.pushState(null, "", path);
@@ -403,7 +416,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     }
     setPage(next);
     if (["papers", "paper-create", "paper-detail", "blueprints", "blueprint-detail"].includes(next)) setPaperOpen(true);
-    setQuery("");
+    if (owner !== nextOwner) setQuery("");
     setEditing(false);
   };
   useEffect(() => {
@@ -2161,6 +2174,13 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
   };
   const examinationNavItems = filterModuleNav(EXAMINATION_NAV, { edit: canEdit, member: !isGuest });
   const examinationNavActiveId = EXAMINATION_PAGE_TO_NAV[page] || page;
+  const detailTitle = page === 'session-detail' ? `${selected?.code || ''} · ${selected ? sessionDisplayName(selected) : 'Chi tiết kỳ tổ chức'}`
+    : page === 'competition-detail' ? selectedCompetition?.name || 'Chi tiết cuộc thi'
+    : page === 'candidate-detail' ? student.name || student.code || 'Hồ sơ thí sinh'
+    : page === 'teacher-detail' ? selectedTeacher.name || 'Thông tin giáo viên'
+    : page === 'paper-create' ? 'Tạo đề mới'
+    : page === 'paper-detail' ? 'Chi tiết đề thi'
+    : page === 'blueprint-detail' ? 'Chi tiết ma trận đề' : undefined;
   return (
     <div className="ft-module-shell flex min-h-screen flex-col font-sans text-[#121c2a]">
       <ModuleShellHeader
@@ -2168,6 +2188,8 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         title="Khảo thí"
         items={examinationNavItems}
         activeId={examinationNavActiveId}
+        detailTitle={detailTitle}
+        parentHref={examinationPathFor(examinationNavActiveId as Page)}
         onSelect={(nextPage) => go(nextPage as Page)}
         ariaLabel="Điều hướng Khảo thí"
       />
