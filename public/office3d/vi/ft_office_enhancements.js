@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  console.log('[FT Office] Enhancements v2.9 initializing...');
+  console.log('[FT Office] Enhancements v3.0 initializing...');
 
   // Khi ở chế độ nhúng (embed=1 hoặc trong iframe), ẩn thanh tiêu đề, sidebars và panel rườm rà của template cũ
   function cleanEmbedInterface() {
@@ -136,7 +136,22 @@
     const style = document.createElement('style');
     style.id = styleId;
     style.textContent = `
-      .tag, [class*="tag"] {
+      #stage-wrap,
+      #stage,
+      #app.is-embed #stage-wrap,
+      body.is-embed #stage-wrap {
+        width: 100% !important;
+        max-width: none !important;
+        min-width: 100% !important;
+      }
+      .labels .tag,
+      .tag--boss,
+      .tag--on,
+      .tag--sub,
+      .tag--wait,
+      .tag--stuck,
+      .tag--lost,
+      .tag--me {
         max-width: 145px !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
