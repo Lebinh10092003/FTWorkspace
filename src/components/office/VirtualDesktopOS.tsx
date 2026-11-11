@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Bot,
@@ -22,7 +22,10 @@ import {
   RotateCcw,
   Volume2,
   Loader2,
-  Users
+  Users,
+  Plus,
+  Check,
+  Calendar
 } from 'lucide-react';
 
 export type VirtualDesktopOSProps = {
@@ -34,7 +37,7 @@ export type VirtualDesktopOSProps = {
   onTriggerPatrol?: () => void;
   initialApp?: WindowId;
   initialPrompt?: string;
-  initialColleague?: { name: string; role?: string; department?: string } | null;
+  initialColleague?: { name: string; role?: string; department?: string; email?: string } | null;
   botState?: {
     state: string; // 'IDLE' | 'MOVING' | 'ARRIVED'
     botName?: string;
@@ -222,6 +225,61 @@ function VirtualDesktopOSInner({
     doneTasks: 0,
   });
 
+  // State quản lý việc tạo & giao task trực tiếp trên 3D (không redirect 2D)
+  const [showTaskForm, setShowTaskForm] = useState<boolean>(false);
+  const [taskTitle, setTaskTitle] = useState<string>('');
+  const [taskExecutor, setTaskExecutor] = useState<string>('');
+  const [taskDate, setTaskDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [taskSubmitting, setTaskSubmitting] = useState<boolean>(false);
+  const [taskNotice, setTaskNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Helper kiểm tra task đã hoàn thành (hỗ trợ cả backend lowercase lẫn legacy uppercase)
+  const isTaskCompleted = (status?: string) => {
+    const s = (status || '').toLowerCase();
+    return s === 'completed' || s === 'reviewed' || s === 'done';
+  };
+
+  // Hàm tải lại danh sách công việc
+  const refreshWorkSchedule = useCallback(async () => {
+    const authHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (idToken) {
+      authHeaders['Authorization'] = `Bearer ${idToken}`;
+    }
+
+    try {
+      const res = await fetch('/api/work-schedule/items', {
+        headers: authHeaders,
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const items = Array.isArray(data.items) ? data.items : [];
+        const done = items.filter((it: any) => isTaskCompleted(it.status)).length;
+        const rate = items.length > 0 ? Math.round((done / items.length) * 100) : 82;
+        setWorkData({
+          loading: false,
+          items: items.slice(0, 12),
+          completionRate: rate,
+          totalTasks: items.length,
+          doneTasks: done,
+        });
+      }
+    } catch {
+      // bỏ qua lỗi ngầm
+    }
+  }, [idToken]);
+
+  // Cập nhật người nhận việc khi mở từ đồng nghiệp 3D
+  useEffect(() => {
+    if (initialColleague) {
+      setTaskExecutor(initialColleague.email || initialColleague.name || '');
+      setShowTaskForm(true);
+    }
+  }, [initialColleague]);
+
   // Tải dữ liệu thật từ Backend khi mở Desktop OS (Mục 1)
   useEffect(() => {
     if (!isOpen) return;
@@ -271,11 +329,11 @@ function VirtualDesktopOSInner({
         if (cancelled || !data) return;
         const items = Array.isArray(data.items) ? data.items : [];
         if (items.length > 0) {
-          const done = items.filter((it: any) => it.status === 'DONE' || it.status === 'COMPLETED').length;
+          const done = items.filter((it: any) => isTaskCompleted(it.status)).length;
           const rate = items.length > 0 ? Math.round((done / items.length) * 100) : 82;
           setWorkData({
             loading: false,
-            items: items.slice(0, 6),
+            items: items.slice(0, 12),
             completionRate: rate,
             totalTasks: items.length,
             doneTasks: done,
@@ -292,6 +350,86 @@ function VirtualDesktopOSInner({
       cancelled = true;
     };
   }, [isOpen, idToken]);
+
+  // Handler tạo task / giao việc trực tiếp
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskTitle.trim()) {
+      setTaskNotice({ type: 'error', text: 'Vui lòng nhập tên công việc cần giao.' });
+      return;
+    }
+    setTaskSubmitting(true);
+    setTaskNotice(null);
+
+    const authHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (idToken) {
+      authHeaders['Authorization'] = `Bearer ${idToken}`;
+    }
+
+    try {
+      const res = await fetch('/api/work-schedule/items', {
+        method: 'POST',
+        headers: authHeaders,
+        credentials: 'include',
+        body: JSON.stringify({
+          title: taskTitle.trim(),
+          date: taskDate || new Date().toISOString().slice(0, 10),
+          executorEmail: taskExecutor.includes('@') ? taskExecutor.trim() : undefined,
+          priority: taskPriority,
+          status: 'todo',
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || errData.message || 'Lỗi khi lưu công việc');
+      }
+
+      setTaskNotice({ type: 'success', text: 'Đã giao việc thành công vào Lịch công tác!' });
+      setTaskTitle('');
+      await refreshWorkSchedule();
+      setTimeout(() => setTaskNotice(null), 4000);
+    } catch (err: any) {
+      setTaskNotice({ type: 'error', text: err.message || 'Không thể tạo công việc' });
+    } finally {
+      setTaskSubmitting(false);
+    }
+  };
+
+  // Handler đổi trạng thái hoàn thành task tại chỗ
+  const handleToggleTaskStatus = async (item: any) => {
+    const isDone = isTaskCompleted(item.status);
+    const nextStatus = isDone ? 'todo' : 'completed';
+
+    const authHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (idToken) {
+      authHeaders['Authorization'] = `Bearer ${idToken}`;
+    }
+
+    // Cập nhật lạc quan
+    setWorkData(prev => ({
+      ...prev,
+      items: prev.items.map(it => (it.id === item.id ? { ...it, status: nextStatus } : it)),
+      doneTasks: isDone ? Math.max(0, prev.doneTasks - 1) : prev.doneTasks + 1,
+    }));
+
+    try {
+      await fetch(`/api/work-schedule/items/${item.id}`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        credentials: 'include',
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      await refreshWorkSchedule();
+    } catch {
+      // rollback
+      await refreshWorkSchedule();
+    }
+  };
 
   // Trạng thái mini game (Memory Tiles Game)
   const [gameTiles, setGameTiles] = useState<number[]>([]);
@@ -1056,27 +1194,116 @@ function VirtualDesktopOSInner({
 
                 <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs text-slate-100">
                   {initialColleague && (
-                    <div className="p-3 bg-blue-50/90 border border-blue-200 rounded-xl flex items-center justify-between text-blue-950 shadow-sm animate-in fade-in duration-150">
+                    <div className="p-3 bg-cyan-500/15 border border-cyan-400/30 rounded-xl flex items-center justify-between text-cyan-100 shadow-sm animate-in fade-in duration-150">
                       <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4 text-blue-600 shrink-0" />
+                        <Users className="w-4 h-4 text-cyan-300 shrink-0" />
                         <div>
-                          <p className="font-bold text-xs">Giao việc cho: {initialColleague.name}</p>
-                          <p className="text-[11px] text-blue-700/80">{initialColleague.role || 'Thành viên ban dự án'}</p>
+                          <p className="font-bold text-xs">Đang giao việc cho: {initialColleague.name}</p>
+                          <p className="text-[11px] text-cyan-200/80">
+                            {initialColleague.role || 'Thành viên ban dự án'}
+                            {initialColleague.email ? ` • ${initialColleague.email}` : ''}
+                          </p>
                         </div>
                       </div>
                       <button
-                        onClick={() => {
-                          onClose();
-                          onNavigateModule('work-schedule');
-                        }}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[11px] shadow-sm transition shrink-0"
+                        type="button"
+                        onClick={() => setShowTaskForm(prev => !prev)}
+                        className="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg text-[11px] shadow-sm transition shrink-0 flex items-center gap-1"
                       >
-                        Mở Phân hệ Giao việc
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{showTaskForm ? 'Ẩn form' : 'Giao việc ngay'}</span>
                       </button>
                     </div>
                   )}
 
-                  <div className="p-3 bg-slate-900/80/60 border border-white/10/20 rounded-xl flex items-center justify-between">
+                  {/* Form Giao việc / Tạo Task trực tiếp 2 chiều */}
+                  <div className="p-3.5 border border-white/15 rounded-xl bg-slate-900/75 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-xs uppercase tracking-wide flex items-center gap-1.5 text-emerald-300">
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Tạo công việc & Giao việc ngay trên 3D</span>
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setShowTaskForm(prev => !prev)}
+                        className="text-[11px] font-semibold text-slate-300 hover:text-white px-2 py-0.5 rounded bg-white/10 transition"
+                      >
+                        {showTaskForm ? 'Thu gọn' : '+ Mở form'}
+                      </button>
+                    </div>
+
+                    {(showTaskForm || !initialColleague) && (
+                      <form onSubmit={handleCreateTask} className="space-y-2.5 pt-1">
+                        <div>
+                          <input
+                            type="text"
+                            value={taskTitle}
+                            onChange={(e) => setTaskTitle(e.target.value)}
+                            placeholder="Nhập tên công việc / nhiệm vụ cần làm..."
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800/90 border border-white/15 text-white placeholder-slate-400 text-xs focus:outline-none focus:border-cyan-400"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-1">Email người nhận (tuỳ chọn)</label>
+                            <input
+                              type="text"
+                              value={taskExecutor}
+                              onChange={(e) => setTaskExecutor(e.target.value)}
+                              placeholder="Mặc định: Bản thân"
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800/90 border border-white/15 text-white placeholder-slate-500 text-[11px] focus:outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-1 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" /> Ngày thực hiện
+                            </label>
+                            <input
+                              type="date"
+                              value={taskDate}
+                              onChange={(e) => setTaskDate(e.target.value)}
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800/90 border border-white/15 text-white text-[11px] focus:outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-1">Mức độ ưu tiên</label>
+                            <select
+                              value={taskPriority}
+                              onChange={(e) => setTaskPriority(e.target.value as 'low' | 'medium' | 'high')}
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800/90 border border-white/15 text-white text-[11px] focus:outline-none focus:border-cyan-400"
+                            >
+                              <option value="low">Thường</option>
+                              <option value="medium">Quan trọng</option>
+                              <option value="high">Khẩn cấp</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {taskNotice && (
+                          <div className={`px-3 py-1.5 rounded-lg text-[11px] font-medium ${
+                            taskNotice.type === 'success'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                          }`}>
+                            {taskNotice.text}
+                          </div>
+                        )}
+
+                        <div className="flex justify-end">
+                          <button
+                            type="submit"
+                            disabled={taskSubmitting || !taskTitle.trim()}
+                            className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1.5 transition cursor-pointer"
+                          >
+                            {taskSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                            <span>{taskSubmitting ? 'Đang lưu...' : 'Lưu vào Lịch công tác'}</span>
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+
+                  <div className="p-3 bg-slate-900/60 border border-white/15 rounded-xl flex items-center justify-between">
                     <div>
                       <h4 className="font-bold">Trạng thái Giám đốc tuần tra</h4>
                       <p className="text-[11px] text-slate-100/70 mt-0.5">
@@ -1094,11 +1321,11 @@ function VirtualDesktopOSInner({
                     </button>
                   </div>
 
-                  <div className="p-3 border border-white/10/20 rounded-xl bg-slate-800/80 space-y-2">
+                  <div className="p-3 border border-white/15 rounded-xl bg-slate-800/80 space-y-2">
                     <h4 className="font-bold text-xs uppercase tracking-wide">
-                      Tiến độ công việc & nhiệm vụ ({workData.doneTasks}/{workData.totalTasks || 5} việc)
+                      Tiến độ công việc & nhiệm vụ ({workData.doneTasks}/{workData.totalTasks || 0} việc)
                     </h4>
-                    <div className="w-full bg-slate-900/80 h-3 rounded-full overflow-hidden border border-white/10/30">
+                    <div className="w-full bg-slate-900/80 h-3 rounded-full overflow-hidden border border-white/10">
                       <div
                         className="bg-[#D97757] h-full transition-all duration-500"
                         style={{ width: `${Math.min(100, Math.max(0, workData.completionRate))}%` }}
@@ -1106,39 +1333,65 @@ function VirtualDesktopOSInner({
                     </div>
                     <div className="flex justify-between text-[11px] font-mono text-slate-100/70">
                       <span>Đã hoàn thành: {workData.completionRate}%</span>
-                      <span>Hạn chót: Thứ Sáu 17:30</span>
+                      <button
+                        type="button"
+                        onClick={refreshWorkSchedule}
+                        className="text-cyan-300 hover:text-cyan-200 underline cursor-pointer"
+                      >
+                        Làm mới dữ liệu
+                      </button>
                     </div>
                   </div>
 
                   {workData.items.length > 0 && (
-                    <div className="p-3 border border-white/10/20 rounded-xl bg-slate-800/80 space-y-2">
+                    <div className="p-3 border border-white/15 rounded-xl bg-slate-800/80 space-y-2">
                       <h4 className="font-bold text-xs uppercase tracking-wide text-slate-100">
-                        Nhiệm vụ trực tiếp từ phân hệ Công việc
+                        Nhiệm vụ trực tiếp từ phân hệ Công việc (Bấm tick để cập nhật)
                       </h4>
-                      <ul className="space-y-1.5 text-xs text-slate-100/80">
-                        {workData.items.map((item, iIdx) => (
-                          <li key={item.id || iIdx} className="flex justify-between items-center py-1 border-b border-white/10/10 last:border-b-0">
-                            <span className="truncate pr-2">{item.title}</span>
-                            <span className={`font-mono font-bold text-[10px] shrink-0 ${
-                              item.status === 'DONE' ? 'text-emerald-600' : 'text-amber-600'
-                            }`}>
-                              {item.status === 'DONE' ? 'HOÀN THÀNH' : 'ĐANG LÀM'}
-                            </span>
-                          </li>
-                        ))}
+                      <ul className="space-y-1.5 text-xs text-slate-100/90">
+                        {workData.items.map((item, iIdx) => {
+                          const done = isTaskCompleted(item.status);
+                          const isDoing = (item.status || '').toLowerCase() === 'doing';
+                          const assigneeName = item.executor?.name || item.executor?.email || item.assignee || 'Cá nhân';
+                          return (
+                            <li key={item.id || iIdx} className="flex justify-between items-center py-1.5 px-2 rounded-lg hover:bg-white/5 border-b border-white/10 last:border-b-0 transition">
+                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleTaskStatus(item)}
+                                  title={done ? 'Đánh dấu chưa xong' : 'Đánh dấu hoàn thành'}
+                                  className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition cursor-pointer ${
+                                    done
+                                      ? 'bg-emerald-500 border-emerald-400 text-slate-950'
+                                      : 'border-slate-400 hover:border-cyan-400 bg-slate-900/60'
+                                  }`}
+                                >
+                                  {done && <Check className="w-3 h-3 stroke-[3]" />}
+                                </button>
+                                <div className="min-w-0">
+                                  <p className={`truncate font-medium ${done ? 'line-through text-slate-400' : 'text-white'}`}>
+                                    {item.title}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 truncate">
+                                    {assigneeName} {item.date ? `• ${item.date}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className={`font-mono font-bold text-[10px] px-2 py-0.5 rounded-full shrink-0 ${
+                                done
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                  : isDoing
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                  : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                              }`}>
+                                {done ? 'HOÀN THÀNH' : isDoing ? 'ĐANG LÀM' : 'CẦN LÀM'}
+                              </span>
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                   )}
-
-                  <button
-                    onClick={() => {
-                      onClose();
-                      onNavigateModule('weekly-report');
-                    }}
-                    className="py-2.5 px-4 bg-[#2A9D8F] hover:bg-[#248277] text-white font-bold rounded-xl shadow-sm border border-white/10 flex items-center justify-center gap-2"
-                  >
-                    <span>Mở Báo cáo tuần chi tiết</span>
-                  </button>
                 </div>
               </div>
             )}

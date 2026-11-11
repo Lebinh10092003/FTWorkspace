@@ -968,6 +968,34 @@
         case 'ft-office:focusWorker':
           focusWorkerDesk(data.name, data.userId);
           break;
+        case 'ft-office:toggleWalk': {
+          const btnFp = document.getElementById('btn-fp');
+          if (btnFp) {
+            btnFp.click();
+            const isFp = document.body.classList.contains('is-fp');
+            postToParent({ type: 'ft-office:walkState', active: isFp });
+          }
+          break;
+        }
+      }
+    });
+
+    // Lắng nghe nút thoát first person nội bộ hoặc phím Escape để đồng bộ trạng thái về parent
+    document.addEventListener('click', (e) => {
+      const target = e.target;
+      if (target && (target.id === 'fp-exit' || (target.closest && target.closest('#fp-exit')))) {
+        setTimeout(() => {
+          const isFp = document.body.classList.contains('is-fp');
+          postToParent({ type: 'ft-office:walkState', active: isFp });
+        }, 50);
+      }
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.body.classList.contains('is-fp')) {
+        setTimeout(() => {
+          const isFp = document.body.classList.contains('is-fp');
+          postToParent({ type: 'ft-office:walkState', active: isFp });
+        }, 80);
       }
     });
   }
