@@ -628,10 +628,10 @@ export default function OfficeWorkspace({
                 type="button"
                 onClick={() => setIsDesktopOSOpen(true)}
                 className="flex items-center gap-1.5 rounded-xl bg-[#D97757] hover:bg-[#c46849] px-2.5 sm:px-3 py-1.5 text-xs font-bold text-white shadow-sm transition cursor-pointer"
-                title="Mở máy tính cá nhân dạng Game OS trên bàn làm việc 3D"
+                title="Mở hệ điều hành FermatOS trên bàn làm việc 3D"
               >
                 <Monitor className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">Máy tính OS</span>
+                <span className="hidden md:inline">FermatOS</span>
               </button>
 
               <button
@@ -688,23 +688,6 @@ export default function OfficeWorkspace({
                     <span className="hidden sm:inline">Âm thanh</span>
                   </>
                 )}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleTriggerPatrol}
-                disabled={patrolState.active}
-                className={`hidden md:flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                  patrolState.active
-                    ? 'border-rose-500/60 bg-rose-950/70 text-rose-300 animate-pulse'
-                    : 'border-slate-700/80 bg-slate-900/90 text-slate-200 hover:bg-slate-800'
-                }`}
-                title="Kích hoạt Giám đốc đi tuần tra các phòng ban"
-              >
-                <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
-                <span className="hidden xl:inline">
-                  {patrolState.active ? 'Đang tuần tra!' : 'Sếp đi tuần'}
-                </span>
               </button>
 
               <button
@@ -846,7 +829,7 @@ export default function OfficeWorkspace({
               className="inline-flex items-center gap-1 font-semibold text-[#D97757] hover:underline cursor-pointer"
             >
               <Monitor className="h-3 w-3" />
-              Mở Desktop OS
+              Mở FermatOS
             </button>
           </div>
         </div>
@@ -1198,24 +1181,6 @@ export default function OfficeWorkspace({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {(() => {
-                  const matched = OFFICE_MODULE_ITEMS.find(m => m.id === activeInSceneModal);
-                  if (!matched || !canAccessView(matched.mode)) return null;
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const mode = matched.mode;
-                        setActiveInSceneModal(null);
-                        onNavigate(mode);
-                      }}
-                      className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
-                    >
-                      <span>Mở toàn trang 2D</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  );
-                })()}
                 <button
                   type="button"
                   onClick={() => setActiveInSceneModal(null)}
@@ -1366,10 +1331,78 @@ export default function OfficeWorkspace({
                     )}
                   </div>
                 </div>
+              ) : activeInSceneModal === 'account-management' ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-300 font-semibold">Danh sách nhân sự & Bot AI ({roster.length} thành viên)</span>
+                    <span className="text-emerald-400 font-mono text-[11px]">{workingCount} đang làm · {idleCount} giải lao</span>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                    {roster.map((worker) => (
+                      <div key={worker.id} className="p-2.5 rounded-xl bg-slate-800/70 border border-slate-700/60 flex items-center justify-between text-xs hover:bg-slate-750 transition">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${worker.is_bot ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-700 text-slate-200'}`}>
+                            {worker.is_bot ? '🤖' : (worker.name || '?')[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-100 truncate">{worker.name}</p>
+                            <p className="text-[10px] text-slate-400 truncate">{worker.role || worker.title || 'Thành viên'} · {worker.department || 'Văn phòng'}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${worker.is_bot ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : worker.isIdle ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'}`}>
+                            {worker.is_bot ? 'AI Bot' : worker.isIdle ? 'Nghỉ ngơi' : 'Làm việc'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (iframeRef.current?.contentWindow) {
+                                iframeRef.current.contentWindow.postMessage(
+                                  { type: 'ft-office:focusWorker', name: worker.name, userId: worker.user_id },
+                                  window.location.origin
+                                );
+                              }
+                              setActiveInSceneModal(null);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 text-[10px] font-semibold transition cursor-pointer"
+                          >
+                            Lia camera
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : activeInSceneModal === 'resources' ? (
+                <div className="space-y-3">
+                  <div className="p-3 rounded-2xl bg-slate-800/70 border border-slate-700/60 text-xs">
+                    <p className="font-semibold text-slate-200">Kho tài liệu & Quy chuẩn FermatTech</p>
+                    <p className="text-slate-400 mt-1">Hệ thống biểu mẫu, giáo trình và tài nguyên dùng chung đã tích hợp trong không gian làm việc.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {[
+                      { title: 'Tài liệu & Biểu mẫu', desc: 'Quy trình, biểu mẫu hành chính', icon: '📁' },
+                      { title: 'Ngân hàng đề số', desc: 'Tài nguyên trắc nghiệm & tự luận', icon: '📝' },
+                      { title: 'Quy chuẩn khảo thí', desc: 'Quy chế coi thi & chấm điểm', icon: '⚖️' },
+                      { title: 'Slide & Media', desc: 'Thư viện hình ảnh thương hiệu', icon: '🎨' },
+                    ].map((item, idx) => (
+                      <div key={idx} className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/40 hover:border-cyan-500/40 transition flex items-start gap-2.5">
+                        <span className="text-lg">{item.icon}</span>
+                        <div>
+                          <p className="font-semibold text-slate-100">{item.title}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">{item.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ) : (
-                <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/60 text-xs text-slate-300">
-                  <p className="font-semibold text-slate-200">Phân hệ {OFFICE_MODULE_ITEMS.find(m => m.id === activeInSceneModal)?.label}</p>
-                  <p className="text-slate-400 mt-1">Đã được kết nối vào không gian làm việc 3D. Bạn có thể mở ứng dụng trên Virtual Desktop OS hoặc chuyển sang chế độ toàn trang 2D.</p>
+                <div className="h-96 w-full rounded-2xl overflow-hidden border border-slate-800 bg-slate-950">
+                  <iframe
+                    src={`/?view=${OFFICE_MODULE_ITEMS.find(m => m.id === activeInSceneModal)?.mode || activeInSceneModal}&embed=1&os=1`}
+                    title={OFFICE_MODULE_ITEMS.find(m => m.id === activeInSceneModal)?.label || 'Phân hệ'}
+                    className="w-full h-full border-none"
+                  />
                 </div>
               )}
             </div>
@@ -1384,7 +1417,7 @@ export default function OfficeWorkspace({
                 }}
                 className="px-4 py-2 rounded-xl text-xs font-bold bg-[#D97757] hover:bg-[#c46849] text-white transition cursor-pointer"
               >
-                Mở trên Virtual Desktop OS
+                Mở rộng trên FermatOS
               </button>
               <button
                 type="button"
