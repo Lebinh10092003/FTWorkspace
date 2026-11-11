@@ -21,7 +21,8 @@ import {
   Gamepad2,
   RotateCcw,
   Volume2,
-  Loader2
+  Loader2,
+  Users
 } from 'lucide-react';
 
 export type VirtualDesktopOSProps = {
@@ -31,6 +32,9 @@ export type VirtualDesktopOSProps = {
   onCallBot?: () => void;
   onReleaseBot?: () => void;
   onTriggerPatrol?: () => void;
+  initialApp?: WindowId;
+  initialPrompt?: string;
+  initialColleague?: { name: string; role?: string; department?: string } | null;
   botState?: {
     state: string; // 'IDLE' | 'MOVING' | 'ARRIVED'
     botName?: string;
@@ -128,12 +132,15 @@ function VirtualDesktopOSInner({
   onCallBot = () => {},
   onReleaseBot = () => {},
   onTriggerPatrol = () => {},
+  initialApp,
+  initialPrompt,
+  initialColleague,
   botState = { state: 'IDLE', queueLength: 0 },
   patrolState = { active: false, phase: 'IDLE' },
   currentUser,
   idToken = null,
 }: VirtualDesktopOSProps) {
-  const [activeWindow, setActiveWindow] = useState<WindowId>('assistant');
+  const [activeWindow, setActiveWindow] = useState<WindowId>(initialApp || 'assistant');
   const [topZ, setTopZ] = useState(10);
   const [timeStr, setTimeStr] = useState('');
   const [terminalLogs, setTerminalLogs] = useState<string[]>([
@@ -389,6 +396,24 @@ function VirtualDesktopOSInner({
       [id]: { ...prev[id], isOpen: false },
     }));
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initialApp) {
+      setActiveWindow(initialApp);
+      setTopZ(prevZ => {
+        const nextZ = prevZ + 1;
+        setWindows(prevW => ({
+          ...prevW,
+          [initialApp]: { ...prevW[initialApp], isOpen: true, isMinimized: false, zIndex: nextZ },
+        }));
+        return nextZ;
+      });
+    }
+    if (initialPrompt) {
+      setInputChat(initialPrompt);
+    }
+  }, [isOpen, initialApp, initialPrompt]);
 
   const handleSendChat = async (presetText?: string) => {
     const textToSend = presetText !== undefined ? presetText : inputChat;
@@ -967,6 +992,27 @@ function VirtualDesktopOSInner({
                 </div>
 
                 <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs text-[#1E232B]">
+                  {initialColleague && (
+                    <div className="p-3 bg-blue-50/90 border border-blue-200 rounded-xl flex items-center justify-between text-blue-950 shadow-sm animate-in fade-in duration-150">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-blue-600 shrink-0" />
+                        <div>
+                          <p className="font-bold text-xs">Giao việc cho: {initialColleague.name}</p>
+                          <p className="text-[11px] text-blue-700/80">{initialColleague.role || 'Thành viên ban dự án'}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          onClose();
+                          onNavigateModule('work-schedule');
+                        }}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[11px] shadow-sm transition shrink-0"
+                      >
+                        Mở Phân hệ Giao việc
+                      </button>
+                    </div>
+                  )}
+
                   <div className="p-3 bg-[#EFE7D8]/60 border border-[#1E232B]/20 rounded-xl flex items-center justify-between">
                     <div>
                       <h4 className="font-bold">Trạng thái Giám đốc tuần tra</h4>
