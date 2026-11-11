@@ -23,7 +23,9 @@ import {
   Compass,
   Calendar,
   MessageSquare,
-  Cpu
+  Cpu,
+  Plus,
+  Check
 } from 'lucide-react';
 import VirtualDesktopOS from './VirtualDesktopOS';
 import OfficeSmartphoneGuide from './OfficeSmartphoneGuide';
@@ -159,9 +161,12 @@ export default function OfficeWorkspace({
     message?: string;
   }>({ active: false, phase: 'IDLE' });
   const [activeCameraView, setActiveCameraView] = useState<'home' | 'desks' | 'meeting' | 'server'>('home');
+  const [isWalkModeActive, setIsWalkModeActive] = useState<boolean>(false);
+  const [inSceneNewTaskTitle, setInSceneNewTaskTitle] = useState<string>('');
+  const [inSceneCreatingTask, setInSceneCreatingTask] = useState<boolean>(false);
   const [osInitialApp, setOsInitialApp] = useState<'assistant' | 'exam' | 'reports' | 'docs' | 'terminal' | 'game' | undefined>(undefined);
   const [osInitialPrompt, setOsInitialPrompt] = useState<string | undefined>(undefined);
-  const [osInitialColleague, setOsInitialColleague] = useState<{ name: string; role?: string } | null>(null);
+  const [osInitialColleague, setOsInitialColleague] = useState<{ name: string; role?: string; department?: string; email?: string } | null>(null);
 
   const { isPlaying: isAmbiencePlaying, toggleAmbience } = useOfficeAmbience();
 
@@ -321,6 +326,70 @@ export default function OfficeWorkspace({
     );
   };
 
+  const handleToggleWalkMode = () => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: 'ft-office:toggleWalk' },
+      window.location.origin
+    );
+  };
+
+  const isInSceneTaskDone = (status?: string) => {
+    const s = (status || '').toLowerCase();
+    return s === 'completed' || s === 'reviewed' || s === 'done';
+  };
+
+  const handleInSceneCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inSceneNewTaskTitle.trim()) return;
+    setInSceneCreatingTask(true);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+    try {
+      const res = await fetch('/api/work-schedule/items', {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({
+          title: inSceneNewTaskTitle.trim(),
+          date: new Date().toISOString().slice(0, 10),
+          priority: 'medium',
+          status: 'todo',
+        }),
+      });
+      if (res.ok) {
+        setInSceneNewTaskTitle('');
+        const listRes = await fetch('/api/work-schedule/items', { headers, credentials: 'include' });
+        if (listRes.ok) {
+          const data = await listRes.json();
+          setInSceneScheduleItems(Array.isArray(data?.items) ? data.items : []);
+        }
+      }
+    } catch {
+      // bỏ qua lỗi
+    } finally {
+      setInSceneCreatingTask(false);
+    }
+  };
+
+  const handleInSceneToggleTask = async (item: any) => {
+    const done = isInSceneTaskDone(item.status);
+    const nextStatus = done ? 'todo' : 'completed';
+    setInSceneScheduleItems(prev => prev.map(it => (it.id === item.id ? { ...it, status: nextStatus } : it)));
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+    try {
+      await fetch(`/api/work-schedule/items/${item.id}`, {
+        method: 'PATCH',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ status: nextStatus }),
+      });
+    } catch {
+      // rollback
+    }
+  };
+
   const handleOpenSearch = () => {
     if (onOpenCommandPalette) {
       onOpenCommandPalette();
@@ -386,6 +455,11 @@ export default function OfficeWorkspace({
           phase: data.phase || 'IDLE',
           message: data.message,
         });
+      }
+
+      // Nhận walkState (First-Person Walk Mode)
+      if (data.type === 'ft-office:walkState') {
+        setIsWalkModeActive(Boolean(data.active));
       }
 
       // Nhận openModule
@@ -955,6 +1029,8 @@ export default function OfficeWorkspace({
                 setOsInitialColleague({
                   name: colleague.name,
                   role: colleague.role || colleague.title,
+                  department: colleague.department,
+                  email: colleague.email || (colleague.user_id?.includes('@') ? colleague.user_id : undefined),
                 });
                 setOsInitialPrompt(undefined);
                 setIsDesktopOSOpen(true);
@@ -1039,6 +1115,40 @@ export default function OfficeWorkspace({
           >
             <Cpu className="w-3.5 h-3.5" />
             <span>Studio AI</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleToggleWalkMode}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+              isWalkModeActive
+                ? 'bg-cyan-500 text-slate-950 font-bold shadow-[0_0_12px_rgba(6,182,212,0.6)]'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+            title="Đi dạo tự do bằng phím W, A, S, D hoặc phím mũi tên"
+          >
+            <Compass className={`w-3.5 h-3.5 ${isWalkModeActive ? 'animate-spin' : ''}`} />
+            <span>{isWalkModeActive ? 'Đang đi dạo (ESC)' : 'Đi dạo (WASD)'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* HUD hướng dẫn phím tắt Chế độ Đi dạo 3D (WASD Walk Mode) */}
+      {isWalkModeActive && (
+        <div className="pointer-events-auto absolute top-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 px-4 py-2 rounded-2xl bg-slate-900/90 border border-cyan-400/40 text-cyan-200 text-xs shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2">
+          <span className="flex items-center gap-1.5 font-bold text-white">
+            <Compass className="w-4 h-4 text-cyan-400 animate-spin" />
+            Chế độ Đi bộ 3D
+          </span>
+          <span className="text-slate-300 text-[11px]">
+            Phím <b className="text-cyan-300">W A S D</b> / <b className="text-cyan-300">Mũi tên</b>: Di chuyển • Chuột: Xoay nhìn • <b className="text-cyan-300">Shift</b>: Chạy • <b className="text-cyan-300">E</b>: Tương tác
+          </span>
+          <button
+            type="button"
+            onClick={handleToggleWalkMode}
+            className="px-2 py-0.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-[11px] transition cursor-pointer"
+          >
+            Thoát (ESC)
           </button>
         </div>
       )}
@@ -1125,6 +1235,25 @@ export default function OfficeWorkspace({
                 </div>
               ) : activeInSceneModal === 'work-schedule' || activeInSceneModal === 'weekly-report' ? (
                 <div className="space-y-3">
+                  {/* Form tạo nhanh nhiệm vụ in-scene */}
+                  <form onSubmit={handleInSceneCreateTask} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={inSceneNewTaskTitle}
+                      onChange={(e) => setInSceneNewTaskTitle(e.target.value)}
+                      placeholder="Thêm nhanh nhiệm vụ mới cho hôm nay..."
+                      className="flex-1 px-3 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                    />
+                    <button
+                      type="submit"
+                      disabled={inSceneCreatingTask || !inSceneNewTaskTitle.trim()}
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs flex items-center gap-1 transition cursor-pointer shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{inSceneCreatingTask ? 'Đang thêm...' : 'Thêm việc'}</span>
+                    </button>
+                  </form>
+
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs">
                       <button
@@ -1139,14 +1268,14 @@ export default function OfficeWorkspace({
                         onClick={() => setInSceneFilter('doing')}
                         className={`px-3 py-1 rounded-lg font-semibold transition ${inSceneFilter === 'doing' ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
                       >
-                        Đang làm ({inSceneScheduleItems.filter(i => i.status !== 'DONE' && i.status !== 'COMPLETED').length})
+                        Đang làm ({inSceneScheduleItems.filter(i => !isInSceneTaskDone(i.status)).length})
                       </button>
                       <button
                         type="button"
                         onClick={() => setInSceneFilter('done')}
                         className={`px-3 py-1 rounded-lg font-semibold transition ${inSceneFilter === 'done' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
                       >
-                        Đã xong ({inSceneScheduleItems.filter(i => i.status === 'DONE' || i.status === 'COMPLETED').length})
+                        Đã xong ({inSceneScheduleItems.filter(i => isInSceneTaskDone(i.status)).length})
                       </button>
                     </div>
                   </div>
@@ -1154,31 +1283,54 @@ export default function OfficeWorkspace({
                   <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
                     {inSceneScheduleItems.length === 0 ? (
                       <div className="p-4 rounded-2xl bg-slate-800/40 border border-slate-700/40 text-center text-xs text-slate-400">
-                        Chưa có lịch công tác hoặc nhiệm vụ phát sinh hôm nay.
+                        Chưa có lịch công tác hoặc nhiệm vụ phát sinh hôm nay. Hãy nhập nhanh ở ô trên!
                       </div>
                     ) : (
                       inSceneScheduleItems
                         .filter(it => {
-                          if (inSceneFilter === 'doing') return it.status !== 'DONE' && it.status !== 'COMPLETED';
-                          if (inSceneFilter === 'done') return it.status === 'DONE' || it.status === 'COMPLETED';
+                          const done = isInSceneTaskDone(it.status);
+                          if (inSceneFilter === 'doing') return !done;
+                          if (inSceneFilter === 'done') return done;
                           return true;
                         })
-                        .slice(0, 8)
-                        .map((it, idx) => (
-                          <div key={it.id || idx} className="p-3 rounded-2xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between text-xs hover:border-slate-600 transition">
-                            <div className="min-w-0 pr-3">
-                              <p className="font-semibold text-slate-100 truncate">{it.title || it.content || it.task || 'Nhiệm vụ công tác'}</p>
-                              <p className="text-[11px] text-slate-400 mt-0.5">{it.assignee || it.department || 'Phân công cơ quan'} {it.time ? `· ${it.time}` : ''}</p>
+                        .slice(0, 12)
+                        .map((it, idx) => {
+                          const done = isInSceneTaskDone(it.status);
+                          const assigneeName = it.executor?.name || it.executor?.email || it.assignee || 'Tôi';
+                          return (
+                            <div key={it.id || idx} className="p-2.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between text-xs hover:border-slate-600 transition">
+                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleInSceneToggleTask(it)}
+                                  title={done ? 'Đánh dấu chưa xong' : 'Đánh dấu hoàn thành'}
+                                  className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition cursor-pointer ${
+                                    done
+                                      ? 'bg-emerald-500 border-emerald-400 text-slate-950'
+                                      : 'border-slate-400 hover:border-cyan-400 bg-slate-900/60'
+                                  }`}
+                                >
+                                  {done && <Check className="w-3 h-3 stroke-[3]" />}
+                                </button>
+                                <div className="min-w-0">
+                                  <p className={`font-semibold truncate ${done ? 'line-through text-slate-400' : 'text-slate-100'}`}>
+                                    {it.title || it.content || it.task || 'Nhiệm vụ công tác'}
+                                  </p>
+                                  <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                                    {assigneeName} {it.date ? `· ${it.date}` : it.time ? `· ${it.time}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                                done
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                              }`}>
+                                {done ? 'Hoàn thành' : 'Đang thực hiện'}
+                              </span>
                             </div>
-                            <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0 ${
-                              it.status === 'DONE' || it.status === 'COMPLETED'
-                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                            }`}>
-                              {it.status === 'DONE' || it.status === 'COMPLETED' ? 'Hoàn thành' : 'Đang thực hiện'}
-                            </span>
-                          </div>
-                        ))
+                          );
+                        })
                     )}
                   </div>
                 </div>
