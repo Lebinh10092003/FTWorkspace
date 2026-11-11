@@ -51,8 +51,8 @@ export default function ModuleShellHeader({
         </div>
         <div className="hidden shrink-0 items-center gap-2 lg:flex" aria-label="Tiện ích Workspace">
           {quickSearch && <button type="button" onClick={handleOpenSearch} aria-label="Tìm nhanh (Ctrl K)" title="Tìm nhanh (Ctrl K)"
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-[var(--ft-border-soft,#e2e8f0)] bg-[var(--workspace-card,#FFFFFF)] px-2.5 text-xs text-[var(--workspace-surface-muted,#64748b)] transition-colors hover:border-slate-300 xl:w-40 xl:justify-between">
-            <Search className="h-4 w-4 shrink-0" /><span className="hidden xl:inline">Tìm nhanh...</span><kbd className="hidden rounded border border-[var(--ft-border-soft,#e2e8f0)] px-1 text-[10px] xl:inline">Ctrl K</kbd>
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-[var(--ft-border-soft,#e2e8f0)] bg-[var(--workspace-card,#FFFFFF)] px-2.5 text-xs text-[var(--workspace-surface-muted,#64748b)] transition-colors hover:border-slate-300 xl:w-auto xl:justify-between">
+            <Search className="h-4 w-4 shrink-0" /><span className="hidden whitespace-nowrap xl:inline">Tìm nhanh...</span><kbd className="hidden whitespace-nowrap rounded border border-[var(--ft-border-soft,#e2e8f0)] px-1 text-[10px] xl:inline">Ctrl K</kbd>
           </button>}
           <WorkspaceNotifications />
         </div>
