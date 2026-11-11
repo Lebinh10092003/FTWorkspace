@@ -1907,6 +1907,11 @@ class TestFbExtensionDownloadView(TestCase):
             self.assertTrue(any("manifest.json" in name for name in namelist))
             self.assertTrue(any("popup.html" in name for name in namelist))
 
+    def test_download_extension_requires_auth(self):
+        anon_client = APIClient()
+        res = anon_client.get("/api/publishing/download-extension/")
+        self.assertIn(res.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+
 
 
 

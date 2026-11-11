@@ -163,8 +163,8 @@ export default function FbBotTeamStudio({
       a.download = 'ft-fb-group-poster.zip';
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (err: any) {
       setDownloadExtError(err?.message || 'Không thể tải file tiện ích');
     } finally {

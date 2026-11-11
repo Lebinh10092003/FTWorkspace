@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 import zipfile
 
@@ -788,8 +789,6 @@ def tech_discovery_create_plan(request, topic_id: int):
 @permission_classes([IsWorkspaceAuthenticated])
 def download_fb_extension(request):
     """Đóng gói và cho phép tải về tiện ích Chrome FT FB Group Poster (.zip)."""
-    from pathlib import Path
-
     ext_dir = Path(settings.BASE_DIR).parent / "extensions" / "ft-fb-group-poster"
     if not ext_dir.exists() or not ext_dir.is_dir():
         return Response(
@@ -801,7 +800,7 @@ def download_fb_extension(request):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for file_path in sorted(ext_dir.rglob("*")):
-            if not file_path.is_file():
+            if file_path.is_symlink() or not file_path.is_file():
                 continue
             rel_path = file_path.relative_to(ext_dir)
             if any(part in excluded_dirs for part in rel_path.parts) or file_path.name == ".DS_Store":
