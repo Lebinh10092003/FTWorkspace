@@ -687,8 +687,41 @@
             if (segBtn) segBtn.click();
           }
           break;
+        case 'ft-office:focusWorker':
+          focusWorkerDesk(data.name, data.userId);
+          break;
       }
     });
+  }
+
+  function focusWorkerDesk(workerName, userId) {
+    const desksBtn = document.querySelector('.seg-btn[data-view="desks"]');
+    if (desksBtn) desksBtn.click();
+
+    if (!ftOffice.getWorkers || !ftOffice.getSessions) return;
+    const workers = ftOffice.getWorkers();
+    const sessions = ftOffice.getSessions();
+    if (!workers || !sessions) return;
+
+    for (const [id, worker] of workers.entries()) {
+      const session = sessions.get(id);
+      if (!session) continue;
+      const match = (workerName && session.name && session.name.toLowerCase().includes(String(workerName).toLowerCase())) ||
+                    (userId && (session.user_id === userId || id === String(userId)));
+      if (match) {
+        if (typeof worker.say === 'function') {
+          worker.say('idle', '👋 Tôi đây rồi!');
+        }
+        if (typeof window.setHoverPerson === 'function') {
+          try {
+            window.setHoverPerson(session);
+          } catch (e) {
+            // Ignore
+          }
+        }
+        break;
+      }
+    }
   }
 
   // Khởi động
