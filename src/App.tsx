@@ -10,7 +10,7 @@ import { readWorkspaceAppearance, WorkspaceAppearance } from './components/Appea
 import WorkspaceAreaFrame from './components/layout/WorkspaceAreaFrame';
 import ModuleShellHeader from './components/layout/ModuleShellHeader';
 import { resolveDepartmentLayout } from './config/departmentLayout';
-import { ACCOUNT_MANAGEMENT_NAV, ADMINISTRATION_NAV, RESOURCES_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
+import { ADMINISTRATION_NAV, RESOURCES_NAV, areaForView, COMMUNICATION_TOOLS_NAV, filterModuleNav, SOCIAL_DASHBOARD_NAV, WorkspaceArea } from './config/workspaceNavigation';
 import { normalizeSearchText } from './lib/searchText';
 
 const lazyWithRecovery = <T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) => lazy(async () => {
@@ -187,6 +187,7 @@ function getInitialViewMode(): ViewMode {
   if (path.startsWith('/digital-training')) return 'digital-training';
   if (path.startsWith('/work-schedule')) return 'work-schedule';
   if (path.startsWith('/social-dashboard')) return 'social-dashboard';
+  if (path.startsWith('/administration/employees')) return 'account-management';
   if (path.startsWith('/administration/attendance')) return 'attendance';
   if (path.startsWith('/administration/funding-proposal')) return 'funding-proposal';
   if (path.startsWith('/administration/document-number')) return 'document-number';
@@ -398,6 +399,7 @@ export default function App() {
       'examination-invigilation': '/examination/invigilation',
       'work-schedule': '/administration/work-schedule',
       'attendance': '/administration/attendance',
+      'account-management': '/administration/employees',
       'communication-tools': '/communication-tools',
       'email-builder': '/communication-tools/email',
       'signature-builder': '/communication-tools/signature',
@@ -953,11 +955,11 @@ export default function App() {
       <>
         <div className="ft-module-shell flex min-h-dvh flex-col font-sans">
           <ModuleShellHeader
-            eyebrow="Quản trị Workspace"
+            eyebrow="Hành chính"
             title="Quản lý nhân viên"
-            items={ACCOUNT_MANAGEMENT_NAV}
-            activeId="employees"
-            onSelect={() => undefined}
+            items={administrationNav}
+            activeId="account-management"
+            onSelect={id => setViewMode(id as ViewMode)}
             ariaLabel="Điều hướng Quản lý nhân viên"
           />
           <main className="min-w-0 flex-1">
@@ -1432,6 +1434,7 @@ export default function App() {
       'administration': 'work-schedule',
       'administration/work-schedule': 'work-schedule',
       'administration/attendance': 'attendance',
+      'administration/employees': 'account-management',
       'administration/funding-proposal': 'funding-proposal',
       'administration/document-number': 'document-number',
       'administration/weekly-report': 'weekly-report',

@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
-  PanelLeftClose,
+  ChevronDown, PanelLeftClose,
   PanelLeftOpen
 } from 'lucide-react';
-import { WORKSPACE_AREAS, WorkspaceArea, WorkspaceAreaId } from '../../config/workspaceNavigation';
+import { WORKSPACE_AREAS, WorkspaceArea, WorkspaceAreaId, type ModuleNavItem } from '../../config/workspaceNavigation';
+import type { WorkspaceModuleNavigation } from './WorkspaceModuleNavigation';
 import { DepartmentLayout } from '../../config/departmentLayout';
 import AccountMenu, { type AccountMenuOptions } from '../AccountMenu';
 
@@ -27,6 +28,7 @@ function writeFlag(key: string, value: boolean) {
 
 export type WorkspaceAppRailProps = {
   activeAreaId: WorkspaceAreaId | null;
+  moduleNavigation?: WorkspaceModuleNavigation | null;
   canAccess: (area: WorkspaceArea) => boolean;
   onSelect: (area: WorkspaceArea) => void;
   layout?: DepartmentLayout | null;
@@ -39,6 +41,7 @@ export type WorkspaceAppRailProps = {
 
 export default function WorkspaceAppRail({
   activeAreaId,
+  moduleNavigation,
   canAccess,
   onSelect,
   userName = 'Người dùng',
@@ -54,6 +57,8 @@ export default function WorkspaceAppRail({
     ? <AccountMenu {...account} placement={placement} wrapperClassName={wrapperClassName} trigger={({ toggle, isOpen }) => button(toggle, isOpen)} />
     : button(() => onAccountClick?.(), false);
   const [compact, setCompact] = useState(() => readFlag(COMPACT_STORAGE_KEY));
+  const [expandedAreaId, setExpandedAreaId] = useState(activeAreaId);
+  useEffect(() => { setExpandedAreaId(activeAreaId); }, [activeAreaId]);
   const [activeTooltip, setActiveTooltip] = useState<{ label: string; top: number } | null>(null);
   const visibleAreas = WORKSPACE_AREAS.filter(canAccess);
 
@@ -76,15 +81,26 @@ export default function WorkspaceAppRail({
     setActiveTooltip(null);
   };
 
+  const renderFeatures = (items: ModuleNavItem[]): React.ReactNode => items.map(item => item.children?.length ? (
+    <div key={item.id} className="pt-2"><p className="px-3 pb-1 text-[11px] font-semibold text-[#8FA6C0]">{item.label}</p><div className="ml-2 border-l border-white/10 pl-1">{renderFeatures(item.children)}</div></div>
+  ) : <button key={item.id} type="button" onClick={() => moduleNavigation?.onSelect(item.id)} aria-current={moduleNavigation?.activeId === item.id ? 'page' : undefined}
+    className={`block min-h-10 w-full rounded-lg px-3 py-2 text-left text-xs leading-5 transition-colors ${moduleNavigation?.activeId === item.id ? 'bg-white/12 font-semibold text-white' : 'text-[#C9D6E6] hover:bg-white/8 hover:text-white'}`}>{item.label}{item.badge ? <span className="ml-2 rounded bg-white/10 px-1.5 text-[10px]">{item.badge}</span> : null}</button>);
+
   const renderItem = (area: WorkspaceArea) => {
     const Icon = area.icon;
     const isActive = activeAreaId === area.id;
+    const hasFeatures = !['workspace', 'office'].includes(area.id);
+    const expanded = hasFeatures && expandedAreaId === area.id && !compact;
 
     return (
-      <button
-        key={area.id}
+      <div key={area.id}><button
         type="button"
-        onClick={() => onSelect(area)}
+        onClick={() => {
+          if (hasFeatures) { setCompact(false); setExpandedAreaId(isActive && expanded ? null : area.id); }
+          if (!isActive) onSelect(area);
+        }}
+        aria-expanded={hasFeatures ? expanded : undefined}
+        aria-controls={hasFeatures ? `area-features-${area.id}` : undefined}
         onMouseEnter={e => showTooltip(area.label, e)}
         onMouseLeave={hideTooltip}
         onFocus={e => showTooltip(area.label, e)}
@@ -92,7 +108,7 @@ export default function WorkspaceAppRail({
         className={`group relative flex items-center transition-all duration-150 cursor-pointer rounded-[10px] select-none ${
           compact
             ? 'w-12 h-12 justify-center mx-auto'
-            : 'w-full gap-3 px-3 py-2 text-xs font-medium'
+            : 'min-h-11 w-full gap-3 px-3 py-2 text-sm font-medium'
         } ${
           isActive
             ? 'bg-white/14 text-white font-semibold shadow-xs'
@@ -111,10 +127,13 @@ export default function WorkspaceAppRail({
 
         {!compact && (
           <div className="flex flex-1 items-center justify-between min-w-0">
-            <span className="truncate leading-tight text-left">{area.label}</span>
+            <span className="leading-5 text-left">{area.label}</span>
+            {hasFeatures && <ChevronDown className={`ml-2 h-3.5 w-3.5 shrink-0 text-[#8FA6C0] transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" />}
           </div>
         )}
-      </button>
+      </button>{expanded && <div id={`area-features-${area.id}`} className="ml-5 mt-1 space-y-0.5 border-l border-white/15 pb-2 pl-2" aria-label={`Tính năng ${area.label}`}>
+        {isActive && moduleNavigation ? renderFeatures(moduleNavigation.items) : <p className="px-3 py-2 text-xs text-[#8FA6C0]">Đang mở tính năng…</p>}
+      </div>}</div>
     );
   };
 

@@ -2,6 +2,7 @@ from datetime import date, datetime, time, timedelta
 import hmac
 import logging
 import os
+import re
 from typing import Any, Optional
 import unicodedata
 import uuid
@@ -135,6 +136,15 @@ def funding_proposal_docx(request):
 
 
 def _numbered_funding_proposal(request, payload):
+    mode = payload.get('numberingMode', 'automatic')
+    manual_number = None
+    if mode not in ('automatic', 'manual'):
+        return None, Response({'error': 'Cách cấp số phiếu không hợp lệ.'}, status=400)
+    if mode == 'manual':
+        match = re.fullmatch(r'([0-9]{1,9})(?:/PĐXKP-FT)?', str(payload.get('documentNumber') or '').strip())
+        if not match or int(match.group(1)) < 1:
+            return None, Response({'error': 'Nhập số phiếu nguyên dương, tối đa 9 chữ số.'}, status=400)
+        manual_number = int(match.group(1))
     draft_text = str(payload.get("draftId") or "").strip()
     if not draft_text:  # Compatibility with callers that render an unsigned form.
         return None, None
@@ -155,7 +165,7 @@ def _numbered_funding_proposal(request, payload):
         if record.owner_email != owner_email:
             return None, Response({"error": "Bản nháp này thuộc tài khoản khác."}, status=status.HTTP_403_FORBIDDEN)
         try:
-            assign_funding_number(record)
+            assign_funding_number(record, manual_number=manual_number)
         except ValueError as exc:
             return None, Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         record.file_title = str(payload.get("fileTitle") or "")

@@ -82,90 +82,15 @@ export type WorkspaceArea = {
 };
 
 export const WORKSPACE_AREAS: WorkspaceArea[] = [
-  {
-    id: 'workspace',
-    label: 'Trang chủ',
-    shortLabel: 'Trang chủ',
-    description: 'Danh sách ứng dụng của FT Workspace.',
-    icon: LayoutGrid,
-    path: '/',
-  },
-  {
-    id: 'office',
-    label: 'Văn phòng 3D',
-    shortLabel: 'Văn phòng',
-    description: 'Không gian văn phòng 3D và nhân sự online.',
-    icon: Box,
-    path: '/office',
-  },
-  {
-    id: 'examination',
-    label: 'Khảo thí',
-    shortLabel: 'Khảo thí',
-    description: 'Quản lý cuộc thi, kỳ tổ chức, thí sinh và nguồn dữ liệu.',
-    icon: ClipboardList,
-    path: '/examination',
-    relatedViews: ['examination-invigilation'],
-  },
-  {
-    id: 'digital-training',
-    label: 'Công nghệ & Đào tạo số',
-    shortLabel: 'Đào tạo số',
-    description: 'Khách hàng, lịch tập huấn, BNDC và sản phẩm chuyển đổi số.',
-    icon: GraduationCap,
-    path: '/digital-training',
-    relatedViews: ['training-assessments'],
-  },
-  {
-    id: 'social-dashboard',
-    label: 'Truyền thông',
-    shortLabel: 'Truyền thông',
-    description: 'Theo dõi Facebook, Zalo OA, báo cáo tương tác và đồng bộ dữ liệu.',
-    icon: ChartColumnBig,
-    path: '/social-dashboard',
-  },
-  {
-    id: 'communication-tools',
-    label: 'Bộ công cụ FermatTech',
-    shortLabel: 'Bộ công cụ',
-    description: 'Thiết kế Email, chữ ký, mã QR, rút gọn link và trang giới thiệu cuộc thi.',
-    icon: Megaphone,
-    path: '/communication-tools',
-    relatedViews: ['email-builder', 'signature-builder', 'qr-generator', 'short-link', 'competition-landing', 'news-posts', 'gmail-assistant'],
-  },
-  {
-    id: 'administration',
-    label: 'Hành chính',
-    shortLabel: 'Hành chính',
-    description: 'Lịch làm việc, công ca, đề xuất kinh phí, công văn và báo cáo cuối tuần.',
-    icon: FileText,
-    path: '/administration/work-schedule',
-    relatedViews: ['work-schedule', 'attendance', 'funding-proposal', 'document-number', 'weekly-report'],
-  },
-  {
-    id: 'account-management',
-    label: 'Quản lý nhân viên',
-    shortLabel: 'Nhân viên',
-    description: 'Tạo và phân quyền thành viên Workspace.',
-    icon: ShieldUser,
-    path: '/account-management',
-  },
-  {
-    id: 'resources',
-    label: 'Tài nguyên',
-    shortLabel: 'Tài nguyên',
-    description: 'Tài khoản phần mềm, công cụ dùng chung trong công việc nội bộ.',
-    icon: FolderKey,
-    path: '/resources',
-  },
-  {
-    id: 'finance-report',
-    label: 'Tài chính, kế toán',
-    shortLabel: 'Tài chính',
-    description: 'Tổng thu, tổng chi, công nợ, đối soát khảo thí và hạn hợp đồng.',
-    icon: BadgeDollarSign,
-    path: '/finance-report',
-  },
+  { id: 'workspace', label: 'Trang chủ', shortLabel: 'Trang chủ', description: 'Danh sách ứng dụng của FT Workspace.', icon: LayoutGrid, path: '/' },
+  { id: 'administration', label: 'Hành chính', shortLabel: 'Hành chính', description: 'Lịch làm việc, công ca, nhân viên và các thủ tục hành chính.', icon: FileText, path: '/administration/work-schedule', relatedViews: ['work-schedule', 'attendance', 'funding-proposal', 'document-number', 'weekly-report', 'account-management'] },
+  { id: 'digital-training', label: 'Công nghệ và Đào tạo số', shortLabel: 'Đào tạo số', description: 'Khách hàng, lịch tập huấn, BNDC và sản phẩm chuyển đổi số.', icon: GraduationCap, path: '/digital-training', relatedViews: ['training-assessments'] },
+  { id: 'examination', label: 'Khảo thí', shortLabel: 'Khảo thí', description: 'Quản lý cuộc thi, kỳ tổ chức, thí sinh và nguồn dữ liệu.', icon: ClipboardList, path: '/examination', relatedViews: ['examination-invigilation'] },
+  { id: 'social-dashboard', label: 'Truyền thông', shortLabel: 'Truyền thông', description: 'Theo dõi Facebook, Zalo OA, báo cáo tương tác và đồng bộ dữ liệu.', icon: ChartColumnBig, path: '/social-dashboard' },
+  { id: 'finance-report', label: 'Tài chính/kế toán', shortLabel: 'Tài chính', description: 'Tổng thu, tổng chi, công nợ, đối soát khảo thí và hạn hợp đồng.', icon: BadgeDollarSign, path: '/finance-report' },
+  { id: 'communication-tools', label: 'Bộ công cụ Fermat', shortLabel: 'Bộ công cụ', description: 'Thiết kế Email, chữ ký, mã QR, rút gọn link và trang giới thiệu cuộc thi.', icon: Megaphone, path: '/communication-tools', relatedViews: ['email-builder', 'signature-builder', 'qr-generator', 'short-link', 'competition-landing', 'news-posts', 'gmail-assistant'] },
+  { id: 'resources', label: 'Tài nguyên', shortLabel: 'Tài nguyên', description: 'Tài khoản phần mềm, công cụ dùng chung trong công việc nội bộ.', icon: FolderKey, path: '/resources' },
+  { id: 'office', label: 'Văn phòng 3D', shortLabel: 'Văn phòng', description: 'Không gian văn phòng 3D và nhân sự online.', icon: Box, path: '/office' },
 ];
 
 /** Resolves which rail entry should be highlighted for a given view mode. */
@@ -277,6 +202,7 @@ export const ADMINISTRATION_NAV: ModuleNavItem[] = [
   { id: 'funding-proposal', label: 'Phiếu đề xuất kinh phí', icon: ReceiptText },
   { id: 'document-number', label: 'Trình tạo số công văn', icon: FileSignature },
   { id: 'weekly-report', label: 'Báo cáo cuối tuần', icon: ClipboardList },
+  { id: 'account-management', label: 'Quản lý nhân viên', icon: ShieldUser },
 ];
 
 /** Horizontal menu of "Lịch làm việc". Ids match the module views. */

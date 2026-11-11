@@ -15,7 +15,8 @@ test('administrative screens resolve to one area and retain capability filtering
     assert.ok(ADMINISTRATION_NAV.some(item => item.id === id));
     assert.ok(!COMMUNICATION_TOOLS_NAV.some(item => item.id === id));
   }
-  assert.deepEqual(filterModuleNav(ADMINISTRATION_NAV.map(item => ({ ...item, requires: item.id === 'attendance' ? 'attendance' : undefined })), { attendance: false }).map(item => item.id), ['work-schedule', 'funding-proposal', 'document-number', 'weekly-report']);
+  assert.deepEqual(filterModuleNav(ADMINISTRATION_NAV.map(item => ({ ...item, requires: item.id === 'attendance' ? 'attendance' : undefined })), { attendance: false }).map(item => item.id), ['work-schedule', 'funding-proposal', 'document-number', 'weekly-report', 'account-management']);
+  assert.equal(areaForView('account-management'), 'administration');
   assert.equal(areaForView('competition-landing'), 'communication-tools');
 });
 

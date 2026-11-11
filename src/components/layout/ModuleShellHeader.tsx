@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useContext, useEffect } from 'react';
 import { Search } from 'lucide-react';
 import ModuleTopNav from './ModuleTopNav';
 import { ModuleNavItem } from '../../config/workspaceNavigation';
 import WorkspaceNotifications from '../WorkspaceNotifications';
+import { WorkspaceModuleContext } from './WorkspaceModuleNavigation';
 
 export type ModuleShellHeaderProps = {
   /** Module name, shown at the far left. The logo lives in the shared rail. */
@@ -29,6 +30,15 @@ export default function ModuleShellHeader({
   actions,
   quickSearch = true,
 }: ModuleShellHeaderProps) {
+  const moduleContext = useContext(WorkspaceModuleContext);
+  const register = moduleContext?.register;
+  const areaId = moduleContext?.areaId || null;
+  useEffect(() => {
+    register?.({ areaId, items, activeId, onSelect });
+    return () => register?.(null);
+  }, [register, areaId, items, activeId, onSelect]);
+  const currentItem = items.flatMap(item => item.children || [item]).find(item => item.id === activeId);
+  const crumbs = [...new Set([moduleContext?.areaTitle, title, currentItem?.label].filter(Boolean))];
   const handleOpenSearch = () => {
     window.dispatchEvent(new CustomEvent('toggle-command-palette'));
   };
@@ -40,14 +50,15 @@ export default function ModuleShellHeader({
           <ModuleTopNav items={items} activeId={activeId} onSelect={onSelect} ariaLabel={ariaLabel || `Điều hướng ${title}`} />
         </div>
       </div>
-      <div className="flex min-h-11 w-full flex-wrap items-center justify-between gap-2 border-t border-[var(--ft-border-soft,#e2e8f0)] px-3 py-1.5 sm:px-6">
-        <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-[var(--workspace-surface-muted,#64748b)]">
+      <div className="w-full border-t border-[var(--ft-border-soft,#e2e8f0)] bg-[var(--ft-page-bg,#F3F6FA)] px-3 py-2 sm:px-6">
+        <nav aria-label="Breadcrumb" className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs font-medium text-[var(--workspace-surface-muted,#64748b)]">
           <a href="/" className="hover:text-[var(--workspace-surface-text,#0F1F33)]">Workspace</a>
-          <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">/</span>
-          <span aria-current="page" className="truncate font-bold text-[var(--workspace-surface-text,#0F1F33)]">{title}</span>
+          {crumbs.map((crumb, index) => <React.Fragment key={crumb}><span aria-hidden="true" className="text-slate-300 dark:text-slate-600">/</span><span aria-current={index === crumbs.length - 1 ? 'page' : undefined} className={index === crumbs.length - 1 ? 'font-bold text-[var(--workspace-surface-text,#0F1F33)]' : ''}>{crumb}</span></React.Fragment>)}
           {eyebrow && <span className="sr-only">{eyebrow}</span>}
         </nav>
-        <div className="ml-auto flex min-w-0 items-center gap-2">
+      </div>
+      <div className={`hidden ${actions ? 'sm:flex' : 'lg:flex'} min-h-12 w-full items-center gap-2 border-t border-[var(--ft-border-soft,#e2e8f0)] px-3 py-2 sm:px-6`} aria-label="Công cụ của trang">
+        <div className="flex w-full min-w-0 items-center gap-2">
           {quickSearch && (
           <button
             type="button"
@@ -65,9 +76,9 @@ export default function ModuleShellHeader({
           </button>
           )}
 
-          {actions && <div className="hidden sm:flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
+          {actions && <div className="ml-auto hidden sm:flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
           {/* Tài khoản nằm ở thanh điều hướng (rail / thanh trên mobile); ở đây chỉ còn thông báo trên máy tính. */}
-          <div className="hidden lg:block pl-1">
+          <div className="ml-auto hidden lg:block pl-1">
             <WorkspaceNotifications />
           </div>
         </div>

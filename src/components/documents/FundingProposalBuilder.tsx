@@ -46,7 +46,8 @@ function readDraft(key: string): FundingProposal {
       draftId: typeof parsed.draftId === 'string' && parsed.draftId ? parsed.draftId : fallback.draftId,
       // These values are owned by the server; an older local draft may still
       // contain the former shared-register number (for example 47).
-      documentNumber: '', driveUrl: '',
+      documentNumber: parsed.numberingMode === 'manual' ? String(parsed.documentNumber || '') : '', driveUrl: '',
+      numberingMode: parsed.numberingMode === 'manual' ? 'manual' : 'automatic',
       fileTitle: typeof parsed.fileTitle === 'string' && parsed.fileTitle ? parsed.fileTitle : fallback.fileTitle,
       currency: typeof parsed.currency === 'string' ? parsed.currency : 'VND',
       items: parsed.items.filter((item: unknown) => item && typeof item === 'object' && typeof (item as ProposalItem).id === 'string'),
@@ -72,14 +73,19 @@ export default function FundingProposalBuilder({
   const [error, setError] = useState('');
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [draftError, setDraftError] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [completedDriveUrl, setCompletedDriveUrl] = useState('');
+  const completedDraftId = useRef('');
 
   useEffect(() => {
     if (currentStorageKey.current !== storageKey) {
       currentStorageKey.current = storageKey;
       setValue(readDraft(storageKey));
       setSavedAt(null);
+      setCompleted(false);
       return;
     }
+    if (completed) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify(value));
       setSavedAt(new Date());
@@ -87,7 +93,7 @@ export default function FundingProposalBuilder({
     } catch {
       setDraftError(true);
     }
-  }, [storageKey, value]);
+  }, [storageKey, value, completed]);
 
   useEffect(() => {
     const draftId = value.draftId;
@@ -97,9 +103,9 @@ export default function FundingProposalBuilder({
     }).then(async response => {
       if (!response.ok) return;
       const state = await response.json();
-      if (!cancelled) setValue(current => current.draftId === draftId ? {
+      if (!cancelled && completedDraftId.current !== draftId) setValue(current => current.draftId === draftId ? {
         ...current,
-        documentNumber: state.documentNumber || '',
+        documentNumber: state.documentNumber || (current.numberingMode === 'manual' ? current.documentNumber : ''),
         driveUrl: state.driveUrl || '',
       } : current);
     }).catch(() => { /* The draft remains available offline. */ });
@@ -136,6 +142,9 @@ export default function FundingProposalBuilder({
     }));
 
   const validate = () => {
+    if (value.numberingMode === 'manual' && (!/^[0-9]{1,9}$/.test(value.documentNumber.split('/')[0]) || Number(value.documentNumber.split('/')[0]) < 1)) {
+      setError('Nhập số phiếu nguyên dương, tối đa 9 chữ số.'); return false;
+    }
     if (!currencyValid || invalidAmount) {
       setError(mismatch
         ? `${mismatch[0]} có ký hiệu tiền khác ${currencyUnit(value.currency)}. Hãy chọn đúng tiền tệ cho toàn phiếu.`
@@ -144,6 +153,20 @@ export default function FundingProposalBuilder({
       return false;
     }
     return true;
+  };
+
+  const finishDraft = (notice: string, driveUrl = '') => {
+    completedDraftId.current = value.draftId;
+    // Keep the generated document visible, but never restore it as a draft.
+    setCompleted(true); setSavedAt(null); setCompletedDriveUrl(driveUrl);
+    try { localStorage.removeItem(storageKey); setDraftError(false); }
+    catch { setDraftError(true); }
+    setSaveNotice(notice);
+  };
+
+  const startNew = () => {
+    setValue(blankProposal()); setCompleted(false); setSavedAt(null);
+    setError(''); setSaveNotice(''); setCompletedDriveUrl('');
   };
 
   const chooseFileTitle = async () => {
@@ -195,6 +218,7 @@ export default function FundingProposalBuilder({
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
+      finishDraft(`Đã tạo file ${name}. Bản nháp đã được xóa; lần sau mở sẽ là phiếu mới.`);
     } catch (cause: any) {
       setError(cause.message || 'Không tạo được file Word.');
     } finally {
@@ -218,7 +242,7 @@ export default function FundingProposalBuilder({
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Không lưu được phiếu vào Drive.');
       setValue(current => ({ ...current, documentNumber: result.documentNumber, driveUrl: result.driveUrl }));
-      setSaveNotice(`Đã lưu ${result.documentNumber} vào Drive.`);
+      finishDraft(`Đã lưu ${result.documentNumber} vào Drive. Bản nháp đã được xóa; lần sau mở sẽ là phiếu mới.`, result.driveUrl);
     } catch (cause: any) {
       setError(cause.message || 'Không lưu được phiếu vào Drive.');
     } finally {
@@ -239,13 +263,14 @@ export default function FundingProposalBuilder({
         ariaLabel="Điều hướng Hành chính"
         actions={(
           <>
-            <button type="button" onClick={async () => {
+            <button type="button" disabled={downloading || savingToDrive} onClick={async () => {
+              if (completed) { startNew(); return; }
               if (await appDialog.confirm('Xóa nội dung bản nháp hiện tại và bắt đầu phiếu mới?', {
                 title: 'Làm lại phiếu', confirmText: 'Làm lại', tone: 'danger',
-              })) { setValue(blankProposal()); setError(''); setSaveNotice(''); }
+              })) startNew();
             }}
               className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 min-h-[44px] shrink-0">
-              <RotateCcw className="h-4 w-4" /><span>Làm lại</span>
+              <RotateCcw className="h-4 w-4" /><span>{completed ? 'Tạo phiếu mới' : 'Làm lại'}</span>
             </button>
             <button type="button" onClick={() => void saveToDrive()} disabled={downloading || savingToDrive}
               className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm font-bold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-slate-700 disabled:opacity-50 min-h-[44px] shrink-0">
@@ -265,7 +290,7 @@ export default function FundingProposalBuilder({
         <div className="ft-module-content mx-auto p-5 md:p-7">
           <p role="status" className={`mb-4 text-xs font-semibold ${draftError ? 'text-rose-700' : 'text-slate-600 dark:text-slate-300'}`}>
             {draftError ? 'Không thể tự lưu bản nháp trên trình duyệt này.'
-              : `Bản nháp tự lưu trên trình duyệt này${savedAt ? ` lúc ${savedAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}.`}
+              : completed ? 'Phiếu đã hoàn tất. Nội dung bên dưới chỉ để xem lại; hãy tạo phiếu mới để tiếp tục.' : `Bản nháp tự lưu trên trình duyệt này${savedAt ? ` lúc ${savedAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}.`}
           </p>
           {mismatch && <div role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
             {mismatch[0]} có ký hiệu tiền khác {currencyUnit(value.currency)}. Chọn đúng tiền tệ cho toàn phiếu để tính và xuất Word.
@@ -279,20 +304,20 @@ export default function FundingProposalBuilder({
             </div>
           )}
           {saveNotice && <p role="status" className="mb-4 text-sm font-semibold text-emerald-800">{saveNotice}</p>}
-          {value.driveUrl && <p className="mb-4 text-sm font-semibold text-emerald-800">
-            Bản đã lưu trên Drive: <a href={value.driveUrl} target="_blank" rel="noopener noreferrer" className="underline">Mở phiếu</a>. Các chỉnh sửa mới chỉ lên Drive khi thầy/cô bấm “Lưu vào Drive”.
+          {(completedDriveUrl || value.driveUrl) && <p className="mb-4 text-sm font-semibold text-emerald-800">
+            Bản đã lưu trên Drive: <a href={completedDriveUrl || value.driveUrl} target="_blank" rel="noopener noreferrer" className="underline">Mở phiếu</a>.
           </p>}
 
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             {/* ---------- Form ---------- */}
-            <div className="min-w-0 space-y-5">
+            <fieldset disabled={completed || downloading || savingToDrive} className="min-w-0 space-y-5">
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 className="text-sm font-extrabold uppercase tracking-wide text-blue-700">1. Thông tin đề xuất</h2>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <label className="block"><span className={LABEL}>Số phiếu (tự động)</span>
-                    <input value={formatProposalNumber(value.documentNumber) || 'Cấp khi tải hoặc lưu'}
-                      type="text" aria-label="Số phiếu" readOnly className={FIELD} />
-                  </label>
+                  <div><label className="block"><span className={LABEL}>Số phiếu</span>
+                    <input value={value.numberingMode === 'manual' ? value.documentNumber.split('/')[0] : formatProposalNumber(value.documentNumber) || 'Cấp khi tải hoặc lưu'}
+                      type="text" inputMode={value.numberingMode === 'manual' ? 'numeric' : undefined} aria-label="Số phiếu" readOnly={value.numberingMode !== 'manual'} maxLength={9} onChange={event => set('documentNumber', event.target.value)} className={FIELD} />
+                  </label><label className="mt-2 flex min-h-11 items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={value.numberingMode === 'manual'} onChange={event => setValue(current => ({ ...current, numberingMode: event.target.checked ? 'manual' : 'automatic', documentNumber: '' }))} />Tự nhập số phiếu</label><p className="text-xs text-slate-500">Hậu tố /PĐXKP-FT được thêm tự động.</p></div>
                   <label className="block"><span className={LABEL}>Ngày lập</span>
                     <input type="date" value={value.issuedOn} onChange={e => set('issuedOn', e.target.value)} className={FIELD} />
                   </label>
@@ -501,7 +526,7 @@ export default function FundingProposalBuilder({
                   </label>
                 </div>
               </section>
-            </div>
+            </fieldset>
 
             {/* ---------- Preview ---------- */}
             <div className="min-w-0 xl:sticky xl:top-28">

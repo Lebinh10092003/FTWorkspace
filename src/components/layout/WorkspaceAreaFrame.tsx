@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   FileText,
   Box,
@@ -9,6 +9,7 @@ import {
   X
 } from 'lucide-react';
 import WorkspaceAppRail from './WorkspaceAppRail';
+import { WorkspaceModuleContext, type WorkspaceModuleNavigation } from './WorkspaceModuleNavigation';
 import CommandPalette from './CommandPalette';
 import WorkspaceNotifications from '../WorkspaceNotifications';
 import AccountMenu, { type AccountMenuOptions } from '../AccountMenu';
@@ -50,6 +51,8 @@ export default function WorkspaceAreaFrame({
 }: WorkspaceAreaFrameProps) {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false);
+  const [moduleNavigation, registerModuleNavigation] = useState<WorkspaceModuleNavigation | null>(null);
+  const moduleContext = useMemo(() => ({ areaId: activeAreaId, areaTitle: WORKSPACE_AREAS.find(area => area.id === activeAreaId)?.label || '', register: registerModuleNavigation }), [activeAreaId]);
 
   useEffect(() => {
     const handleToggle = () => setCommandPaletteOpen(prev => !prev);
@@ -117,12 +120,13 @@ export default function WorkspaceAreaFrame({
   );
 
   return (
-    <div className="ft-workspace-frame min-h-dvh flex flex-col bg-[#F3F6FA] text-[#0F1F33] relative overflow-x-hidden">
+    <WorkspaceModuleContext.Provider value={moduleContext}><div className="ft-workspace-frame min-h-dvh flex flex-col bg-[#F3F6FA] text-[#0F1F33] relative overflow-x-hidden">
       {/* ========================================================= */}
       {/* DESKTOP SIDEBAR (>=1024px)                                */}
       {/* ========================================================= */}
       <WorkspaceAppRail
         activeAreaId={activeAreaId}
+        moduleNavigation={moduleNavigation?.areaId === activeAreaId ? moduleNavigation : null}
         canAccess={canAccess}
         onSelect={onSelect}
         layout={layout}
@@ -336,6 +340,6 @@ export default function WorkspaceAreaFrame({
         isOpen={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
       />
-    </div>
+    </div></WorkspaceModuleContext.Provider>
   );
 }

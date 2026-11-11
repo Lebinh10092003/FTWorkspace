@@ -19,6 +19,7 @@ export type FundingProposal = {
   fileTitle: string;
   currency: string;
   documentNumber: string;
+  numberingMode?: 'automatic' | 'manual';
   issuedOn: string;
   kind: 'new' | 'adjustment';
   submissionRound: string;
