@@ -45,9 +45,16 @@ export default function ModuleShellHeader({
 
   return (
     <header className="sticky top-0 z-30 flex flex-col w-full border-b border-[var(--ft-border,#DDE5EF)] bg-[var(--workspace-card,#FFFFFF)] text-[var(--workspace-surface-text,#0F1F33)] backdrop-blur-md">
-      <div className="flex min-h-14 w-full min-w-0 items-center px-3 py-1 sm:px-6">
-        <div className="flex w-full min-w-0 items-center justify-start overflow-hidden">
+      <div className="flex min-h-14 w-full min-w-0 items-center gap-3 px-3 py-1 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center justify-start overflow-hidden">
           <ModuleTopNav items={items} activeId={activeId} onSelect={onSelect} ariaLabel={ariaLabel || `Điều hướng ${title}`} />
+        </div>
+        <div className="hidden shrink-0 items-center gap-2 lg:flex" aria-label="Tiện ích Workspace">
+          {quickSearch && <button type="button" onClick={handleOpenSearch} aria-label="Tìm nhanh (Ctrl K)" title="Tìm nhanh (Ctrl K)"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-[var(--ft-border-soft,#e2e8f0)] bg-[var(--workspace-card,#FFFFFF)] px-2.5 text-xs text-[var(--workspace-surface-muted,#64748b)] transition-colors hover:border-slate-300 xl:w-40 xl:justify-between">
+            <Search className="h-4 w-4 shrink-0" /><span className="hidden xl:inline">Tìm nhanh...</span><kbd className="hidden rounded border border-[var(--ft-border-soft,#e2e8f0)] px-1 text-[10px] xl:inline">Ctrl K</kbd>
+          </button>}
+          <WorkspaceNotifications />
         </div>
       </div>
       <div className="w-full border-t border-[var(--ft-border-soft,#e2e8f0)] bg-[var(--ft-page-bg,#F3F6FA)] px-3 py-2 sm:px-6">
@@ -57,39 +64,8 @@ export default function ModuleShellHeader({
           {eyebrow && !crumbs.includes(eyebrow) && <span className="sr-only">{eyebrow}</span>}
         </nav>
       </div>
-      <div className={`hidden ${actions ? 'sm:flex' : 'lg:flex'} min-h-12 w-full items-center gap-2 border-t border-[var(--ft-border-soft,#e2e8f0)] px-3 py-2 sm:px-6`} aria-label="Công cụ của trang">
-        <div className="flex w-full min-w-0 items-center gap-2">
-          {quickSearch && (
-          <button
-            type="button"
-            onClick={handleOpenSearch}
-            className="hidden xl:flex items-center justify-between rounded-lg border border-[var(--ft-border-soft,#e2e8f0)] bg-[var(--ft-surface-2,rgba(255,255,255,0.06))] px-2.5 py-1.5 text-xs text-[var(--workspace-surface-muted,#64748b)] hover:border-slate-300 transition-colors cursor-pointer w-40"
-            title="Tìm kiếm nhanh (Ctrl K)"
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Search className="h-3.5 w-3.5 text-[var(--workspace-surface-muted,#64748b)] shrink-0" />
-              <span className="truncate">Tìm nhanh...</span>
-            </div>
-            <kbd className="rounded border border-[var(--ft-border-soft,#e2e8f0)] bg-[var(--workspace-card,#FFFFFF)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--workspace-surface-muted,#64748b)] shadow-2xs shrink-0">
-              Ctrl K
-            </kbd>
-          </button>
-          )}
+      {actions && <div className="flex w-full items-center justify-start gap-2 overflow-x-auto border-t border-[var(--ft-border-soft,#e2e8f0)] px-3 py-2 scrollbar-none sm:flex-wrap sm:justify-end sm:px-6" aria-label="Công cụ của trang">{actions}</div>}
 
-          {actions && <div className="ml-auto hidden sm:flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
-          {/* Tài khoản nằm ở thanh điều hướng (rail / thanh trên mobile); ở đây chỉ còn thông báo trên máy tính. */}
-          <div className={`${actions ? '' : 'ml-auto'} hidden lg:block pl-1`}>
-            <WorkspaceNotifications />
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile action bar for sub-controls */}
-      {actions && (
-        <div className="sm:hidden flex items-center justify-start gap-2 px-3 py-2 border-t border-[var(--ft-border-soft,#f1f5f9)] bg-[var(--workspace-card,#FFFFFF)] overflow-x-auto w-full scrollbar-none flex-nowrap">
-          {actions}
-        </div>
-      )}
     </header>
   );
 }

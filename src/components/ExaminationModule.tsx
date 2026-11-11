@@ -1,6 +1,6 @@
 import { candidateBelongsToSession } from './examination/candidateMembership';
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BarChart3, CalendarDays, Check, ChevronRight, CircleHelp, Pencil, Plus, Search, RefreshCw, School, Trophy, Trash2, UploadCloud, Users, X } from "lucide-react";
+import { ArrowLeft, BarChart3, CalendarDays, Check, ChevronRight, Pencil, Plus, Search, RefreshCw, School, Trophy, Trash2, UploadCloud, Users, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { initialCandidates, initialCompetitions, initialSessions, navigationItems as nav } from "./examination/fixtures";
 import type { Candidate, Competition, DraftDate, ExaminationModuleProps as Props, ExaminationPage as Page, ExaminationSession as Session } from "./examination/types";
@@ -2170,9 +2170,6 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         activeId={examinationNavActiveId}
         onSelect={(nextPage) => go(nextPage as Page)}
         ariaLabel="Điều hướng Khảo thí"
-        actions={
-          <CircleHelp className="hidden h-5 w-5 text-slate-500 sm:block cursor-pointer hover:text-slate-800 transition-colors" aria-label="Trợ giúp Khảo thí"><title>Trợ giúp Khảo thí</title></CircleHelp>
-        }
       />
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-8">
