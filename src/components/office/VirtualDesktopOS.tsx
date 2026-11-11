@@ -41,6 +41,7 @@ export type VirtualDesktopOSProps = {
     message?: string;
   };
   currentUser?: any;
+  idToken?: string | null;
 };
 
 type WindowId = 'assistant' | 'exam' | 'reports' | 'docs' | 'terminal' | 'game';
@@ -73,11 +74,27 @@ export default function VirtualDesktopOS({
     '[SYSTEM] Connected to 3D Virtual Office engine (Three.js Isometric).',
     '[NETWORK] Presence linked with FermatTech HQ Cloud.',
   ]);
-  const [chatMessages, setChatMessages] = useState<{ sender: string; text: string; time: string }[]>([
+  type ChatAction = {
+    label: string;
+    action: () => void;
+    icon?: any;
+  };
+
+  const [chatMessages, setChatMessages] = useState<{
+    sender: string;
+    text: string;
+    time: string;
+    actions?: ChatAction[];
+  }[]>([
     {
       sender: 'bot',
-      text: 'Xin chào! Tôi là Trợ lý AI FermatTech. Tôi có thể hỗ trợ bạn sinh đề thi, tóm tắt báo cáo hoặc giải đáp kỹ thuật.',
+      text: 'Xin chào! Tôi là Trợ lý AI FermatTech. Tôi có thể hỗ trợ bạn sinh đề thi, mở phân hệ làm việc, gọi robot đến bàn hoặc hỗ trợ công việc văn phòng.',
       time: '09:00',
+      actions: [
+        { label: 'Mở Khảo thí', action: () => { onClose(); onNavigateModule('examination'); } },
+        { label: 'Báo cáo tuần', action: () => { onClose(); onNavigateModule('weekly-reports'); } },
+        { label: 'Gọi Robot', action: () => onCallBot() },
+      ],
     },
   ]);
   const [inputChat, setInputChat] = useState('');
@@ -186,34 +203,62 @@ export default function VirtualDesktopOS({
     }));
   };
 
-  const handleSendChat = () => {
-    if (!inputChat.trim()) return;
-    const userText = inputChat;
+  const handleSendChat = (presetText?: string) => {
+    const textToSend = presetText !== undefined ? presetText : inputChat;
+    if (!textToSend.trim()) return;
+    const userText = textToSend;
     const t = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     setChatMessages(prev => [...prev, { sender: 'me', text: userText, time: t }]);
-    setInputChat('');
+    if (presetText === undefined) setInputChat('');
 
     setTimeout(() => {
       let reply = 'Tôi đã ghi nhận yêu cầu của bạn.';
+      let replyActions: ChatAction[] | undefined = undefined;
       const low = userText.toLowerCase();
+
       if (low.includes('đề') || low.includes('thi') || low.includes('khảo thí')) {
-        reply = 'Hệ thống Khảo thí AI đang sẵn sàng với 12,000+ câu hỏi chuẩn cấu trúc đề thi. Bạn có thể mở ứng dụng "Khảo thí" trên màn hình để xem ngân hàng đề.';
+        reply = 'Hệ thống Khảo thí AI đang sẵn sàng với 12,000+ câu hỏi chuẩn cấu trúc ma trận. Bạn có thể mở trực tiếp phân hệ Khảo thí tại đây:';
+        replyActions = [
+          { label: '🚀 Mở phân hệ Khảo thí', action: () => { onClose(); onNavigateModule('examination'); } }
+        ];
       } else if (low.includes('báo cáo') || low.includes('kpi') || low.includes('tuần')) {
-        reply = 'Bạn có thể nộp nhanh Báo cáo tuần tại mục "Báo cáo tuần". Sếp Minh hiện đang trong phòng Giám đốc, bạn có thể gửi duyệt ngay.';
+        reply = 'Bạn có thể hoàn thành và nộp nhanh Báo cáo tuần công tác tại phân hệ Báo cáo:';
+        replyActions = [
+          { label: '📝 Mở Báo cáo tuần', action: () => { onClose(); onNavigateModule('weekly-reports'); } }
+        ];
+      } else if (low.includes('robot') || low.includes('bot') || low.includes('gọi')) {
+        reply = 'Đang điều phối Robot AI di chuyển tới bàn làm việc của bạn!';
+        onCallBot();
+        replyActions = [
+          { label: '🛑 Trả Robot về trạm', action: () => onReleaseBot() }
+        ];
+      } else if (low.includes('sếp') || low.includes('giám đốc') || low.includes('tuần tra')) {
+        reply = 'Đã phát tín hiệu Giám đốc đi tuần tra các phòng ban trong văn phòng 3D!';
+        onTriggerPatrol();
+      } else if (low.includes('lịch') || low.includes('họp') || low.includes('công ca')) {
+        reply = 'Bạn có thể kiểm tra Lịch tuần và Công ca của các phòng ban tại đây:';
+        replyActions = [
+          { label: '📅 Mở Lịch tuần', action: () => { onClose(); onNavigateModule('calendar'); } },
+          { label: '⏱️ Mở Công ca', action: () => { onClose(); onNavigateModule('attendance'); } },
+        ];
       } else if (low.includes('chào') || low.includes('hello')) {
-        reply = 'Chào bạn! Chúc bạn một ngày làm việc tràn đầy năng lượng tại FermatTech!';
-      } else if (low.includes('sếp') || low.includes('giám đốc')) {
-        reply = 'Giám đốc định kỳ đi tuần tra các phòng ban. Khi sếp đi kiểm tra, toàn bộ nhân sự sẽ vội vã chạy về bàn làm việc để giữ kỷ luật văn phòng!';
+        reply = 'Chào bạn! Chúc bạn một ngày làm việc tràn đầy năng lượng tại FermatTech! Bạn cần tôi giúp gì?';
+        replyActions = [
+          { label: 'Mở Khảo thí', action: () => { onClose(); onNavigateModule('examination'); } },
+          { label: 'Gọi Robot AI', action: () => onCallBot() },
+        ];
       }
+
       setChatMessages(prev => [
         ...prev,
         {
           sender: 'bot',
           text: reply,
           time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+          actions: replyActions,
         },
       ]);
-    }, 600);
+    }, 450);
   };
 
   if (!isOpen) return null;
@@ -444,8 +489,42 @@ export default function VirtualDesktopOS({
                               {msg.sender === 'me' ? 'Bạn' : 'Robot AI'} • {msg.time}
                             </div>
                             <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                            {msg.actions && msg.actions.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {msg.actions.map((act, aIdx) => (
+                                  <button
+                                    key={aIdx}
+                                    type="button"
+                                    onClick={act.action}
+                                    className="rounded-lg border border-[#1E232B]/30 bg-white/90 px-2.5 py-1 text-[11px] font-bold text-[#1E232B] shadow-[1px_1px_0px_#1E232B] hover:bg-[#D97757] hover:text-white transition cursor-pointer"
+                                  >
+                                    {act.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
+                      ))}
+                    </div>
+
+                    {/* Quick Prompts */}
+                    <div className="px-2.5 py-1.5 border-t border-[#1E232B]/10 bg-[#EFE7D8]/20 flex flex-wrap gap-1.5">
+                      {[
+                        'Mở Khảo thí',
+                        'Báo cáo tuần',
+                        'Gọi Robot tới bàn',
+                        'Sếp đi tuần',
+                        'Xem lịch tuần',
+                      ].map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => handleSendChat(chip)}
+                          className="rounded-full border border-[#1E232B]/20 bg-white/80 hover:bg-[#D97757] hover:text-white hover:border-[#D97757] px-2.5 py-0.5 text-[10px] font-semibold text-[#1E232B] transition cursor-pointer"
+                        >
+                          {chip}
+                        </button>
                       ))}
                     </div>
 
@@ -460,8 +539,9 @@ export default function VirtualDesktopOS({
                         className="flex-1 px-3 py-1.5 bg-white border border-[#1E232B]/30 rounded-lg text-xs text-[#1E232B] focus:outline-none focus:ring-1 focus:ring-[#D97757]"
                       />
                       <button
-                        onClick={handleSendChat}
-                        className="px-3 py-1.5 bg-[#D97757] text-white rounded-lg font-bold text-xs flex items-center gap-1 hover:bg-[#c46849]"
+                        type="button"
+                        onClick={() => handleSendChat()}
+                        className="px-3 py-1.5 bg-[#D97757] text-white rounded-lg font-bold text-xs flex items-center gap-1 hover:bg-[#c46849] cursor-pointer"
                       >
                         <Send className="w-3.5 h-3.5" />
                         Gửi

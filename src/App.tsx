@@ -217,6 +217,13 @@ function getInitialViewMode(): ViewMode {
     return 'account-management';
   }
   if (path.startsWith('/resources')) return 'resources';
+  if (path === '/' || path === '') {
+    try {
+      if (localStorage.getItem('ft-workspace-view-preference') === '3d') {
+        return 'office';
+      }
+    } catch {}
+  }
   return 'workspace';
 }
 
@@ -799,6 +806,7 @@ export default function App() {
             onNavigate={(mode, tab) => {
               if (mode === 'social-dashboard' && tab) {
                 setSocialTab(tab);
+                openProtectedView('social-dashboard');
               } else {
                 openProtectedView(mode as ViewMode);
               }
@@ -1342,11 +1350,11 @@ export default function App() {
   );
   };
 
-  // Public landing pages and the session splash stay chrome-free. Every other
-  // screen (the launcher included) gets the shared rail and the one command
-  // palette that WorkspaceAreaFrame owns.
+  // Public landing pages, 3D office and the session splash stay chrome-free.
+  // The 3D office takes full-bleed viewport without 2D sidebar clutter.
+  // Every other screen gets the shared rail and command palette.
   const content = renderContent();
-  const chromeLessViews: ViewMode[] = ['competition-landing-public', 'competition-hub', 'guest-invigilation', 'public-exam-registration', 'training-assessment-public'];
+  const chromeLessViews: ViewMode[] = ['office', 'competition-landing-public', 'competition-hub', 'guest-invigilation', 'public-exam-registration', 'training-assessment-public'];
   const framedContent = authChecking || chromeLessViews.includes(viewMode) ? content : (
     <WorkspaceAreaFrame
       activeAreaId={areaForView(viewMode)}

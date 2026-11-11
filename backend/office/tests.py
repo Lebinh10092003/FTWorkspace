@@ -433,3 +433,50 @@ nonexistent_email@test.com,tech,1,false
         s_plain = suggest_seat_for_user(plain_user)
         self.assertEqual(s_plain['room'], ROOM_COMMON)
         self.assertFalse(s_plain['is_head'])
+
+    def test_idle_status_transitions_and_roster_visibility(self):
+        """Kiểm tra heartbeat {idle: true/false}, bỏ qua rate-limit khi đổi trạng thái, và status trong roster."""
+        self.client.force_authenticate(user=self.dev_user)
+        t0 = timezone.now()
+
+        # 1. Heartbeat working (idle=False)
+        with patch('django.utils.timezone.now', return_value=t0):
+            res = self.client.post('/api/office/heartbeat/', {'idle': False}, format='json')
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            data = res.json()
+            self.assertFalse(data['is_idle'])
+            self.assertEqual(data['user_status'], 'working')
+
+        # 2. Chuyển sang idle=True chỉ sau 5 giây -> bỏ qua rate limit 30s và ghi ngay
+        t1 = t0 + timedelta(seconds=5)
+        with patch('django.utils.timezone.now', return_value=t1):
+            res = self.client.post('/api/office/heartbeat/', {'idle': True}, format='json')
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            data = res.json()
+            self.assertTrue(data['is_idle'])
+            self.assertEqual(data['user_status'], 'idle')
+            self.assertFalse(data['rate_limited'])
+
+        # 3. Roster phải trả status='idle'
+        with patch('django.utils.timezone.now', return_value=t1):
+            roster_res = self.client.get('/api/office/roster/')
+            self.assertEqual(roster_res.status_code, status.HTTP_200_OK)
+            dev_entry = next(m for m in roster_res.json()['roster'] if m['is_me'])
+            self.assertEqual(dev_entry['status'], 'idle')
+            self.assertTrue(dev_entry['is_idle'])
+            self.assertTrue(dev_entry['online'])
+
+        # 4. Thao tác lại -> idle=False sau 10 giây -> ghi ngay thành working
+        t2 = t0 + timedelta(seconds=10)
+        with patch('django.utils.timezone.now', return_value=t2):
+            res = self.client.post('/api/office/heartbeat/', {'idle': False}, format='json')
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            self.assertEqual(res.json()['user_status'], 'working')
+
+        # 5. Sau 4 phút -> hết timeout -> offline dù is_idle=False
+        t3 = t2 + timedelta(seconds=240)
+        with patch('django.utils.timezone.now', return_value=t3):
+            roster_res = self.client.get('/api/office/roster/')
+            dev_entry = next(m for m in roster_res.json()['roster'] if m['is_me'])
+            self.assertEqual(dev_entry['status'], 'offline')
+            self.assertFalse(dev_entry['online'])
