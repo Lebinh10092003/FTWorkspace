@@ -17,7 +17,13 @@ import {
   ExternalLink,
   X,
   ChevronRight,
-  Search
+  Search,
+  Volume2,
+  VolumeX,
+  Compass,
+  Calendar,
+  MessageSquare,
+  Cpu
 } from 'lucide-react';
 import VirtualDesktopOS from './VirtualDesktopOS';
 import OfficeSmartphoneGuide from './OfficeSmartphoneGuide';
@@ -25,6 +31,7 @@ import WorkspaceNotifications from '../WorkspaceNotifications';
 import AccountMenu from '../AccountMenu';
 import CommandPalette from '../layout/CommandPalette';
 import { useOfficeHeartbeat } from './useOfficeHeartbeat';
+import { useOfficeAmbience } from './useOfficeAmbience';
 
 export function checkWebGLSupport(): boolean {
   if (typeof window === 'undefined') return true;
@@ -146,6 +153,12 @@ export default function OfficeWorkspace({
     phase: string;
     message?: string;
   }>({ active: false, phase: 'IDLE' });
+  const [activeCameraView, setActiveCameraView] = useState<'home' | 'desks' | 'meeting' | 'server'>('home');
+  const [osInitialApp, setOsInitialApp] = useState<'assistant' | 'exam' | 'reports' | 'docs' | 'terminal' | 'game' | undefined>(undefined);
+  const [osInitialPrompt, setOsInitialPrompt] = useState<string | undefined>(undefined);
+  const [osInitialColleague, setOsInitialColleague] = useState<{ name: string; role?: string } | null>(null);
+
+  const { isPlaying: isAmbiencePlaying, toggleAmbience } = useOfficeAmbience();
 
   const webglSupported = useMemo(() => checkWebGLSupport(), []);
 
@@ -295,6 +308,7 @@ export default function OfficeWorkspace({
   };
 
   const handleFocus3DZone = (zone: string) => {
+    setActiveCameraView(zone as any);
     if (!iframeRef.current?.contentWindow) return;
     iframeRef.current.contentWindow.postMessage(
       { type: 'ft-office:switchView', view: zone },
@@ -539,6 +553,29 @@ export default function OfficeWorkspace({
                     ? 'Đang tới...'
                     : 'Gọi Robot'}
                 </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleAmbience}
+                className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                  isAmbiencePlaying
+                    ? 'border-emerald-500/60 bg-emerald-950/70 text-emerald-300 shadow-sm'
+                    : 'border-slate-700/80 bg-slate-900/90 text-slate-300 hover:bg-slate-800'
+                }`}
+                title={isAmbiencePlaying ? 'Đang phát âm thanh văn phòng (Click để tắt)' : 'Bật âm thanh môi trường văn phòng'}
+              >
+                {isAmbiencePlaying ? (
+                  <>
+                    <Volume2 className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
+                    <span className="hidden sm:inline">Âm thanh</span>
+                  </>
+                ) : (
+                  <>
+                    <VolumeX className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="hidden sm:inline">Âm thanh</span>
+                  </>
+                )}
               </button>
 
               <button
@@ -848,25 +885,123 @@ export default function OfficeWorkspace({
             </div>
           </div>
 
-          <div className="mt-3.5 flex items-center gap-2">
+          <div className="mt-3.5 grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => {
+                if (iframeRef.current?.contentWindow) {
+                  iframeRef.current.contentWindow.postMessage(
+                    {
+                      type: 'ft-office:focusWorker',
+                      name: selectedColleague.name,
+                      userId: selectedColleague.user_id,
+                    },
+                    window.location.origin
+                  );
+                }
+                setActiveCameraView('desks');
                 setSelectedColleague(null);
-                setIsDesktopOSOpen(true);
               }}
-              className="flex-1 rounded-xl bg-[#D97757] hover:bg-[#c46849] py-2 px-3 text-xs font-bold text-white transition shadow-md cursor-pointer"
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 py-2 px-2.5 text-xs font-semibold text-slate-200 transition cursor-pointer"
             >
-              💬 Chat / Giao việc AI
+              <Compass className="w-3.5 h-3.5 text-blue-400" />
+              <span>Lia camera</span>
             </button>
+
             <button
               type="button"
-              onClick={() => setSelectedColleague(null)}
-              className="rounded-xl bg-slate-800 hover:bg-slate-700 py-2 px-3 text-xs font-medium text-slate-300 transition cursor-pointer"
+              onClick={() => {
+                const colleague = selectedColleague;
+                setSelectedColleague(null);
+                setOsInitialApp('reports');
+                setOsInitialColleague({
+                  name: colleague.name,
+                  role: colleague.role || colleague.title,
+                });
+                setOsInitialPrompt(undefined);
+                setIsDesktopOSOpen(true);
+              }}
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 py-2 px-2.5 text-xs font-bold text-white transition shadow-sm cursor-pointer"
             >
-              Đóng
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Giao việc</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const colleague = selectedColleague;
+                setSelectedColleague(null);
+                setOsInitialApp('assistant');
+                setOsInitialColleague(null);
+                setOsInitialPrompt(
+                  `Tôi muốn trao đổi và phối hợp công việc với đồng nghiệp ${colleague.name} (${colleague.role || colleague.title || 'thành viên'}). Nhờ AI gợi ý phương án làm việc chung hiệu quả!`
+                );
+                setIsDesktopOSOpen(true);
+              }}
+              className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl bg-[#D97757] hover:bg-[#c46849] py-2 px-3 text-xs font-bold text-white transition shadow-md cursor-pointer"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Hỏi Trợ lý AI về {selectedColleague.name}</span>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Dock chuyển nhanh góc nhìn Camera 3D (Bottom Center) */}
+      {!hudCollapsed && !isDesktopOSOpen && !webglError && (
+        <div className="pointer-events-auto absolute bottom-4 left-1/2 -translate-x-1/2 z-20 hidden md:flex items-center gap-1 p-1.5 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-2xl backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => handleFocus3DZone('home')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+              activeCameraView === 'home'
+                ? 'bg-[#D97757] text-white shadow'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span>Toàn cảnh</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleFocus3DZone('desks')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+              activeCameraView === 'desks'
+                ? 'bg-[#D97757] text-white shadow'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Monitor className="w-3.5 h-3.5" />
+            <span>Khu làm việc</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleFocus3DZone('meeting')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+              activeCameraView === 'meeting'
+                ? 'bg-[#D97757] text-white shadow'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Phòng họp</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleFocus3DZone('server')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+              activeCameraView === 'server'
+                ? 'bg-[#D97757] text-white shadow'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Cpu className="w-3.5 h-3.5" />
+            <span>Studio AI</span>
+          </button>
         </div>
       )}
 
@@ -874,9 +1009,17 @@ export default function OfficeWorkspace({
       <div className={isDesktopOSOpen ? 'pointer-events-auto' : 'pointer-events-none'}>
         <VirtualDesktopOS
           isOpen={isDesktopOSOpen}
-          onClose={() => setIsDesktopOSOpen(false)}
+          onClose={() => {
+            setIsDesktopOSOpen(false);
+            setOsInitialApp(undefined);
+            setOsInitialPrompt(undefined);
+            setOsInitialColleague(null);
+          }}
           idToken={idToken}
           currentUser={{ name: userName, role: userRole }}
+          initialApp={osInitialApp}
+          initialPrompt={osInitialPrompt}
+          initialColleague={osInitialColleague}
           onNavigateModule={(mode) => {
             if (canAccessView(mode)) {
               onNavigate(mode);
