@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  console.log('[FT Office] Enhancements v2.6 initializing...');
+  console.log('[FT Office] Enhancements v2.9 initializing...');
 
   // Khi ở chế độ nhúng (embed=1 hoặc trong iframe), ẩn thanh tiêu đề, sidebars và panel rườm rà của template cũ
   function cleanEmbedInterface() {
@@ -121,14 +121,36 @@
   let robotEyeMaterials = [];
   let isPatrolling = false;
 
+  // Danh sách Bot User IDs nhận từ roster
+  const botUserIds = new Set();
+  let messageListenersSetup = false;
+
   // Hàng đợi gọi Robot vật lý
   const botQueue = [];
   let activeBotMission = null;
 
+  function isBotSession(id, session) {
+    if (!session) return false;
+    const strId = id !== undefined && id !== null ? String(id) : '';
+    const sessionId = session.id !== undefined && session.id !== null ? String(session.id) : '';
+    const sessionUserId = session.user_id !== undefined && session.user_id !== null ? String(session.user_id) : '';
+    return Boolean(
+      session.is_bot ||
+      session.isBot ||
+      botUserIds.has(strId) ||
+      (sessionId && botUserIds.has(sessionId)) ||
+      (sessionUserId && botUserIds.has(sessionUserId)) ||
+      /bot|ai|trợ lý|robot/i.test(session.name || '') ||
+      /bot|ai/i.test(session.role || '') ||
+      strId.startsWith('bot-') ||
+      strId.startsWith('ft-bot')
+    );
+  }
+
   function init() {
     office = window.__office || {};
     ftOffice = window.__ftOffice || {};
-    THREE = office.THREE || window.THREE;
+    THREE = office.THREE || ftOffice.THREE || window.THREE;
 
     if (!THREE || !ftOffice.getWorkers) {
       setTimeout(init, 300);
@@ -137,7 +159,7 @@
 
     console.log('[FT Office] Dependencies ready. Hooking enhancements.');
 
-    // 1. Quét biến đổi Bot thành Robot Voxel
+    // 1. Quét biến đổi Bot thành Robot Mech 3D
     setInterval(upgradeAllBotsToRobotMesh, 1500);
 
     // 2. Chạy vòng lặp thoại ngẫu nhiên chất FermatTech
@@ -149,7 +171,7 @@
     // 4. Tuần tra Giám đốc định kỳ (mỗi 75 - 120s ngẫu nhiên)
     scheduleNextDirectorPatrol();
 
-    // 5. Lắng nghe các lệnh điều khiển từ Host (OfficeWorkspace.tsx)
+    // 5. Đảm bảo lắng nghe lệnh điều khiển từ Host (đã gọi sớm khi load script)
     setupMessageListeners();
 
     // Phơi bày hàm tuần tra ra ngoài
@@ -168,10 +190,10 @@
   }
 
   /**
-   * 1. BIẾN ĐỔI TOÀN BỘ BOT AI THÀNH ROBOT VOXEL ISOMETRIC
+   * 1. BIẾN ĐỔI TOÀN BỘ BOT AI THÀNH ROBOT MECH 3D
    */
   function upgradeAllBotsToRobotMesh() {
-    if (!ftOffice.getWorkers || !ftOffice.getSessions) return;
+    if (!ftOffice || !ftOffice.getWorkers || !ftOffice.getSessions) return;
     const workers = ftOffice.getWorkers();
     const sessions = ftOffice.getSessions();
 
@@ -179,10 +201,7 @@
       const session = sessions.get(id);
       if (!session) continue;
 
-      const isBot = session.isBot ||
-        session.role === 'BOT' ||
-        (session.name && (session.name.startsWith('AI ') || session.name.toLowerCase().includes('bot'))) ||
-        (typeof id === 'string' && id.startsWith('bot-'));
+      const isBot = isBotSession(id, session);
 
       // Gắn click listener vào tagEl của nhân viên để tương tác xem danh thiếp
       if (worker.tagEl && !worker.tagEl._ftClickBound) {
@@ -213,97 +232,314 @@
 
   function transformWorkerToRobot(worker, session) {
     try {
+      if (worker._ftRobotUpgraded) return;
       worker._ftRobotUpgraded = true;
-      const head = worker.P.head;
 
-      // Ẩn tóc và kính gốc
-      if (head.children) {
-        head.children.forEach(c => {
-          if (c !== worker.P.neck) {
-            c.visible = false;
+      // Duyệt qua các bộ phận người cũ để ẩn toàn bộ mesh (giữ nguyên Group pivot cho animation)
+      const humanPartGroups = [
+        worker.P?.head,
+        worker.P?.torso,
+        worker.P?.armL?.sh,
+        worker.P?.armL?.el,
+        worker.P?.armR?.sh,
+        worker.P?.armR?.el,
+        worker.P?.legL?.hip,
+        worker.P?.legL?.knee,
+        worker.P?.legR?.hip,
+        worker.P?.legR?.knee
+      ];
+
+      humanPartGroups.forEach(grp => {
+        if (!grp) return;
+        grp.traverse(child => {
+          if (child.isMesh) {
+            child.visible = false;
           }
         });
+      });
+
+      // Vật liệu kim loại cao cấp
+      const titaniumMat = new THREE.MeshStandardMaterial({
+        color: '#1E293B',
+        metalness: 0.88,
+        roughness: 0.22
+      });
+      const slateArmorMat = new THREE.MeshStandardMaterial({
+        color: '#334155',
+        metalness: 0.82,
+        roughness: 0.28
+      });
+      const accentMat = new THREE.MeshStandardMaterial({
+        color: '#0EA5E9',
+        metalness: 0.7,
+        roughness: 0.3
+      });
+      const neonVisorMat = new THREE.MeshStandardMaterial({
+        color: '#00F0FF',
+        emissive: '#00F0FF',
+        emissiveIntensity: 2.2,
+        roughness: 0.1
+      });
+      const reactorMat = new THREE.MeshStandardMaterial({
+        color: '#38BDF8',
+        emissive: '#00F0FF',
+        emissiveIntensity: 2.5,
+        roughness: 0.1
+      });
+
+      // 1. Gắn vào worker.P.head: Mũ giáp Mech góc cạnh, 2 tai cảm biến trụ tròn, Visor LED neon, 2 ăng-ten kèm beacon
+      if (worker.P?.head) {
+        const headGroup = new THREE.Group();
+        headGroup.name = 'ft_robot_head_mech';
+
+        // Mũ giáp Mech góc cạnh (BoxGeometry 0.28x0.26x0.28)
+        const helmetGeo = new THREE.BoxGeometry(0.28, 0.26, 0.28);
+        const helmetMesh = new THREE.Mesh(helmetGeo, slateArmorMat);
+        helmetMesh.position.set(0, 0.02, 0);
+        helmetMesh.castShadow = true;
+        headGroup.add(helmetMesh);
+
+        // 2 tai cảm biến trụ tròn 2 bên
+        const earGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.04, 16);
+        earGeo.rotateZ(Math.PI / 2);
+        const leftEar = new THREE.Mesh(earGeo, titaniumMat);
+        leftEar.position.set(-0.15, 0.02, 0);
+        const rightEar = new THREE.Mesh(earGeo, titaniumMat);
+        rightEar.position.set(0.15, 0.02, 0);
+        headGroup.add(leftEar, rightEar);
+
+        // Visor mắt LED neon phát sáng cyan phía trước mặt (0, 0.02, 0.145)
+        const visorGeo = new THREE.BoxGeometry(0.20, 0.06, 0.02);
+        const visorMesh = new THREE.Mesh(visorGeo, neonVisorMat);
+        visorMesh.position.set(0, 0.02, 0.145);
+        headGroup.add(visorMesh);
+
+        // 2 ăng-ten đỉnh đầu kèm đèn beacon nhấp nháy
+        const antPoleGeo = new THREE.CylinderGeometry(0.006, 0.006, 0.10, 8);
+        const leftPole = new THREE.Mesh(antPoleGeo, titaniumMat);
+        leftPole.position.set(-0.08, 0.18, 0);
+        const rightPole = new THREE.Mesh(antPoleGeo, titaniumMat);
+        rightPole.position.set(0.08, 0.18, 0);
+        headGroup.add(leftPole, rightPole);
+
+        const beaconGeo = new THREE.SphereGeometry(0.02, 12, 10);
+        const beaconMat = new THREE.MeshStandardMaterial({
+          color: '#F59E0B',
+          emissive: '#F59E0B',
+          emissiveIntensity: 2.0,
+          roughness: 0.1
+        });
+        const leftBeacon = new THREE.Mesh(beaconGeo, beaconMat);
+        leftBeacon.position.set(-0.08, 0.23, 0);
+        const rightBeacon = new THREE.Mesh(beaconGeo, beaconMat);
+        rightBeacon.position.set(0.08, 0.23, 0);
+        headGroup.add(leftBeacon, rightBeacon);
+
+        worker.P.head.add(headGroup);
+        worker._ftBeaconMat = beaconMat;
+        worker._ftVisorMat = neonVisorMat;
       }
 
-      // Tạo nhóm đầu Robot Voxel Isometric đặc trưng FermatTech
-      const robotGroup = new THREE.Group();
-      robotGroup.name = 'ft_robot_head';
+      // 2. Gắn vào worker.P.torso: Khối giáp ngực Mech, 2 giáp vai Pauldrons, Lõi Arc Reactor, Jetpack sau lưng
+      if (worker.P?.torso) {
+        const torsoGroup = new THREE.Group();
+        torsoGroup.name = 'ft_robot_torso_mech';
 
-      // Hộp sọ Robot Voxel (Màu xám ánh kim hoặc xám kem sạch sẽ)
-      const headGeo = new THREE.BoxGeometry(0.24, 0.22, 0.22);
-      const headMat = new THREE.MeshStandardMaterial({
-        color: '#D8E2DC',
-        metalness: 0.65,
-        roughness: 0.35
-      });
-      const headMesh = new THREE.Mesh(headGeo, headMat);
-      headMesh.position.y = 0.02;
-      headMesh.castShadow = true;
-      robotGroup.add(headMesh);
+        // Khối giáp ngực Mech (0.36x0.42x0.26)
+        const chestGeo = new THREE.BoxGeometry(0.36, 0.42, 0.26);
+        const chestMesh = new THREE.Mesh(chestGeo, titaniumMat);
+        chestMesh.position.set(0, 0, 0);
+        chestMesh.castShadow = true;
+        torsoGroup.add(chestMesh);
 
-      // Màn hình mặt trước LED màu Navy đậm
-      const faceGeo = new THREE.BoxGeometry(0.20, 0.16, 0.02);
-      const faceMat = new THREE.MeshBasicMaterial({ color: '#111827' });
-      const faceMesh = new THREE.Mesh(faceGeo, faceMat);
-      faceMesh.position.set(0, 0.02, 0.112);
-      robotGroup.add(faceMesh);
+        // 2 giáp vai Pauldrons nhô lên 2 bên
+        const pauldronGeo = new THREE.BoxGeometry(0.12, 0.10, 0.28);
+        const leftPauldron = new THREE.Mesh(pauldronGeo, slateArmorMat);
+        leftPauldron.position.set(-0.21, 0.18, 0);
+        leftPauldron.rotation.z = -0.15;
+        leftPauldron.castShadow = true;
+        const rightPauldron = new THREE.Mesh(pauldronGeo, slateArmorMat);
+        rightPauldron.position.set(0.21, 0.18, 0);
+        rightPauldron.rotation.z = 0.15;
+        rightPauldron.castShadow = true;
+        torsoGroup.add(leftPauldron, rightPauldron);
 
-      // Hai mắt LED sáng xanh Cyan hoặc Cam đất
-      const isLeadBot = session.name && session.name.includes('Đăng bài');
-      const eyeColor = isLeadBot ? '#D97757' : '#06B6D4';
-      const eyeMat = new THREE.MeshBasicMaterial({ color: eyeColor });
-      robotEyeMaterials.push(eyeMat);
+        // Lõi Arc Reactor tròn ở chính giữa ngực (TorusGeometry + CylinderGeometry phát sáng cyan ở z=0.14)
+        const reactorGroup = new THREE.Group();
+        reactorGroup.position.set(0, 0.04, 0.14);
 
-      const eyeGeo = new THREE.BoxGeometry(0.045, 0.035, 0.015);
-      const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-      leftEye.position.set(-0.055, 0.03, 0.122);
-      const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-      rightEye.position.set(0.055, 0.03, 0.122);
-      robotGroup.add(leftEye, rightEye);
+        const ringGeo = new THREE.TorusGeometry(0.05, 0.012, 16, 24);
+        const ringMesh = new THREE.Mesh(ringGeo, accentMat);
 
-      // Ăng-ten đỉnh đầu
-      const antPoleGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.09, 8);
-      const antPoleMat = new THREE.MeshStandardMaterial({ color: '#4B5563', metalness: 0.8 });
-      const antPole = new THREE.Mesh(antPoleGeo, antPoleMat);
-      antPole.position.set(0, 0.17, 0);
-      robotGroup.add(antPole);
+        const coreGeo = new THREE.CylinderGeometry(0.038, 0.038, 0.015, 24);
+        coreGeo.rotateX(Math.PI / 2);
+        const coreMesh = new THREE.Mesh(coreGeo, reactorMat);
+        reactorGroup.add(ringMesh, coreMesh);
+        torsoGroup.add(reactorGroup);
 
-      // Quả cầu đèn tín hiệu ăng-ten (Beacon LED)
-      const antBulbGeo = new THREE.SphereGeometry(0.022, 12, 10);
-      const antBulbMat = new THREE.MeshBasicMaterial({ color: '#F59E0B' });
-      const antBulb = new THREE.Mesh(antBulbGeo, antBulbMat);
-      antBulb.position.set(0, 0.22, 0);
-      robotGroup.add(antBulb);
-      worker._ftAntBulbMat = antBulbMat;
+        // Khối Jetpack năng lượng sau lưng (0, 0.02, -0.17) kèm 2 ống xả phát sáng xanh
+        const jetpackGroup = new THREE.Group();
+        jetpackGroup.position.set(0, 0.02, -0.17);
 
-      // 2 Tai nghe/khớp cơ khí 2 bên đầu
-      const earGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.03, 10);
-      earGeo.rotateZ(Math.PI / 2);
-      const earMat = new THREE.MeshStandardMaterial({ color: '#D97757', roughness: 0.4 });
-      const leftEar = new THREE.Mesh(earGeo, earMat);
-      leftEar.position.set(-0.13, 0.02, 0);
-      const rightEar = new THREE.Mesh(earGeo, earMat);
-      rightEar.position.set(0.13, 0.02, 0);
-      robotGroup.add(leftEar, rightEar);
+        const packGeo = new THREE.BoxGeometry(0.24, 0.30, 0.10);
+        const packMesh = new THREE.Mesh(packGeo, slateArmorMat);
+        packMesh.castShadow = true;
+        jetpackGroup.add(packMesh);
 
-      head.add(robotGroup);
+        const nozzleGeo = new THREE.CylinderGeometry(0.035, 0.045, 0.09, 16);
+        const leftNozzle = new THREE.Mesh(nozzleGeo, titaniumMat);
+        leftNozzle.position.set(-0.07, -0.12, 0);
+        const rightNozzle = new THREE.Mesh(nozzleGeo, titaniumMat);
+        rightNozzle.position.set(0.07, -0.12, 0);
+
+        const exhaustGeo = new THREE.CylinderGeometry(0.025, 0.01, 0.04, 16);
+        const leftExhaust = new THREE.Mesh(exhaustGeo, reactorMat);
+        leftExhaust.position.set(-0.07, -0.17, 0);
+        const rightExhaust = new THREE.Mesh(exhaustGeo, reactorMat);
+        rightExhaust.position.set(0.07, -0.17, 0);
+
+        jetpackGroup.add(leftNozzle, rightNozzle, leftExhaust, rightExhaust);
+        torsoGroup.add(jetpackGroup);
+
+        worker.P.torso.add(torsoGroup);
+        worker._ftReactorMat = reactorMat;
+      }
+
+      // 3. Gắn vào worker.P.armL.sh / el và worker.P.armR.sh / el: Ống giáp cánh tay cơ khí và càng kẹp bàn tay robot
+      function buildUpperArmArmor() {
+        const grp = new THREE.Group();
+        const armorGeo = new THREE.BoxGeometry(0.11, 0.18, 0.11);
+        const armorMesh = new THREE.Mesh(armorGeo, titaniumMat);
+        armorMesh.position.set(0, -0.09, 0);
+        armorMesh.castShadow = true;
+
+        const trimGeo = new THREE.BoxGeometry(0.12, 0.04, 0.12);
+        const trimMesh = new THREE.Mesh(trimGeo, accentMat);
+        trimMesh.position.set(0, -0.04, 0);
+
+        grp.add(armorMesh, trimMesh);
+        return grp;
+      }
+
+      function buildForearmAndClaw() {
+        const grp = new THREE.Group();
+        const armGeo = new THREE.BoxGeometry(0.10, 0.16, 0.10);
+        const armMesh = new THREE.Mesh(armGeo, slateArmorMat);
+        armMesh.position.set(0, -0.08, 0);
+        armMesh.castShadow = true;
+
+        const wristGeo = new THREE.CylinderGeometry(0.038, 0.038, 0.03, 12);
+        const wristMesh = new THREE.Mesh(wristGeo, titaniumMat);
+        wristMesh.position.set(0, -0.17, 0);
+
+        // Càng kẹp bàn tay robot
+        const clawGeo = new THREE.BoxGeometry(0.02, 0.06, 0.03);
+        const leftClaw = new THREE.Mesh(clawGeo, accentMat);
+        leftClaw.position.set(-0.025, -0.21, 0);
+        const rightClaw = new THREE.Mesh(clawGeo, accentMat);
+        rightClaw.position.set(0.025, -0.21, 0);
+
+        grp.add(armMesh, wristMesh, leftClaw, rightClaw);
+        return grp;
+      }
+
+      if (worker.P?.armL?.sh) worker.P.armL.sh.add(buildUpperArmArmor());
+      if (worker.P?.armR?.sh) worker.P.armR.sh.add(buildUpperArmArmor());
+      if (worker.P?.armL?.el) worker.P.armL.el.add(buildForearmAndClaw());
+      if (worker.P?.armR?.el) worker.P.armR.el.add(buildForearmAndClaw());
+
+      // 4. Gắn vào worker.P.legL.hip / knee và worker.P.legR.hip / knee: Giáp ống chân mech
+      function buildThighArmor() {
+        const grp = new THREE.Group();
+        const thighGeo = new THREE.BoxGeometry(0.13, 0.22, 0.13);
+        const thighMesh = new THREE.Mesh(thighGeo, titaniumMat);
+        thighMesh.position.set(0, -0.11, 0);
+        thighMesh.castShadow = true;
+
+        const kneeCapGeo = new THREE.BoxGeometry(0.11, 0.06, 0.04);
+        const kneeCapMesh = new THREE.Mesh(kneeCapGeo, accentMat);
+        kneeCapMesh.position.set(0, -0.20, 0.07);
+
+        grp.add(thighMesh, kneeCapMesh);
+        return grp;
+      }
+
+      function buildShinArmor() {
+        const grp = new THREE.Group();
+        const shinGeo = new THREE.BoxGeometry(0.12, 0.22, 0.13);
+        const shinMesh = new THREE.Mesh(shinGeo, slateArmorMat);
+        shinMesh.position.set(0, -0.11, 0);
+        shinMesh.castShadow = true;
+
+        const footGeo = new THREE.BoxGeometry(0.12, 0.06, 0.18);
+        const footMesh = new THREE.Mesh(footGeo, titaniumMat);
+        footMesh.position.set(0, -0.22, 0.03);
+        footMesh.castShadow = true;
+
+        grp.add(shinMesh, footMesh);
+        return grp;
+      }
+
+      if (worker.P?.legL?.hip) worker.P.legL.hip.add(buildThighArmor());
+      if (worker.P?.legR?.hip) worker.P.legR.hip.add(buildThighArmor());
+      if (worker.P?.legL?.knee) worker.P.legL.knee.add(buildShinArmor());
+      if (worker.P?.legR?.knee) worker.P.legR.knee.add(buildShinArmor());
+
+      // 5. Gắn vào worker.P.root (nếu có) hoặc worker.root: Đĩa đệm phản lực Hover Repulsor Ring
+      const rootTarget = (worker.P && worker.P.root) ? worker.P.root : worker.root;
+      if (rootTarget) {
+        const repulsorGroup = new THREE.Group();
+        repulsorGroup.name = 'ft_robot_repulsor';
+
+        const repulsorMat = new THREE.MeshBasicMaterial({
+          color: '#00F0FF',
+          transparent: true,
+          opacity: 0.55,
+          side: THREE.DoubleSide
+        });
+
+        const torusGeo = new THREE.TorusGeometry(0.28, 0.016, 12, 36);
+        torusGeo.rotateX(Math.PI / 2);
+        const torusMesh = new THREE.Mesh(torusGeo, repulsorMat);
+        torusMesh.position.set(0, 0.04, 0);
+
+        const ringGeo = new THREE.RingGeometry(0.18, 0.27, 32);
+        ringGeo.rotateX(-Math.PI / 2);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: '#00F0FF',
+          transparent: true,
+          opacity: 0.25,
+          side: THREE.DoubleSide
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.set(0, 0.04, 0);
+
+        repulsorGroup.add(torusMesh, ringMesh);
+        rootTarget.add(repulsorGroup);
+
+        worker._ftRepulsorMat = repulsorMat;
+        worker._ftRepulsorDiscMat = ringMat;
+      }
 
       // Cập nhật tag hiển thị trên đầu
       if (worker.tagDot) {
-        worker.tagDot.style.background = '#06B6D4';
-        worker.tagDot.style.boxShadow = '0 0 8px #06B6D4';
+        worker.tagDot.style.background = '#00F0FF';
+        worker.tagDot.style.boxShadow = '0 0 10px #00F0FF';
       }
       if (worker.tagEl) {
-        worker.tagEl.title = `[Robot AI] ${session.name}`;
+        worker.tagEl.title = `[Robot AI Mech] ${session.name}`;
       }
 
-      console.log(`[FT Office] Transformed bot ${session.name} (${session.id}) to voxel robot!`);
+      console.log(`[FT Office] Transformed bot ${session.name} (${session.id}) to 3D Mech Robot!`);
     } catch (err) {
       console.warn('[FT Office] Failed to transform bot:', err);
     }
   }
 
   function animateRobotEyes() {
+    const t = Date.now() / 300;
+    const pulse = (Math.sin(t) + 1) / 2;
+
     const shouldBlink = Math.random() < 0.15;
     robotEyeMaterials.forEach(mat => {
       if (shouldBlink) {
@@ -312,14 +548,34 @@
       }
     });
 
-    // Nhấp nháy đèn ăng-ten
-    if (ftOffice.getWorkers) {
+    // Nhấp nháy đèn ăng-ten, visor, lõi reactor và Hover Repulsor Ring
+    if (ftOffice && ftOffice.getWorkers) {
       const workers = ftOffice.getWorkers();
       workers.forEach(w => {
+        if (w._ftBeaconMat) {
+          const bright = pulse > 0.4;
+          const color = bright ? (w._ftServing ? '#10B981' : '#F59E0B') : '#78350F';
+          w._ftBeaconMat.color.set(color);
+          w._ftBeaconMat.emissive.set(color);
+        }
         if (w._ftAntBulbMat) {
-          const t = Date.now() / 300;
-          const bright = (Math.sin(t) + 1) / 2 > 0.4;
+          const bright = pulse > 0.4;
           w._ftAntBulbMat.color.set(bright ? (w._ftServing ? '#10B981' : '#F59E0B') : '#78350F');
+        }
+        if (w._ftRepulsorMat) {
+          w._ftRepulsorMat.opacity = 0.35 + 0.45 * pulse;
+        }
+        if (w._ftRepulsorDiscMat) {
+          w._ftRepulsorDiscMat.opacity = 0.12 + 0.25 * pulse;
+        }
+        if (w._ftReactorMat) {
+          w._ftReactorMat.emissiveIntensity = 1.8 + 1.2 * pulse;
+        }
+        if (w._ftVisorMat && Math.random() < 0.08) {
+          w._ftVisorMat.emissiveIntensity = 0.2;
+          setTimeout(() => {
+            if (w._ftVisorMat) w._ftVisorMat.emissiveIntensity = 2.2;
+          }, 120);
         }
       });
     }
@@ -359,16 +615,14 @@
   }
 
   function findAvailableBot() {
-    if (!ftOffice.getWorkers || !ftOffice.getSessions) return null;
+    if (!ftOffice || !ftOffice.getWorkers || !ftOffice.getSessions) return null;
     const workers = ftOffice.getWorkers();
     const sessions = ftOffice.getSessions();
 
     for (const [id, worker] of workers.entries()) {
       const session = sessions.get(id);
       if (!session) continue;
-      const isBot = session.isBot ||
-        session.role === 'BOT' ||
-        (session.name && (session.name.startsWith('AI ') || session.name.includes('Bot')));
+      const isBot = isBotSession(id, session);
 
       if (isBot && !worker._ftServing && !worker._ftMovingToUser && !worker.leaving) {
         return worker;
@@ -623,7 +877,14 @@
   }
 
   function handleRosterUpdate(roster) {
-    if (!Array.isArray(roster) || !ftOffice.getWorkers || !ftOffice.getSessions) return;
+    if (!Array.isArray(roster)) return;
+    roster.forEach(r => {
+      if (r.is_bot || /bot|ai|trợ lý|robot/i.test(r.name || '') || /bot|ai/i.test(r.role || '')) {
+        if (r.id !== undefined && r.id !== null) botUserIds.add(String(r.id));
+        if (r.user_id !== undefined && r.user_id !== null) botUserIds.add(String(r.user_id));
+      }
+    });
+    if (!ftOffice || !ftOffice.getWorkers || !ftOffice.getSessions) return;
     const workers = ftOffice.getWorkers();
     const sessions = ftOffice.getSessions();
 
@@ -634,6 +895,7 @@
         const isMatch = (r.name && session.name && session.name.toLowerCase().includes(r.name.toLowerCase())) ||
                         (r.user_id && (session.user_id === r.user_id || id === String(r.user_id)));
         if (isMatch) {
+          if (r.is_bot) session.is_bot = true;
           const isIdle = Boolean(r.is_idle || r.status === 'idle');
           if (isIdle) {
             worker._ftIsIdle = true;
@@ -661,6 +923,8 @@
    * 5. LẮNG NGHE SỰ KIỆN TỪ HOST
    */
   function setupMessageListeners() {
+    if (messageListenersSetup) return;
+    messageListenersSetup = true;
     window.addEventListener('message', (ev) => {
       const data = ev.data;
       if (!data || typeof data !== 'object') return;
@@ -683,16 +947,61 @@
           break;
         case 'ft-office:switchView':
           if (data.view) {
-            const segBtn = document.querySelector(`.seg-btn[data-view="${data.view}"]`);
-            if (segBtn) segBtn.click();
+            if (typeof window.__ftSwitchView === 'function') {
+              window.__ftSwitchView(data.view);
+            } else {
+              const segBtn = document.querySelector(`.seg-btn[data-view="${data.view}"]`);
+              if (segBtn) segBtn.click();
+              if (ftOffice && typeof ftOffice.focusRoom === 'function') {
+                const PRESETS = {
+                  home: [3, 0.3, 9, 1],
+                  desks: [3, 0.6, 18.2, 1.6],
+                  meeting: [-1.2, 0.6, -5.4, 2.8],
+                  server: [-5.6, 1, -0.6, 3.3]
+                };
+                const p = PRESETS[data.view] || PRESETS.home;
+                ftOffice.focusRoom(p[0], p[1], p[2], p[3]);
+              }
+            }
           }
           break;
         case 'ft-office:focusWorker':
           focusWorkerDesk(data.name, data.userId);
           break;
+        case 'ft-office:toggleWalk': {
+          const btnFp = document.getElementById('btn-fp');
+          if (btnFp) {
+            btnFp.click();
+            const isFp = document.body.classList.contains('is-fp');
+            postToParent({ type: 'ft-office:walkState', active: isFp });
+          }
+          break;
+        }
+      }
+    });
+
+    // Lắng nghe nút thoát first person nội bộ hoặc phím Escape để đồng bộ trạng thái về parent
+    document.addEventListener('click', (e) => {
+      const target = e.target;
+      if (target && (target.id === 'fp-exit' || (target.closest && target.closest('#fp-exit')))) {
+        setTimeout(() => {
+          const isFp = document.body.classList.contains('is-fp');
+          postToParent({ type: 'ft-office:walkState', active: isFp });
+        }, 50);
+      }
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.body.classList.contains('is-fp')) {
+        setTimeout(() => {
+          const isFp = document.body.classList.contains('is-fp');
+          postToParent({ type: 'ft-office:walkState', active: isFp });
+        }, 80);
       }
     });
   }
+
+  // Đăng ký listener ngay khi script load để không bỏ sót message sớm
+  setupMessageListeners();
 
   function focusWorkerDesk(workerName, userId) {
     const desksBtn = document.querySelector('.seg-btn[data-view="desks"]');
