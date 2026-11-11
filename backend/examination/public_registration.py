@@ -45,13 +45,16 @@ def clean(data, key, limit):
 
 
 def registration_payload(item):
-    return {
-        'registrationId': str(item.id),
-        'candidateCode': item.candidate.code,
-        'contestCodes': item.contest_codes,
-        'createdAt': item.created_at.isoformat(),
-        'status': 'received',
-    }
+    from .registration_payment import receipt_payload
+    return receipt_payload(item)
+
+
+def registration_response(item, status=200):
+    response = Response(registration_payload(item), status=status)
+    response['Cache-Control'] = 'private, no-store'
+    response['Referrer-Policy'] = 'no-referrer'
+    response['X-Robots-Tag'] = 'noindex, nofollow'
+    return response
 
 
 def proof_type(upload):
@@ -141,7 +144,7 @@ def public_registration(request):
         return Response({'error': 'Mã lượt gửi không hợp lệ. Vui lòng tải lại trang.'}, status=400)
     existing = PublicExamRegistration.objects.select_related('candidate').filter(request_key=request_key).first()
     if existing:
-        return Response(registration_payload(existing), status=200)
+        return registration_response(existing)
 
     try:
         codes = json.loads(str(data.get('contestCodes') or '[]'))
@@ -190,8 +193,6 @@ def public_registration(request):
     if FERMAT_CODES & set(codes):
         if not grade or not 1 <= int(grade) <= 9:
             return Response({'error': 'FIMO và FIEO nhận đăng ký cho học sinh lớp 1 đến lớp 9.'}, status=400)
-        if not proof:
-            return Response({'error': 'Vui lòng tải ảnh hoặc PDF xác nhận nộp lệ phí theo yêu cầu FIMO/FIEO.'}, status=400)
     if class_name:
         from .sync import form_grade_and_class
         class_grade, _ = form_grade_and_class(class_name)
@@ -206,7 +207,7 @@ def public_registration(request):
     with transaction.atomic():
         existing = PublicExamRegistration.objects.select_related('candidate').filter(request_key=request_key).first()
         if existing:
-            return Response(registration_payload(existing), status=200)
+            return registration_response(existing)
         try:
             candidate = matching_candidate(name, dob, identity, email, phone)
         except ValueError:
@@ -251,6 +252,7 @@ def public_registration(request):
                     'parentName': parent_name, 'className': class_name,
                     'submitterEmail': submitter_email,
                     'registrationFee': content.get('fees', {}).get(code),
+                    'registrationCode': code,
                 },
             )
             fee = content.get('fees', {}).get(code)
@@ -262,7 +264,7 @@ def public_registration(request):
                 TransferProof.objects.create(billing=participation.billing, session=available[code], image=proof, image_type=mime,
                                             filename=f'registration-{registration.id}', created_by=email)
         sync_session_candidate_totals()
-    return Response(registration_payload(registration), status=201)
+    return registration_response(registration, status=201)
 
 
 @api_view(['GET'])

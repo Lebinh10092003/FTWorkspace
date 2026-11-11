@@ -5,7 +5,6 @@ from copy import deepcopy
 from unittest.mock import MagicMock, patch
 from django.apps import apps
 from django.test import TestCase
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework.test import APIClient
 from authentication.models import UserProfile
@@ -15,7 +14,7 @@ from .registration_page import DEFAULT_CONTENT
 
 
 class RegistrationPageTests(TestCase):
-    def test_verified_fermat_form_requires_identity_class_submitter_email_and_proof(self):
+    def test_verified_fermat_form_saves_required_information_before_payment_proof(self):
         public = APIClient()
         option = next(item for item in public.get('/api/public/examination/registration').data['competitions'] if item['code'] == 'FIMO')
         self.assertTrue(option['proofRequired'])
@@ -24,15 +23,15 @@ class RegistrationPageTests(TestCase):
         self.assertIn('identity', option['requiredFields'])
         payload = self.payload() | {'contestCodes': '["FIMO"]', 'identity': '001201012345',
             'className': '3A1', 'submitterEmail': 'registrant@example.test'}
-        missing_proof = public.post('/api/public/examination/registration', payload, format='multipart')
-        self.assertEqual(missing_proof.status_code, 400)
         for key in ('identity', 'className', 'submitterEmail'):
             with self.subTest(key=key):
                 incomplete = {**payload, key: ''}
                 self.assertEqual(public.post('/api/public/examination/registration', incomplete, format='multipart').status_code, 400)
-        payload['proof'] = SimpleUploadedFile('proof.png', b'\x89PNG\r\n\x1a\n' + b'x' * (6 * 1024 * 1024), content_type='image/png')
         valid = public.post('/api/public/examination/registration', payload, format='multipart')
         self.assertEqual(valid.status_code, 201, valid.data)
+        self.assertFalse(valid.data['payment']['proofReceived'])
+        self.assertEqual(valid.data['payment']['paymentStatus'], 'pending')
+        self.assertEqual(valid.data['payment']['total'], 250000)
         self.assertEqual(CandidateParticipation.objects.get().registration_data['submitterEmail'], 'registrant@example.test')
 
     def test_editor_uses_public_sco_codes_for_legacy_named_competitions(self):
