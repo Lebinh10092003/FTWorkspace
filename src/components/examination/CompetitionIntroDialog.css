@@ -1,0 +1,52 @@
+.ch-competition-dialog { position: fixed; inset: 0; width: min(660px, calc(100% - 40px)); max-height: min(820px, calc(100dvh - 48px)); margin: auto; padding: 0; border: 1px solid #e3e9f2; border-radius: 25px; background: #fbfcff; color: #26344b; box-shadow: 0 28px 90px #192b4433; overflow: hidden; overscroll-behavior: contain; }
+.ch-competition-dialog[open] { display: flex; flex-direction: column; animation: ch-dialog-enter .24s cubic-bezier(.2,.7,.3,1) both; }
+.ch-competition-dialog::backdrop { background: #23364b65; backdrop-filter: blur(7px); animation: ch-backdrop-enter .24s ease both; }
+.ch-competition-dialog.is-closing { animation: ch-dialog-leave .18s ease both; }
+.ch-competition-dialog.is-closing::backdrop { animation: ch-backdrop-leave .18s ease both; }
+.ch-dialog-bar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 25px 14px 29px; border-bottom: 1px solid #e5eaf1; flex-shrink: 0; }
+.ch-dialog-bar > span { color: #728196; font-size: 10px; }
+.ch-dialog-bar button { border: 0; background: #edf1f7; color: #54667d; border-radius: 8px; padding: 7px 13px; font-size: 11px; cursor: pointer; transition: background .2s; }
+.ch-dialog-bar button:hover { background: #e1e8f3; }
+.ch-dialog-content { padding: 28px 30px; overflow-y: auto; overscroll-behavior: contain; }
+.ch-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 23px; margin-bottom: 23px; }
+.ch-dialog-heading > div { min-width: 0; }
+.ch-dialog-heading > div > p { font-size: 11px; font-weight: 600; color: var(--cp-accent); margin-bottom: 9px; }
+.competition-public .ch-dialog-heading h2 { font-size: 25px; line-height: 1.5; font-weight: 600; letter-spacing: -.035em; text-wrap: balance; }
+.ch-dialog-heading h2:focus { outline: none; }
+.ch-dialog-heading img { flex-shrink: 0; width: 92px; height: 86px; object-fit: contain; mix-blend-mode: multiply; }
+.ch-dialog-intro, .ch-dialog-context { font-size: 13px; line-height: 1.95; color: #576d87; }
+.ch-dialog-context { margin-top: 14px !important; }
+.ch-dialog-topics { margin-top: 23px; }
+.ch-dialog-topics h3 { font-size: 11px; font-weight: 550; color: #718095; }
+.ch-dialog-topics ul { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 12px 0 0; padding: 0; }
+.ch-dialog-topics li { padding: 7px 12px; border-radius: 8px; background: var(--cp-tint); color: var(--cp-accent); font-size: 11px; line-height: 1.7; }
+.ch-dialog-audience { margin-top: 23px !important; padding-top: 18px; border-top: 1px solid #e6ebf2; display: flex; justify-content: space-between; gap: 20px; font-size: 11px; color: #738299; }
+.ch-dialog-audience strong { color: #4e6580; font-weight: 550; }
+.ch-dialog-footer { flex-shrink: 0; padding: 20px 30px; border-top: 1px solid #e3e9f2; background: #f2f6fc; }
+.ch-dialog-footer > div { display: flex; gap: 12px; }
+.ch-dialog-footer a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 9px; font-size: 12px; font-weight: 550; padding: 11px 24px; transition: background .2s; }
+.ch-dialog-register { background: var(--cp-accent); color: #fff; border: 1px solid var(--cp-accent); }
+.ch-dialog-register:hover { background: color-mix(in srgb, var(--cp-accent) 86%, #203047); }
+.ch-dialog-more { background: #fff; color: #526983; border: 1px solid #cdd9e9; }
+.ch-dialog-more:hover { background: #e8eff9; }
+.ch-dialog-footer > p { font-size: 10px; color: #7b889b; margin-top: 12px; line-height: 1.8; }
+@keyframes ch-dialog-enter { from { opacity: 0; transform: translateY(13px) scale(.975); } to { opacity: 1; transform: none; } }
+@keyframes ch-dialog-leave { to { opacity: 0; transform: translateY(8px) scale(.985); } }
+@keyframes ch-backdrop-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ch-backdrop-leave { to { opacity: 0; } }
+@media (max-width: 580px) {
+  .ch-competition-dialog { width: calc(100% - 24px); max-height: calc(100dvh - 30px); border-radius: 20px; }
+  .ch-dialog-bar { padding: 12px 17px 12px 20px; }
+  .ch-dialog-bar > span { max-width: 215px; line-height: 1.6; font-size: 9px; }
+  .ch-dialog-content { padding: 21px; }
+  .ch-dialog-heading { gap: 15px; margin-bottom: 18px; }
+  .competition-public .ch-dialog-heading h2 { font-size: 21px; }
+  .ch-dialog-heading img { width: 65px; height: 70px; }
+  .ch-dialog-intro, .ch-dialog-context { font-size: 12px; }
+  .ch-dialog-footer { padding: 17px 21px; }
+  .ch-dialog-footer > div { gap: 10px; }
+  .ch-dialog-footer a { flex: 1; padding-inline: 12px; font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ch-competition-dialog[open], .ch-competition-dialog::backdrop { animation: none !important; }
+}

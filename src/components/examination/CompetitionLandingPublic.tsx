@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, CalendarDays, ChevronRight, Mail, MapPin, Phone, Sparkles, Trophy, Users } from 'lucide-react';
 import LandingSiteView, { type LandingSite } from './LandingSiteView';
+import { additionalPublicCompetition } from './additionalPublicCompetitions';
 
 type LandingRound = { id: string; name: string; label: string; mode: string; dates: string[] };
 type LandingSession = { id: string; code: string; name: string; time: string; organizer: string; phase: string; candidates: number; rounds: LandingRound[] };
@@ -324,6 +325,7 @@ export default function CompetitionLandingPublic({ slug }: { slug: string }) {
   useEffect(() => {
     let active = true;
     setData(null);
+    setSite(null);
     setError('');
     (async () => {
       try {
@@ -331,6 +333,11 @@ export default function CompetitionLandingPublic({ slug }: { slug: string }) {
         if (!active) return;
         if (siteResponse.ok) {
           setSite(await siteResponse.json() as LandingSite);
+          return;
+        }
+        const additional = additionalPublicCompetition(slug);
+        if (siteResponse.status === 404 && additional) {
+          setSite(additional);
           return;
         }
         const response = await fetch(`/api/public/competitions/${encodeURIComponent(slug)}`);

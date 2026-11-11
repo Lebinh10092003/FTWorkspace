@@ -25,6 +25,7 @@ export function useRevealScope<T extends HTMLElement>(enabled = true, key: unkno
       targets.forEach(settle);
       return;
     }
+    root.classList.add('is-motion-ready');
     const timers: number[] = [];
     const observer = new IntersectionObserver(entries => {
       entries.forEach(entry => {
@@ -36,9 +37,21 @@ export function useRevealScope<T extends HTMLElement>(enabled = true, key: unkno
       });
     }, { threshold: 0.06, rootMargin: '0px 0px -8% 0px' });
     targets.forEach(element => observer.observe(element));
+    const revealFocused = (event: FocusEvent) => {
+      if (!(event.target instanceof Element)) return;
+      const element = event.target.closest<HTMLElement>('[data-reveal]');
+      if (element && root.contains(element)) {
+        observer.unobserve(element);
+        settle(element);
+      }
+    };
+    root.addEventListener('focusin', revealFocused);
     return () => {
       observer.disconnect();
       timers.forEach(window.clearTimeout);
+      targets.filter(element => element.classList.contains('is-revealed')).forEach(settle);
+      root.classList.remove('is-motion-ready');
+      root.removeEventListener('focusin', revealFocused);
     };
   }, [enabled, key]);
   return ref;

@@ -355,7 +355,9 @@ export default function App() {
         setIdToken(null);
         setUser(GUEST_USER);
         setUserRole('EMPLOYEE');
-        setViewModeState('workspace');
+        // Public pages remain accessible when a stored Workspace session expires.
+        const publicViews: ViewMode[] = ['competition-hub', 'competition-landing-public', 'public-exam-registration', 'guest-invigilation', 'training-assessment-public'];
+        if (!publicViews.includes(getInitialViewMode())) setViewModeState('workspace');
       } finally {
         if (active) setAuthChecking(false);
       }
@@ -506,7 +508,8 @@ export default function App() {
     const updateAppearance = (event: Event) => setAppearance((event as CustomEvent<WorkspaceAppearance>).detail || readWorkspaceAppearance());
     const returnHomeFromLogo = (event: MouseEvent) => {
       const target = event.target as Element | null;
-      if (target?.closest('img[src="/logo.png"], img[src$="/logo.png"]')) setViewMode('workspace');
+      const publicCompetition = ['competition-hub', 'competition-landing-public', 'public-exam-registration'].includes(getInitialViewMode());
+      if (!publicCompetition && target?.closest('img[src="/logo.png"], img[src$="/logo.png"]')) setViewMode('workspace');
     };
     window.addEventListener('ft-appearance-change', updateAppearance);
     document.addEventListener('click', returnHomeFromLogo, true);
