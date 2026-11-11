@@ -28,12 +28,18 @@ import {
   Send,
   MessageSquare,
   Wifi,
-  Battery
+  Battery,
+  LayoutGrid,
+  GraduationCap,
+  Wallet,
+  Wrench,
+  Settings
 } from 'lucide-react';
 
 export interface OfficeSmartphoneGuideProps {
   onNavigate2D: () => void;
   onOpenDesktopOS: () => void;
+  onOpenDesktopApp?: (appId: string) => void;
   onOpenAppsDrawer?: () => void;
   onCallBot?: () => void;
   onTriggerPatrol?: () => void;
@@ -68,7 +74,7 @@ const MAPPING_ITEMS: MappingItem[] = [
     icon: Monitor,
     color: 'from-blue-500 to-indigo-600',
     location3D: 'Bàn làm việc của bạn (Desks Area)',
-    guide3D: 'Nhấp trực tiếp vào màn hình máy tính 3D trên bàn làm việc hoặc bấm "Máy tính OS" để mở hệ điều hành ảo với AI Chat, Khảo thí và Báo cáo.',
+    guide3D: 'Nhấp trực tiếp vào màn hình máy tính 3D trên bàn làm việc hoặc bấm "FermatOS" để mở hệ điều hành ảo với AI Chat, Khảo thí và Báo cáo.',
     zone3D: 'desks',
     specialAction: 'os'
   },
@@ -89,8 +95,8 @@ const MAPPING_ITEMS: MappingItem[] = [
     desc2D: 'Tổ chức ca thi, nhập điểm, tạo đề thi tự động & coi thi trực tuyến',
     icon: FileText,
     color: 'from-purple-500 to-violet-600',
-    location3D: 'Phòng ban Khảo thí & Ứng dụng Khảo thí trong OS',
-    guide3D: 'Khu vực cụm bàn Khảo thí góc phía trong, hoặc mở app "Khảo thí" trong Máy tính ảo Virtual Desktop OS trên bàn làm việc.',
+    location3D: 'Phòng ban Khảo thí & Ứng dụng Khảo thí trong FermatOS',
+    guide3D: 'Khu vực cụm bàn Khảo thí góc phía trong, hoặc mở app "Khảo thí" trong FermatOS trên bàn làm việc.',
     zone3D: 'desks',
     targetMode: 'examination',
     specialAction: 'os'
@@ -101,7 +107,7 @@ const MAPPING_ITEMS: MappingItem[] = [
     desc2D: 'Báo cáo tiến độ cuối tuần, lịch họp phòng ban & giao ban',
     icon: Calendar,
     color: 'from-amber-500 to-orange-600',
-    location3D: 'Bảng tin treo tường & App Báo cáo trong Máy tính OS',
+    location3D: 'Bảng tin treo tường & App Báo cáo trong FermatOS',
     guide3D: 'Bảng thông báo lớn trên tường văn phòng và ứng dụng Báo cáo tuần tích hợp ngay trong máy tính bàn 3D.',
     zone3D: 'meeting',
     targetMode: 'communication-tools/weekly-report',
@@ -130,12 +136,12 @@ const MAPPING_ITEMS: MappingItem[] = [
   },
   {
     id: 'bot-patrol',
-    title2D: 'Robot phục vụ & Sếp đi tuần (Độc quyền 3D)',
-    desc2D: 'Tính năng tương tác thực tế chỉ có trong không gian 3D',
+    title2D: 'Robot AI & Giám đốc tuần tra đa phòng',
+    desc2D: 'Hiệu ứng sinh động trong không gian 3D',
     icon: Bot,
     color: 'from-indigo-500 to-cyan-500',
-    location3D: 'Hành lang & Tuyến đường giữa các phòng ban',
-    guide3D: 'Gọi Robot mang tài liệu tới bàn của bạn, hoặc kích hoạt Sếp tuần tra đi thăm hỏi các phòng ban trong văn phòng.',
+    location3D: 'Hành lang & Toàn bộ các phòng ban',
+    guide3D: 'Các nhân vật Bot AI làm việc dưới dạng Robot 3D, và Giám đốc sẽ tự động đi tuần tra định kỳ qua các phòng ban.',
     specialAction: 'bot'
   }
 ];
@@ -153,9 +159,10 @@ export default function OfficeSmartphoneGuide({
   onOpenRoster,
   canAccessView,
   onNavigateModule,
+  onOpenDesktopApp,
 }: OfficeSmartphoneGuideProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'controls' | 'guide'>('chat');
+  const [activeTab, setActiveTab] = useState<'apps' | 'chat' | 'controls' | 'guide'>('apps');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedHint, setCopiedHint] = useState<string | null>(null);
 
@@ -189,14 +196,13 @@ export default function OfficeSmartphoneGuide({
 
     setTimeout(() => {
       const lower = text.toLowerCase();
-      let reply = '🤖 Tôi đã ghi nhận tin nhắn của bạn. Bạn có thể mở Virtual Desktop OS trên bàn để thao tác chi tiết hoặc gọi tôi đến bàn!';
+      let reply = '🤖 Tôi đã ghi nhận tin nhắn của bạn. Bạn có thể mở FermatOS trên bàn để thao tác chi tiết hoặc gọi tôi đến bàn!';
 
       if (lower.includes('triệu hồi') || lower.includes('gọi bot') || lower.includes('gọi robot') || lower.includes('đến bàn') || lower.includes('tới bàn')) {
         onCallBot?.();
         reply = '🚀 Nhận lệnh! Tôi đang khởi động động cơ phản lực và di chuyển tới bàn làm việc của bạn trong không gian 3D!';
       } else if (lower.includes('sếp') || lower.includes('giám đốc') || lower.includes('tuần tra')) {
-        onTriggerPatrol?.();
-        reply = '👔 Đã kích hoạt Giám đốc đi tuần tra các phòng ban trong văn phòng 3D!';
+        reply = '👔 Giám đốc tự động đi tuần tra định kỳ qua các phòng ban (Phòng họp, Studio AI, Tài nguyên, Pantry) trong văn phòng 3D!';
       } else if (lower.includes('toàn cảnh') || lower.includes('phòng họp') || lower.includes('máy chủ') || lower.includes('bàn làm việc')) {
         const zone = lower.includes('toàn cảnh') ? 'home' : lower.includes('phòng họp') ? 'meeting' : lower.includes('máy chủ') ? 'server' : 'desks';
         onFocus3DZone?.(zone);
@@ -273,68 +279,61 @@ export default function OfficeSmartphoneGuide({
 
   return createPortal(
     <>
-      {/* 1. NÚT DOCK GÓC DƯỚI BÊN PHẢI (Widget Hình Chiếc Điện Thoại Sang Trọng) */}
+      {/* 1. NÚT DOCK GÓC DƯỚI BÊN PHẢI (ftPhone 16 Pro Pill Gọn Gàng, Đứng Cạnh Boxchat) */}
       {!isOpen && (
-        <div className="pointer-events-auto fixed bottom-5 right-5 z-[9000] flex items-center gap-2">
-          {/* Tag gợi ý nhẹ khi mới vào */}
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-slate-200 text-xs shadow-xl backdrop-blur-md animate-pulse">
-            <Compass className="w-3.5 h-3.5 text-blue-400" />
-            <span className="font-medium">Cẩm nang 2D ➔ 3D</span>
-          </div>
-
+        <div
+          className="pointer-events-auto fixed right-24 sm:right-24 z-[9000] flex items-center"
+          style={{ bottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}
+        >
           <button
             type="button"
             onClick={() => setIsOpen(true)}
-            className="group relative flex flex-col items-center justify-center w-14 h-24 sm:w-16 sm:h-28 rounded-2xl bg-gradient-to-b from-slate-800 via-slate-900 to-slate-950 p-1 border-2 border-slate-600/90 shadow-[0_12px_36px_rgba(0,0,0,0.6)] hover:border-blue-400 hover:scale-105 transition-all duration-200 cursor-pointer"
-            title="Mở Điện thoại Fermat: Cẩm nang trỏ hướng tính năng 2D sang 3D"
+            className="group relative flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-slate-900/95 hover:bg-slate-800 border border-slate-700/80 shadow-[0_12px_36px_rgba(0,0,0,0.6)] backdrop-blur-xl hover:border-cyan-400/70 hover:scale-[1.03] active:scale-95 transition-all duration-200 cursor-pointer"
+            title="Mở ftPhone 16 Pro Trợ lý & Ứng dụng Workspace"
           >
-            {/* Viền kim loại & Dynamic Island mô phỏng */}
-            <div className="w-6 h-1 rounded-full bg-slate-700 mb-1" />
-            
-            {/* Màn hình điện thoại nhỏ bên trong */}
-            <div className="relative flex-1 w-full rounded-xl bg-gradient-to-b from-blue-950/80 via-slate-900 to-indigo-950/80 flex flex-col items-center justify-center p-1 overflow-hidden border border-slate-700/60">
-              <div className="absolute top-1 text-[8px] font-mono text-blue-300/80 font-bold">
-                {currentTime}
-              </div>
-              <Compass className="w-6 h-6 text-blue-400 group-hover:rotate-45 transition-transform duration-300" />
-              <span className="text-[9px] font-bold text-slate-200 mt-1">2D➔3D</span>
-
-              {/* Chấm thông báo sáng nhấp nháy */}
-              <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            <div className="relative flex items-center justify-center w-8 h-9 rounded-xl bg-gradient-to-b from-slate-800 to-black border border-slate-600/80 shadow-inner shrink-0">
+              <div className="absolute top-1 w-3.5 h-1 rounded-full bg-black border border-slate-700" />
+              <Smartphone className="w-4 h-4 text-cyan-400 mt-1" />
+              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500" />
               </span>
             </div>
-
-            {/* Vạch Home Indicator đáy máy */}
-            <div className="w-8 h-1 rounded-full bg-slate-500 mt-1" />
+            <div className="flex flex-col text-left leading-tight">
+              <span className="text-xs font-bold text-slate-100 group-hover:text-cyan-300 transition-colors">
+                ftPhone Trợ lý
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">
+                ftOS 18 · {currentTime}
+              </span>
+            </div>
           </button>
         </div>
       )}
 
-      {/* 2. KHUNG IPHONE 16 PRO TITANIUM VỚI DYNAMIC ISLAND */}
+      {/* 2. KHUNG FTPHONE 16 PRO TITANIUM VỚI DYNAMIC ISLAND */}
       {isOpen && (
-        <div className="pointer-events-auto fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[9001] w-[350px] sm:w-[385px] h-[640px] max-h-[calc(100vh-2rem)] rounded-[48px] border-[6px] border-slate-600/90 bg-[#070C16] shadow-[0_30px_90px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-6 fade-in duration-200 text-slate-100 font-sans">
-          
-          {/* iPhone 16 Pro Dynamic Island & Status Bar */}
+        <div
+          className="pointer-events-auto fixed right-3 sm:right-6 z-[9001] w-[calc(100vw-1.5rem)] max-w-[385px] h-[640px] max-h-[calc(100vh-2rem)] rounded-[46px] border-[6px] border-slate-600/90 bg-[#070C16] shadow-[0_30px_90px_rgba(0,0,0,0.92)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-6 fade-in duration-200 text-slate-100 font-sans"
+          style={{ bottom: 'max(14px, env(safe-area-inset-bottom, 14px))' }}
+        >
+          {/* ftPhone 16 Pro Dynamic Island & Status Bar */}
           <div className="relative h-11 w-full bg-black flex items-center justify-between px-5 pt-1 shrink-0 select-none">
             <span className="text-[12px] font-bold text-slate-200 font-mono tracking-tight">{currentTime}</span>
-            
+
             {/* Dynamic Island Pill */}
             <div className="h-7 px-3 rounded-full bg-black border border-slate-800/90 shadow-inner flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${isBotTyping ? 'bg-amber-400 animate-ping' : 'bg-cyan-400 animate-pulse'}`} />
               <span className="text-[10px] font-semibold text-slate-200">
-                {isBotTyping ? 'AI đang gõ...' : 'FT Bot Online'}
+                {isBotTyping ? 'AI đang gõ...' : 'FT Assistant'}
               </span>
               <span className="w-2.5 h-2.5 rounded-full bg-slate-900 border border-slate-700/60" />
             </div>
 
             <div className="flex items-center gap-1.5 text-slate-300 text-xs">
               <Wifi className="w-3.5 h-3.5" />
-              <div className="flex items-center gap-0.5">
-                <span className="text-[10px] font-mono font-bold">5G</span>
-                <Battery className="w-3.5 h-3.5 text-emerald-400" />
-              </div>
+              <span className="text-[10px] font-mono font-bold">5G</span>
+              <Battery className="w-3.5 h-3.5 text-emerald-400" />
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
@@ -346,7 +345,7 @@ export default function OfficeSmartphoneGuide({
             </div>
           </div>
 
-          {/* Header iOS Navigation */}
+          {/* Header ftOS Navigation */}
           <div className="px-4 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#0B72CE] to-cyan-500 flex items-center justify-center text-white shadow-md">
@@ -354,23 +353,27 @@ export default function OfficeSmartphoneGuide({
               </div>
               <div>
                 <h3 className="text-xs font-bold text-white flex items-center gap-1">
-                  iPhone 16 Pro · FT Hub
+                  ftPhone 16 Pro · Fermat ftOS
                 </h3>
-                <p className="text-[10px] text-cyan-400 font-medium">Trợ lý AI hai chiều nội bộ</p>
+                <p className="text-[10px] text-cyan-400 font-medium">Toàn bộ phân hệ & Trợ lý AI</p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onNavigate2D}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-semibold border border-slate-700 transition cursor-pointer"
-            >
-              <ArrowLeft className="w-3 h-3" />
-              <span>2D</span>
-            </button>
           </div>
 
-          {/* Tabs iOS Segmented Control */}
-          <div className="grid grid-cols-3 bg-slate-950/90 border-b border-slate-800 p-1 text-[11px] font-semibold shrink-0">
+          {/* Tabs ftOS Segmented Control */}
+          <div className="grid grid-cols-4 bg-slate-950/90 border-b border-slate-800 p-1 text-[10px] font-semibold shrink-0 gap-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('apps')}
+              className={`py-1.5 rounded-lg transition text-center cursor-pointer flex items-center justify-center gap-1 ${
+                activeTab === 'apps'
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <LayoutGrid className="w-3 h-3" />
+              <span>Ứng dụng</span>
+            </button>
             <button
               type="button"
               onClick={() => setActiveTab('chat')}
@@ -393,7 +396,7 @@ export default function OfficeSmartphoneGuide({
               }`}
             >
               <Compass className="w-3 h-3" />
-              <span>Bản đồ 3D</span>
+              <span>Điều khiển</span>
             </button>
             <button
               type="button"
@@ -418,6 +421,110 @@ export default function OfficeSmartphoneGuide({
 
           {/* Nội dung theo Tab */}
           <div className="flex-1 overflow-hidden font-sans flex flex-col">
+            {/* TAB 0: ftOS HOME SCREEN APP GRID */}
+            {activeTab === 'apps' && (
+              <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-[#0b132b] via-[#101c3a] to-[#080d1e] flex flex-col justify-between">
+                <div>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/90">
+                      Kho ứng dụng Workspace
+                    </span>
+                    <span className="text-[10px] text-slate-400">ftOS 18.2</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { id: 'assistant', label: 'Trợ lý AI', icon: Bot, bg: 'from-cyan-500 to-blue-600', mode: 'office' },
+                      { id: 'examination', label: 'Khảo thí', icon: GraduationCap, bg: 'from-emerald-500 to-teal-600', mode: 'examination' },
+                      { id: 'work-schedule', label: 'Lịch & Việc', icon: Calendar, bg: 'from-orange-500 to-rose-500', mode: 'work-schedule' },
+                      { id: 'attendance', label: 'Công ca', icon: Clock, bg: 'from-amber-500 to-orange-600', mode: 'attendance' },
+                      { id: 'weekly-report', label: 'Báo cáo', icon: FileText, bg: 'from-indigo-500 to-purple-600', mode: 'weekly-report' },
+                      { id: 'social-dashboard', label: 'Truyền thông', icon: Share2, bg: 'from-pink-500 to-rose-600', mode: 'social-dashboard' },
+                      { id: 'digital-training', label: 'Đào tạo số', icon: Layers, bg: 'from-sky-500 to-indigo-600', mode: 'digital-training' },
+                      { id: 'finance-report', label: 'Tài chính', icon: Wallet, bg: 'from-emerald-600 to-green-700', mode: 'finance-report' },
+                      { id: 'tools', label: 'Công cụ', icon: Wrench, bg: 'from-violet-500 to-fuchsia-600', mode: 'communication-tools' },
+                      { id: 'admin-docs', label: 'Công văn', icon: FileText, bg: 'from-slate-500 to-slate-700', mode: 'document-number' },
+                      { id: 'account-management', label: 'Nhân sự', icon: Users, bg: 'from-blue-500 to-cyan-600', mode: 'account-management' },
+                      { id: 'settings', label: 'Cài đặt', icon: Settings, bg: 'from-zinc-500 to-slate-700', mode: 'office' },
+                    ]
+                      .filter(app => app.mode === 'office' || canAccessView(app.mode))
+                      .map(app => {
+                        const Icon = app.icon;
+                        return (
+                          <button
+                            key={app.id}
+                            type="button"
+                            onClick={() => {
+                              if (onOpenDesktopApp) {
+                                onOpenDesktopApp(app.id);
+                              } else {
+                                onOpenDesktopOS();
+                              }
+                              setIsOpen(false);
+                            }}
+                            className="group flex flex-col items-center gap-1.5 cursor-pointer"
+                          >
+                            <div
+                              className={`w-13 h-13 rounded-[15px] bg-gradient-to-br ${app.bg} flex items-center justify-center text-white shadow-lg border border-white/20 group-hover:scale-105 group-active:scale-95 transition-transform`}
+                            >
+                              <Icon className="w-6 h-6" />
+                            </div>
+                            <span className="text-[10px] font-medium text-slate-200 text-center leading-tight line-clamp-1">
+                              {app.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                {/* iOS Dock mini inside Home Screen */}
+                <div className="mt-4 p-2.5 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-around">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onCallBot?.();
+                      setCopiedHint('🤖 Đang gọi Robot Trợ lý AI tới bàn của bạn!');
+                      setTimeout(() => setCopiedHint(null), 2500);
+                    }}
+                    className="w-11 h-11 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-md hover:scale-105 transition cursor-pointer"
+                    title="Gọi Robot Trợ lý"
+                  >
+                    <Bot className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('chat')}
+                    className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center text-white shadow-md hover:scale-105 transition cursor-pointer"
+                    title="Mở iMessage AI"
+                  >
+                    <MessageSquare className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenDesktopOS();
+                      setIsOpen(false);
+                    }}
+                    className="w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-white shadow-md hover:scale-105 transition cursor-pointer"
+                    title="Mở MacBook Desktop OS"
+                  >
+                    <Monitor className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onOpenDesktopApp) onOpenDesktopApp('settings');
+                      else onOpenDesktopOS();
+                      setIsOpen(false);
+                    }}
+                    className="w-11 h-11 rounded-2xl bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center text-white shadow-md hover:scale-105 transition cursor-pointer"
+                    title="Cài đặt hệ thống"
+                  >
+                    <Settings className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
             {/* TAB 1: 2-WAY INTERACTIVE AI CHAT */}
             {activeTab === 'chat' && (
               <div className="flex-1 flex flex-col h-full overflow-hidden">
@@ -465,10 +572,10 @@ export default function OfficeSmartphoneGuide({
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleSendChatMessage('Sếp có đang đi tuần tra không?')}
+                    onClick={() => handleSendChatMessage('Xem lịch tuần tra tự động của Giám đốc')}
                     className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
                   >
-                    👔 Sếp tuần tra
+                    👔 Giám đốc 3D
                   </button>
                 </div>
 
@@ -584,7 +691,7 @@ export default function OfficeSmartphoneGuide({
                               className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10.5px] font-bold transition cursor-pointer flex items-center gap-1 shadow-sm"
                             >
                               <Monitor className="w-3 h-3" />
-                              <span>Mở Máy tính OS</span>
+                              <span>Mở FermatOS</span>
                             </button>
                           )}
 
@@ -615,17 +722,6 @@ export default function OfficeSmartphoneGuide({
                             >
                               <Bot className="w-3 h-3" />
                               <span>Gọi Robot</span>
-                            </button>
-                          )}
-
-                          {item.targetMode && canAccessView(item.targetMode) && (
-                            <button
-                              type="button"
-                              onClick={() => onNavigateModule(item.targetMode!)}
-                              className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10.5px] font-medium transition cursor-pointer flex items-center gap-1"
-                            >
-                              <span>Mở 2D</span>
-                              <ExternalLink className="w-2.5 h-2.5 text-slate-400" />
                             </button>
                           )}
                         </div>
@@ -727,17 +823,8 @@ export default function OfficeSmartphoneGuide({
             )}
           </div>
 
-          {/* CHÂN ĐIỆN THOẠI: NÚT QUAY LẠI 2D NỔI BẬT & HOME BAR */}
+          {/* CHÂN ĐIỆN THOẠI: HOME BAR */}
           <div className="p-3 bg-slate-950 border-t border-slate-800 shrink-0 flex flex-col items-center gap-2">
-            <button
-              type="button"
-              onClick={onNavigate2D}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg transition-all cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Quay lại Giao diện 2D Tiêu chuẩn</span>
-            </button>
-
             {/* Thanh Home Indicator vuốt đóng */}
             <div
               onClick={() => setIsOpen(false)}

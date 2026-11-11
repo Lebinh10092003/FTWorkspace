@@ -119,7 +119,8 @@ class OfficeRosterView(APIView):
             show_presence = presence.show_presence if presence else True
 
             # Tính trạng thái online: có nhịp trong 3 phút
-            is_bot = bool(u.email and u.email.strip().lower().startswith('bot.fb.'))
+            is_bot = bool(getattr(u, 'role', '') == 'BOT' or (u.email and u.email.strip().lower().startswith('bot.')))
+            is_assistant = bool(is_bot and ('assistant' in (u.email or '').lower() or 'trợ lý' in (u.name or '').lower()))
             raw_online = True if is_bot else (presence.is_online(now) if presence else False)
 
             # Tính trạng thái working / idle / offline
@@ -150,6 +151,7 @@ class OfficeRosterView(APIView):
                 'status': user_status,
                 'is_idle': is_user_idle,
                 'is_bot': is_bot,
+                'is_assistant': is_assistant,
                 'is_me': is_me,
                 'avatar': avatar_cfg,
             }
@@ -159,6 +161,24 @@ class OfficeRosterView(APIView):
                 member_info['show_presence'] = show_presence
 
             roster.append(member_info)
+
+        # Đảm bảo luôn có Robot Trợ lý AI chuyên trách trong văn phòng
+        if not any(m.get('is_assistant') for m in roster):
+            roster.append({
+                'name': 'Robot Trợ lý AI',
+                'department': 'Văn phòng trung tâm',
+                'job_title': 'Trợ lý AI Workspace',
+                'role': 'Trợ lý AI Workspace',
+                'id': 'bot-assistant',
+                'seat': {'room': ROOM_COMMON, 'seat_index': 1, 'is_head': False},
+                'online': True,
+                'status': 'working',
+                'is_idle': False,
+                'is_bot': True,
+                'is_assistant': True,
+                'is_me': False,
+                'avatar': {'shirt': '#0EA5E9', 'skin_color': '#E2E8F0', 'glasses': False},
+            })
 
         return Response({'roster': roster})
 

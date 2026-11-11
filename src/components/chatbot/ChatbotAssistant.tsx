@@ -457,7 +457,7 @@ export default function ChatbotAssistant({
         type="button"
         onClick={handleToggleOpen}
         aria-label="Mở Trợ lý AI Workspace"
-        className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-4 lg:bottom-6 lg:right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#0B72CE] text-white shadow-xl shadow-[#0B72CE]/30 transition-all duration-200 hover:scale-105 hover:bg-[#075CA8] active:scale-95 focus:outline-none focus:ring-4 focus:ring-[#0B72CE]/30"
+        className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-4 lg:bottom-6 lg:right-6 z-[8999] flex h-14 w-14 items-center justify-center rounded-full bg-[#0B72CE] text-white shadow-xl shadow-[#0B72CE]/30 transition-all duration-200 hover:scale-105 hover:bg-[#075CA8] active:scale-95 focus:outline-none focus:ring-4 focus:ring-[#0B72CE]/30"
       >
         {isOpen ? (
           <X className="h-6 w-6" />
@@ -483,7 +483,7 @@ export default function ChatbotAssistant({
       {/* Chat window modal / sheet */}
       {isOpen && (
         <div
-          className="fixed inset-x-0 bottom-0 z-50 flex h-[86vh] flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl transition-all duration-200 md:bottom-20 md:right-5 md:left-auto md:h-[600px] md:w-[420px] md:rounded-2xl dark:border-slate-800 dark:bg-slate-900"
+          className="fixed inset-x-0 bottom-0 z-[9500] flex h-[86vh] flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl transition-all duration-200 md:bottom-20 md:right-5 md:left-auto md:h-[600px] md:w-[420px] md:rounded-2xl dark:border-slate-800 dark:bg-slate-900"
           style={{ maxHeight: 'calc(100vh - 80px)' }}
         >
           {/* Header */}
