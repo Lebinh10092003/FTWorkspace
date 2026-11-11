@@ -81,7 +81,7 @@ let frameReady = false;
 function ensureOfficeFrame(): HTMLIFrameElement {
   if (frameEl && frameHost && document.body.contains(frameHost)) return frameEl;
   frameHost = document.createElement('div');
-  frameHost.style.cssText = 'position:fixed;display:none;z-index:10;left:0;top:0;width:0;height:0;overflow:hidden;background:#020617';
+  frameHost.style.cssText = 'position:fixed;display:none;z-index:0;left:0;top:0;width:0;height:0;overflow:hidden;background:#020617';
   frameEl = document.createElement('iframe');
   frameEl.src = '/office3d/vi/?embed=1';
   frameEl.title = 'Văn phòng 3D FermatTech';
@@ -134,6 +134,7 @@ export default function OfficeWorkspace({
   const [hudCollapsed, setHudCollapsed] = useState(false);
   const [showTips, setShowTips] = useState(true);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [selectedColleague, setSelectedColleague] = useState<any>(null);
   const [botState, setBotState] = useState<{
     state: string;
     botName?: string;
@@ -335,6 +336,11 @@ export default function OfficeWorkspace({
         setIsDesktopOSOpen(true);
       }
 
+      // Nhận selectWorker khi click vào nhân sự trong không gian 3D
+      if (data.type === 'ft-office:selectWorker' && data.worker) {
+        setSelectedColleague(data.worker);
+      }
+
       // Nhận botState
       if (data.type === 'ft-office:botState') {
         setBotState(prev => ({
@@ -434,7 +440,7 @@ export default function OfficeWorkspace({
   }
 
   return (
-    <div ref={boxRef} className="fixed inset-0 w-screen h-screen bg-slate-950 text-white overflow-hidden pointer-events-none">
+    <div ref={boxRef} className="office-3d-shell fixed inset-0 w-screen h-screen bg-transparent text-white overflow-hidden pointer-events-none z-20">
       {/* 1. THANH ĐIỀU HƯỚNG TRÊN CAO (TOP NAVIGATION BAR - GIỮ ĐẦY ĐỦ CHỨC NĂNG CẦN THIẾT) */}
       <header className="pointer-events-auto fixed top-0 inset-x-0 h-14 z-30 bg-[#0B192C]/95 backdrop-blur-md border-b border-slate-800 px-3 sm:px-5 flex items-center justify-between select-none shadow-lg">
         
@@ -636,10 +642,13 @@ export default function OfficeWorkspace({
 
       {/* Loading Overlay */}
       {loading && (
-        <div className="pointer-events-auto absolute inset-0 top-14 z-30 flex flex-col items-center justify-center bg-slate-950/90 text-white backdrop-blur-sm">
-          <LoaderCircle className="h-9 w-9 animate-spin text-[#D97757]" />
-          <p className="mt-3 text-sm font-semibold text-slate-200">Đang khởi tạo Văn phòng 3D...</p>
-          <p className="mt-1 text-xs text-slate-400">Tải mô hình văn phòng và định vị chỗ ngồi</p>
+        <div className="pointer-events-auto fixed inset-0 top-14 z-50 flex flex-col items-center justify-center bg-slate-950 text-white select-none">
+          <div className="relative flex items-center justify-center mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#D97757] to-amber-500/80 animate-pulse opacity-30 absolute" />
+            <LoaderCircle className="h-10 w-10 animate-spin text-[#D97757] relative z-10" />
+          </div>
+          <p className="text-base font-bold text-slate-100 tracking-wide">Đang khởi tạo Văn phòng 3D FermatTech...</p>
+          <p className="mt-1.5 text-xs text-slate-400 font-mono">Đồng bộ chỗ ngồi & vị trí nhân sự thực tế</p>
         </div>
       )}
 
@@ -794,12 +803,80 @@ export default function OfficeWorkspace({
         onNavigateModule={(mode) => onNavigate(mode)}
       />
 
+      {/* Thẻ thông tin đồng nghiệp khi click trực tiếp trong Văn phòng 3D (Mục 1) */}
+      {selectedColleague && (
+        <div className="pointer-events-auto fixed top-20 right-4 z-[9500] w-80 rounded-2xl border border-slate-700/90 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-right-4 duration-150">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-[#D97757] to-amber-500 flex items-center justify-center text-white font-bold text-base shadow-md">
+                {(selectedColleague.name || '?').slice(0, 1).toUpperCase()}
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-white leading-tight">
+                  {selectedColleague.name || 'Nhân sự FermatTech'}
+                </h4>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {selectedColleague.role || 'Thành viên'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedColleague(null)}
+              className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-slate-800 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400">Trạng thái:</span>
+              {selectedColleague.status === 'idle' ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 font-semibold text-amber-400 border border-amber-500/30">
+                  💤 Đang nghỉ ngơi (Idle)
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 font-semibold text-emerald-400 border border-emerald-500/30">
+                  🟢 Đang làm việc
+                </span>
+              )}
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400">Khu vực:</span>
+              <span className="font-medium text-slate-200">{selectedColleague.department || 'Văn phòng trung tâm'}</span>
+            </div>
+          </div>
+
+          <div className="mt-3.5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedColleague(null);
+                setIsDesktopOSOpen(true);
+              }}
+              className="flex-1 rounded-xl bg-[#D97757] hover:bg-[#c46849] py-2 px-3 text-xs font-bold text-white transition shadow-md cursor-pointer"
+            >
+              💬 Chat / Giao việc AI
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedColleague(null)}
+              className="rounded-xl bg-slate-800 hover:bg-slate-700 py-2 px-3 text-xs font-medium text-slate-300 transition cursor-pointer"
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Virtual Desktop OS Modal dạng game */}
       <div className={isDesktopOSOpen ? 'pointer-events-auto' : 'pointer-events-none'}>
         <VirtualDesktopOS
           isOpen={isDesktopOSOpen}
           onClose={() => setIsDesktopOSOpen(false)}
           idToken={idToken}
+          currentUser={{ name: userName, role: userRole }}
           onNavigateModule={(mode) => {
             if (canAccessView(mode)) {
               onNavigate(mode);
