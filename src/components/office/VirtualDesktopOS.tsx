@@ -590,40 +590,43 @@ function VirtualDesktopOSInner({
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 sm:p-8 animate-in fade-in duration-200">
-      {/* Vỏ máy tính Monitor Retro Isometric */}
-      <div className="relative w-full max-w-5xl h-[85vh] bg-[#EFE7D8] border-4 border-[#1E232B] rounded-3xl shadow-[8px_8px_0px_#1E232B] flex flex-col overflow-hidden select-none font-sans">
+      {/* Khung macOS Sequoia Glassmorphism Workstation */}
+      <div className="relative w-full max-w-6xl h-[88vh] bg-slate-950/90 border border-white/20 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl flex flex-col overflow-hidden select-none font-sans">
         
-        {/* Mép vát bezel màn hình retro */}
-        <div className="flex items-center justify-between px-4 py-2 bg-[#E5DBC7] border-b-2 border-[#1E232B] text-xs font-mono text-[#1E232B]">
-          <div className="flex items-center gap-2 font-bold tracking-wider">
-            <Monitor className="w-4 h-4 text-[#D97757]" />
-            <span>FERMAT-WORKSTATION // OS 2.6 ISOMETRIC</span>
-          </div>
+        {/* macOS Sequoia Top Menu Bar */}
+        <div className="h-8 bg-slate-950/80 backdrop-blur-2xl border-b border-white/10 px-4 flex items-center justify-between text-xs text-slate-200 select-none z-50">
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              ONLINE
-            </span>
+            <span className="text-sm font-bold text-white hover:text-sky-400 cursor-pointer transition"></span>
+            <span className="font-bold text-white tracking-wide">Workspace OS</span>
+            <span className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition">Tệp</span>
+            <span className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition">Chỉnh sửa</span>
+            <span className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition">Hiển thị</span>
+            <span className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition">Cửa sổ</span>
+            <span className="hidden sm:inline text-slate-400 hover:text-white cursor-pointer transition">Trợ giúp</span>
+          </div>
+
+          <div className="flex items-center gap-3 text-[11px] font-mono text-slate-300">
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px]">
+              <span className={`w-2 h-2 rounded-full ${botState.state === 'ARRIVED' ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'}`} />
+              <span className="font-sans font-semibold text-slate-300">
+                {botState.state === 'ARRIVED' ? 'Robot tại bàn' : botState.state === 'MOVING' ? 'Robot đang tới' : 'Bot Station'}
+              </span>
+            </div>
+            <span>{timeStr}</span>
             <button
               onClick={onClose}
-              className="p-1 hover:bg-[#D97757] hover:text-white rounded border border-[#1E232B] transition-colors"
-              title="Đóng máy tính cá nhân"
+              className="p-1 hover:bg-rose-500/20 hover:text-rose-400 rounded-lg text-slate-400 transition cursor-pointer"
+              title="Đóng Desktop OS"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
-        {/* Màn hình Desktop chính */}
-        <div className="relative flex-1 bg-[#FBFBF7] overflow-hidden p-4 flex">
-          {/* Lưới isometric background nhẹ nhàng */}
-          <div
-            className="absolute inset-0 opacity-[0.06] pointer-events-none"
-            style={{
-              backgroundImage: `radial-gradient(#1E232B 1.5px, transparent 1.5px)`,
-              backgroundSize: '24px 24px',
-            }}
-          />
+        {/* Màn hình Desktop macOS Sequoia */}
+        <div className="relative flex-1 bg-gradient-to-br from-[#0B1120] via-[#121A32] to-[#060B19] overflow-hidden p-4 pb-20 flex">
+          {/* Ánh sáng kính mờ Sequoia */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(56,189,248,0.14),transparent_45%),radial-gradient(circle_at_75%_70%,rgba(217,119,87,0.10),transparent_45%)] pointer-events-none" />
 
           {/* Cột Desktop Icons bên trái */}
           <div className="relative z-10 flex flex-col gap-3 w-28">
@@ -631,14 +634,14 @@ function VirtualDesktopOSInner({
               onClick={() => focusWindow('assistant')}
               className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all text-center group ${
                 activeWindow === 'assistant' && windows.assistant.isOpen
-                  ? 'bg-[#EFE7D8] border-[#D97757] shadow-[2px_2px_0px_#1E232B]'
-                  : 'border-transparent hover:bg-[#EFE7D8]/50 hover:border-[#1E232B]/30'
+                  ? 'bg-slate-900/80 border-[#D97757] shadow-sm'
+                  : 'border-transparent hover:bg-slate-900/80/50 hover:border-white/10/30'
               }`}
             >
               <div className="w-12 h-12 rounded-xl bg-[#D97757] text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
                 <Bot className="w-6 h-6" />
               </div>
-              <span className="text-[11px] font-bold text-[#1E232B] mt-1 leading-tight">
+              <span className="text-[11px] font-bold text-slate-100 mt-1 leading-tight">
                 Trợ lý AI
               </span>
             </button>
@@ -647,14 +650,14 @@ function VirtualDesktopOSInner({
               onClick={() => focusWindow('exam')}
               className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all text-center group ${
                 activeWindow === 'exam' && windows.exam.isOpen
-                  ? 'bg-[#EFE7D8] border-[#D97757] shadow-[2px_2px_0px_#1E232B]'
-                  : 'border-transparent hover:bg-[#EFE7D8]/50 hover:border-[#1E232B]/30'
+                  ? 'bg-slate-900/80 border-[#D97757] shadow-sm'
+                  : 'border-transparent hover:bg-slate-900/80/50 hover:border-white/10/30'
               }`}
             >
-              <div className="w-12 h-12 rounded-xl bg-[#1E232B] text-[#FBFBF7] flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+              <div className="w-12 h-12 rounded-xl bg-[#1E232B] text-slate-100 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
                 <GraduationCap className="w-6 h-6 text-[#38BDF8]" />
               </div>
-              <span className="text-[11px] font-bold text-[#1E232B] mt-1 leading-tight">
+              <span className="text-[11px] font-bold text-slate-100 mt-1 leading-tight">
                 Khảo thí
               </span>
             </button>
@@ -663,14 +666,14 @@ function VirtualDesktopOSInner({
               onClick={() => focusWindow('reports')}
               className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all text-center group ${
                 activeWindow === 'reports' && windows.reports.isOpen
-                  ? 'bg-[#EFE7D8] border-[#D97757] shadow-[2px_2px_0px_#1E232B]'
-                  : 'border-transparent hover:bg-[#EFE7D8]/50 hover:border-[#1E232B]/30'
+                  ? 'bg-slate-900/80 border-[#D97757] shadow-sm'
+                  : 'border-transparent hover:bg-slate-900/80/50 hover:border-white/10/30'
               }`}
             >
               <div className="w-12 h-12 rounded-xl bg-[#2A9D8F] text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
                 <FileText className="w-6 h-6" />
               </div>
-              <span className="text-[11px] font-bold text-[#1E232B] mt-1 leading-tight">
+              <span className="text-[11px] font-bold text-slate-100 mt-1 leading-tight">
                 Báo cáo tuần
               </span>
             </button>
@@ -679,14 +682,14 @@ function VirtualDesktopOSInner({
               onClick={() => focusWindow('terminal')}
               className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all text-center group ${
                 activeWindow === 'terminal' && windows.terminal.isOpen
-                  ? 'bg-[#EFE7D8] border-[#D97757] shadow-[2px_2px_0px_#1E232B]'
-                  : 'border-transparent hover:bg-[#EFE7D8]/50 hover:border-[#1E232B]/30'
+                  ? 'bg-slate-900/80 border-[#D97757] shadow-sm'
+                  : 'border-transparent hover:bg-slate-900/80/50 hover:border-white/10/30'
               }`}
             >
               <div className="w-12 h-12 rounded-xl bg-[#1E232B] text-emerald-400 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform font-mono">
                 <Terminal className="w-6 h-6" />
               </div>
-              <span className="text-[11px] font-bold text-[#1E232B] mt-1 leading-tight">
+              <span className="text-[11px] font-bold text-slate-100 mt-1 leading-tight">
                 HQ Console
               </span>
             </button>
@@ -695,14 +698,14 @@ function VirtualDesktopOSInner({
               onClick={() => focusWindow('game')}
               className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all text-center group ${
                 activeWindow === 'game' && windows.game.isOpen
-                  ? 'bg-[#EFE7D8] border-[#D97757] shadow-[2px_2px_0px_#1E232B]'
-                  : 'border-transparent hover:bg-[#EFE7D8]/50 hover:border-[#1E232B]/30'
+                  ? 'bg-slate-900/80 border-[#D97757] shadow-sm'
+                  : 'border-transparent hover:bg-slate-900/80/50 hover:border-white/10/30'
               }`}
             >
               <div className="w-12 h-12 rounded-xl bg-[#E76F51] text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
                 <Gamepad2 className="w-6 h-6" />
               </div>
-              <span className="text-[11px] font-bold text-[#1E232B] mt-1 leading-tight">
+              <span className="text-[11px] font-bold text-slate-100 mt-1 leading-tight">
                 Mini Game
               </span>
             </button>
@@ -716,31 +719,51 @@ function VirtualDesktopOSInner({
               <div
                 onClick={() => focusWindow('assistant')}
                 style={{ zIndex: windows.assistant.zIndex }}
-                className="absolute inset-2 bg-[#FBFBF7] border-2 border-[#1E232B] rounded-2xl shadow-[6px_6px_0px_#1E232B] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+                className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
                 {/* Header Window */}
-                <div className="flex items-center justify-between px-3 py-2 bg-[#1E232B] text-[#FBFBF7] text-xs font-bold">
+                {/* macOS Sequoia Window Titlebar */}
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/75 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
-                    <Bot className="w-4 h-4 text-[#D97757]" />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); closeWindow('assistant'); }}
+                      className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Đóng (Close)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">×</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleMinimize('assistant'); }}
+                      className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Thu nhỏ (Minimize)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">−</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); focusWindow('assistant'); }}
+                      className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Phóng to / Lấy nét (Zoom)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">+</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <Bot className="w-4 h-4 text-sky-400" />
                     <span>TRỢ LÝ AI WORKSTATION // HÀNG CHỜ VẬT LÝ</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={(e) => { e.stopPropagation(); toggleMinimize('assistant'); }} className="p-0.5 hover:bg-white/20 rounded">
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); closeWindow('assistant'); }} className="p-0.5 hover:bg-rose-500 rounded">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <div className="w-12" />
                 </div>
 
                 {/* Body Window */}
                 <div className="flex-1 p-3 grid grid-cols-1 md:grid-cols-3 gap-3 overflow-hidden">
                   {/* Cột trái: Điều khiển Robot vật lý & Hàng chờ */}
-                  <div className="bg-[#EFE7D8]/60 p-3 rounded-xl border border-[#1E232B]/20 flex flex-col justify-between">
+                  <div className="bg-slate-900/80/60 p-3 rounded-xl border border-white/10/20 flex flex-col justify-between">
                     <div>
-                      <div className="flex items-center justify-between mb-2 pb-2 border-b border-[#1E232B]/15">
-                        <span className="text-xs font-bold text-[#1E232B] uppercase tracking-wide">
+                      <div className="flex items-center justify-between mb-2 pb-2 border-b border-white/10/15">
+                        <span className="text-xs font-bold text-slate-100 uppercase tracking-wide">
                           Điều phối Robot
                         </span>
                         <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold ${
@@ -748,13 +771,13 @@ function VirtualDesktopOSInner({
                             ? 'bg-emerald-600 text-white'
                             : botState.state === 'MOVING'
                             ? 'bg-amber-500 text-white animate-pulse'
-                            : 'bg-[#1E232B]/10 text-[#1E232B]'
+                            : 'bg-[#1E232B]/10 text-slate-100'
                         }`}>
                           {botState.state === 'ARRIVED' ? 'TẠI BÀN' : botState.state === 'MOVING' ? 'ĐANG ĐẾN' : 'TRẠM CHỜ'}
                         </span>
                       </div>
 
-                      <div className="text-xs text-[#1E232B]/80 mb-3 space-y-1">
+                      <div className="text-xs text-slate-100/80 mb-3 space-y-1">
                         <p>• Robot: <strong className="text-[#D97757]">{botState.botName || 'AI Voxel Bot'}</strong></p>
                         <p>• Bàn làm việc: <strong>Bàn cá nhân (Desk #{botState.targetDesk ?? 14})</strong></p>
                         <p>• Hàng chờ hiện tại: <strong className="font-mono text-[#D97757]">{botState.queueLength} người</strong></p>
@@ -777,7 +800,7 @@ function VirtualDesktopOSInner({
                       <button
                         onClick={onCallBot}
                         disabled={botState.state === 'MOVING'}
-                        className="w-full py-2 px-3 bg-[#D97757] hover:bg-[#c46849] active:translate-y-0.5 text-white rounded-xl font-bold text-xs shadow-[2px_2px_0px_#1E232B] border border-[#1E232B] flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                        className="w-full py-2 px-3 bg-[#D97757] hover:bg-[#c46849] active:translate-y-0.5 text-white rounded-xl font-bold text-xs shadow-sm border border-white/10 flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
                       >
                         <Bot className="w-4 h-4" />
                         Gọi Robot tới bàn làm việc
@@ -786,7 +809,7 @@ function VirtualDesktopOSInner({
                       {botState.state === 'ARRIVED' && (
                         <button
                           onClick={onReleaseBot}
-                          className="w-full py-1.5 px-3 bg-[#1E232B] hover:bg-[#2b323d] active:translate-y-0.5 text-[#FBFBF7] rounded-xl font-bold text-xs border border-[#1E232B] flex items-center justify-center gap-1.5 transition-all"
+                          className="w-full py-1.5 px-3 bg-[#1E232B] hover:bg-[#2b323d] active:translate-y-0.5 text-slate-100 rounded-xl font-bold text-xs border border-white/10 flex items-center justify-center gap-1.5 transition-all"
                         >
                           Cho Robot về trạm sạc
                         </button>
@@ -795,7 +818,7 @@ function VirtualDesktopOSInner({
                   </div>
 
                   {/* Cột phải: Khung Chat tương tác với Bot */}
-                  <div className="md:col-span-2 bg-[#FBFBF7] border border-[#1E232B]/20 rounded-xl flex flex-col overflow-hidden">
+                  <div className="md:col-span-2 bg-slate-900/90 border border-white/10/20 rounded-xl flex flex-col overflow-hidden">
                     {/* Danh sách tin nhắn */}
                     <div className="flex-1 p-3 overflow-y-auto space-y-2.5 text-xs">
                       {chatMessages.map((msg, idx) => (
@@ -806,8 +829,8 @@ function VirtualDesktopOSInner({
                           <div
                             className={`max-w-[80%] p-2.5 rounded-xl border ${
                               msg.sender === 'me'
-                                ? 'bg-[#D97757] text-white border-[#1E232B]/30 rounded-tr-none'
-                                : 'bg-[#EFE7D8] text-[#1E232B] border-[#1E232B]/20 rounded-tl-none'
+                                ? 'bg-[#D97757] text-white border-white/10/30 rounded-tr-none'
+                                : 'bg-slate-900/80 text-slate-100 border-white/10/20 rounded-tl-none'
                             }`}
                           >
                             <div className="text-[10px] opacity-70 mb-0.5 font-mono">
@@ -821,7 +844,7 @@ function VirtualDesktopOSInner({
                                     key={aIdx}
                                     type="button"
                                     onClick={act.action}
-                                    className="rounded-lg border border-[#1E232B]/30 bg-white/90 px-2.5 py-1 text-[11px] font-bold text-[#1E232B] shadow-[1px_1px_0px_#1E232B] hover:bg-[#D97757] hover:text-white transition cursor-pointer"
+                                    className="rounded-lg border border-white/10/30 bg-slate-800/80/90 px-2.5 py-1 text-[11px] font-bold text-slate-100 shadow-sm hover:bg-[#D97757] hover:text-white transition cursor-pointer"
                                   >
                                     {act.label}
                                   </button>
@@ -833,16 +856,16 @@ function VirtualDesktopOSInner({
                       ))}
                       {isBotTyping && (
                         <div className="flex justify-start">
-                          <div className="p-2.5 rounded-xl border bg-[#EFE7D8] text-[#1E232B] border-[#1E232B]/20 rounded-tl-none flex items-center gap-2">
+                          <div className="p-2.5 rounded-xl border bg-slate-900/80 text-slate-100 border-white/10/20 rounded-tl-none flex items-center gap-2">
                             <Loader2 className="w-3.5 h-3.5 animate-spin text-[#D97757]" />
-                            <span className="text-[11px] font-medium text-[#1E232B]/80">Trợ lý AI đang suy nghĩ phản hồi...</span>
+                            <span className="text-[11px] font-medium text-slate-100/80">Trợ lý AI đang suy nghĩ phản hồi...</span>
                           </div>
                         </div>
                       )}
                     </div>
 
                     {/* Quick Prompts */}
-                    <div className="px-2.5 py-1.5 border-t border-[#1E232B]/10 bg-[#EFE7D8]/20 flex flex-wrap gap-1.5">
+                    <div className="px-2.5 py-1.5 border-t border-white/10/10 bg-slate-900/80/20 flex flex-wrap gap-1.5">
                       {[
                         'Mở Khảo thí',
                         'Báo cáo tuần',
@@ -854,7 +877,7 @@ function VirtualDesktopOSInner({
                           key={chip}
                           type="button"
                           onClick={() => handleSendChat(chip)}
-                          className="rounded-full border border-[#1E232B]/20 bg-white/80 hover:bg-[#D97757] hover:text-white hover:border-[#D97757] px-2.5 py-0.5 text-[10px] font-semibold text-[#1E232B] transition cursor-pointer"
+                          className="rounded-full border border-white/10/20 bg-slate-800/80/80 hover:bg-[#D97757] hover:text-white hover:border-[#D97757] px-2.5 py-0.5 text-[10px] font-semibold text-slate-100 transition cursor-pointer"
                         >
                           {chip}
                         </button>
@@ -862,14 +885,14 @@ function VirtualDesktopOSInner({
                     </div>
 
                     {/* Input Chat */}
-                    <div className="p-2 border-t border-[#1E232B]/15 bg-[#EFE7D8]/30 flex gap-2">
+                    <div className="p-2 border-t border-white/10/15 bg-slate-900/80/30 flex gap-2">
                       <input
                         type="text"
                         value={inputChat}
                         onChange={(e) => setInputChat(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
                         placeholder="Hỏi trợ lý AI về khảo thí, báo cáo, tài liệu..."
-                        className="flex-1 px-3 py-1.5 bg-white border border-[#1E232B]/30 rounded-lg text-xs text-[#1E232B] focus:outline-none focus:ring-1 focus:ring-[#D97757]"
+                        className="flex-1 px-3 py-1.5 bg-slate-800/80 border border-white/10/30 rounded-lg text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-[#D97757]"
                       />
                       <button
                         type="button"
@@ -890,47 +913,67 @@ function VirtualDesktopOSInner({
               <div
                 onClick={() => focusWindow('exam')}
                 style={{ zIndex: windows.exam.zIndex }}
-                className="absolute inset-2 bg-[#FBFBF7] border-2 border-[#1E232B] rounded-2xl shadow-[6px_6px_0px_#1E232B] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+                className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
-                <div className="flex items-center justify-between px-3 py-2 bg-[#1E232B] text-[#FBFBF7] text-xs font-bold">
+                {/* macOS Sequoia Window Titlebar */}
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/75 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
-                    <GraduationCap className="w-4 h-4 text-[#38BDF8]" />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); closeWindow('exam'); }}
+                      className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Đóng (Close)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">×</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleMinimize('exam'); }}
+                      className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Thu nhỏ (Minimize)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">−</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); focusWindow('exam'); }}
+                      className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Phóng to / Lấy nét (Zoom)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">+</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <GraduationCap className="w-4 h-4 text-purple-400" />
                     <span>HỆ THỐNG KHẢO THÍ & ĐÀO TẠO SỐ FERMAT</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={(e) => { e.stopPropagation(); toggleMinimize('exam'); }} className="p-0.5 hover:bg-white/20 rounded">
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); closeWindow('exam'); }} className="p-0.5 hover:bg-rose-500 rounded">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <div className="w-12" />
                 </div>
 
-                <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs text-[#1E232B]">
+                <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs text-slate-100">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="p-3 bg-[#EFE7D8]/60 border border-[#1E232B]/20 rounded-xl">
-                      <span className="text-[10px] uppercase font-bold text-[#1E232B]/60">Đề thi kích hoạt</span>
+                    <div className="p-3 bg-slate-900/80/60 border border-white/10/20 rounded-xl">
+                      <span className="text-[10px] uppercase font-bold text-slate-100/60">Đề thi kích hoạt</span>
                       <p className="text-xl font-bold text-[#D97757] mt-1">{examData.totalPapers} Bộ đề</p>
                     </div>
-                    <div className="p-3 bg-[#EFE7D8]/60 border border-[#1E232B]/20 rounded-xl">
-                      <span className="text-[10px] uppercase font-bold text-[#1E232B]/60">Kỳ thi sẵn sàng</span>
-                      <p className="text-xl font-bold text-[#1E232B] mt-1">{examData.activeCount} Kỳ thi</p>
+                    <div className="p-3 bg-slate-900/80/60 border border-white/10/20 rounded-xl">
+                      <span className="text-[10px] uppercase font-bold text-slate-100/60">Kỳ thi sẵn sàng</span>
+                      <p className="text-xl font-bold text-slate-100 mt-1">{examData.activeCount} Kỳ thi</p>
                     </div>
-                    <div className="p-3 bg-[#EFE7D8]/60 border border-[#1E232B]/20 rounded-xl">
-                      <span className="text-[10px] uppercase font-bold text-[#1E232B]/60">Độ chính xác chấm AI</span>
+                    <div className="p-3 bg-slate-900/80/60 border border-white/10/20 rounded-xl">
+                      <span className="text-[10px] uppercase font-bold text-slate-100/60">Độ chính xác chấm AI</span>
                       <p className="text-xl font-bold text-emerald-600 mt-1">{examData.accuracy}</p>
                     </div>
                   </div>
 
-                  <div className="p-3 border border-[#1E232B]/20 rounded-xl bg-white space-y-2">
-                    <h4 className="font-bold text-xs uppercase tracking-wide text-[#1E232B]">
+                  <div className="p-3 border border-white/10/20 rounded-xl bg-slate-800/80 space-y-2">
+                    <h4 className="font-bold text-xs uppercase tracking-wide text-slate-100">
                       {examData.papers.length > 0 ? 'Đề thi thực tế từ hệ thống' : 'Các kỳ thi trọng điểm trong tuần'}
                     </h4>
-                    <ul className="space-y-1.5 text-xs text-[#1E232B]/80">
+                    <ul className="space-y-1.5 text-xs text-slate-100/80">
                       {examData.papers.length > 0 ? (
                         examData.papers.map((p, pIdx) => (
-                          <li key={p.id || pIdx} className="flex justify-between items-center py-1 border-b border-[#1E232B]/10 last:border-b-0">
+                          <li key={p.id || pIdx} className="flex justify-between items-center py-1 border-b border-white/10/10 last:border-b-0">
                             <span className="truncate pr-2">{p.title}</span>
                             <span className="font-mono font-bold text-emerald-600 shrink-0 uppercase text-[10px]">
                               {p.status || 'SẴN SÀNG'}
@@ -939,17 +982,17 @@ function VirtualDesktopOSInner({
                         ))
                       ) : (
                         <>
-                          <li className="flex justify-between items-center py-1 border-b border-[#1E232B]/10">
+                          <li className="flex justify-between items-center py-1 border-b border-white/10/10">
                             <span>Đánh giá năng lực Toán Quốc tế Fermat (Khối 8 - 9)</span>
                             <span className="font-mono font-bold text-emerald-600">ĐANG DIỄN RA</span>
                           </li>
-                          <li className="flex justify-between items-center py-1 border-b border-[#1E232B]/10">
+                          <li className="flex justify-between items-center py-1 border-b border-white/10/10">
                             <span>Thi thử Tiếng Anh THPT Chuyên đợt 2</span>
                             <span className="font-mono font-bold text-amber-600">CHUẨN BỊ MỞ</span>
                           </li>
                           <li className="flex justify-between items-center py-1">
                             <span>Khảo sát chất lượng số hóa ngành Giáo dục 2026</span>
-                            <span className="font-mono font-bold text-[#1E232B]/60">ĐÃ HOÀN THÀNH</span>
+                            <span className="font-mono font-bold text-slate-100/60">ĐÃ HOÀN THÀNH</span>
                           </li>
                         </>
                       )}
@@ -961,7 +1004,7 @@ function VirtualDesktopOSInner({
                       onClose();
                       onNavigateModule('examination');
                     }}
-                    className="py-2.5 px-4 bg-[#D97757] hover:bg-[#c46849] text-white font-bold rounded-xl shadow-[2px_2px_0px_#1E232B] border border-[#1E232B] flex items-center justify-center gap-2"
+                    className="py-2.5 px-4 bg-[#D97757] hover:bg-[#c46849] text-white font-bold rounded-xl shadow-sm border border-white/10 flex items-center justify-center gap-2"
                   >
                     <span>Mở toàn màn hình Phân hệ Khảo thí</span>
                   </button>
@@ -974,24 +1017,44 @@ function VirtualDesktopOSInner({
               <div
                 onClick={() => focusWindow('reports')}
                 style={{ zIndex: windows.reports.zIndex }}
-                className="absolute inset-2 bg-[#FBFBF7] border-2 border-[#1E232B] rounded-2xl shadow-[6px_6px_0px_#1E232B] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+                className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
-                <div className="flex items-center justify-between px-3 py-2 bg-[#1E232B] text-[#FBFBF7] text-xs font-bold">
+                {/* macOS Sequoia Window Titlebar */}
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/75 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-[#2A9D8F]" />
-                    <span>BÁO CÁO TUẦN & GIÁM SÁT TIẾN ĐỘ</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={(e) => { e.stopPropagation(); toggleMinimize('reports'); }} className="p-0.5 hover:bg-white/20 rounded">
-                      <Minus className="w-3.5 h-3.5" />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); closeWindow('reports'); }}
+                      className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Đóng (Close)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">×</span>
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); closeWindow('reports'); }} className="p-0.5 hover:bg-rose-500 rounded">
-                      <X className="w-3.5 h-3.5" />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleMinimize('reports'); }}
+                      className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Thu nhỏ (Minimize)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">−</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); focusWindow('reports'); }}
+                      className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Phóng to / Lấy nét (Zoom)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">+</span>
                     </button>
                   </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <FileText className="w-4 h-4 text-emerald-400" />
+                    <span>BÁO CÁO TIẾN ĐỘ & LỊCH CÔNG TÁC</span>
+                  </div>
+                  <div className="w-12" />
                 </div>
 
-                <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs text-[#1E232B]">
+                <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs text-slate-100">
                   {initialColleague && (
                     <div className="p-3 bg-blue-50/90 border border-blue-200 rounded-xl flex items-center justify-between text-blue-950 shadow-sm animate-in fade-in duration-150">
                       <div className="flex items-center gap-2">
@@ -1013,10 +1076,10 @@ function VirtualDesktopOSInner({
                     </div>
                   )}
 
-                  <div className="p-3 bg-[#EFE7D8]/60 border border-[#1E232B]/20 rounded-xl flex items-center justify-between">
+                  <div className="p-3 bg-slate-900/80/60 border border-white/10/20 rounded-xl flex items-center justify-between">
                     <div>
                       <h4 className="font-bold">Trạng thái Giám đốc tuần tra</h4>
-                      <p className="text-[11px] text-[#1E232B]/70 mt-0.5">
+                      <p className="text-[11px] text-slate-100/70 mt-0.5">
                         {patrolState.active
                           ? '🚨 Giám đốc đang đi tuần! Mọi nhân viên đã vội vã chạy về bàn làm việc.'
                           : 'Giám đốc đang ở phòng riêng làm việc và duyệt hồ sơ.'}
@@ -1025,36 +1088,36 @@ function VirtualDesktopOSInner({
                     <button
                       onClick={onTriggerPatrol}
                       disabled={patrolState.active}
-                      className="px-3 py-2 bg-[#1E232B] hover:bg-[#2b323d] text-white rounded-xl font-bold text-xs border border-[#1E232B] shadow-[2px_2px_0px_#D97757] disabled:opacity-50"
+                      className="px-3 py-2 bg-[#1E232B] hover:bg-[#2b323d] text-white rounded-xl font-bold text-xs border border-white/10 shadow-[2px_2px_0px_#D97757] disabled:opacity-50"
                     >
                       {patrolState.active ? 'Đang tuần tra...' : 'Sếp đi tuần ngay 📋'}
                     </button>
                   </div>
 
-                  <div className="p-3 border border-[#1E232B]/20 rounded-xl bg-white space-y-2">
+                  <div className="p-3 border border-white/10/20 rounded-xl bg-slate-800/80 space-y-2">
                     <h4 className="font-bold text-xs uppercase tracking-wide">
                       Tiến độ công việc & nhiệm vụ ({workData.doneTasks}/{workData.totalTasks || 5} việc)
                     </h4>
-                    <div className="w-full bg-[#EFE7D8] h-3 rounded-full overflow-hidden border border-[#1E232B]/30">
+                    <div className="w-full bg-slate-900/80 h-3 rounded-full overflow-hidden border border-white/10/30">
                       <div
                         className="bg-[#D97757] h-full transition-all duration-500"
                         style={{ width: `${Math.min(100, Math.max(0, workData.completionRate))}%` }}
                       ></div>
                     </div>
-                    <div className="flex justify-between text-[11px] font-mono text-[#1E232B]/70">
+                    <div className="flex justify-between text-[11px] font-mono text-slate-100/70">
                       <span>Đã hoàn thành: {workData.completionRate}%</span>
                       <span>Hạn chót: Thứ Sáu 17:30</span>
                     </div>
                   </div>
 
                   {workData.items.length > 0 && (
-                    <div className="p-3 border border-[#1E232B]/20 rounded-xl bg-white space-y-2">
-                      <h4 className="font-bold text-xs uppercase tracking-wide text-[#1E232B]">
+                    <div className="p-3 border border-white/10/20 rounded-xl bg-slate-800/80 space-y-2">
+                      <h4 className="font-bold text-xs uppercase tracking-wide text-slate-100">
                         Nhiệm vụ trực tiếp từ phân hệ Công việc
                       </h4>
-                      <ul className="space-y-1.5 text-xs text-[#1E232B]/80">
+                      <ul className="space-y-1.5 text-xs text-slate-100/80">
                         {workData.items.map((item, iIdx) => (
-                          <li key={item.id || iIdx} className="flex justify-between items-center py-1 border-b border-[#1E232B]/10 last:border-b-0">
+                          <li key={item.id || iIdx} className="flex justify-between items-center py-1 border-b border-white/10/10 last:border-b-0">
                             <span className="truncate pr-2">{item.title}</span>
                             <span className={`font-mono font-bold text-[10px] shrink-0 ${
                               item.status === 'DONE' ? 'text-emerald-600' : 'text-amber-600'
@@ -1072,7 +1135,7 @@ function VirtualDesktopOSInner({
                       onClose();
                       onNavigateModule('weekly-report');
                     }}
-                    className="py-2.5 px-4 bg-[#2A9D8F] hover:bg-[#248277] text-white font-bold rounded-xl shadow-[2px_2px_0px_#1E232B] border border-[#1E232B] flex items-center justify-center gap-2"
+                    className="py-2.5 px-4 bg-[#2A9D8F] hover:bg-[#248277] text-white font-bold rounded-xl shadow-sm border border-white/10 flex items-center justify-center gap-2"
                   >
                     <span>Mở Báo cáo tuần chi tiết</span>
                   </button>
@@ -1085,21 +1148,41 @@ function VirtualDesktopOSInner({
               <div
                 onClick={() => focusWindow('terminal')}
                 style={{ zIndex: windows.terminal.zIndex }}
-                className="absolute inset-2 bg-[#111827] border-2 border-[#1E232B] rounded-2xl shadow-[6px_6px_0px_#1E232B] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 font-mono text-emerald-400"
+                className="absolute inset-2 bg-[#111827] border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 font-mono text-emerald-400"
               >
-                <div className="flex items-center justify-between px-3 py-2 bg-[#1F2937] text-gray-200 text-xs font-bold border-b border-gray-700">
+                {/* macOS Sequoia Window Titlebar */}
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/75 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); closeWindow('terminal'); }}
+                      className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Đóng (Close)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">×</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleMinimize('terminal'); }}
+                      className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Thu nhỏ (Minimize)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">−</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); focusWindow('terminal'); }}
+                      className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Phóng to / Lấy nét (Zoom)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">+</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
                     <Terminal className="w-4 h-4 text-emerald-400" />
-                    <span>FERMAT-HQ CONSOLE // REALTIME LOGS</span>
+                    <span>NHẬT KÝ LỆNH & ĐIỀU PHỐI VĂN PHÒNG</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={(e) => { e.stopPropagation(); toggleMinimize('terminal'); }} className="p-0.5 hover:bg-white/20 rounded">
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); closeWindow('terminal'); }} className="p-0.5 hover:bg-rose-500 rounded">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <div className="w-12" />
                 </div>
 
                 <div className="flex-1 p-3 overflow-y-auto space-y-1 text-xs">
@@ -1118,30 +1201,50 @@ function VirtualDesktopOSInner({
               <div
                 onClick={() => focusWindow('game')}
                 style={{ zIndex: windows.game.zIndex }}
-                className="absolute inset-2 bg-[#FBFBF7] border-2 border-[#1E232B] rounded-2xl shadow-[6px_6px_0px_#1E232B] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+                className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
-                <div className="flex items-center justify-between px-3 py-2 bg-[#1E232B] text-[#FBFBF7] text-xs font-bold">
+                {/* macOS Sequoia Window Titlebar */}
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/75 border-b border-white/10 text-xs select-none">
                   <div className="flex items-center gap-2">
-                    <Gamepad2 className="w-4 h-4 text-[#E76F51]" />
-                    <span>FERMAT RETRO ARCADE // LẬT Ô TÌM CẶP</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={(e) => { e.stopPropagation(); toggleMinimize('game'); }} className="p-0.5 hover:bg-white/20 rounded">
-                      <Minus className="w-3.5 h-3.5" />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); closeWindow('game'); }}
+                      className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Đóng (Close)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">×</span>
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); closeWindow('game'); }} className="p-0.5 hover:bg-rose-500 rounded">
-                      <X className="w-3.5 h-3.5" />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleMinimize('game'); }}
+                      className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Thu nhỏ (Minimize)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">−</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); focusWindow('game'); }}
+                      className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer"
+                      title="Phóng to / Lấy nét (Zoom)"
+                    >
+                      <span className="opacity-0 group-hover:opacity-100">+</span>
                     </button>
                   </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <Gamepad2 className="w-4 h-4 text-rose-400" />
+                    <span>FERMAT ARCADE: XẢ STRESS</span>
+                  </div>
+                  <div className="w-12" />
                 </div>
 
                 <div className="flex-1 p-4 flex flex-col items-center justify-center">
-                  <div className="flex items-center justify-between w-full max-w-xs mb-3 text-xs font-mono font-bold text-[#1E232B]">
+                  <div className="flex items-center justify-between w-full max-w-xs mb-3 text-xs font-mono font-bold text-slate-100">
                     <span>Lượt mở: {gameMoves}</span>
                     <span>Khớp: {matched.length / 2} / 4 cặp</span>
                     <button
                       onClick={resetGame}
-                      className="p-1 hover:bg-[#EFE7D8] rounded border border-[#1E232B]/30"
+                      className="p-1 hover:bg-slate-900/80 rounded border border-white/10/30"
                       title="Chơi lại"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
@@ -1158,10 +1261,10 @@ function VirtualDesktopOSInner({
                           onClick={() => handleTileClick(idx)}
                           className={`h-16 rounded-xl border-2 font-bold text-lg flex items-center justify-center transition-all ${
                             isMatched
-                              ? 'bg-emerald-500 text-white border-[#1E232B] shadow-[2px_2px_0px_#1E232B]'
+                              ? 'bg-emerald-500 text-white border-white/10 shadow-sm'
                               : isFlipped
-                              ? 'bg-[#D97757] text-white border-[#1E232B] shadow-[2px_2px_0px_#1E232B]'
-                              : 'bg-[#EFE7D8] border-[#1E232B] hover:bg-[#E5DBC7] shadow-[3px_3px_0px_#1E232B] active:translate-y-0.5'
+                              ? 'bg-[#D97757] text-white border-white/10 shadow-sm'
+                              : 'bg-slate-900/80 border-white/10 hover:bg-slate-950/70 shadow-md active:translate-y-0.5'
                           }`}
                         >
                           {isFlipped ? (val === 1 ? '🤖' : val === 2 ? '📝' : val === 3 ? '☕' : '💻') : '?'}
@@ -1182,59 +1285,41 @@ function VirtualDesktopOSInner({
           </div>
         </div>
 
-        {/* Thanh Taskbar / Dock dưới đáy */}
-        <div className="h-12 bg-[#EFE7D8] border-t-2 border-[#1E232B] px-3 flex items-center justify-between z-40">
-          {/* Nút Start */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => focusWindow('assistant')}
-              className="px-3 py-1.5 bg-[#D97757] hover:bg-[#c46849] active:translate-y-0.5 text-white font-bold text-xs rounded-lg border border-[#1E232B] shadow-[2px_2px_0px_#1E232B] flex items-center gap-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>FermatOS</span>
-            </button>
-
-            {/* Các icon tab ứng dụng đang mở */}
-            <div className="flex items-center gap-1.5 ml-2">
-              {Object.values(windows)
-                .filter(w => w.isOpen)
-                .map(w => {
-                  const Icon = w.icon;
-                  const isTop = activeWindow === w.id && !w.isMinimized;
-                  return (
-                    <button
-                      key={w.id}
-                      onClick={() => {
-                        if (isTop) {
-                          toggleMinimize(w.id);
-                        } else {
-                          focusWindow(w.id);
-                        }
-                      }}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium border flex items-center gap-1.5 transition-colors ${
-                        isTop
-                          ? 'bg-[#1E232B] text-white border-[#1E232B]'
-                          : 'bg-white/70 text-[#1E232B] border-[#1E232B]/30 hover:bg-white'
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">{w.title.split(' ')[0]}</span>
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
-
-          {/* System Tray bên phải */}
-          <div className="flex items-center gap-3 text-xs font-mono font-bold text-[#1E232B]">
-            <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-white/60 border border-[#1E232B]/20">
-              <Bot className="w-3.5 h-3.5 text-[#D97757]" />
-              <span>{botState.state === 'ARRIVED' ? 'TẠI BÀN' : botState.state === 'MOVING' ? 'DI CHUYỂN' : 'TRẠM BOT'}</span>
-            </div>
-            <div className="px-2 py-0.5 rounded bg-white/60 border border-[#1E232B]/20">
-              {timeStr}
-            </div>
-          </div>
+        {/* macOS Sequoia Floating Frosted Glass Dock */}
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-50 flex items-end gap-2.5 px-4 py-2 rounded-2xl bg-slate-950/70 backdrop-blur-2xl border border-white/20 shadow-2xl">
+          {Object.values(windows).map(w => {
+            const Icon = w.icon;
+            const isOpen = w.isOpen;
+            const isTop = activeWindow === w.id && !w.isMinimized;
+            return (
+              <div key={w.id} className="relative flex flex-col items-center group">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isTop) {
+                      toggleMinimize(w.id);
+                    } else {
+                      focusWindow(w.id);
+                    }
+                  }}
+                  className={`w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg transition-all hover:scale-120 hover:-translate-y-2 cursor-pointer ${
+                    isTop
+                      ? 'bg-gradient-to-tr from-sky-600 to-indigo-600 text-white ring-2 ring-white/30'
+                      : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-white/10'
+                  }`}
+                  title={w.title}
+                >
+                  <Icon className="w-5 h-5" />
+                </button>
+                {isOpen && (
+                  <span className="w-1 h-1 rounded-full bg-white/90 shadow-sm mt-1" />
+                )}
+                <div className="absolute -top-8 px-2 py-0.5 rounded-md bg-slate-900 border border-white/10 text-[10px] text-white opacity-0 group-hover:opacity-100 transition pointer-events-none whitespace-nowrap shadow-lg">
+                  {w.title.split(' ')[0]}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
       </div>
