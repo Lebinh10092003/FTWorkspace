@@ -832,7 +832,7 @@ export default function OfficeWorkspace({
           <div className="mt-3 pt-3 border-t border-slate-800 space-y-2 text-xs">
             <div className="flex items-center justify-between">
               <span className="text-slate-400">Trạng thái:</span>
-              {selectedColleague.status === 'idle' ? (
+              {(selectedColleague.isIdle || selectedColleague.status === 'idle') ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 font-semibold text-amber-400 border border-amber-500/30">
                   💤 Đang nghỉ ngơi (Idle)
                 </span>
@@ -844,7 +844,7 @@ export default function OfficeWorkspace({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-400">Khu vực:</span>
-              <span className="font-medium text-slate-200">{selectedColleague.department || 'Văn phòng trung tâm'}</span>
+              <span className="font-medium text-slate-200">{selectedColleague.room || selectedColleague.department || 'Văn phòng trung tâm'}</span>
             </div>
           </div>
 

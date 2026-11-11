@@ -57,7 +57,71 @@ interface OSWindow {
   zIndex: number;
 }
 
-export default function VirtualDesktopOS({
+class VirtualDesktopErrorBoundary extends React.Component<
+  { children: React.ReactNode; onClose?: () => void },
+  { hasError: boolean; errorMsg: string }
+> {
+  constructor(props: { children: React.ReactNode; onClose?: () => void }) {
+    super(props);
+    this.state = { hasError: false, errorMsg: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorMsg: error?.message || 'Lỗi giao diện hệ điều hành ảo' };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[VirtualDesktopOS ErrorBoundary]', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      if (typeof document === 'undefined') return null;
+      return createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
+          <div className="w-full max-w-md rounded-2xl border border-rose-500/40 bg-slate-900 p-6 text-center shadow-2xl">
+            <AlertTriangle className="w-10 h-10 text-rose-400 mx-auto mb-3" />
+            <h3 className="text-base font-bold text-white">Máy tính ảo gặp sự cố hiển thị</h3>
+            <p className="mt-1.5 text-xs text-slate-400">{this.state.errorMsg}</p>
+            <div className="mt-5 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => this.setState({ hasError: false, errorMsg: '' })}
+                className="px-4 py-2 rounded-xl bg-[#D97757] hover:bg-[#c46849] text-white text-xs font-bold transition cursor-pointer"
+              >
+                Khởi động lại OS
+              </button>
+              {this.props.onClose && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    this.setState({ hasError: false, errorMsg: '' });
+                    this.props.onClose?.();
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition cursor-pointer"
+                >
+                  Đóng
+                </button>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function VirtualDesktopOS(props: VirtualDesktopOSProps) {
+  return (
+    <VirtualDesktopErrorBoundary onClose={props.onClose}>
+      <VirtualDesktopOSInner {...props} />
+    </VirtualDesktopErrorBoundary>
+  );
+}
+
+function VirtualDesktopOSInner({
   isOpen,
   onClose,
   onNavigateModule = () => {},
@@ -102,6 +166,25 @@ export default function VirtualDesktopOS({
   ]);
   const [inputChat, setInputChat] = useState('');
   const [isBotTyping, setIsBotTyping] = useState(false);
+  const activePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Dọn dẹp interval polling khi component unmount hoặc đóng OS
+  useEffect(() => {
+    return () => {
+      if (activePollRef.current) {
+        clearInterval(activePollRef.current);
+        activePollRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen && activePollRef.current) {
+      clearInterval(activePollRef.current);
+      activePollRef.current = null;
+      setIsBotTyping(false);
+    }
+  }, [isOpen]);
 
   // Dữ liệu thật kết nối Backend (Mục 1)
   const [examData, setExamData] = useState<{
@@ -368,11 +451,17 @@ export default function VirtualDesktopOS({
         const sendData = await sendRes.json();
         const jobId = sendData.job_id;
         if (jobId) {
+          if (activePollRef.current) {
+            clearInterval(activePollRef.current);
+          }
           let attempts = 0;
-          const pollTimer = setInterval(async () => {
+          activePollRef.current = setInterval(async () => {
             attempts++;
             if (attempts > 25) {
-              clearInterval(pollTimer);
+              if (activePollRef.current) {
+                clearInterval(activePollRef.current);
+                activePollRef.current = null;
+              }
               setIsBotTyping(false);
               setChatMessages(prev => [
                 ...prev,
@@ -392,7 +481,10 @@ export default function VirtualDesktopOS({
               if (statusRes.ok) {
                 const jobData = await statusRes.json();
                 if (jobData.status === 'done' || jobData.status === 'DONE') {
-                  clearInterval(pollTimer);
+                  if (activePollRef.current) {
+                    clearInterval(activePollRef.current);
+                    activePollRef.current = null;
+                  }
                   setIsBotTyping(false);
                   const botReply = jobData.result?.message || 'Tôi đã xử lý xong yêu cầu của bạn.';
                   setChatMessages(prev => [
@@ -404,7 +496,10 @@ export default function VirtualDesktopOS({
                     },
                   ]);
                 } else if (jobData.status === 'failed' || jobData.status === 'FAILED') {
-                  clearInterval(pollTimer);
+                  if (activePollRef.current) {
+                    clearInterval(activePollRef.current);
+                    activePollRef.current = null;
+                  }
                   setIsBotTyping(false);
                   setChatMessages(prev => [
                     ...prev,
