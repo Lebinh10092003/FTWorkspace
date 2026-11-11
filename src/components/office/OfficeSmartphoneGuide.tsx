@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Smartphone,
@@ -24,7 +24,11 @@ import {
   Info,
   Layers,
   ArrowLeft,
-  ChevronDown
+  ChevronDown,
+  Send,
+  MessageSquare,
+  Wifi,
+  Battery
 } from 'lucide-react';
 
 export interface OfficeSmartphoneGuideProps {
@@ -151,9 +155,63 @@ export default function OfficeSmartphoneGuide({
   onNavigateModule,
 }: OfficeSmartphoneGuideProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'guide' | 'apps' | 'controls'>('guide');
+  const [activeTab, setActiveTab] = useState<'chat' | 'controls' | 'guide'>('chat');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedHint, setCopiedHint] = useState<string | null>(null);
+
+  // 2-Way Interactive AI Chat State
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; sender: 'user' | 'bot'; text: string; time: string }>>([
+    {
+      id: 'm1',
+      sender: 'bot',
+      text: '🤖 Chào bạn! Tôi là Robot AI FermatTech. Tôi có thể hỗ trợ điều phối công việc, xem lịch làm việc hoặc di chuyển tới bàn làm việc của bạn trong văn phòng 3D.',
+      time: '09:41'
+    }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isBotTyping, setIsBotTyping] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, isBotTyping, activeTab]);
+
+  const handleSendChatMessage = (textToSend?: string) => {
+    const text = (textToSend || chatInput).trim();
+    if (!text) return;
+    const timeNow = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const userMsg = { id: `u_${Date.now()}`, sender: 'user' as const, text, time: timeNow };
+    setChatMessages(prev => [...prev, userMsg]);
+    if (!textToSend) setChatInput('');
+    setIsBotTyping(true);
+
+    setTimeout(() => {
+      const lower = text.toLowerCase();
+      let reply = '🤖 Tôi đã ghi nhận tin nhắn của bạn. Bạn có thể mở Virtual Desktop OS trên bàn để thao tác chi tiết hoặc gọi tôi đến bàn!';
+
+      if (lower.includes('triệu hồi') || lower.includes('gọi bot') || lower.includes('gọi robot') || lower.includes('đến bàn') || lower.includes('tới bàn')) {
+        onCallBot?.();
+        reply = '🚀 Nhận lệnh! Tôi đang khởi động động cơ phản lực và di chuyển tới bàn làm việc của bạn trong không gian 3D!';
+      } else if (lower.includes('sếp') || lower.includes('giám đốc') || lower.includes('tuần tra')) {
+        onTriggerPatrol?.();
+        reply = '👔 Đã kích hoạt Giám đốc đi tuần tra các phòng ban trong văn phòng 3D!';
+      } else if (lower.includes('toàn cảnh') || lower.includes('phòng họp') || lower.includes('máy chủ') || lower.includes('bàn làm việc')) {
+        const zone = lower.includes('toàn cảnh') ? 'home' : lower.includes('phòng họp') ? 'meeting' : lower.includes('máy chủ') ? 'server' : 'desks';
+        onFocus3DZone?.(zone);
+        reply = `🎥 Đã lia camera 3D tới khu vực ${zone === 'home' ? 'Toàn cảnh' : zone === 'meeting' ? 'Phòng họp' : zone === 'server' ? 'Studio AI' : 'Bàn làm việc'}!`;
+      } else if (lower.includes('lịch') || lower.includes('nhiệm vụ') || lower.includes('công tác')) {
+        reply = '📅 Hôm nay hệ thống ghi nhận các nhiệm vụ chuẩn hóa ngân hàng đề thi và đối soát. Bạn có thể bấm vào Bảng tin 3D để xem!';
+      }
+
+      setChatMessages(prev => [
+        ...prev,
+        { id: `b_${Date.now()}`, sender: 'bot', text: reply, time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) }
+      ]);
+      setIsBotTyping(false);
+    }, 600);
+  };
 
   // Đồng hồ thời gian thực điện thoại
   const [currentTime, setCurrentTime] = useState(() => {
@@ -254,100 +312,192 @@ export default function OfficeSmartphoneGuide({
         </div>
       )}
 
-      {/* 2. KHUNG CHIẾC ĐIỆN THOẠI THÔNG MINH MỞ RA (Smartphone Mockup Frame) */}
+      {/* 2. KHUNG IPHONE 16 PRO TITANIUM VỚI DYNAMIC ISLAND */}
       {isOpen && (
-        <div className="pointer-events-auto fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[9001] w-[350px] sm:w-[385px] h-[610px] max-h-[calc(100vh-2rem)] rounded-[42px] border-[7px] border-slate-700/95 bg-[#070C16] shadow-[0_25px_80px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-6 fade-in duration-200 text-slate-100">
+        <div className="pointer-events-auto fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[9001] w-[350px] sm:w-[385px] h-[640px] max-h-[calc(100vh-2rem)] rounded-[48px] border-[6px] border-slate-600/90 bg-[#070C16] shadow-[0_30px_90px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-6 fade-in duration-200 text-slate-100 font-sans">
           
-          {/* Dynamic Island & Loa thoại trên cùng */}
-          <div className="relative h-7 w-full bg-transparent flex items-center justify-between px-6 pt-2 shrink-0 select-none">
-            <span className="text-[11px] font-bold text-slate-300 font-mono tracking-tight">{currentTime}</span>
-            <div className="w-20 h-4 rounded-full bg-black border border-slate-800 flex items-center justify-center gap-1.5 px-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-900" />
-              <span className="text-[8px] font-mono text-emerald-400 font-bold">5G · 100%</span>
+          {/* iPhone 16 Pro Dynamic Island & Status Bar */}
+          <div className="relative h-11 w-full bg-black flex items-center justify-between px-5 pt-1 shrink-0 select-none">
+            <span className="text-[12px] font-bold text-slate-200 font-mono tracking-tight">{currentTime}</span>
+            
+            {/* Dynamic Island Pill */}
+            <div className="h-7 px-3 rounded-full bg-black border border-slate-800/90 shadow-inner flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${isBotTyping ? 'bg-amber-400 animate-ping' : 'bg-cyan-400 animate-pulse'}`} />
+              <span className="text-[10px] font-semibold text-slate-200">
+                {isBotTyping ? 'AI đang gõ...' : 'FT Bot Online'}
+              </span>
+              <span className="w-2.5 h-2.5 rounded-full bg-slate-900 border border-slate-700/60" />
             </div>
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              className="rounded-full p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-              title="Đóng điện thoại"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+
+            <div className="flex items-center gap-1.5 text-slate-300 text-xs">
+              <Wifi className="w-3.5 h-3.5" />
+              <div className="flex items-center gap-0.5">
+                <span className="text-[10px] font-mono font-bold">5G</span>
+                <Battery className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="ml-1 rounded-full p-1 text-slate-400 hover:text-white transition cursor-pointer"
+                title="Đóng điện thoại"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
-          {/* Header Applet trong điện thoại */}
-          <div className="px-4 py-2.5 bg-gradient-to-r from-blue-900/60 via-indigo-900/40 to-slate-900/60 border-b border-slate-800/80 flex items-center justify-between shrink-0">
+          {/* Header iOS Navigation */}
+          <div className="px-4 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-xl bg-blue-600/30 border border-blue-500/40 text-blue-400">
-                <Compass className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#0B72CE] to-cyan-500 flex items-center justify-center text-white shadow-md">
+                <Bot className="w-4 h-4" />
               </div>
               <div>
                 <h3 className="text-xs font-bold text-white flex items-center gap-1">
-                  Trợ lý Cẩm nang 2D ➔ 3D
+                  iPhone 16 Pro · FT Hub
                 </h3>
-                <p className="text-[10px] text-slate-400">Tìm tính năng 2D trong phòng 3D</p>
+                <p className="text-[10px] text-cyan-400 font-medium">Trợ lý AI hai chiều nội bộ</p>
               </div>
             </div>
             <button
               type="button"
               onClick={onNavigate2D}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold shadow transition cursor-pointer"
-              title="Quay lại giao diện 2D tiêu chuẩn"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-semibold border border-slate-700 transition cursor-pointer"
             >
               <ArrowLeft className="w-3 h-3" />
-              <span>Về 2D</span>
+              <span>2D</span>
             </button>
           </div>
 
-          {/* Toast thông báo hành động ngắn */}
-          {copiedHint && (
-            <div className="bg-emerald-600 text-white text-[11px] font-medium px-3 py-1.5 text-center shrink-0 animate-in fade-in">
-              {copiedHint}
-            </div>
-          )}
-
-          {/* Tabs chuyển đổi trong điện thoại */}
-          <div className="grid grid-cols-3 bg-slate-900/90 border-b border-slate-800/80 p-1 text-[11px] font-semibold shrink-0">
+          {/* Tabs iOS Segmented Control */}
+          <div className="grid grid-cols-3 bg-slate-950/90 border-b border-slate-800 p-1 text-[11px] font-semibold shrink-0">
             <button
               type="button"
-              onClick={() => setActiveTab('guide')}
-              className={`py-1.5 rounded-lg transition text-center cursor-pointer ${
-                activeTab === 'guide'
+              onClick={() => setActiveTab('chat')}
+              className={`py-1.5 rounded-lg transition text-center cursor-pointer flex items-center justify-center gap-1 ${
+                activeTab === 'chat'
                   ? 'bg-blue-600 text-white shadow'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Cẩm nang 2D→3D
+              <MessageSquare className="w-3 h-3" />
+              <span>AI Chat</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('controls')}
-              className={`py-1.5 rounded-lg transition text-center cursor-pointer ${
+              className={`py-1.5 rounded-lg transition text-center cursor-pointer flex items-center justify-center gap-1 ${
                 activeTab === 'controls'
                   ? 'bg-blue-600 text-white shadow'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Cách đi lại 3D
+              <Compass className="w-3 h-3" />
+              <span>Bản đồ 3D</span>
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('apps')}
-              className={`py-1.5 rounded-lg transition text-center cursor-pointer ${
-                activeTab === 'apps'
+              onClick={() => setActiveTab('guide')}
+              className={`py-1.5 rounded-lg transition text-center cursor-pointer flex items-center justify-center gap-1 ${
+                activeTab === 'guide'
                   ? 'bg-blue-600 text-white shadow'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Lối tắt 2D
+              <FileText className="w-3 h-3" />
+              <span>Cẩm nang</span>
             </button>
           </div>
 
+          {/* Toast thông báo hành động ngắn */}
+          {copiedHint && (
+            <div className="bg-emerald-600 text-white text-[11px] font-medium px-3 py-1 text-center shrink-0 animate-in fade-in">
+              {copiedHint}
+            </div>
+          )}
+
           {/* Nội dung theo Tab */}
-          <div className="flex-1 overflow-y-auto p-3.5 space-y-3 font-sans">
-            {/* TAB 1: CẨM NANG ÁNH XẠ 2D SANG 3D */}
+          <div className="flex-1 overflow-hidden font-sans flex flex-col">
+            {/* TAB 1: 2-WAY INTERACTIVE AI CHAT */}
+            {activeTab === 'chat' && (
+              <div className="flex-1 flex flex-col h-full overflow-hidden">
+                <div className="flex-1 overflow-y-auto p-3.5 space-y-3">
+                  {chatMessages.map(msg => (
+                    <div
+                      key={msg.id}
+                      className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
+                    >
+                      <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
+                        msg.sender === 'user'
+                          ? 'bg-[#0B72CE] text-white rounded-br-sm shadow'
+                          : 'bg-slate-800/90 text-slate-100 border border-slate-700/80 rounded-bl-sm shadow'
+                      }`}>
+                        {msg.text}
+                      </div>
+                      <span className="text-[9px] text-slate-500 mt-0.5 px-1">{msg.time}</span>
+                    </div>
+                  ))}
+                  {isBotTyping && (
+                    <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-800/60 border border-slate-700/40 w-fit">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-bounce" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-bounce [animation-delay:0.2s]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-bounce [animation-delay:0.4s]" />
+                    </div>
+                  )}
+                  <div ref={chatBottomRef} />
+                </div>
+
+                {/* Quick action chips */}
+                <div className="p-2 border-t border-slate-800/80 bg-slate-950/70 flex flex-wrap gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSendChatMessage('Triệu hồi bot tới bàn làm việc')}
+                    className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-cyan-950/80 text-cyan-300 border border-cyan-800/50 hover:bg-cyan-900 transition cursor-pointer"
+                  >
+                    🚀 Triệu hồi bot tới bàn
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendChatMessage('Lia camera tới phòng họp')}
+                    className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
+                  >
+                    👥 Phòng họp
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendChatMessage('Sếp có đang đi tuần tra không?')}
+                    className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
+                  >
+                    👔 Sếp tuần tra
+                  </button>
+                </div>
+
+                {/* Chat Input form */}
+                <form
+                  onSubmit={(e) => { e.preventDefault(); handleSendChatMessage(); }}
+                  className="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center gap-2 shrink-0"
+                >
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Nhắn tin với AI..."
+                    className="flex-1 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700/80 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!chatInput.trim()}
+                    className="p-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 transition cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* TAB 2: CẨM NANG ÁNH XẠ 2D SANG 3D */}
             {activeTab === 'guide' && (
-              <>
+              <div className="flex-1 overflow-y-auto p-3.5 space-y-3">
                 {/* Thanh tìm kiếm tính năng 2D */}
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
@@ -483,12 +633,12 @@ export default function OfficeSmartphoneGuide({
                     );
                   })}
                 </div>
-              </>
+              </div>
             )}
 
-            {/* TAB 2: CÁCH ĐI LẠI & ĐIỀU KHIỂN 3D */}
+            {/* TAB 3: CÁCH ĐI LẠI & ĐIỀU KHIỂN 3D */}
             {activeTab === 'controls' && (
-              <div className="space-y-3">
+              <div className="flex-1 overflow-y-auto p-3.5 space-y-3">
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 space-y-2">
                   <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
                     <Compass className="w-4 h-4 text-blue-400" />
@@ -572,48 +722,6 @@ export default function OfficeSmartphoneGuide({
                       ⚙️ Phòng máy chủ
                     </button>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 3: MỞ NHANH PHÂN HỆ 2D */}
-            {activeTab === 'apps' && (
-              <div className="space-y-2.5">
-                <p className="text-[11px] text-slate-400">
-                  Bấm vào phân hệ bên dưới để chuyển trực tiếp sang giao diện làm việc 2D chuyên biệt:
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { mode: 'workspace', label: 'Trang chủ 2D', icon: Layers, color: 'text-blue-400' },
-                    { mode: 'attendance', label: 'Điểm danh & Chấm công', icon: Clock, color: 'text-emerald-400' },
-                    { mode: 'examination', label: 'Khảo thí & Đề thi', icon: FileText, color: 'text-purple-400' },
-                    { mode: 'weekly-report', label: 'Báo cáo tuần', icon: Calendar, color: 'text-amber-400' },
-                    { mode: 'social-dashboard', label: 'Truyền thông & AI', icon: Share2, color: 'text-rose-400' },
-                    { mode: 'account-management', label: 'Quản lý nhân viên', icon: Users, color: 'text-cyan-400' },
-                    { mode: 'finance-report', label: 'Báo cáo thu chi', icon: Sliders, color: 'text-green-400' },
-                    { mode: 'resources', label: 'Tài nguyên tài liệu', icon: ExternalLink, color: 'text-yellow-400' },
-                  ].filter(m => canAccessView(m.mode)).map(m => {
-                    const MIcon = m.icon;
-                    return (
-                      <button
-                        key={m.mode}
-                        type="button"
-                        onClick={() => {
-                          if (m.mode === 'workspace') {
-                            onNavigate2D();
-                          } else {
-                            onNavigateModule(m.mode);
-                          }
-                        }}
-                        className="p-2.5 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-blue-600/20 hover:border-blue-500/50 transition flex items-center gap-2 text-left cursor-pointer group"
-                      >
-                        <MIcon className={`w-4 h-4 ${m.color} shrink-0`} />
-                        <span className="text-xs font-semibold text-slate-200 group-hover:text-white truncate">
-                          {m.label}
-                        </span>
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
             )}
