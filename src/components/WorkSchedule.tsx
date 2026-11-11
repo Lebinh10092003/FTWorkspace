@@ -909,21 +909,8 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
         activeId={administrationNav ? "work-schedule" : view}
         onSelect={(nextView) => onNavSelect ? onNavSelect(nextView) : openScheduleSection(nextView as View)}
         ariaLabel="Điều hướng Lịch làm việc"
-        quickSearch={view === "team"}
-        actions={view !== "team" ? (
-          <>
-            <label className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm công việc..." className="w-48 rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400" />
-            </label>
-            <button type="button" onClick={() => setEditing(blankDraft(userEmail, selectedDate))} className="inline-flex items-center gap-2 rounded-xl bg-[#0055da] px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200">
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Công việc mới</span>
-            </button>
-          </>
-        ) : null}
+        sectionNavigation={administrationNav ? (<nav className="flex min-w-0 flex-wrap gap-2" aria-label="Chế độ lịch làm việc">{navItems.map(item => <button key={item.id} type="button" onClick={() => openScheduleSection(item.id as View)} aria-current={view === item.id ? 'page' : undefined} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === item.id ? 'bg-sky-50 text-sky-700' : 'text-slate-600'}`}>{item.label}</button>)}</nav>) : undefined}
       />
-      {administrationNav && <nav className="flex flex-wrap gap-2 border-b border-slate-200 bg-white px-5 py-2" aria-label="Chế độ lịch làm việc">{navItems.map(item => <button key={item.id} type="button" onClick={() => openScheduleSection(item.id as View)} aria-current={view === item.id ? 'page' : undefined} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === item.id ? 'bg-sky-50 text-sky-700' : 'text-slate-600'}`}>{item.label}</button>)}</nav>}
 
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto max-w-[1680px] p-4 sm:p-6 lg:p-8">
@@ -1041,6 +1028,13 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
               </button>
             </div>
           )}
+          {(view === "board" || view === "week") && <section aria-label="Công cụ công việc" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <label className="relative min-w-0 flex-1 sm:max-w-sm">
+              <span className="sr-only">Tìm công việc</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm công việc..." className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-base outline-none focus:border-blue-400 sm:text-sm" />
+            </label>
+            <button type="button" onClick={() => setEditing(blankDraft(userEmail, selectedDate))} className="inline-flex min-h-[44px] shrink-0 items-center gap-2 rounded-xl bg-[#0055da] px-4 py-2.5 text-sm font-bold text-white shadow-sm"><Plus className="h-4 w-4" />Công việc mới</button>
+          </section>}
           {loading ? <div className="grid min-h-[420px] place-items-center text-sm font-semibold text-slate-500">Đang tải lịch làm việc...</div> : unavailableHistory ? (
             <section className="grid min-h-[420px] place-items-center rounded-2xl border border-amber-200 bg-amber-50/70 p-8 text-center">
               <div className="max-w-xl">
@@ -1052,7 +1046,7 @@ export default function WorkSchedule({ idToken, onBackToWorkspace, onAccountClic
                 </a> : <p className="mt-4 text-sm font-semibold text-amber-800">Vui lòng liên hệ Admin để tra cứu trang tính lưu trữ.</p>}
               </div>
             </section>
-          ) : view === "board" ? <BoardView tasks={dailyTasks} selectedDate={selectedDate} setSelectedDate={setSelectedDate} userEmail={userEmail} selectedIds={selectedIds} setSelectedIds={setSelectedIds} setEditing={setEditing} deleteTasks={deleteTasks} setDraggedId={setDraggedId} moveTask={moveTask} /> : view === "week" ? <WeekView tasks={tasks} userEmail={userEmail} idToken={idToken} visibleDays={visibleCalendarDays} anchor={weekStart} setAnchor={setWeekStart} period={calendarPeriod} setPeriod={(period: "week" | "month") => navigateSchedule("week", period)} layout={calendarLayout} setLayout={setCalendarLayout} setSelectedDate={setSelectedDate} setView={(next: View) => navigateSchedule(next)} setEditing={setEditing} setDraggedId={setDraggedId} moveTask={moveTask} saveInlineDay={saveInlineDay} reloadTasks={load} /> : view === "team" ? <TeamSpreadsheetView members={teamMembers} tasks={teamTasks} userEmail={userEmail} setEditing={setEditing} saveInlineDay={saveInlineDay} reloadTasks={load} /> : <SheetView idToken={idToken} sheetUrl={sheetUrl} setSheetUrl={setSheetUrl} notice={sheetNotice} setNotice={setSheetNotice} onSync={syncSheet} />}
+          ) : view === "board" ? <BoardView tasks={dailyTasks} selectedDate={selectedDate} setSelectedDate={setSelectedDate} userEmail={userEmail} selectedIds={selectedIds} setSelectedIds={setSelectedIds} setEditing={setEditing} deleteTasks={deleteTasks} setDraggedId={setDraggedId} moveTask={moveTask} /> : view === "week" ? <WeekView tasks={filtered} userEmail={userEmail} idToken={idToken} visibleDays={visibleCalendarDays} anchor={weekStart} setAnchor={setWeekStart} period={calendarPeriod} setPeriod={(period: "week" | "month") => navigateSchedule("week", period)} layout={calendarLayout} setLayout={setCalendarLayout} setSelectedDate={setSelectedDate} setView={(next: View) => navigateSchedule(next)} setEditing={setEditing} setDraggedId={setDraggedId} moveTask={moveTask} saveInlineDay={saveInlineDay} reloadTasks={load} /> : view === "team" ? <TeamSpreadsheetView members={teamMembers} tasks={teamTasks} userEmail={userEmail} setEditing={setEditing} saveInlineDay={saveInlineDay} reloadTasks={load} /> : <SheetView idToken={idToken} sheetUrl={sheetUrl} setSheetUrl={setSheetUrl} notice={sheetNotice} setNotice={setSheetNotice} onSync={syncSheet} />}
         </div>
       </main>
       {editing && <TaskDialog draft={editing} setDraft={setEditing} staff={staff} userEmail={userEmail} saveTask={saveTask} saving={savingTask} saveProgressNote={saveProgressNote} deleteTasks={deleteTasks} review={review} />}

@@ -456,21 +456,8 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
         activeId={administrationNav ? 'attendance' : tab}
         onSelect={id => onNavSelect ? onNavSelect(id) : setTab(id as AttendanceTab)}
         ariaLabel="Điều hướng Công ca"
-        actions={isPrivileged ? (
-          <label className="min-w-0">
-            <span className="sr-only">Bảng công cần xem</span>
-            <SearchableSelect
-              className="w-44 sm:w-56"
-              value={selectedEmployee}
-              onChange={setSelectedEmployee}
-              options={employeeOptions}
-              placeholder="Bảng công của tôi"
-              searchPlaceholder="Tìm theo họ tên..."
-            />
-          </label>
-        ) : null}
+        sectionNavigation={administrationNav ? (<nav className="flex min-w-0 flex-wrap gap-2" aria-label="Bảng công">{navItems.map(item => <button key={item.id} type="button" onClick={() => setTab(item.id as AttendanceTab)} aria-current={tab === item.id ? 'page' : undefined} className={`rounded-lg px-3 py-2 text-sm font-semibold ${tab === item.id ? 'bg-sky-50 text-sky-700' : 'text-slate-600'}`}>{item.label}</button>)}</nav>) : undefined}
       />
-      {administrationNav && <nav className="flex gap-2 border-b border-slate-200 bg-white px-5 py-2" aria-label="Bảng công">{navItems.map(item => <button key={item.id} type="button" onClick={() => setTab(item.id as AttendanceTab)} aria-current={tab === item.id ? 'page' : undefined} className={`rounded-lg px-3 py-2 text-sm font-semibold ${tab === item.id ? 'bg-sky-50 text-sky-700' : 'text-slate-600'}`}>{item.label}</button>)}</nav>}
 
       <main className="min-w-0 flex-1">
         <div className="ft-module-content mx-auto p-5 md:p-7">
@@ -485,6 +472,18 @@ export default function Attendance({ idToken, userName, userEmail, userRole, pho
               />
             </div>
           ) : (<>
+            {isPrivileged && <section aria-label="Chọn bảng công" className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4"><span className="text-sm font-semibold text-slate-600">Bảng công cần xem</span><label className="min-w-0">
+            <span className="sr-only">Bảng công cần xem</span>
+            <SearchableSelect
+              className="w-44 sm:w-56"
+              value={selectedEmployee}
+              onChange={setSelectedEmployee}
+              options={employeeOptions}
+              placeholder="Bảng công của tôi"
+              searchPlaceholder="Tìm theo họ tên..."
+            />
+          </label></section>}
+
             {/* Title row */}
             <section className="mb-6">
               <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Xin chào, {userName}</h1>

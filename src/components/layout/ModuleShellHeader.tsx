@@ -16,6 +16,8 @@ export type ModuleShellHeaderProps = {
   ariaLabel?: string;
   /** Module-specific controls (search, "new" buttons). */
   actions?: React.ReactNode;
+  /** Optional local view tabs share the third row with page actions. */
+  sectionNavigation?: React.ReactNode;
   /** Ẩn nút "Tìm nhanh" khi trang đã có ô tìm riêng trên thanh này (Ctrl K vẫn dùng được). */
   quickSearch?: boolean;
   /** Current record or editor, after its owning list in the breadcrumb. */
@@ -31,6 +33,7 @@ export default function ModuleShellHeader({
   onSelect,
   ariaLabel,
   actions,
+  sectionNavigation,
   quickSearch = true,
   detailTitle,
   parentHref,
@@ -59,8 +62,8 @@ export default function ModuleShellHeader({
   };
 
   return (
-    <header className="sticky top-0 z-30 flex flex-col w-full border-b border-[var(--ft-border,#DDE5EF)] bg-[var(--workspace-card,#FFFFFF)] text-[var(--workspace-surface-text,#0F1F33)] backdrop-blur-md">
-      <div className="flex min-h-14 w-full min-w-0 items-center gap-3 px-3 py-1 sm:px-6">
+    <header data-module-header className="sticky top-0 z-30 flex flex-col w-full border-b border-[var(--ft-border,#DDE5EF)] bg-[var(--workspace-card,#FFFFFF)] text-[var(--workspace-surface-text,#0F1F33)] backdrop-blur-md">
+      <div data-shell-row="menu" className="flex min-h-14 w-full min-w-0 items-center gap-3 px-3 py-1 sm:px-6">
         <div className="flex min-w-0 flex-1 items-center justify-start overflow-hidden">
           <ModuleTopNav items={items} activeId={activeId} onSelect={onSelect} ariaLabel={ariaLabel || `Điều hướng ${title}`} />
         </div>
@@ -72,7 +75,7 @@ export default function ModuleShellHeader({
           <WorkspaceNotifications />
         </div>
       </div>
-      <div className="w-full border-t border-[var(--ft-border-soft,#e2e8f0)] bg-[var(--ft-page-bg,#F3F6FA)] px-3 py-2 sm:px-6">
+      <div data-shell-row="breadcrumb" className="w-full border-t border-[var(--ft-border-soft,#e2e8f0)] bg-[var(--ft-page-bg,#F3F6FA)] px-3 py-2 sm:px-6">
         <nav aria-label="Breadcrumb" className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs font-medium text-[var(--workspace-surface-muted,#64748b)]">
           <a href="/" onClick={event => navigateLink(event, moduleContext?.goHome)} className={breadcrumbLink}>Workspace</a>
           <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">/</span>
@@ -82,7 +85,10 @@ export default function ModuleShellHeader({
           {eyebrow && ![areaTitle, pageTitle, detailTitle].includes(eyebrow) && <span className="sr-only">{eyebrow}</span>}
         </nav>
       </div>
-      {actions && <div className="flex w-full items-center justify-start gap-2 overflow-x-auto border-t border-[var(--ft-border-soft,#e2e8f0)] px-3 py-2 scrollbar-none sm:flex-wrap sm:justify-end sm:px-6" aria-label="Công cụ của trang">{actions}</div>}
+      {(sectionNavigation || actions) && <div data-shell-row="section" className="flex w-full min-w-0 flex-wrap items-center gap-3 border-t border-[var(--ft-border-soft,#e2e8f0)] px-3 py-2 sm:px-6">
+        {sectionNavigation}
+        {actions && <div className="ml-auto flex min-w-0 items-center gap-2 overflow-x-auto scrollbar-none sm:flex-wrap" aria-label="Công cụ của trang">{actions}</div>}
+      </div>}
 
     </header>
   );
