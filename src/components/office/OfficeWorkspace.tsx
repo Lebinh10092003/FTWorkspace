@@ -81,7 +81,7 @@ let frameReady = false;
 function ensureOfficeFrame(): HTMLIFrameElement {
   if (frameEl && frameHost && document.body.contains(frameHost)) return frameEl;
   frameHost = document.createElement('div');
-  frameHost.style.cssText = 'position:fixed;display:none;z-index:5;left:0;top:0;width:0;height:0;overflow:hidden;background:#020617';
+  frameHost.style.cssText = 'position:fixed;display:none;z-index:10;left:0;top:0;width:0;height:0;overflow:hidden;background:#020617';
   frameEl = document.createElement('iframe');
   frameEl.src = '/office3d/vi/?embed=1';
   frameEl.title = 'Văn phòng 3D FermatTech';
@@ -434,9 +434,9 @@ export default function OfficeWorkspace({
   }
 
   return (
-    <div ref={boxRef} className="fixed inset-0 w-screen h-screen bg-slate-950 text-white overflow-hidden z-20">
+    <div ref={boxRef} className="fixed inset-0 w-screen h-screen bg-slate-950 text-white overflow-hidden pointer-events-none">
       {/* 1. THANH ĐIỀU HƯỚNG TRÊN CAO (TOP NAVIGATION BAR - GIỮ ĐẦY ĐỦ CHỨC NĂNG CẦN THIẾT) */}
-      <header className="fixed top-0 inset-x-0 h-14 z-30 bg-[#0B192C]/95 backdrop-blur-md border-b border-slate-800 px-3 sm:px-5 flex items-center justify-between select-none shadow-lg">
+      <header className="pointer-events-auto fixed top-0 inset-x-0 h-14 z-30 bg-[#0B192C]/95 backdrop-blur-md border-b border-slate-800 px-3 sm:px-5 flex items-center justify-between select-none shadow-lg">
         
         {/* Cụm Trái: Brand + Bộ chuyển đổi 2D / 3D nổi bật + Phân hệ */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -631,12 +631,12 @@ export default function OfficeWorkspace({
       {/* 2. KHUNG CHỨA 3D CANVAS (NẰM NGAY DƯỚI THANH ĐIỀU HƯỚNG TRÊN CAO) */}
       <div
         ref={slotRef}
-        className="absolute top-14 bottom-0 inset-x-0 w-full h-[calc(100vh-3.5rem)]"
+        className="absolute top-14 bottom-0 inset-x-0 w-full h-[calc(100vh-3.5rem)] pointer-events-none"
       />
 
       {/* Loading Overlay */}
       {loading && (
-        <div className="absolute inset-0 top-14 z-30 flex flex-col items-center justify-center bg-slate-950/90 text-white backdrop-blur-sm">
+        <div className="pointer-events-auto absolute inset-0 top-14 z-30 flex flex-col items-center justify-center bg-slate-950/90 text-white backdrop-blur-sm">
           <LoaderCircle className="h-9 w-9 animate-spin text-[#D97757]" />
           <p className="mt-3 text-sm font-semibold text-slate-200">Đang khởi tạo Văn phòng 3D...</p>
           <p className="mt-1 text-xs text-slate-400">Tải mô hình văn phòng và định vị chỗ ngồi</p>
@@ -645,7 +645,7 @@ export default function OfficeWorkspace({
 
       {/* Quick App Launcher Drawer */}
       {showAppsDrawer && (
-        <div className="absolute left-3 sm:left-5 top-16 z-30 w-80 sm:w-96 max-h-[75vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="pointer-events-auto absolute left-3 sm:left-5 top-16 z-30 w-80 sm:w-96 max-h-[75vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <LayoutGrid className="h-4 w-4 text-[#D97757]" />
@@ -696,7 +696,7 @@ export default function OfficeWorkspace({
 
       {/* Danh sách mọi người trong văn phòng (hỗ trợ Đang làm / Rảnh / Ngoại tuyến) */}
       {showList && (
-        <div className="absolute right-3 sm:right-24 top-16 z-30 w-80 max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 shadow-2xl backdrop-blur-xl">
+        <div className="pointer-events-auto absolute right-3 sm:right-24 top-16 z-30 w-80 max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 shadow-2xl backdrop-blur-xl">
           <div className="mb-2.5 flex items-center justify-between text-xs font-bold text-slate-200">
             <div>
               <span>Nhân sự văn phòng</span>
@@ -795,35 +795,39 @@ export default function OfficeWorkspace({
       />
 
       {/* Virtual Desktop OS Modal dạng game */}
-      <VirtualDesktopOS
-        isOpen={isDesktopOSOpen}
-        onClose={() => setIsDesktopOSOpen(false)}
-        idToken={idToken}
-        onNavigateModule={(mode) => {
-          if (canAccessView(mode)) {
-            onNavigate(mode);
-          }
-        }}
-        onCallBot={handleCallBot}
-        onReleaseBot={handleReleaseBot}
-        onTriggerPatrol={handleTriggerPatrol}
-        botState={botState}
-        patrolState={patrolState}
-      />
+      <div className={isDesktopOSOpen ? 'pointer-events-auto' : 'pointer-events-none'}>
+        <VirtualDesktopOS
+          isOpen={isDesktopOSOpen}
+          onClose={() => setIsDesktopOSOpen(false)}
+          idToken={idToken}
+          onNavigateModule={(mode) => {
+            if (canAccessView(mode)) {
+              onNavigate(mode);
+            }
+          }}
+          onCallBot={handleCallBot}
+          onReleaseBot={handleReleaseBot}
+          onTriggerPatrol={handleTriggerPatrol}
+          botState={botState}
+          patrolState={patrolState}
+        />
+      </div>
 
       {/* Command Palette khi bấm nút Tìm kiếm (Ctrl+K) trong Văn phòng 3D */}
       {isCommandPaletteOpen && (
-        <CommandPalette
-          isOpen={isCommandPaletteOpen}
-          onClose={() => setIsCommandPaletteOpen(false)}
-          onNavigate={(path) => {
-            setIsCommandPaletteOpen(false);
-            const target = path.replace(/^\/+/, '');
-            if (target && canAccessView(target)) {
-              onNavigate(target);
-            }
-          }}
-        />
+        <div className="pointer-events-auto">
+          <CommandPalette
+            isOpen={isCommandPaletteOpen}
+            onClose={() => setIsCommandPaletteOpen(false)}
+            onNavigate={(path) => {
+              setIsCommandPaletteOpen(false);
+              const target = path.replace(/^\/+/, '');
+              if (target && canAccessView(target)) {
+                onNavigate(target);
+              }
+            }}
+          />
+        </div>
       )}
     </div>
   );
