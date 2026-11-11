@@ -222,6 +222,13 @@ function getInitialViewMode(): ViewMode {
     return 'account-management';
   }
   if (path.startsWith('/resources')) return 'resources';
+  if (path === '/' || path === '') {
+    try {
+      if (localStorage.getItem('ft-workspace-view-preference') === '3d') {
+        return 'office';
+      }
+    } catch {}
+  }
   return 'workspace';
 }
 
@@ -805,9 +812,20 @@ export default function App() {
             idToken={idToken}
             isDark={workspacePalettes[readWorkspaceAppearance().theme]?.text !== '#0F1F33'}
             canAccessView={canAccessView}
+            userName={user.displayName}
+            userRole={userRole}
+            photoURL={user.photoURL}
+            isGuest={isGuest}
+            onAccountClick={openAccount}
+            onLogout={handleLogout}
+            onLogin={() => {
+              setAuthError('');
+              setShowLoginModal(true);
+            }}
             onNavigate={(mode, tab) => {
               if (mode === 'social-dashboard' && tab) {
                 setSocialTab(tab);
+                openProtectedView('social-dashboard');
               } else {
                 openProtectedView(mode as ViewMode);
               }
@@ -1355,11 +1373,11 @@ export default function App() {
   );
   };
 
-  // Public landing pages and the session splash stay chrome-free. Every other
-  // screen (the launcher included) gets the shared rail and the one command
-  // palette that WorkspaceAreaFrame owns.
+  // Public landing pages, 3D office and the session splash stay chrome-free.
+  // The 3D office takes full-bleed viewport without 2D sidebar clutter.
+  // Every other screen gets the shared rail and command palette.
   const content = renderContent();
-  const chromeLessViews: ViewMode[] = ['competition-landing-public', 'competition-hub', 'guest-invigilation', 'public-exam-registration', 'training-assessment-public'];
+  const chromeLessViews: ViewMode[] = ['office', 'competition-landing-public', 'competition-hub', 'guest-invigilation', 'public-exam-registration', 'training-assessment-public'];
   const framedContent = authChecking || chromeLessViews.includes(viewMode) ? content : (
     <WorkspaceAreaFrame
       activeAreaId={areaForView(viewMode)}
@@ -1436,14 +1454,16 @@ export default function App() {
         <>
           <InvigilationReminders key={user.email} token={idToken} email={user.email} canPreview={userRole === 'ADMIN' || userRole === 'MANAGER'} />
           <Suspense fallback={null}>
-            <ItemBag />
-            <ChatbotAssistant
-              token={idToken}
-              userName={user.displayName}
-              userEmail={user.email}
-              userRole={userRole}
-              onNavigate={handleChatbotNavigate}
-            />
+            {viewMode !== 'office' && <ItemBag />}
+            {viewMode !== 'office' && (
+              <ChatbotAssistant
+                token={idToken}
+                userName={user.displayName}
+                userEmail={user.email}
+                userRole={userRole}
+                onNavigate={handleChatbotNavigate}
+              />
+            )}
           </Suspense>
         </>
       )}

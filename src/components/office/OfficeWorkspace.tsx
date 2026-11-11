@@ -7,8 +7,24 @@ import {
   LoaderCircle,
   RefreshCw,
   Sparkles,
-  Users
+  Users,
+  Monitor,
+  Bot,
+  ShieldAlert,
+  LayoutGrid,
+  EyeOff,
+  Eye,
+  ExternalLink,
+  X,
+  ChevronRight,
+  Search
 } from 'lucide-react';
+import VirtualDesktopOS from './VirtualDesktopOS';
+import OfficeSmartphoneGuide from './OfficeSmartphoneGuide';
+import WorkspaceNotifications from '../WorkspaceNotifications';
+import AccountMenu from '../AccountMenu';
+import CommandPalette from '../layout/CommandPalette';
+import { useOfficeHeartbeat } from './useOfficeHeartbeat';
 
 export function checkWebGLSupport(): boolean {
   if (typeof window === 'undefined') return true;
@@ -29,6 +45,14 @@ export type OfficeWorkspaceProps = {
   canAccessView: (mode: any) => boolean;
   onNavigate: (mode: any, tab?: string) => void;
   onBackTo2D: () => void;
+  userName?: string | null;
+  userRole?: string | null;
+  photoURL?: string | null;
+  isGuest?: boolean;
+  onAccountClick?: () => void;
+  onLogout?: () => void;
+  onLogin?: () => void;
+  onOpenCommandPalette?: () => void;
 };
 
 const OFFICE_MODULE_ITEMS: { id: string; label: string; mode: string }[] = [
@@ -57,7 +81,7 @@ let frameReady = false;
 function ensureOfficeFrame(): HTMLIFrameElement {
   if (frameEl && frameHost && document.body.contains(frameHost)) return frameEl;
   frameHost = document.createElement('div');
-  frameHost.style.cssText = 'position:fixed;display:none;z-index:5;left:0;top:0;width:0;height:0;overflow:hidden;background:#020617';
+  frameHost.style.cssText = 'position:fixed;display:none;z-index:10;left:0;top:0;width:0;height:0;overflow:hidden;background:#020617';
   frameEl = document.createElement('iframe');
   frameEl.src = '/office3d/vi/?embed=1';
   frameEl.title = 'Văn phòng 3D FermatTech';
@@ -86,6 +110,14 @@ export default function OfficeWorkspace({
   canAccessView,
   onNavigate,
   onBackTo2D,
+  userName = 'Thành viên',
+  userRole = 'EMPLOYEE',
+  photoURL = null,
+  isGuest = false,
+  onAccountClick,
+  onLogout,
+  onLogin,
+  onOpenCommandPalette,
 }: OfficeWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const slotRef = useRef<HTMLDivElement | null>(null);
@@ -97,8 +129,27 @@ export default function OfficeWorkspace({
   const [roster, setRoster] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [webglError, setWebglError] = useState<string | null>(null);
+  const [isDesktopOSOpen, setIsDesktopOSOpen] = useState(false);
+  const [showAppsDrawer, setShowAppsDrawer] = useState(false);
+  const [hudCollapsed, setHudCollapsed] = useState(false);
+  const [showTips, setShowTips] = useState(true);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [botState, setBotState] = useState<{
+    state: string;
+    botName?: string;
+    targetDesk?: number;
+    queueLength: number;
+  }>({ state: 'IDLE', queueLength: 0 });
+  const [patrolState, setPatrolState] = useState<{
+    active: boolean;
+    phase: string;
+    message?: string;
+  }>({ active: false, phase: 'IDLE' });
 
   const webglSupported = useMemo(() => checkWebGLSupport(), []);
+
+  // Kích hoạt theo dõi nhịp hiện diện và tự động chuyển trạng thái làm việc / rảnh (Việc 033)
+  useOfficeHeartbeat(idToken, Boolean(idToken));
 
   // Danh sách các phân hệ mà người dùng hiện tại được phép truy cập
   const accessibleModules = useMemo(() => {
@@ -217,6 +268,47 @@ export default function OfficeWorkspace({
     );
   };
 
+  // Điều khiển các sự kiện nâng cao trong 3D
+  const handleCallBot = () => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: 'ft-office:callBot' },
+      window.location.origin
+    );
+  };
+
+  const handleReleaseBot = () => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: 'ft-office:releaseBot' },
+      window.location.origin
+    );
+  };
+
+  const handleTriggerPatrol = () => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: 'ft-office:triggerPatrol' },
+      window.location.origin
+    );
+  };
+
+  const handleFocus3DZone = (zone: string) => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: 'ft-office:switchView', view: zone },
+      window.location.origin
+    );
+  };
+
+  const handleOpenSearch = () => {
+    if (onOpenCommandPalette) {
+      onOpenCommandPalette();
+    } else {
+      setIsCommandPaletteOpen(true);
+    }
+  };
+
   // Cầu nối postMessage
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -236,6 +328,39 @@ export default function OfficeWorkspace({
         setLoading(false);
         // Gửi thông điệp init
         fetchRoster().then(list => sendInitToIframe(list));
+      }
+
+      // Nhận openDesktopOS (khi click vào Máy tính của tôi trên bàn 3D)
+      if (data.type === 'ft-office:openDesktopOS') {
+        setIsDesktopOSOpen(true);
+      }
+
+      // Nhận botState
+      if (data.type === 'ft-office:botState') {
+        setBotState(prev => ({
+          ...prev,
+          state: data.state || prev.state,
+          botName: data.botName || prev.botName,
+          targetDesk: data.targetDesk ?? prev.targetDesk,
+          queueLength: data.queueLength ?? prev.queueLength,
+        }));
+      }
+
+      // Nhận queueUpdate
+      if (data.type === 'ft-office:queueUpdate') {
+        setBotState(prev => ({
+          ...prev,
+          queueLength: data.queueLength ?? prev.queueLength,
+        }));
+      }
+
+      // Nhận patrolState
+      if (data.type === 'ft-office:patrolState') {
+        setPatrolState({
+          active: Boolean(data.active),
+          phase: data.phase || 'IDLE',
+          message: data.message,
+        });
       }
 
       // Nhận openModule
@@ -273,24 +398,32 @@ export default function OfficeWorkspace({
     return roster.filter(u => u.online).length;
   }, [roster]);
 
+  const workingCount = useMemo(() => {
+    return roster.filter(u => u.online && u.status !== 'idle').length;
+  }, [roster]);
+
+  const idleCount = useMemo(() => {
+    return roster.filter(u => u.online && u.status === 'idle').length;
+  }, [roster]);
+
   // Trường hợp không hỗ trợ WebGL
   if (!webglSupported || webglError) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center">
-        <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-amber-50/70 p-6 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/20">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+      <div className="flex flex-col items-center justify-center min-h-[100vh] p-6 text-center bg-slate-950 text-white">
+        <div className="w-full max-w-md rounded-2xl border border-amber-500/30 bg-slate-900 p-6 shadow-xl">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-amber-900/50 text-amber-300">
             <AlertTriangle className="h-6 w-6" />
           </div>
-          <h2 className="mt-4 text-lg font-bold text-slate-900 dark:text-white">
-            {webglError || 'Thiết bị chưa hỗ trợ đồ họa 3D (WebGL)'}
+          <h2 className="mt-4 text-lg font-bold text-slate-100">
+            Không thể khởi tạo Văn phòng 3D
           </h2>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            Trình duyệt hoặc phần cứng hiện tại chưa kích hoạt tính năng tăng tốc phần cứng WebGL. Bạn có thể sử dụng giao diện 2D hoàn chỉnh của Workspace.
+          <p className="mt-2 text-sm text-slate-400">
+            {webglError || 'Trình duyệt hoặc thiết bị hiện tại không hỗ trợ tăng tốc đồ họa 3D (WebGL). Bạn có thể chuyển sang giao diện truyền thống 2D.'}
           </p>
           <button
             type="button"
             onClick={onBackTo2D}
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-blue-700 transition"
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#D97757] px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-[#c46849] transition cursor-pointer"
           >
             <ArrowLeft className="h-4 w-4" />
             <span>Dùng giao diện 2D</span>
@@ -301,91 +434,401 @@ export default function OfficeWorkspace({
   }
 
   return (
-    <div ref={boxRef} style={boxH ? { height: boxH, minHeight: boxH } : undefined} className="relative flex flex-col w-full bg-slate-950 text-white overflow-hidden">
-      {/* Top Bar điều khiển */}
-      <div className="z-20 flex h-12 items-center justify-between border-b border-slate-800/80 bg-slate-900/90 px-3 sm:px-5 backdrop-blur-md shrink-0">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            type="button"
-            onClick={onBackTo2D}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1 text-xs font-semibold text-slate-200 hover:bg-slate-700 hover:text-white transition cursor-pointer min-h-[36px]"
-            title="Quay lại giao diện truyền thống 2D"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Về giao diện 2D</span>
-          </button>
-          <div className="h-4 w-px bg-slate-700 hidden sm:block" />
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200">
-            <Box className="h-4 w-4 text-blue-400" />
-            <span className="hidden sm:inline">Văn phòng 3D FermatTech</span>
-            <span className="sm:hidden">Văn phòng 3D</span>
+    <div ref={boxRef} className="fixed inset-0 w-screen h-screen bg-slate-950 text-white overflow-hidden pointer-events-none">
+      {/* 1. THANH ĐIỀU HƯỚNG TRÊN CAO (TOP NAVIGATION BAR - GIỮ ĐẦY ĐỦ CHỨC NĂNG CẦN THIẾT) */}
+      <header className="pointer-events-auto fixed top-0 inset-x-0 h-14 z-30 bg-[#0B192C]/95 backdrop-blur-md border-b border-slate-800 px-3 sm:px-5 flex items-center justify-between select-none shadow-lg">
+        
+        {/* Cụm Trái: Brand + Bộ chuyển đổi 2D / 3D nổi bật + Phân hệ */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Logo FermatTech */}
+          <div className="flex items-center gap-2 font-bold text-white text-sm">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#0B72CE] to-indigo-500 flex items-center justify-center shadow-md shadow-blue-500/20">
+              <Box className="w-4 h-4 text-white" />
+            </div>
+            <div className="hidden xl:block leading-tight">
+              <span className="text-[10px] text-blue-400 font-extrabold uppercase tracking-wider block">FermatTech</span>
+              <span className="text-xs font-bold text-slate-100">Văn phòng 3D</span>
+            </div>
           </div>
-        </div>
 
-        {/* Trạng thái online & Làm mới */}
-        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="h-5 w-[1px] bg-slate-800 hidden sm:block" />
+
+          {/* BỘ CHUYỂN ĐỔI 2D / 3D RÕ RÀNG */}
+          <div className="flex items-center p-0.5 rounded-xl bg-slate-900 border border-slate-700/80 shadow-inner">
+            <button
+              type="button"
+              onClick={onBackTo2D}
+              className="flex items-center gap-1.5 rounded-lg bg-[#0B72CE] hover:bg-[#095ca7] px-2.5 sm:px-3 py-1.5 text-xs font-bold text-white shadow transition cursor-pointer"
+              title="Quay lại giao diện phẳng 2D tiêu chuẩn"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Giao diện 2D</span>
+            </button>
+            <div className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/30">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="hidden sm:inline">Văn phòng 3D</span>
+            </div>
+          </div>
+
           <button
             type="button"
-            onClick={() => setShowList(v => !v)}
-            className="flex items-center gap-1.5 rounded-full bg-slate-800/90 border border-slate-700/60 px-2.5 py-0.5 text-xs font-medium text-slate-300 hover:bg-slate-700 cursor-pointer min-h-[30px]"
-            title="Xem danh sách mọi người"
-            aria-expanded={showList}
-          >
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>
-              <strong className="text-emerald-400 font-bold">{onlineCount}</strong> đang online · Xem danh sách
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={async () => {
-              const fresh = await fetchRoster();
-              sendInitToIframe(fresh);
+            onClick={() => {
+              setShowAppsDrawer(v => !v);
+              setShowList(false);
             }}
-            disabled={refreshing}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
-            title="Làm mới danh sách nhân sự"
+            className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition cursor-pointer border ${
+              showAppsDrawer
+                ? 'bg-[#D97757] text-white border-[#D97757]'
+                : 'bg-slate-900/90 hover:bg-slate-800 text-slate-100 border-slate-700/80'
+            }`}
+            title="Mở nhanh tất cả các phân hệ Workspace"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-blue-400' : ''}`} />
+            <LayoutGrid className="h-3.5 w-3.5 text-[#D97757]" style={showAppsDrawer ? { color: '#fff' } : undefined} />
+            <span className="hidden sm:inline">Phân hệ</span>
           </button>
         </div>
-      </div>
 
+        {/* Cụm Giữa: Các công cụ tương tác 3D (Máy tính OS, Robot, Sếp, Nhân sự) */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {!hudCollapsed && (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsDesktopOSOpen(true)}
+                className="flex items-center gap-1.5 rounded-xl bg-[#D97757] hover:bg-[#c46849] px-2.5 sm:px-3 py-1.5 text-xs font-bold text-white shadow-sm transition cursor-pointer"
+                title="Mở máy tính cá nhân dạng Game OS trên bàn làm việc 3D"
+              >
+                <Monitor className="h-3.5 w-3.5" />
+                <span className="hidden md:inline">Máy tính OS</span>
+              </button>
 
-      {/* Danh sách mọi người trong văn phòng */}
-      {showList && (
-        <div className="absolute right-3 top-14 z-30 w-72 max-h-[70%] overflow-y-auto rounded-xl border border-slate-700 bg-slate-900/95 p-3 shadow-2xl backdrop-blur-md">
-          <div className="mb-2 flex items-center justify-between text-xs font-bold text-slate-200">
-            <span>Mọi người ({onlineCount}/{roster.length} đang online)</span>
-            <button type="button" onClick={() => setShowList(false)} className="rounded px-1.5 py-0.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Đóng danh sách">✕</button>
-          </div>
-          {[...roster]
-            .sort((a, b) => Number(!!b.online) - Number(!!a.online) || String(a.name || '').localeCompare(String(b.name || ''), 'vi'))
-            .map((u: any) => (
-              <div key={u.id ?? u.name} className="flex items-center gap-2 border-t border-slate-800 py-1.5 text-xs first:border-t-0">
-                <span className={`h-2 w-2 shrink-0 rounded-full ${u.online ? (u.status === 'idle' ? 'bg-amber-400' : 'bg-emerald-500') : 'bg-slate-600'}`} />
-                <div className="min-w-0 flex-1">
-                  <div className={`truncate font-semibold ${u.online ? 'text-slate-100' : 'text-slate-400'}`}>{u.name}{u.is_me ? ' (bạn)' : ''}</div>
-                  <div className="truncate text-[11px] text-slate-500">{[ROOM_LABELS[u.room] || u.department, u.role].filter(Boolean).join(' · ')}</div>
-                </div>
-                <span className="shrink-0 text-[11px] text-slate-400">{u.online ? (u.status === 'idle' ? 'Rảnh' : 'Đang làm') : 'Ngoại tuyến'}</span>
-              </div>
-            ))}
+              <button
+                type="button"
+                onClick={() => {
+                  if (botState.state === 'ARRIVED') {
+                    handleReleaseBot();
+                  } else {
+                    handleCallBot();
+                  }
+                }}
+                disabled={botState.state === 'MOVING'}
+                className={`hidden sm:flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                  botState.state === 'ARRIVED'
+                    ? 'border-emerald-500/60 bg-emerald-950/70 text-emerald-300 hover:bg-emerald-900/70'
+                    : botState.state === 'MOVING'
+                    ? 'border-amber-500/60 bg-amber-950/70 text-amber-300 animate-pulse'
+                    : 'border-cyan-500/40 bg-slate-900/90 text-cyan-300 hover:bg-slate-800'
+                }`}
+                title={
+                  botState.state === 'ARRIVED'
+                    ? 'Robot đang tại bàn (Bấm để cho robot về trạm)'
+                    : 'Gọi Robot AI di chuyển đến bàn làm việc của bạn'
+                }
+              >
+                <Bot className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">
+                  {botState.state === 'ARRIVED'
+                    ? 'Robot tại bàn'
+                    : botState.state === 'MOVING'
+                    ? 'Đang tới...'
+                    : 'Gọi Robot'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleTriggerPatrol}
+                disabled={patrolState.active}
+                className={`hidden md:flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                  patrolState.active
+                    ? 'border-rose-500/60 bg-rose-950/70 text-rose-300 animate-pulse'
+                    : 'border-slate-700/80 bg-slate-900/90 text-slate-200 hover:bg-slate-800'
+                }`}
+                title="Kích hoạt Giám đốc đi tuần tra các phòng ban"
+              >
+                <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
+                <span className="hidden xl:inline">
+                  {patrolState.active ? 'Đang tuần tra!' : 'Sếp đi tuần'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowList(v => !v);
+                  setShowAppsDrawer(false);
+                }}
+                className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition cursor-pointer ${
+                  showList
+                    ? 'bg-blue-600 text-white border-blue-500'
+                    : 'bg-slate-900/90 border-slate-700/80 text-slate-200 hover:bg-slate-800'
+                }`}
+                title="Xem danh sách nhân sự đang làm / rảnh"
+                aria-expanded={showList}
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>
+                  <strong className="text-emerald-400 font-bold">{workingCount}</strong>
+                  {idleCount > 0 && (
+                    <span className="text-amber-400 font-semibold ml-1">· {idleCount} rảnh</span>
+                  )}
+                  <span className="hidden lg:inline text-slate-400 ml-1">· Nhân sự</span>
+                </span>
+              </button>
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setHudCollapsed(v => !v);
+              setShowList(false);
+              setShowAppsDrawer(false);
+            }}
+            className="hidden sm:flex rounded-xl p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition items-center justify-center cursor-pointer"
+            title={hudCollapsed ? 'Hiện công cụ 3D' : 'Thu gọn nút 3D'}
+          >
+            {hudCollapsed ? <Eye className="h-3.5 w-3.5 text-[#D97757]" /> : <EyeOff className="h-3.5 w-3.5" />}
+          </button>
         </div>
-      )}
+
+        {/* Cụm Phải: Tìm kiếm (Ctrl+K), Chuông thông báo & Tài khoản cá nhân */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleOpenSearch}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer"
+            title="Tìm kiếm nhanh phân hệ hoặc công việc (Ctrl + K)"
+          >
+            <Search className="h-3.5 w-3.5 text-slate-400" />
+            <span className="hidden lg:inline text-slate-400">Tìm kiếm</span>
+            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-slate-800 rounded text-slate-400 border border-slate-700">
+              Ctrl K
+            </kbd>
+          </button>
+
+          {/* Chuông thông báo Workspace */}
+          <div className="relative">
+            <WorkspaceNotifications />
+          </div>
+
+          <div className="h-5 w-[1px] bg-slate-800" />
+
+          {/* Menu Tài khoản cá nhân */}
+          <AccountMenu
+            userName={userName}
+            userRole={userRole}
+            photoURL={photoURL}
+            isGuest={isGuest}
+            onAccountClick={onAccountClick || (() => {})}
+            onLogout={onLogout}
+            onLogin={onLogin}
+            variant="avatar"
+          />
+        </div>
+      </header>
+
+      {/* 2. KHUNG CHỨA 3D CANVAS (NẰM NGAY DƯỚI THANH ĐIỀU HƯỚNG TRÊN CAO) */}
+      <div
+        ref={slotRef}
+        className="absolute top-14 bottom-0 inset-x-0 w-full h-[calc(100vh-3.5rem)] pointer-events-none"
+      />
 
       {/* Loading Overlay */}
       {loading && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-950/90 text-white backdrop-blur-xs">
-          <LoaderCircle className="h-9 w-9 animate-spin text-blue-500" />
+        <div className="pointer-events-auto absolute inset-0 top-14 z-30 flex flex-col items-center justify-center bg-slate-950/90 text-white backdrop-blur-sm">
+          <LoaderCircle className="h-9 w-9 animate-spin text-[#D97757]" />
           <p className="mt-3 text-sm font-semibold text-slate-200">Đang khởi tạo Văn phòng 3D...</p>
           <p className="mt-1 text-xs text-slate-400">Tải mô hình văn phòng và định vị chỗ ngồi</p>
         </div>
       )}
 
-      {/* Vị trí khung 3D (iframe giữ sống nằm ngoài cây React, xếp chồng lên đây) */}
-      <div ref={slotRef} className="w-full flex-1 min-h-0" />
+      {/* Quick App Launcher Drawer */}
+      {showAppsDrawer && (
+        <div className="pointer-events-auto absolute left-3 sm:left-5 top-16 z-30 w-80 sm:w-96 max-h-[75vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <LayoutGrid className="h-4 w-4 text-[#D97757]" />
+              <span className="text-sm font-bold text-slate-100">Phân hệ Workspace</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAppsDrawer(false)}
+              className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {OFFICE_MODULE_ITEMS.filter(item => canAccessView(item.mode)).map(item => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setShowAppsDrawer(false);
+                  onNavigate(item.mode);
+                }}
+                className="group flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-800/60 hover:bg-[#D97757]/15 hover:border-[#D97757]/50 px-3 py-2.5 text-left transition cursor-pointer"
+              >
+                <span className="text-xs font-semibold text-slate-200 group-hover:text-white truncate">
+                  {item.label}
+                </span>
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-500 group-hover:text-[#D97757]" />
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+            <span>Hoặc dùng Máy tính bàn 3D</span>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAppsDrawer(false);
+                setIsDesktopOSOpen(true);
+              }}
+              className="inline-flex items-center gap-1 font-semibold text-[#D97757] hover:underline cursor-pointer"
+            >
+              <Monitor className="h-3 w-3" />
+              Mở Desktop OS
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Danh sách mọi người trong văn phòng (hỗ trợ Đang làm / Rảnh / Ngoại tuyến) */}
+      {showList && (
+        <div className="pointer-events-auto absolute right-3 sm:right-24 top-16 z-30 w-80 max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 shadow-2xl backdrop-blur-xl">
+          <div className="mb-2.5 flex items-center justify-between text-xs font-bold text-slate-200">
+            <div>
+              <span>Nhân sự văn phòng</span>
+              <span className="ml-1.5 text-[11px] font-normal text-slate-400">
+                ({onlineCount}/{roster.length} online)
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  const fresh = await fetchRoster();
+                  sendInitToIframe(fresh);
+                }}
+                disabled={refreshing}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer"
+                title="Làm mới danh sách nhân sự"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-[#D97757]' : ''}`} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowList(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer"
+                aria-label="Đóng danh sách"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+          <div className="mb-2 flex items-center gap-3 text-[11px] text-slate-400 pb-2 border-b border-slate-800">
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Đang làm ({workingCount})</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> Rảnh ({idleCount})</span>
+          </div>
+          {[...roster]
+            .sort((a, b) => Number(!!b.online) - Number(!!a.online) || String(a.name || '').localeCompare(String(b.name || ''), 'vi'))
+            .map((u: any) => (
+              <div key={u.id ?? u.name} className="flex items-center gap-2 border-t border-slate-800/80 py-2 text-xs first:border-t-0">
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                  u.online
+                    ? (u.status === 'idle' ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]' : 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]')
+                    : 'bg-slate-600'
+                }`} />
+                <div className="min-w-0 flex-1">
+                  <div className={`truncate font-semibold ${u.online ? 'text-slate-100' : 'text-slate-400'}`}>
+                    {u.name}
+                    {u.is_me ? ' (bạn)' : ''}
+                    {u.is_bot ? ' 🤖' : ''}
+                  </div>
+                  <div className="truncate text-[11px] text-slate-500">
+                    {[ROOM_LABELS[u.room] || u.department, u.role].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                <span className={`shrink-0 text-[11px] font-medium px-1.5 py-0.5 rounded-md ${
+                  u.online
+                    ? (u.status === 'idle' ? 'bg-amber-500/10 text-amber-300' : 'bg-emerald-500/10 text-emerald-300')
+                    : 'text-slate-500'
+                }`}>
+                  {u.online ? (u.status === 'idle' ? 'Rảnh' : 'Đang làm') : 'Ngoại tuyến'}
+                </span>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* Tips nổi góc dưới bên trái nhẹ nhàng */}
+      {showTips && !loading && (
+        <div className="pointer-events-auto absolute bottom-4 left-4 sm:left-5 z-20 hidden sm:flex items-center gap-2 rounded-xl border border-slate-700/60 bg-slate-900/75 px-3 py-1.5 text-[11px] text-slate-300 backdrop-blur-md shadow-lg">
+          <Sparkles className="h-3.5 w-3.5 text-[#D97757] shrink-0" />
+          <span>Nhấp màn hình máy tính bàn 3D để mở Desktop OS · Kéo chuột xoay góc nhìn</span>
+          <button
+            type="button"
+            onClick={() => setShowTips(false)}
+            className="ml-1 rounded p-0.5 text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer"
+            aria-label="Ẩn gợi ý"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
+      {/* 5. CHIẾC ĐIỆN THOẠI THÔNG MINH GÓC PHẢI DƯỚI (CẨM NANG TRỎ HƯỚNG 2D ➔ 3D) */}
+      <OfficeSmartphoneGuide
+        onNavigate2D={onBackTo2D}
+        onOpenDesktopOS={() => setIsDesktopOSOpen(true)}
+        onOpenAppsDrawer={() => setShowAppsDrawer(true)}
+        onCallBot={handleCallBot}
+        onTriggerPatrol={handleTriggerPatrol}
+        onFocus3DZone={handleFocus3DZone}
+        onlineCount={onlineCount}
+        workingCount={workingCount}
+        idleCount={idleCount}
+        onOpenRoster={() => setShowList(true)}
+        canAccessView={canAccessView}
+        onNavigateModule={(mode) => onNavigate(mode)}
+      />
+
+      {/* Virtual Desktop OS Modal dạng game */}
+      <div className={isDesktopOSOpen ? 'pointer-events-auto' : 'pointer-events-none'}>
+        <VirtualDesktopOS
+          isOpen={isDesktopOSOpen}
+          onClose={() => setIsDesktopOSOpen(false)}
+          idToken={idToken}
+          onNavigateModule={(mode) => {
+            if (canAccessView(mode)) {
+              onNavigate(mode);
+            }
+          }}
+          onCallBot={handleCallBot}
+          onReleaseBot={handleReleaseBot}
+          onTriggerPatrol={handleTriggerPatrol}
+          botState={botState}
+          patrolState={patrolState}
+        />
+      </div>
+
+      {/* Command Palette khi bấm nút Tìm kiếm (Ctrl+K) trong Văn phòng 3D */}
+      {isCommandPaletteOpen && (
+        <div className="pointer-events-auto">
+          <CommandPalette
+            isOpen={isCommandPaletteOpen}
+            onClose={() => setIsCommandPaletteOpen(false)}
+            onNavigate={(path) => {
+              setIsCommandPaletteOpen(false);
+              const target = path.replace(/^\/+/, '');
+              if (target && canAccessView(target)) {
+                onNavigate(target);
+              }
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
