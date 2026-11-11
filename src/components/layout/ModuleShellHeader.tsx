@@ -38,7 +38,7 @@ export default function ModuleShellHeader({
     return () => register?.(null);
   }, [register, areaId, items, activeId, onSelect]);
   const currentItem = items.flatMap(item => item.children || [item]).find(item => item.id === activeId);
-  const crumbs = [...new Set([moduleContext?.areaTitle, title, currentItem?.label].filter(Boolean))];
+  const crumbs = [...new Set([moduleContext?.areaTitle, currentItem?.label || title].filter(Boolean))];
   const handleOpenSearch = () => {
     window.dispatchEvent(new CustomEvent('toggle-command-palette'));
   };
@@ -54,7 +54,7 @@ export default function ModuleShellHeader({
         <nav aria-label="Breadcrumb" className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs font-medium text-[var(--workspace-surface-muted,#64748b)]">
           <a href="/" className="hover:text-[var(--workspace-surface-text,#0F1F33)]">Workspace</a>
           {crumbs.map((crumb, index) => <React.Fragment key={crumb}><span aria-hidden="true" className="text-slate-300 dark:text-slate-600">/</span><span aria-current={index === crumbs.length - 1 ? 'page' : undefined} className={index === crumbs.length - 1 ? 'font-bold text-[var(--workspace-surface-text,#0F1F33)]' : ''}>{crumb}</span></React.Fragment>)}
-          {eyebrow && <span className="sr-only">{eyebrow}</span>}
+          {eyebrow && !crumbs.includes(eyebrow) && <span className="sr-only">{eyebrow}</span>}
         </nav>
       </div>
       <div className={`hidden ${actions ? 'sm:flex' : 'lg:flex'} min-h-12 w-full items-center gap-2 border-t border-[var(--ft-border-soft,#e2e8f0)] px-3 py-2 sm:px-6`} aria-label="Công cụ của trang">
@@ -78,7 +78,7 @@ export default function ModuleShellHeader({
 
           {actions && <div className="ml-auto hidden sm:flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
           {/* Tài khoản nằm ở thanh điều hướng (rail / thanh trên mobile); ở đây chỉ còn thông báo trên máy tính. */}
-          <div className="ml-auto hidden lg:block pl-1">
+          <div className={`${actions ? '' : 'ml-auto'} hidden lg:block pl-1`}>
             <WorkspaceNotifications />
           </div>
         </div>
