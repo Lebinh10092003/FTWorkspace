@@ -1,6 +1,7 @@
 /** Lọc, nhóm và gợi ý cuộc thi trên form đăng ký công khai. */
 import type { CompetitionOption } from './registrationConfig';
 import { competitionIdentity } from './competitionIdentity';
+import { scoCatalogue } from './scoCatalogue';
 import { todayVN } from '../../lib/vnDate';
 
 export const money = (amount: number) => `${amount.toLocaleString('vi-VN')}đ`;
@@ -77,4 +78,25 @@ export function loadPrefill(): { fields: Record<string, string>; codes: string[]
     const value = JSON.parse(sessionStorage.getItem(PREFILL_KEY) || 'null');
     return value && typeof value.fields === 'object' ? { fields: value.fields, codes: Array.isArray(value.codes) ? value.codes : [] } : null;
   } catch { return null; }
+}
+
+/** Lời giới thiệu ngắn trên thẻ cuộc thi; nội dung theo bảng "Danh sách các kỳ thi năm 2026-2027"
+ *  và danh mục SCO. Không ghi lệ phí ở đây: lệ phí chỉ hiện sau khi phụ huynh chọn. */
+const PITCH: Record<string, string> = {
+  FIMO: 'Tư duy logic, nhận diện quy luật và giải quyết vấn đề qua đề song ngữ Việt – Anh.',
+  FIEO: 'Đánh giá kỹ năng tiếng Anh theo chuẩn CEFR: ngôn ngữ, đọc hiểu, nghe hiểu, viết và nói.',
+  SIAIO: 'Kiến thức nền tảng về AI, dữ liệu và học máy, cùng cách dùng AI an toàn, có trách nhiệm.',
+  SIBO: 'Tế bào, di truyền, tiến hóa và sinh thái, kèm phân tích dữ liệu thực nghiệm.',
+  SICHO: 'Cấu tạo chất, phản ứng và các bài toán hóa học gắn với thực tế.',
+  SIPHO: 'Cơ, nhiệt, sóng, quang, điện – từ và tư duy xử lý số liệu thực nghiệm.',
+  SILSO: 'Kỹ năng giao tiếp, cảm xúc, an toàn số và phát triển bền vững (SDGs).',
+  ...Object.fromEntries(scoCatalogue.map(item => [item.code, item.intro])),
+};
+export function pitchFor(code: string) {
+  const key = code.trim().toUpperCase();
+  return PITCH[key] || competitionIdentity(key).profile?.focus || '';
+}
+export function audienceFor(option: CompetitionOption) {
+  const { min, max } = gradeRange(option);
+  return min === 1 && max === 12 ? 'Lớp 1–12' : `Lớp ${min}–${max}`;
 }
