@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.utils import timezone
+from .registration_window import clean_fee, clean_iso_date
 from .models import Competition, ExamSession, Candidate, CandidateParticipation, RoundResult, ExamRoom, LogNote, ExaminationSheet, ExaminationSheetPublication
 from .eligibility import eligible_for_round_q, normalize_eligibility
 from authentication.models import SystemConfig, UserProfile
@@ -1412,7 +1413,10 @@ def session_create(request):
                     'name': str(r['name']).strip(),
                     'label': str(r.get('label') or timing.get('label') or '').strip(),
                     'date': r.get('date') or timing.get('date'),
-                    'slots': [{key: str(slot.get(key) or '').strip() for key in ('id', 'date', 'time', 'mode', 'link', 'location', 'note')} for slot in r.get('slots', []) if isinstance(slot, dict)]
+                    'slots': [{key: str(slot.get(key) or '').strip() for key in ('id', 'date', 'time', 'mode', 'link', 'location', 'note')} for slot in r.get('slots', []) if isinstance(slot, dict)],
+                    # Lệ phí và hạn đăng ký của vòng; form đăng ký công khai thu lệ phí vòng đầu.
+                    'fee': clean_fee(r.get('fee')),
+                    'registrationDeadline': clean_iso_date(r.get('registrationDeadline')),
                 })
                 
     round_national = next((item for item in processed_rounds if 'qu\u1ed1c gia' in str(item.get('name') or '').lower() or 'national' in str(item.get('name') or '').lower()), None)
@@ -1496,7 +1500,10 @@ def session_detail(request, pk):
                         'name': str(r['name']).strip(),
                         'label': str(r.get('label') or timing.get('label') or '').strip(),
                     'date': r.get('date') or timing.get('date'),
-                    'slots': [{key: str(slot.get(key) or '').strip() for key in ('id', 'date', 'time', 'mode', 'link', 'location', 'note')} for slot in r.get('slots', []) if isinstance(slot, dict)]
+                    'slots': [{key: str(slot.get(key) or '').strip() for key in ('id', 'date', 'time', 'mode', 'link', 'location', 'note')} for slot in r.get('slots', []) if isinstance(slot, dict)],
+                    # Lệ phí và hạn đăng ký của vòng; form đăng ký công khai thu lệ phí vòng đầu.
+                    'fee': clean_fee(r.get('fee')),
+                    'registrationDeadline': clean_iso_date(r.get('registrationDeadline')),
                     })
             sess.rounds = processed_rounds
             sync_legacy_round_milestones(sess, processed_rounds)

@@ -40,7 +40,9 @@ DEFAULT_CONTENT = {
     'submitNote': 'Việc gửi form chưa có nghĩa là đã xác nhận thanh toán. Kế toán sẽ kiểm tra riêng.',
     'successTitle': 'Hồ sơ đã được lưu',
     'successMessage': 'Khảo thí đã nhận thông tin. Kế toán sẽ kiểm tra khoản chuyển tiền trước khi xác nhận hoàn tất.',
-    'blocks': [], 'competitionCodes': [], 'sessionLinks': {}, 'fees': {'FIMO': 250000, 'FIEO': 250000},
+    # Cuộc thi, kỳ và lệ phí lấy tự động từ Khảo thí (registration_window.py);
+    # trang đăng ký chỉ lưu các mã muốn ẩn tạm.
+    'blocks': [], 'hiddenCodes': [],
     'fields': [dict(key=key, label=label, type=kind, required=required, enabled=True, section=section,
                     options=[str(i) for i in range(1, 13)] if key == 'grade' else PROVINCES if key == 'city' else [])
                for key, (label, kind, required, section) in BUILTIN_FIELDS.items()],
@@ -70,31 +72,12 @@ def clean_content(value):
     if not result['title'] or not result['consent'] or not result['submitLabel']:
         raise ValueError('Nhập tiêu đề, lời xác nhận và tên nút gửi đăng ký.')
     result['paymentEnabled'] = bool(value.get('paymentEnabled', True))
-    codes = value.get('competitionCodes', [])
-    if not isinstance(codes, list):
-        raise ValueError('Danh sách cuộc thi không hợp lệ.')
-    from .form_registration import SESSION_IDS
-    from .models import ExamSession
-    links = value.get('sessionLinks', {})
-    if not isinstance(links, dict) or len(links) > 100 or any(
-        not isinstance(code, str) or not re.fullmatch(r'[A-Z][A-Z0-9]{1,19}', code)
-        or not isinstance(session_id, str) or not session_id for code, session_id in links.items()
+    hidden = value.get('hiddenCodes', [])
+    if not isinstance(hidden, list) or len(hidden) > 100 or any(
+        not isinstance(code, str) or not re.fullmatch(r'[A-Z][A-Z0-9]{1,19}', code) for code in hidden
     ):
-        raise ValueError('Cấu hình kỳ nhận đăng ký không hợp lệ.')
-    if links and ExamSession.objects.filter(pk__in=links.values()).count() != len(set(links.values())):
-        raise ValueError('Có kỳ tổ chức không tồn tại. Vui lòng chọn lại.')
-    if len(set(links.values())) != len(links):
-        raise ValueError('Một kỳ tổ chức chỉ được gắn với một mã cuộc thi.')
-    result['sessionLinks'] = links
-    available_codes = links or SESSION_IDS
-    if any(not isinstance(code, str) or code not in available_codes for code in codes):
-        raise ValueError('Có cuộc thi không thuộc danh sách nhận đăng ký.')
-    result['competitionCodes'] = list(dict.fromkeys(codes))
-    fees = value.get('fees', {})
-    if not isinstance(fees, dict) or any(code not in available_codes or isinstance(amount, bool)
-        or not isinstance(amount, int) or amount < 0 or amount > 100_000_000 for code, amount in fees.items()):
-        raise ValueError('Lệ phí phải là số tiền VND hợp lệ của cuộc thi nhận đăng ký.')
-    result['fees'] = fees
+        raise ValueError('Danh sách cuộc thi tạm ẩn không hợp lệ.')
+    result['hiddenCodes'] = list(dict.fromkeys(hidden))
     blocks = value.get('blocks', [])
     if not isinstance(blocks, list) or len(blocks) > 30 or any(not isinstance(b, dict) for b in blocks):
         raise ValueError('Tối đa 30 khối nội dung.')
@@ -134,20 +117,40 @@ def clean_content(value):
     name = next((field for field in result['fields'] if field['key'] == 'name'), None)
     if not name or not name['enabled'] or not name['required']:
         raise ValueError('Họ tên thí sinh phải được hiển thị và bắt buộc.')
-    if FERMAT_CODES & set(result['competitionCodes'] or available_codes):
+    if FERMAT_CODES - set(result['hiddenCodes']):
         enabled = {field['key'] for field in result['fields'] if field['enabled']}
         if not set(FERMAT_REQUIRED_FIELDS) <= enabled or not result['paymentEnabled']:
             raise ValueError('FIMO/FIEO cần hiển thị đủ thông tin theo form gốc và phần tải chứng từ.')
     return result
 
-def competitions(content):
-    from .public_registration import open_sessions
-    from .models import Competition
-    sessions = open_sessions(content)
-    names = dict(Competition.objects.filter(pk__in=[session.competition_id for _, session in sessions]).values_list('id', 'name'))
-    return [dict(code=code, displayCode=session.code if session.code.upper() == code else code, name=names.get(session.competition_id) or session.name,
-                 sessionId=session.id, time=session.time, fee=content.get('fees', {}).get(code), **requirement_for(code)) for code, session in sessions
-            if not content['competitionCodes'] or code in content['competitionCodes']]
+def competitions(content, today=None):
+    """Cuộc thi đang nhận đăng ký, theo kỳ tổ chức trong Khảo thí."""
+    from .registration_window import open_registration_sessions
+    rows = []
+    for code, (session, offer, name) in open_registration_sessions(content.get('hiddenCodes'), today).items():
+        rows.append(dict(code=code, displayCode=session.code if session.code.upper() == code else code, name=name,
+                         sessionId=session.id, time=session.time, fee=offer['fee'], deadline=offer['deadline'],
+                         entryRound=offer['entryRound'], laterRounds=offer['laterRounds'], **requirement_for(code)))
+    return sorted(rows, key=lambda row: (row['deadline'], row['code']))
+
+
+def session_status(content, today=None):
+    """Mọi kỳ chưa hoàn thành, kèm lý do có/không hiện trên form đăng ký."""
+    from .registration_window import candidate_sessions, session_offer
+    hidden = set(content.get('hiddenCodes') or [])
+    open_codes = {row['code']: row['sessionId'] for row in competitions({**content, 'hiddenCodes': []}, today)}
+    rows = []
+    for code, session, name in candidate_sessions():
+        offer = session_offer(session, today)
+        if offer['status'] in ('closed-phase', 'expired'):
+            continue
+        status = offer['status']
+        if status == 'open' and open_codes.get(code) != session.id:
+            status = 'superseded'
+        rows.append(dict(code=code, sessionId=session.id, sessionName=session.name, name=name, phase=session.phase,
+                         hidden=code in hidden, **{**offer, 'status': status}))
+    return sorted(rows, key=lambda row: (row['status'] != 'open', row['deadline'] or '9999', row['code']))
+
 
 @api_view(['GET', 'PUT', 'POST'])
 @permission_classes([IsWorkspaceAuthenticated])
@@ -183,19 +186,5 @@ def registration_page(request):
     return Response(dict(content=page_content(page.draft_content), publishedContent=page_content(page.published_content), published=page.published,
                          publishedAt=page.published_at, updatedAt=page.updated_at,
                          canEdit=request_role(request) in {'ADMIN', 'MANAGER'},
-                         competitions=competitions({**page_content(page.draft_content), 'competitionCodes': []}),
-                         sessionOptions=session_options()))
-
-
-def session_options():
-    from .form_registration import SESSION_IDS
-    from .models import Competition, ExamSession
-    codes = dict(Competition.objects.values_list('id', 'code'))
-    legacy = {session_id: code for code, session_id in SESSION_IDS.items()}
-    sco_aliases = {code: f'S{code}' for code in ('IMO', 'IEO', 'ISO', 'ICO', 'IGKO', 'IMAO', 'IFKO', 'IEIO', 'ISSO')}
-    def public_code(session):
-        code = str(legacy.get(session.id) or codes.get(session.competition_id) or session.code).upper()
-        return sco_aliases.get(code, code)
-    return [dict(sessionId=session.id, code=public_code(session), **requirement_for(public_code(session)),
-                 name=session.name, time=session.time, phase=session.phase)
-            for session in ExamSession.objects.all().order_by('-time', 'sort_key')]
+                         competitions=competitions({**page_content(page.draft_content), 'hiddenCodes': []}),
+                         sessionStatus=session_status(page_content(page.draft_content))))

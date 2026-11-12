@@ -4,6 +4,7 @@ import { landingPresentation } from './landingPresentation';
 import { describeMilestones } from './landingTimeline';
 import { useRevealScope } from './landingMotion';
 import { publicRegistrationLink } from './publicRegistrationLink';
+import RegistrationCountdown from './RegistrationCountdown';
 import { PublicDateTable, PublicFooter, PublicHeader, PublicLink, PublicRegistration, publicLink } from './CompetitionPublicLayout';
 
 export default function CompetitionInformation({ site, preview = false }: { site: LandingSite; preview?: boolean }) {
@@ -41,6 +42,7 @@ export default function CompetitionInformation({ site, preview = false }: { site
           <h1>{identity.code}<span>{identity.name}</span></h1>
           {intro && <p className="cp-detail-intro">{intro}</p>}
           <dl className="cp-hero-facts"><div><dt>Đối tượng</dt><dd>{identity.audience}</dd></div><div><dt>Lĩnh vực</dt><dd>{identity.area}</dd></div></dl>
+          <RegistrationCountdown code={identity.code} href={registration || '#dang-ky'} />
         </div>
         <div className="cp-logo-panel" data-reveal>
           {logo ? <img src={logo} alt={`Logo ${identity.code}`} width="320" height="320" decoding="async" /> : <div className="cp-sco-wordmark"><img src="/competition-logos/sco.png" alt="School Connect Olympiad" /><strong>{identity.code}</strong><p>{identity.profile?.area}</p></div>}

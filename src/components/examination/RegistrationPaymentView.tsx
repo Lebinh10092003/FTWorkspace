@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import type { RegistrationReceipt } from './registrationReceipt';
 import { competitionIdentity } from './competitionIdentity';
 import RegistrationProgress from './RegistrationProgress';
+import RegistrationCrossSell from './RegistrationCrossSell';
 
 const panel = 'rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7';
 const money = (amount: number) => `${amount.toLocaleString('vi-VN')}đ`;
@@ -96,6 +97,7 @@ export default function RegistrationPaymentView({ receipt, onUpdate }: { receipt
         <label className="mt-5 flex min-h-12 items-start gap-3 text-sm leading-6"><input type="checkbox" checked={declared} onChange={event => setDeclared(event.target.checked)} className="mt-1.5 h-5 w-5 shrink-0 accent-[#0055da]" /><span>{presentation?.paymentDeclaration || 'Tôi đã chuyển khoản và gửi chứng từ để kế toán đối chiếu.'}</span></label>
         <div className="mt-5 flex flex-wrap gap-3"><button type="submit" disabled={!proof || !declared || sending} className="min-h-12 flex-1 rounded-xl bg-[#0055da] px-5 py-3 text-base font-bold text-white disabled:opacity-50">{sending ? 'Đang gửi…' : 'Gửi chứng từ'}</button><button type="button" onClick={() => setUploadOpen(false)} className="min-h-12 rounded-xl border px-5 py-3 text-sm font-semibold">Gửi sau</button></div>
       </form>}
+      <RegistrationCrossSell registered={receipt.contestCodes} candidateName={receipt.candidateName} />
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500"><p>Hỗ trợ: <a href="tel:0969627162" className="font-semibold text-sky-700">0969 627 162</a> · <a href="mailto:khaothi@fermat.vn">khaothi@fermat.vn</a></p><button type="button" onClick={() => window.print()} className="min-h-12 px-3 font-semibold text-sky-700 print:hidden">In / lưu phiếu đăng ký</button></div>
     </main>
   </div>;

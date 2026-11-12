@@ -394,3 +394,22 @@ body.workspace-app-theme #root > .competition-public:first-child {
   .cp-resource strong { font-size: 13px; }
   .cp-footer-bottom { font-size: 10px; }
 }
+
+/* Đếm ngược hạn đăng ký (RegistrationCountdown.tsx) — dữ liệu từ kỳ tổ chức trong Khảo thí. */
+.cp-countdown { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px 18px; margin-top: 26px; padding: 16px 18px; border: 1px solid color-mix(in srgb, var(--cp-accent) 28%, transparent); border-radius: 16px; background: linear-gradient(135deg, var(--cp-tint), #fff 75%); }
+.cp-countdown-copy { min-width: 0; }
+.cp-countdown-label { display: inline-flex; align-items: center; gap: 8px; color: var(--cp-accent); font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+.cp-countdown-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 0 currentColor; animation: cp-countdown-pulse 2s infinite; }
+.cp-countdown-copy strong { display: block; margin-top: 4px; font-size: 15px; font-weight: 700; }
+.cp-countdown-clock { display: flex; gap: 8px; margin: 0; }
+.cp-countdown-clock div { display: flex; flex-direction: column-reverse; align-items: center; min-width: 56px; padding: 8px 6px; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cp-accent) 18%, transparent); }
+.cp-countdown-clock dd { margin: 0; color: var(--cp-accent); font-size: 24px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.cp-countdown-clock dt { margin-top: 4px; color: #5f6b7a; font-size: 11px; }
+.cp-countdown .cp-button { grid-column: 1 / -1; justify-self: start; }
+.cp-countdown-urgent { border-color: #f2b8b5; background: linear-gradient(135deg, #fff1f0, #fff 75%); }
+.cp-countdown-urgent .cp-countdown-label, .cp-countdown-urgent .cp-countdown-clock dd { color: #c5221f; }
+@keyframes cp-countdown-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 45%, transparent); } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .cp-countdown-dot { animation: none; } }
+@media (max-width: 520px) { .cp-countdown { grid-template-columns: 1fr; } .cp-countdown-clock div { flex: 1; min-width: 0; } .cp-countdown .cp-button { justify-self: stretch; } }
+.cp-deadline-chip { display: inline-block; margin-top: 8px; padding: 3px 9px; border-radius: 999px; background: #fff4e0; color: #8a5300; font-size: 11px; font-weight: 700; }
+.cp-deadline-chip-urgent { background: #fdecea; color: #b3261e; }

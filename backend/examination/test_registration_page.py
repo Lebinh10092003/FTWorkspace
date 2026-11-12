@@ -8,6 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from authentication.models import UserProfile
+from .registration_test_utils import open_rounds
 from .form_registration import SESSION_IDS
 from .models import Candidate, CandidateParticipation, ExamSession, ExaminationSheet
 from .registration_page import DEFAULT_CONTENT
@@ -38,21 +39,20 @@ class RegistrationPageTests(TestCase):
         session = ExamSession.objects.create(id='imo-future', competition_id='legacy-imo', code='IMO',
             name='IMO mùa mới', parent='SCO', organizer='SCO', time='2028', sort_key='imo')
         response = self.client.get('/api/examination/registration-page')
-        option = next(item for item in response.data['sessionOptions'] if item['sessionId'] == session.id)
-        self.assertEqual(option['code'], 'SIMO')
+        row = next(item for item in response.data['sessionStatus'] if item['sessionId'] == session.id)
+        self.assertEqual(row['code'], 'SIMO')
+        self.assertEqual(row['status'], 'missing-deadline')
 
-    def test_registration_can_target_a_configured_session_outside_the_old_form_list(self):
+    def test_any_session_in_its_registration_window_is_listed_with_its_entry_round_fee(self):
         session = ExamSession.objects.create(id='simo-new-season', competition_id='simo', code='SIMO',
-            name='SIMO mùa mới', parent='SCO', organizer='SCO', time='2027–2028', sort_key='simo')
-        content = deepcopy(DEFAULT_CONTENT)
-        content['sessionLinks'] = {'SIMO': session.id}
-        content['competitionCodes'] = ['SIMO']
-        content['fees'] = {'SIMO': 250000}
-        self.assertEqual(self.publish(content).status_code, 200)
+            name='SIMO mùa mới', parent='SCO', organizer='SCO', time='2027–2028', sort_key='simo',
+            rounds=open_rounds(fee=320000, later=[('Vòng Chung kết Quốc tế', 1500000)]))
         public = APIClient()
-        option = public.get('/api/public/examination/registration').data['competitions'][0]
+        option = next(item for item in public.get('/api/public/examination/registration').data['competitions'] if item['code'] == 'SIMO')
         self.assertEqual(option['sessionId'], session.id)
-        self.assertEqual(option['fee'], 250000)
+        self.assertEqual(option['fee'], 320000)
+        self.assertEqual(option['entryRound'], 'Vòng loại Quốc gia')
+        self.assertEqual(option['laterRounds'], [{'name': 'Vòng Chung kết Quốc tế', 'fee': 1500000}])
         payload = self.payload() | {'contestCodes': '["SIMO"]', 'parentName': 'Trần Minh', 'className': '3A1'}
         result = public.post('/api/public/examination/registration', payload, format='multipart')
         self.assertEqual(result.status_code, 201, result.data)
@@ -60,19 +60,62 @@ class RegistrationPageTests(TestCase):
         self.assertEqual(participation.session_id, session.id)
         self.assertEqual(participation.candidate.parent, 'Trần Minh')
         self.assertEqual(participation.candidate.class_name, '3A1')
-        self.assertEqual(participation.billing.amount, 250000)
+        self.assertEqual(participation.billing.amount, 320000)
         self.assertEqual(participation.billing.transfer_status, 'pending')
-        self.assertEqual(participation.registration_data['registrationFee'], 250000)
+        self.assertEqual(participation.registration_data['registrationFee'], 320000)
+        self.assertEqual(participation.registration_data['registrationRound'], 'Vòng loại Quốc gia')
         self.assertFalse(participation.candidate.exam_history)
 
-    def test_invalid_session_fee_and_mismatched_class_are_rejected(self):
+    def test_window_needs_open_phase_and_four_months_before_deadline(self):
+        from datetime import timedelta
+        from .registration_window import open_registration_sessions, session_offer
+        today = timezone.localdate()
+
+        def session(pk, code, phase='Tuyển sinh', **round_values):
+            entry = {'id': 'r', 'name': 'Vòng 1', 'date': '', 'slots': [], 'fee': None, 'registrationDeadline': ''} | round_values
+            return ExamSession.objects.create(id=pk, competition_id=code, code=code, name=pk, parent=code,
+                organizer='Test', time='', sort_key=pk, phase=phase, rounds=[entry])
+        far = session('far', 'TESTA', registrationDeadline=(today + timedelta(days=150)).isoformat())
+        past = session('past', 'TESTB', registrationDeadline=(today - timedelta(days=1)).isoformat())
+        closed = session('closed', 'TESTC', phase='Vòng quốc gia', registrationDeadline=(today + timedelta(days=10)).isoformat())
+        by_exam_date = session('by-date', 'TESTD', phase='Chuẩn bị/Truyền thông', date=(today + timedelta(days=20)).isoformat())
+        missing = session('missing', 'TESTE')
+        self.assertEqual(session_offer(far)['status'], 'not-yet')
+        self.assertEqual(session_offer(past)['status'], 'expired')
+        self.assertEqual(session_offer(closed)['status'], 'closed-phase')
+        self.assertEqual(session_offer(missing)['status'], 'missing-deadline')
+        offer = session_offer(by_exam_date)
+        self.assertEqual((offer['status'], offer['deadline'], offer['fee']), ('open', (today + timedelta(days=20)).isoformat(), None))
+        later_fimo = session('fimo-later', 'FIMO', registrationDeadline=(today + timedelta(days=90)).isoformat())
+        listed = open_registration_sessions()
+        self.assertEqual(set(listed) & {'TESTA', 'TESTB', 'TESTC', 'TESTE'}, set())
+        self.assertIn('TESTD', listed)
+        self.assertEqual(listed['FIMO'][0].id, SESSION_IDS['FIMO'])  # hạn sớm hơn được chọn
+        self.assertNotEqual(listed['FIMO'][0].id, later_fimo.id)
+        self.assertNotIn('FIMO', open_registration_sessions(['FIMO']))
+
+    def test_unknown_fee_is_saved_without_an_amount(self):
+        ExamSession.objects.filter(pk=SESSION_IDS['SIAIO']).update(rounds=open_rounds(fee=None))
+        option = next(item for item in APIClient().get('/api/public/examination/registration').data['competitions'] if item['code'] == 'SIAIO')
+        self.assertIsNone(option['fee'])
+        result = APIClient().post('/api/public/examination/registration', self.payload(), format='multipart')
+        self.assertEqual(result.status_code, 201, result.data)
+        participation = CandidateParticipation.objects.get()
+        self.assertIsNone(participation.registration_data['registrationFee'])
+        self.assertIsNone(result.data['payment']['total'])
+
+    def test_session_editor_keeps_round_fee_and_registration_deadline(self):
+        session = ExamSession.objects.get(pk=SESSION_IDS['SIBO'])
+        rounds = [{'id': 'r1', 'name': 'Vòng loại', 'date': '2027-01-10', 'slots': [], 'fee': '350.000', 'registrationDeadline': '2026-12-20'},
+                  {'id': 'r2', 'name': 'Chung kết', 'date': '', 'slots': [], 'fee': -5, 'registrationDeadline': 'không rõ'}]
+        response = self.client.put(f'/api/examination/sessions/{session.id}', {'rounds': rounds}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        session.refresh_from_db()
+        self.assertEqual([(item['fee'], item['registrationDeadline']) for item in session.rounds], [(350000, '2026-12-20'), (None, '')])
+
+    def test_invalid_hidden_codes_and_mismatched_class_are_rejected(self):
         content = deepcopy(DEFAULT_CONTENT)
-        content['sessionLinks'] = {'SIMO': 'does-not-exist'}
-        self.assertEqual(self.publish(content).status_code, 400)
-        content['sessionLinks'] = {}
-        content['fees'] = {'SIAIO': -1}
-        self.assertEqual(self.publish(content).status_code, 400)
-        content['fees'] = {'SIAIO': 250000.5}
+        content['hiddenCodes'] = ['không hợp lệ']
         self.assertEqual(self.publish(content).status_code, 400)
         response = APIClient().post('/api/public/examination/registration', self.payload() | {'className': '6A1'}, format='multipart')
         self.assertEqual(response.status_code, 400)
@@ -85,6 +128,7 @@ class RegistrationPageTests(TestCase):
         for code, session_id in SESSION_IDS.items():
             ExamSession.objects.get_or_create(pk=session_id, defaults=dict(competition_id=code, code=code,
                 name=code, parent=code, organizer='Test', time='2026–2027', sort_key=code))
+        ExamSession.objects.filter(pk__in=list(SESSION_IDS.values())).update(rounds=open_rounds(), phase='Tuyển sinh')
 
     def publish(self, content):
         return self.client.post('/api/examination/registration-page', {'action': 'publish', 'content': content}, format='json')
@@ -125,7 +169,7 @@ class RegistrationPageTests(TestCase):
             if field['key'] != 'name':
                 field['enabled'] = False
         content['fields'].append(dict(key='custom_language', label='Ngôn ngữ thi', type='select', options=['Việt', 'Anh'], enabled=True, required=True, section='extra'))
-        content['competitionCodes'] = ['SIAIO']
+        content['hiddenCodes'] = ['FIMO', 'FIEO']
         self.assertEqual(self.publish(content).status_code, 200)
         public = APIClient()
         payload = dict(requestKey=str(uuid.uuid4()), contestCodes='["SIAIO"]', name='Nguyễn Minh An', email='invalid')
@@ -145,8 +189,8 @@ class RegistrationPageTests(TestCase):
 
     def test_disabled_contests_and_invalid_field_schemas_are_rejected(self):
         content = deepcopy(DEFAULT_CONTENT)
-        content['competitionCodes'] = ['SIAIO']
-        self.publish(content)
+        content['hiddenCodes'] = ['FIMO', 'FIEO']
+        self.assertEqual(self.publish(content).status_code, 200)
         payload = self.payload()
         payload['contestCodes'] = '["FIMO"]'
         self.assertEqual(APIClient().post('/api/public/examination/registration', payload, format='multipart').status_code, 400)

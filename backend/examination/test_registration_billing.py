@@ -9,6 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from authentication.models import JobTitle, UserProfile, WorkspaceNotification
+from .registration_test_utils import open_rounds
 from .form_registration import SESSION_IDS, SPREADSHEET_ID, selected_codes
 from .models import Candidate, CandidateParticipation, ExamSession, ExaminationBillingRecord, ExaminationSheet, FormRegistrationLink, PublicExamRegistration, UnmatchedTransfer
 from .public_registration_sheet import row_for, sync_registration
@@ -23,6 +24,7 @@ class RegistrationAndBillingTests(TestCase):
                 id=session_id, defaults=dict(competition_id=code.lower(), code=code, name=code,
                 parent=code, organizer='Test', time='2026–2027', sort_key=code),
             )
+        ExamSession.objects.filter(pk__in=list(SESSION_IDS.values())).update(rounds=open_rounds(), phase='Tuyển sinh')
         accountant, _ = JobTitle.objects.get_or_create(name='Kế toán')
         self.finance = UserProfile.objects.create(email='finance@example.test', role='EMPLOYEE', access_modules=['finance-report'], job_title=accountant)
         self.exam = UserProfile.objects.create(email='exam@example.test', role='EMPLOYEE', access_modules=['examination'])

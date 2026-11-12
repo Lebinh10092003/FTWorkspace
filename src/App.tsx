@@ -55,7 +55,7 @@ const WeeklyReportCenter = lazyWithRecovery(() => import('./components/documents
 const NewsPostCenter = lazyWithRecovery(() => import('./components/news-posts/NewsPostCenter'));
 const GmailAssistantCenter = lazyWithRecovery(() => import('./components/gmail/GmailAssistantCenter'));
 const WorkSchedule = lazyWithRecovery(() => import('./components/WorkSchedule'));
-const CompetitionLandingManager = lazyWithRecovery(() => import('./components/examination/CompetitionLandingManager'));
+const LandingStudio = lazyWithRecovery(() => import('./components/examination/LandingStudio'));
 const CompetitionLandingPublic = lazyWithRecovery(() => import('./components/examination/CompetitionLandingPublic'));
 const CompetitionHub = lazyWithRecovery(() => import('./components/examination/CompetitionHub'));
 const GuestInvigilation = lazyWithRecovery(() => import('./components/examination/GuestInvigilation'));
@@ -1058,7 +1058,7 @@ export default function App() {
         />
         <main className="ft-module-content mx-auto max-w-7xl p-5 md:p-8">
           <Suspense fallback={<div className="py-16 text-center text-sm font-semibold text-slate-500">Đang nạp công cụ...</div>}>
-            <CompetitionLandingManager idToken={idToken || ''} />
+            <LandingStudio idToken={idToken || ''} />
           </Suspense>
         </main>
         {loginModal}{profileModal}

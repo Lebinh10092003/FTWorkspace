@@ -8,6 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from .registration_test_utils import open_rounds
 from .form_registration import SESSION_IDS
 from .models import Candidate, CandidateParticipation, ExamRegistrationPage, ExamSession, PublicExamRegistration, TransferProof
 from .registration_page import DEFAULT_CONTENT
@@ -20,6 +21,7 @@ class RegistrationPaymentTests(TestCase):
         for code in ('FIMO', 'FIEO'):
             ExamSession.objects.get_or_create(id=SESSION_IDS[code], defaults=dict(competition_id=code, code=code,
                 name=code, parent='FT', organizer='FT', time='2026–2027', sort_key=code))
+        ExamSession.objects.filter(pk__in=list([SESSION_IDS['FIMO'], SESSION_IDS['FIEO']])).update(rounds=open_rounds(), phase='Tuyển sinh')
         self.payload = dict(requestKey=str(uuid.uuid4()), contestCodes=json.dumps(['FIMO', 'FIEO']),
             name='Nguyễn Minh An', birthDate='2018-07-12', identity='001201012345', className='3A1',
             submitterEmail='registrant@example.test', email='parent@example.test', phone='0912345678',
@@ -52,8 +54,8 @@ class RegistrationPaymentTests(TestCase):
         for item in CandidateParticipation.objects.select_related('billing'):
             self.assertEqual(item.billing.transfer_status, 'pending')
             self.assertFalse(item.candidate.exam_history)
+        ExamSession.objects.filter(pk__in=[SESSION_IDS['FIMO'], SESSION_IDS['FIEO']]).update(rounds=open_rounds(fee=999000))
         content = deepcopy(DEFAULT_CONTENT)
-        content['fees'] = {'FIMO': 999000, 'FIEO': 888000}
         ExamRegistrationPage.objects.filter(pk=1).update(published_content=content, published=False)
         resumed = self.client.get(self.url, **self.headers)
         self.assertEqual(resumed.status_code, 200)

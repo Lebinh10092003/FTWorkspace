@@ -6,6 +6,7 @@ import { landingPresentation } from './landingPresentation';
 import { resolveHubContent, type HubContent } from './landingHubContent';
 import { additionalPublicCompetitions, withAdditionalCompetitions } from './additionalPublicCompetitions';
 import { PublicFooter, PublicHeader, publicLink } from './CompetitionPublicLayout';
+import { DeadlineChip } from './RegistrationCountdown';
 import './CompetitionHub.css';
 import { programmeCategories } from './programmeCategories';
 import CompetitionIntroDialog from './CompetitionIntroDialog';
@@ -93,7 +94,7 @@ export default function CompetitionHub({ previewSites, overview, preview = false
               const identity = landingPresentation(site);
               return <button type="button" onClick={() => setSelected(site)} aria-haspopup="dialog" key={site.slug} className="ch-fermat-link" style={identityStyle(site)} aria-label={`${identity.area} · ${identity.code}`}>
                 <img src={identity.logo} alt={identity.code} width="110" height="110" decoding="async" />
-                <span><span className="ch-fermat-title">{identity.area} <small>· {identity.code}</small></span><span className="ch-hover-topics" aria-hidden="true"><span>{site.content.display?.hoverSummary || summaries[identity.code.toUpperCase()] || identity.hoverSummary}</span></span></span>
+                <span><span className="ch-fermat-title">{identity.area} <small>· {identity.code}</small></span><DeadlineChip code={identity.code} /><span className="ch-hover-topics" aria-hidden="true"><span>{site.content.display?.hoverSummary || summaries[identity.code.toUpperCase()] || identity.hoverSummary}</span></span></span>
               </button>;
             })}</div>
           </section>}
@@ -101,7 +102,7 @@ export default function CompetitionHub({ previewSites, overview, preview = false
             <div className="ch-programme-heading ch-heading-with-logo"><div><p className="ch-family-label">SCO · School Connect Olympiad</p><h3>{hub.scoTitle}</h3><p className="ch-programme-description ch-sco-intro">{hub.scoIntro}</p></div><img src="/competition-logos/sco.png" alt="School Connect Olympiad" width="110" height="49" /></div>
             <div className="ch-sco-competitions">{sco.map(site => {
               const identity = landingPresentation(site);
-              return <button type="button" onClick={() => setSelected(site)} aria-haspopup="dialog" aria-label={`${identity.code} · ${identity.area}`} key={site.slug} className="ch-subject-link" style={identityStyle(site)}><span className="ch-subject-code">{identity.code}</span><strong>{identity.area}</strong><span className="ch-hover-topics" aria-hidden="true"><span>{identity.hoverSummary}</span></span></button>;
+              return <button type="button" onClick={() => setSelected(site)} aria-haspopup="dialog" aria-label={`${identity.code} · ${identity.area}`} key={site.slug} className="ch-subject-link" style={identityStyle(site)}><span className="ch-subject-code">{identity.code}</span><strong>{identity.area}</strong><DeadlineChip code={identity.code} /><span className="ch-hover-topics" aria-hidden="true"><span>{identity.hoverSummary}</span></span></button>;
             })}</div>
           </section>}
           {projects.map(site => {

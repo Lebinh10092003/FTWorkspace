@@ -20,7 +20,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.permissions import IsWorkspaceAuthenticated, request_modules, request_role
-from .form_registration import SESSION_IDS, TAB_CODES, matching_candidate
+from .form_registration import TAB_CODES, matching_candidate
 from .models import Candidate, CandidateParticipation, Competition, ExamSession, PublicExamRegistration, TransferProof
 from .public_registration_sheet import row_for
 from .sync import format_person_name, merge_contest_codes, next_code, sync_session_candidate_totals, valid_candidate_name
@@ -34,10 +34,10 @@ GRADE_PATTERN = re.compile(r'^(?:[1-9]|1[0-2])$')
 
 
 def open_sessions(content=None):
-    links = (content or {}).get('sessionLinks') or SESSION_IDS
-    sessions = ExamSession.objects.filter(pk__in=links.values())
-    by_id = {item.id: item for item in sessions}
-    return [(code, by_id[session_id]) for code, session_id in links.items() if session_id in by_id]
+    """[(mã, kỳ, offer)] đang nhận đăng ký; xem registration_window.py."""
+    from .registration_window import open_registration_sessions
+    rows = open_registration_sessions((content or {}).get('hiddenCodes'))
+    return [(code, session, offer) for code, (session, offer, _name) in rows.items()]
 
 
 def clean(data, key, limit):
@@ -150,9 +150,9 @@ def public_registration(request):
         codes = json.loads(str(data.get('contestCodes') or '[]'))
     except (TypeError, ValueError):
         codes = None
-    available = dict(open_sessions(content))
-    if content['competitionCodes']:
-        available = {code: session for code, session in available.items() if code in content['competitionCodes']}
+    open_rows = open_sessions(content)
+    offers = {code: offer for code, _session, offer in open_rows}
+    available = {code: session for code, session, _offer in open_rows}
     if not isinstance(codes, list) or not codes or any(not isinstance(code, str) for code in codes) or len(codes) > len(available) or len(set(codes)) != len(codes) or any(code not in available for code in codes):
         return Response({'error': 'Vui lòng chọn ít nhất một cuộc thi đang nhận đăng ký.'}, status=400)
 
@@ -251,11 +251,14 @@ def public_registration(request):
                     'customAnswers': custom_answers,
                     'parentName': parent_name, 'className': class_name,
                     'submitterEmail': submitter_email,
-                    'registrationFee': content.get('fees', {}).get(code),
+                    # Lệ phí vòng đầu tại thời điểm đăng ký; đổi lệ phí sau này
+                    # không làm đổi số tiền của hồ sơ đã lưu.
+                    'registrationFee': offers[code]['fee'],
+                    'registrationRound': offers[code]['entryRound'],
                     'registrationCode': code,
                 },
             )
-            fee = content.get('fees', {}).get(code)
+            fee = offers[code]['fee']
             if fee is not None:
                 billing = participation.billing
                 billing.amount = fee
