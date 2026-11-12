@@ -111,6 +111,10 @@ class RegistrationPageTests(TestCase):
         later = session_offer(session, today + timedelta(days=20))
         self.assertEqual((later['deadline'], later['deadlineIsExplicit'], later['entryRound']), (day(108), False, 'Vòng loại Quốc gia · đợt 3'))
         self.assertEqual(session_offer(session, today + timedelta(days=120))['status'], 'expired')
+        session.phase = 'Vòng loại Quốc gia'
+        self.assertEqual(session_offer(session)['status'], 'open')  # đợt sau vẫn nhận đăng ký
+        session.phase = 'Vòng Chung kết Quốc gia'
+        self.assertEqual(session_offer(session)['status'], 'closed-phase')
 
     def test_unknown_fee_is_saved_without_an_amount(self):
         ExamSession.objects.filter(pk=SESSION_IDS['SIAIO']).update(rounds=open_rounds(fee=None))

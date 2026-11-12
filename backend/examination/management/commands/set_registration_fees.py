@@ -17,7 +17,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from examination.models import ExamSession
-from examination.registration_window import candidate_sessions, phase_open
+from examination.registration_window import candidate_sessions, phase_open, session_offer
 
 QUALIFIER, NATIONAL_FINAL, INTERNATIONAL = 'qualifier', 'national-final', 'international'
 FEES = {
@@ -87,6 +87,9 @@ class Command(BaseCommand):
             if not phase_open(session.phase):
                 if family(code) or code == 'WAICY':
                     skipped.append(f'{code} ({session.id}): giai đoạn "{session.phase}" đã qua tuyển sinh, không hiện trên form')
+                continue
+            if session_offer(session)['status'] == 'expired':
+                skipped.append(f'{code} ({session.id}): đã hết hạn đăng ký, giữ nguyên')
                 continue
             if not family(code):
                 skipped.append(f'{code} ({session.id}): không có quy tắc lệ phí, giữ nguyên')

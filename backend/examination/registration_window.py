@@ -16,8 +16,10 @@ from datetime import date
 from django.utils import timezone
 
 WINDOW_MONTHS = 4
-# Giai đoạn là ô nhập tự do; các giai đoạn trước và trong tuyển sinh.
-OPEN_PHASE_MARKERS = ('chuẩn bị', 'truyền thông', 'tuyển sinh', 'đăng ký', 'chưa cập nhật', 'idle')
+# Giai đoạn là ô nhập tự do; các giai đoạn trước và trong tuyển sinh. Vòng loại
+# nhiều đợt (FIMO, FIEO) vẫn nhận đăng ký cho đợt sau trong khi đang thi, nên
+# "Vòng loại" vẫn tính là còn tuyển sinh; hạn đăng ký đợt cuối sẽ tự đóng kỳ.
+OPEN_PHASE_MARKERS = ('chuẩn bị', 'truyền thông', 'tuyển sinh', 'đăng ký', 'chưa cập nhật', 'idle', 'vòng loại')
 SCO_ALIASES = {code: f'S{code}' for code in ('IMO', 'IEO', 'ISO', 'ICO', 'IGKO', 'IMAO', 'IFKO', 'IEIO', 'ISSO')}
 MAX_FEE = 100_000_000
 
