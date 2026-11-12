@@ -59,6 +59,7 @@ def _classify_user_for_seed(user):
     bot_text = f"{user.name or ''} {getattr(user, 'role', '') or ''} {job_title_name} {user.email or ''}".lower()
     bot_norm = remove_vietnamese_accents(bot_text)
 
+    email_lower = (user.email or '').strip().lower()
     is_assistant = bool(
         is_bot and any(k in bot_text or k in bot_norm for k in ['assistant', 'trợ lý', 'tro ly', 'hermes'])
     )
@@ -72,12 +73,24 @@ def _classify_user_for_seed(user):
 
     is_media_bot = bool(
         is_bot
-        and any(
-            k in bot_text or k in bot_norm
-            for k in [
-                'truyền thông', 'truyen thong', 'đăng bài', 'dang bai',
-                'soạn thảo', 'soan thao', 'social', 'media', 'facebook', 'zalo',
-            ]
+        and (
+            email_lower.startswith('bot.fb.')
+            or 'bot.fb.' in email_lower
+            or any(
+                k in bot_text or k in bot_norm
+                for k in [
+                    'bot.fb.',
+                    'kiểm duyệt', 'kiem duyet',
+                    'nội dung', 'noi dung',
+                    'săn tin', 'san tin',
+                    'tư liệu', 'tu lieu',
+                    'xu hướng', 'xu huong',
+                    'truyền thông', 'truyen thong',
+                    'đăng bài', 'dang bai',
+                    'soạn thảo', 'soan thao',
+                    'social', 'media', 'facebook', 'zalo',
+                ]
+            )
         )
     )
     if is_media_bot:

@@ -223,16 +223,29 @@ class OfficeRosterView(APIView):
             bot_text = f"{u.name or ''} {getattr(u, 'role', '') or ''} {job_title_name} {u.email or ''}".lower()
             bot_norm = remove_vietnamese_accents(bot_text)
 
+            email_lower = (u.email or '').strip().lower()
             is_assistant = bool(is_bot and any(k in bot_text or k in bot_norm for k in ['assistant', 'trợ lý', 'tro ly', 'hermes']))
             is_media_bot = bool(
                 is_bot
                 and not is_assistant
-                and any(
-                    k in bot_text or k in bot_norm
-                    for k in [
-                        'truyền thông', 'truyen thong', 'đăng bài', 'dang bai',
-                        'soạn thảo', 'soan thao', 'social', 'media', 'facebook', 'zalo',
-                    ]
+                and (
+                    email_lower.startswith('bot.fb.')
+                    or 'bot.fb.' in email_lower
+                    or any(
+                        k in bot_text or k in bot_norm
+                        for k in [
+                            'bot.fb.',
+                            'kiểm duyệt', 'kiem duyet',
+                            'nội dung', 'noi dung',
+                            'săn tin', 'san tin',
+                            'tư liệu', 'tu lieu',
+                            'xu hướng', 'xu huong',
+                            'truyền thông', 'truyen thong',
+                            'đăng bài', 'dang bai',
+                            'soạn thảo', 'soan thao',
+                            'social', 'media', 'facebook', 'zalo',
+                        ]
+                    )
                 )
             )
 
@@ -263,7 +276,10 @@ class OfficeRosterView(APIView):
                 is_head = sug.get('is_head', False)
 
             if seat_index is not None and seat_index > 0:
-                used_seats[room].add(seat_index)
+                if seat_index in used_seats[room]:
+                    seat_index = None
+                else:
+                    used_seats[room].add(seat_index)
 
             preliminary.append({
                 'user': u,
@@ -317,12 +333,8 @@ class OfficeRosterView(APIView):
             if gender not in ('male', 'female'):
                 gender = guess_gender_from_vietnamese_name(u.name or display_name or '')
 
-            # Auto online cho nhân sự ACTIVE (chưa có presence hoặc chưa timeout), trừ khi work_status == 'home' hoặc hết timeout heartbeat
-            if is_bot:
-                user_status = STATUS_WORKING
-                raw_online = True
-                is_user_idle = False
-            elif presence is None:
+            # Auto online cho nhân sự ACTIVE (không timeout offline), chỉ offline khi work_status == 'home' hoặc ẩn hiện diện
+            if is_bot or presence is None:
                 user_status = STATUS_WORKING
                 raw_online = True
                 is_user_idle = False
@@ -343,7 +355,7 @@ class OfficeRosterView(APIView):
                 display_online = False
                 display_status = STATUS_OFFLINE
             else:
-                display_online = raw_online
+                display_online = user_status != STATUS_HOME
                 display_status = user_status
 
             is_director = bool(is_director_user or (room == ROOM_DIRECTOR and is_head))

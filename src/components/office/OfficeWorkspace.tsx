@@ -16,7 +16,9 @@ import {
   Eye,
   ExternalLink,
   X,
+  ChevronDown,
   ChevronRight,
+  Check,
   Search,
   Volume2,
   VolumeX,
@@ -181,6 +183,26 @@ export default function OfficeWorkspace({
     return 'working';
   });
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [workStatusMenuOpen, setWorkStatusMenuOpen] = useState(false);
+  const workStatusDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!workStatusMenuOpen) return;
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (workStatusDropdownRef.current && !workStatusDropdownRef.current.contains(event.target as Node)) {
+        setWorkStatusMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setWorkStatusMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [workStatusMenuOpen]);
 
   const handleOpenDesktopAppFromPhone = useCallback((appOrModuleId: string) => {
     const mapping: Record<string, { app?: WindowId; module?: { key: string; title: string } }> = {
@@ -631,36 +653,36 @@ export default function OfficeWorkspace({
   return (
     <div ref={boxRef} className="office-3d-shell fixed inset-0 w-screen h-screen bg-transparent text-white overflow-hidden pointer-events-none z-20">
       {/* 1. THANH ĐIỀU HƯỚNG TRÊN CAO (TOP NAVIGATION BAR - GIỮ ĐẦY ĐỦ CHỨC NĂNG CẦN THIẾT) */}
-      <header className="pointer-events-auto fixed top-0 inset-x-0 h-14 z-30 bg-[#0B192C]/95 backdrop-blur-md border-b border-slate-800 px-3 sm:px-5 flex items-center justify-between select-none shadow-lg">
-        
+      <header className="pointer-events-auto fixed top-0 inset-x-0 h-12 z-30 bg-[#0B192C]/95 backdrop-blur-md border-b border-slate-800 px-3 flex items-center justify-between gap-2 select-none shadow-lg">
+
         {/* Cụm Trái: Brand + Bộ chuyển đổi 2D / 3D nổi bật + Phân hệ */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap">
           {/* Logo FermatTech */}
-          <div className="flex items-center gap-2 font-bold text-white text-sm">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#0B72CE] to-indigo-500 flex items-center justify-center shadow-md shadow-blue-500/20">
+          <div className="flex items-center gap-2 font-bold text-white text-sm shrink-0 whitespace-nowrap">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#0B72CE] to-indigo-500 flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
               <Box className="w-4 h-4 text-white" />
             </div>
-            <div className="hidden xl:block leading-tight">
+            <div className="hidden 2xl:block leading-tight whitespace-nowrap shrink-0">
               <span className="text-[10px] text-blue-400 font-extrabold uppercase tracking-wider block">FermatTech</span>
               <span className="text-xs font-bold text-slate-100">Văn phòng 3D</span>
             </div>
           </div>
 
-          <div className="h-5 w-[1px] bg-slate-800 hidden sm:block" />
+          <div className="h-5 w-[1px] bg-slate-800 hidden sm:block shrink-0" />
 
           {/* BỘ CHUYỂN ĐỔI 2D / 3D RÕ RÀNG */}
-          <div className="flex items-center p-0.5 rounded-xl bg-slate-900 border border-slate-700/80 shadow-inner">
+          <div className="flex items-center p-0.5 rounded-xl bg-slate-900 border border-slate-700/80 shadow-inner shrink-0 whitespace-nowrap">
             <button
               type="button"
               onClick={onBackTo2D}
-              className="flex items-center gap-1.5 rounded-lg bg-[#0B72CE] hover:bg-[#095ca7] px-2.5 sm:px-3 py-1.5 text-xs font-bold text-white shadow transition cursor-pointer"
+              className="flex items-center gap-1.5 rounded-lg bg-[#0B72CE] hover:bg-[#095ca7] px-2.5 py-1 text-xs font-bold text-white shadow transition cursor-pointer whitespace-nowrap shrink-0"
               title="Quay lại giao diện phẳng 2D tiêu chuẩn"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
+              <ArrowLeft className="h-3.5 w-3.5 shrink-0" />
               <span>Giao diện 2D</span>
             </button>
-            <div className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/30">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            <div className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 whitespace-nowrap shrink-0">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               <span className="hidden sm:inline">Văn phòng 3D</span>
             </div>
           </div>
@@ -671,81 +693,128 @@ export default function OfficeWorkspace({
               setShowAppsDrawer(v => !v);
               setShowList(false);
             }}
-            className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition cursor-pointer border ${
+            className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition cursor-pointer border whitespace-nowrap shrink-0 ${
               showAppsDrawer
                 ? 'bg-[#D97757] text-white border-[#D97757]'
                 : 'bg-slate-900/90 hover:bg-slate-800 text-slate-100 border-slate-700/80'
             }`}
             title="Mở nhanh tất cả các phân hệ Workspace"
           >
-            <LayoutGrid className="h-3.5 w-3.5 text-[#D97757]" style={showAppsDrawer ? { color: '#fff' } : undefined} />
+            <LayoutGrid className="h-3.5 w-3.5 text-[#D97757] shrink-0" style={showAppsDrawer ? { color: '#fff' } : undefined} />
             <span className="hidden sm:inline">Phân hệ</span>
           </button>
         </div>
 
         {/* Cụm Giữa: Các công cụ tương tác 3D (Trạng thái, Máy tính OS, Robot, Sếp, Nhân sự) */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
           {!hudCollapsed && (
             <>
-              {/* Bộ chuyển 3 trạng thái: Đang làm việc / Rảnh / Về nhà */}
-              <div
-                className="flex items-center p-0.5 rounded-xl bg-slate-900 border border-slate-700/80 shadow-inner"
-                role="group"
-                aria-label="Trạng thái làm việc"
-              >
+              {/* Dropdown chọn trạng thái: Đang làm việc / Rảnh / Về nhà */}
+              <div ref={workStatusDropdownRef} className="relative shrink-0 whitespace-nowrap">
                 <button
                   type="button"
-                  onClick={() => handleUpdateWorkStatus('working')}
+                  onClick={() => setWorkStatusMenuOpen(v => !v)}
                   disabled={updatingStatus}
-                  className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    myWorkStatus === 'working'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/70'
-                  }`}
-                  title="Chuyển trạng thái: Đang làm việc (working)"
-                >
-                  <span className={`h-2 w-2 rounded-full ${myWorkStatus === 'working' ? 'bg-emerald-200 animate-pulse' : 'bg-emerald-500'}`} />
-                  <span className="hidden lg:inline">Đang làm việc</span>
-                  <span className="lg:hidden">Làm</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleUpdateWorkStatus('idle')}
-                  disabled={updatingStatus}
-                  className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  aria-haspopup="menu"
+                  aria-expanded={workStatusMenuOpen}
+                  aria-label="Trạng thái làm việc"
+                  title="Đổi trạng thái làm việc"
+                  className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-semibold transition cursor-pointer whitespace-nowrap shrink-0 ${
                     myWorkStatus === 'idle'
-                      ? 'bg-amber-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/70'
+                      ? 'border-amber-500/50 bg-amber-950/60 text-amber-200 hover:bg-amber-900/60'
+                      : myWorkStatus === 'home'
+                      ? 'border-rose-500/50 bg-rose-950/60 text-rose-200 hover:bg-rose-900/60'
+                      : 'border-emerald-500/50 bg-emerald-950/60 text-emerald-200 hover:bg-emerald-900/60'
                   }`}
-                  title="Chuyển trạng thái: Rảnh (idle)"
                 >
-                  <span className={`h-2 w-2 rounded-full ${myWorkStatus === 'idle' ? 'bg-amber-200 animate-pulse' : 'bg-amber-400'}`} />
-                  <span>Rảnh</span>
+                  <span
+                    className={`h-2 w-2 rounded-full shrink-0 ${
+                      myWorkStatus === 'idle'
+                        ? 'bg-amber-400 animate-pulse'
+                        : myWorkStatus === 'home'
+                        ? 'bg-rose-400'
+                        : 'bg-emerald-400 animate-pulse'
+                    }`}
+                  />
+                  <span>
+                    {myWorkStatus === 'idle'
+                      ? 'Rảnh'
+                      : myWorkStatus === 'home'
+                      ? 'Về nhà'
+                      : 'Đang làm việc'}
+                  </span>
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 shrink-0 opacity-80 transition-transform ${
+                      workStatusMenuOpen ? 'rotate-180' : ''
+                    }`}
+                  />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleUpdateWorkStatus('home')}
-                  disabled={updatingStatus}
-                  className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    myWorkStatus === 'home'
-                      ? 'bg-rose-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/70'
-                  }`}
-                  title="Chuyển trạng thái: Về nhà (home)"
-                >
-                  <span className={`h-2 w-2 rounded-full ${myWorkStatus === 'home' ? 'bg-rose-200' : 'bg-rose-400'}`} />
-                  <span className="hidden sm:inline">Về nhà</span>
-                  <span className="sm:hidden">Về</span>
-                </button>
+
+                {workStatusMenuOpen && (
+                  <div
+                    role="menu"
+                    aria-label="Chọn trạng thái làm việc"
+                    className="absolute left-0 top-[calc(100%+0.375rem)] z-50 w-44 rounded-xl border border-slate-700/90 bg-slate-900/95 p-1 shadow-2xl backdrop-blur-xl"
+                  >
+                    {(
+                      [
+                        {
+                          value: 'working' as const,
+                          label: 'Đang làm việc',
+                          dotClass: 'bg-emerald-400',
+                          activeClass: 'bg-emerald-500/15 text-emerald-200',
+                        },
+                        {
+                          value: 'idle' as const,
+                          label: 'Rảnh',
+                          dotClass: 'bg-amber-400',
+                          activeClass: 'bg-amber-500/15 text-amber-200',
+                        },
+                        {
+                          value: 'home' as const,
+                          label: 'Về nhà',
+                          dotClass: 'bg-rose-400',
+                          activeClass: 'bg-rose-500/15 text-rose-200',
+                        },
+                      ]
+                    ).map(opt => {
+                      const active = myWorkStatus === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={active}
+                          disabled={updatingStatus}
+                          onClick={() => {
+                            setWorkStatusMenuOpen(false);
+                            handleUpdateWorkStatus(opt.value);
+                          }}
+                          className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                            active
+                              ? opt.activeClass
+                              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2 whitespace-nowrap">
+                            <span className={`h-2 w-2 rounded-full shrink-0 ${opt.dotClass}`} />
+                            <span>{opt.label}</span>
+                          </span>
+                          {active && <Check className="h-3.5 w-3.5 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <button
                 type="button"
                 onClick={() => setIsDesktopOSOpen(true)}
-                className="flex items-center gap-1.5 rounded-xl bg-[#D97757] hover:bg-[#c46849] px-2.5 sm:px-3 py-1.5 text-xs font-bold text-white shadow-sm transition cursor-pointer"
+                className="flex items-center gap-1.5 rounded-xl bg-[#D97757] hover:bg-[#c46849] px-2.5 py-1 text-xs font-bold text-white shadow-sm transition cursor-pointer whitespace-nowrap shrink-0"
                 title="Mở hệ điều hành FermatOS trên bàn làm việc 3D"
               >
-                <Monitor className="h-3.5 w-3.5" />
+                <Monitor className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden md:inline">FermatOS</span>
               </button>
 
@@ -759,7 +828,7 @@ export default function OfficeWorkspace({
                   }
                 }}
                 disabled={botState.state === 'MOVING'}
-                className={`hidden sm:flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                className={`hidden sm:flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-semibold transition cursor-pointer whitespace-nowrap shrink-0 ${
                   botState.state === 'ARRIVED'
                     ? 'border-emerald-500/60 bg-emerald-950/70 text-emerald-300 hover:bg-emerald-900/70'
                     : botState.state === 'MOVING'
@@ -772,7 +841,7 @@ export default function OfficeWorkspace({
                     : 'Gọi Robot AI di chuyển đến bàn làm việc của bạn'
                 }
               >
-                <Bot className="h-3.5 w-3.5" />
+                <Bot className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden lg:inline">
                   {botState.state === 'ARRIVED'
                     ? 'Robot tại bàn'
@@ -785,7 +854,7 @@ export default function OfficeWorkspace({
               <button
                 type="button"
                 onClick={toggleAmbience}
-                className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-semibold transition cursor-pointer whitespace-nowrap shrink-0 ${
                   isAmbiencePlaying
                     ? 'border-emerald-500/60 bg-emerald-950/70 text-emerald-300 shadow-sm'
                     : 'border-slate-700/80 bg-slate-900/90 text-slate-300 hover:bg-slate-800'
@@ -794,12 +863,12 @@ export default function OfficeWorkspace({
               >
                 {isAmbiencePlaying ? (
                   <>
-                    <Volume2 className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
+                    <Volume2 className="h-3.5 w-3.5 text-emerald-400 animate-pulse shrink-0" />
                     <span className="hidden sm:inline">Âm thanh</span>
                   </>
                 ) : (
                   <>
-                    <VolumeX className="h-3.5 w-3.5 text-slate-400" />
+                    <VolumeX className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                     <span className="hidden sm:inline">Âm thanh</span>
                   </>
                 )}
@@ -811,7 +880,7 @@ export default function OfficeWorkspace({
                   setShowList(v => !v);
                   setShowAppsDrawer(false);
                 }}
-                className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition cursor-pointer ${
+                className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-medium transition cursor-pointer whitespace-nowrap shrink-0 ${
                   showList
                     ? 'bg-blue-600 text-white border-blue-500'
                     : 'bg-slate-900/90 border-slate-700/80 text-slate-200 hover:bg-slate-800'
@@ -819,8 +888,8 @@ export default function OfficeWorkspace({
                 title="Xem danh sách nhân sự đang làm / rảnh"
                 aria-expanded={showList}
               >
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <span className="whitespace-nowrap">
                   <strong className="text-emerald-400 font-bold">{workingCount}</strong>
                   {idleCount > 0 && (
                     <span className="text-amber-400 font-semibold ml-1">· {idleCount} rảnh</span>
@@ -838,7 +907,7 @@ export default function OfficeWorkspace({
               setShowList(false);
               setShowAppsDrawer(false);
             }}
-            className="hidden sm:flex rounded-xl p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition items-center justify-center cursor-pointer"
+            className="hidden sm:flex rounded-xl p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition items-center justify-center cursor-pointer whitespace-nowrap shrink-0"
             title={hudCollapsed ? 'Hiện công cụ 3D' : 'Thu gọn nút 3D'}
           >
             {hudCollapsed ? <Eye className="h-3.5 w-3.5 text-[#D97757]" /> : <EyeOff className="h-3.5 w-3.5" />}
@@ -846,26 +915,26 @@ export default function OfficeWorkspace({
         </div>
 
         {/* Cụm Phải: Tìm kiếm (Ctrl+K), Chuông thông báo & Tài khoản cá nhân */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
           <button
             type="button"
             onClick={handleOpenSearch}
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer whitespace-nowrap shrink-0"
             title="Tìm kiếm nhanh phân hệ hoặc công việc (Ctrl + K)"
           >
-            <Search className="h-3.5 w-3.5 text-slate-400" />
+            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
             <span className="hidden lg:inline text-slate-400">Tìm kiếm</span>
-            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-slate-800 rounded text-slate-400 border border-slate-700">
+            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-slate-800 rounded text-slate-400 border border-slate-700 whitespace-nowrap">
               Ctrl K
             </kbd>
           </button>
 
           {/* Chuông thông báo Workspace */}
-          <div className="relative">
+          <div className="relative shrink-0 whitespace-nowrap">
             <WorkspaceNotifications />
           </div>
 
-          <div className="h-5 w-[1px] bg-slate-800" />
+          <div className="h-5 w-[1px] bg-slate-800 shrink-0" />
 
           {/* Menu Tài khoản cá nhân */}
           <AccountMenu
@@ -884,12 +953,12 @@ export default function OfficeWorkspace({
       {/* 2. KHUNG CHỨA 3D CANVAS (NẰM NGAY DƯỚI THANH ĐIỀU HƯỚNG TRÊN CAO) */}
       <div
         ref={slotRef}
-        className="absolute top-14 bottom-0 inset-x-0 w-full h-[calc(100vh-3.5rem)] pointer-events-none"
+        className="absolute top-12 bottom-0 inset-x-0 w-full h-[calc(100vh-3rem)] pointer-events-none"
       />
 
       {/* Loading Overlay */}
       {loading && (
-        <div className="pointer-events-auto fixed inset-0 top-14 z-50 flex flex-col items-center justify-center bg-slate-950 text-white select-none">
+        <div className="pointer-events-auto fixed inset-0 top-12 z-50 flex flex-col items-center justify-center bg-slate-950 text-white select-none">
           <div className="relative flex items-center justify-center mb-4">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#D97757] to-amber-500/80 animate-pulse opacity-30 absolute" />
             <LoaderCircle className="h-10 w-10 animate-spin text-[#D97757] relative z-10" />
@@ -901,7 +970,7 @@ export default function OfficeWorkspace({
 
       {/* Quick App Launcher Drawer */}
       {showAppsDrawer && (
-        <div className="pointer-events-auto absolute left-3 sm:left-5 top-16 z-30 w-80 sm:w-96 max-h-[75vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="pointer-events-auto absolute left-3 sm:left-5 top-14 z-30 w-80 sm:w-96 max-h-[75vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <LayoutGrid className="h-4 w-4 text-[#D97757]" />
@@ -950,9 +1019,9 @@ export default function OfficeWorkspace({
         </div>
       )}
 
-      {/* Danh sách mọi người trong văn phòng (hỗ trợ Đang làm / Rảnh / Ngoại tuyến) */}
+      {/* Danh sách mọi người trong văn phòng (hỗ trợ Đang làm / Rảnh / Về nhà) */}
       {showList && (
-        <div className="pointer-events-auto absolute right-3 sm:right-24 top-16 z-30 w-80 max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 shadow-2xl backdrop-blur-xl">
+        <div className="pointer-events-auto absolute right-3 sm:right-24 top-14 z-30 w-80 max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3.5 shadow-2xl backdrop-blur-xl">
           <div className="mb-2.5 flex items-center justify-between text-xs font-bold text-slate-200">
             <div>
               <span>Nhân sự văn phòng</span>
@@ -988,33 +1057,42 @@ export default function OfficeWorkspace({
             <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> Rảnh ({idleCount})</span>
           </div>
           {[...roster]
-            .sort((a, b) => Number(!!b.online) - Number(!!a.online) || String(a.name || '').localeCompare(String(b.name || ''), 'vi'))
-            .map((u: any) => (
-              <div key={u.id ?? u.name} className="flex items-center gap-2 border-t border-slate-800/80 py-2 text-xs first:border-t-0">
-                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                  u.online
-                    ? (u.status === 'idle' ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]' : 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]')
-                    : 'bg-slate-600'
-                }`} />
-                <div className="min-w-0 flex-1">
-                  <div className={`truncate font-semibold ${u.online ? 'text-slate-100' : 'text-slate-400'}`}>
-                    {u.name}
-                    {u.is_me ? ' (bạn)' : ''}
-                    {u.is_bot ? ' 🤖' : ''}
+            .sort((a, b) => Number(b.work_status !== 'home' && b.status !== 'home') - Number(a.work_status !== 'home' && a.status !== 'home') || String(a.name || '').localeCompare(String(b.name || ''), 'vi'))
+            .map((u: any) => {
+              const isHome = u.work_status === 'home' || u.status === 'home';
+              const isIdle = !isHome && u.status === 'idle';
+              const statusLabel = isHome ? 'Về nhà' : isIdle ? 'Rảnh' : 'Đang làm';
+              return (
+                <div key={u.id ?? u.name} className="flex items-center gap-2 border-t border-slate-800/80 py-2 text-xs first:border-t-0">
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                    isHome
+                      ? 'bg-rose-400'
+                      : isIdle
+                      ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]'
+                      : 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]'
+                  }`} />
+                  <div className="min-w-0 flex-1">
+                    <div className={`truncate font-semibold ${isHome ? 'text-slate-400' : 'text-slate-100'}`}>
+                      {u.name}
+                      {u.is_me ? ' (bạn)' : ''}
+                      {u.is_bot ? ' 🤖' : ''}
+                    </div>
+                    <div className="truncate text-[11px] text-slate-500">
+                      {[ROOM_LABELS[u.room] || ROOM_LABELS[u.seat?.room] || u.department, u.role].filter(Boolean).join(' · ')}
+                    </div>
                   </div>
-                  <div className="truncate text-[11px] text-slate-500">
-                    {[ROOM_LABELS[u.room] || ROOM_LABELS[u.seat?.room] || u.department, u.role].filter(Boolean).join(' · ')}
-                  </div>
+                  <span className={`shrink-0 text-[11px] font-medium px-1.5 py-0.5 rounded-md ${
+                    isHome
+                      ? 'bg-rose-500/10 text-rose-300'
+                      : isIdle
+                      ? 'bg-amber-500/10 text-amber-300'
+                      : 'bg-emerald-500/10 text-emerald-300'
+                  }`}>
+                    {statusLabel}
+                  </span>
                 </div>
-                <span className={`shrink-0 text-[11px] font-medium px-1.5 py-0.5 rounded-md ${
-                  u.online
-                    ? (u.status === 'idle' ? 'bg-amber-500/10 text-amber-300' : 'bg-emerald-500/10 text-emerald-300')
-                    : (u.work_status === 'home' || u.status === 'home' ? 'bg-rose-500/10 text-rose-300' : 'text-slate-500')
-                }`}>
-                  {u.online ? (u.status === 'idle' ? 'Rảnh' : 'Đang làm') : (u.work_status === 'home' || u.status === 'home' ? 'Về nhà' : 'Ngoại tuyến')}
-                </span>
-              </div>
-            ))}
+              );
+            })}
         </div>
       )}
 
