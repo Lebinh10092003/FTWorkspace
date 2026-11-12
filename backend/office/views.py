@@ -317,23 +317,26 @@ class OfficeRosterView(APIView):
             if gender not in ('male', 'female'):
                 gender = guess_gender_from_vietnamese_name(u.name or display_name or '')
 
-            # Auto online cho nhân sự ACTIVE trừ khi work_status == 'home'
+            # Auto online cho nhân sự ACTIVE (chưa có presence hoặc chưa timeout), trừ khi work_status == 'home' hoặc hết timeout heartbeat
             if is_bot:
                 user_status = STATUS_WORKING
                 raw_online = True
                 is_user_idle = False
-            elif work_status == STATUS_HOME:
-                user_status = STATUS_HOME
-                raw_online = False
-                is_user_idle = False
-            elif work_status == STATUS_IDLE or (work_status == STATUS_WORKING and is_presence_idle):
-                user_status = STATUS_IDLE
-                raw_online = True
-                is_user_idle = True
-            else:
+            elif presence is None:
                 user_status = STATUS_WORKING
                 raw_online = True
                 is_user_idle = False
+            else:
+                user_status = presence.get_status(now, is_me=is_me)
+                if user_status in (STATUS_OFFLINE, STATUS_HOME):
+                    raw_online = False
+                    is_user_idle = False
+                elif user_status == STATUS_IDLE:
+                    raw_online = True
+                    is_user_idle = True
+                else:
+                    raw_online = True
+                    is_user_idle = False
 
             # Nếu tắt hiện diện thì người khác luôn thấy offline
             if not is_me and not show_presence:

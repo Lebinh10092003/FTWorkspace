@@ -119,7 +119,7 @@ class OfficePresence(models.Model):
     def get_status(self, now=None, is_me=False) -> str:
         """
         Tính trạng thái của người dùng:
-        - 'offline': show_presence tắt (với người khác)
+        - 'offline': show_presence tắt (với người khác) hoặc đã hết timeout heartbeat
         - 'home': work_status == 'home'
         - 'idle': work_status == 'idle' hoặc (work_status == 'working' và is_idle == True)
         - 'working': đang làm việc
@@ -128,6 +128,8 @@ class OfficePresence(models.Model):
             return STATUS_OFFLINE
         if self.work_status == STATUS_HOME:
             return STATUS_HOME
+        if self.last_seen is not None and not self.is_online(now):
+            return STATUS_OFFLINE
         if self.work_status == STATUS_IDLE or (self.work_status == STATUS_WORKING and self.is_idle):
             return STATUS_IDLE
         return STATUS_WORKING
