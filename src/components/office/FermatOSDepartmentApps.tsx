@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Wallet,
   ArrowDownRight,
@@ -12,10 +12,17 @@ import {
   AlertCircle,
   ExternalLink,
   RefreshCw,
-  LogOut,
-  LogIn,
   GraduationCap,
+  Plus,
+  Trash2,
+  Edit3,
+  Save,
+  Loader2,
+  Laptop,
+  MapPin,
+  AlertTriangle,
 } from 'lucide-react';
+import { todayVN, shiftDateKey } from '../../lib/vnDate';
 
 interface FinanceEntry {
   id: string | number;
@@ -495,8 +502,39 @@ export function FermatOSTrainingWindow({
 }
 
 // ==========================================
-// 4. CỬA SỔ TRẠM CHẤM CÔNG & CÔNG CA
+// 4. CỬA SỔ TRẠM CHẤM CÔNG & CÔNG CA (ĐỒNG BỘ 100% LOGIC 2D)
 // ==========================================
+interface TimesheetShiftRow {
+  start: string;
+  end: string;
+  workMode: 'direct' | 'online';
+}
+
+interface TimesheetEntryRow {
+  id: number;
+  employeeEmail: string;
+  employeeName: string;
+  workDate: string;
+  isDayOff: boolean;
+  shiftStart: string;
+  shiftEnd: string;
+  workMode: 'direct' | 'online';
+  durationMinutes: number;
+}
+
+interface TimesheetSummaryData {
+  totalMinutes: number;
+  directMinutes: number;
+  onlineMinutes: number;
+  workedDays: number;
+  dayOffDays: number;
+}
+
+function fmtHoursFromMinutes(mins: number): string {
+  const h = Math.round((mins / 60) * 10) / 10;
+  return `${h}`;
+}
+
 export function FermatOSAttendanceWindow({
   idToken,
   currentUserName,
@@ -506,182 +544,482 @@ export function FermatOSAttendanceWindow({
   currentUserName?: string;
   onOpenBrowser: (url: string, title: string) => void;
 }) {
-  const [summary, setSummary] = useState<AttendanceSummary>({});
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [currentStatus, setCurrentStatus] = useState<Record<string, unknown> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [clocking, setClocking] = useState(false);
-  const [clockNotice, setClockNotice] = useState<string | null>(null);
+  const [tab, setTab] = useState<'declare' | 'monthly'>('declare');
+  const [month, setMonth] = useState<string>(() => todayVN().slice(0, 7));
+  const [selectedDate, setSelectedDate] = useState<string>(() => todayVN());
 
-  const fetchAttendance = async () => {
-    setLoading(true);
+  // Monthly data
+  const [entries, setEntries] = useState<TimesheetEntryRow[]>([]);
+  const [summary, setSummary] = useState<TimesheetSummaryData | null>(null);
+  const [missingDates, setMissingDates] = useState<string[]>([]);
+  const [loadingMonth, setLoadingMonth] = useState(true);
+
+  // Prefill & Form data
+  const [isDayOff, setIsDayOff] = useState(false);
+  const [shifts, setShifts] = useState<TimesheetShiftRow[]>([
+    { start: '08:00', end: '12:00', workMode: 'direct' },
+  ]);
+  const [canEdit, setCanEdit] = useState(true);
+  const [loadingPrefill, setLoadingPrefill] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  const fetchMonthlyTimesheet = useCallback(async () => {
+    setLoadingMonth(true);
     try {
       const headers: Record<string, string> = {};
       if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
-      const res = await fetch('/api/attendance/records', { headers });
+      const res = await fetch(`/api/attendance/timesheet?month=${encodeURIComponent(month)}&scope=self`, { headers });
       if (res.ok) {
         const d = await res.json();
-        setSummary(d?.summary || {});
-        setRecords(Array.isArray(d?.records) ? d.records : []);
-        setCurrentStatus(d?.current || null);
+        setEntries(Array.isArray(d?.entries) ? d.entries : []);
+        setSummary(d?.summaryCutoff || d?.summary || null);
+        const uEmail = d?.userEmail || '';
+        const reqMap = d?.requiredTimesheetDatesByEmployee || {};
+        const reqDates: string[] = Array.isArray(reqMap[uEmail]) ? reqMap[uEmail] : [];
+        const declaredSet = new Set((Array.isArray(d?.entries) ? d.entries : []).map((e: TimesheetEntryRow) => e.workDate));
+        const yesterday = shiftDateKey(todayVN(), -1);
+        setMissingDates(reqDates.filter(dt => dt <= yesterday && !declaredSet.has(dt)));
       }
     } finally {
-      setLoading(false);
+      setLoadingMonth(false);
     }
-  };
+  }, [idToken, month]);
 
-  useEffect(() => {
-    fetchAttendance();
+  const fetchPrefillForDate = useCallback(async (targetDate: string) => {
+    setLoadingPrefill(true);
+    setNotice(null);
+    try {
+      const headers: Record<string, string> = {};
+      if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+      const res = await fetch(`/api/attendance/timesheet/prefill?date=${encodeURIComponent(targetDate)}`, { headers });
+      if (res.ok) {
+        const body = await res.json();
+        setCanEdit(body.canEdit !== false);
+        const existing = Array.isArray(body.existing) ? body.existing : [];
+        if (existing.length > 0) {
+          if (existing[0].isDayOff) {
+            setIsDayOff(true);
+            setShifts([]);
+          } else {
+            setIsDayOff(false);
+            setShifts(existing.map((e: any) => ({
+              start: e.shiftStart,
+              end: e.shiftEnd,
+              workMode: (e.workMode || 'direct') as 'direct' | 'online',
+            })));
+          }
+        } else if (body.defaultDayOff) {
+          setIsDayOff(true);
+          setShifts([]);
+        } else if (Array.isArray(body.shifts) && body.shifts.length > 0) {
+          setIsDayOff(false);
+          setShifts(body.shifts.map((s: any) => ({
+            start: s.start,
+            end: s.end,
+            workMode: (s.workMode || 'direct') as 'direct' | 'online',
+          })));
+        } else {
+          setIsDayOff(false);
+          setShifts([{ start: '08:00', end: '12:00', workMode: (body.defaultWorkMode || 'direct') as 'direct' | 'online' }]);
+        }
+      }
+    } catch {
+      // Fallback gracefully
+    } finally {
+      setLoadingPrefill(false);
+    }
   }, [idToken]);
 
-  const handleClock = async (action: 'in' | 'out') => {
-    setClocking(true);
-    setClockNotice(null);
+  useEffect(() => {
+    void fetchMonthlyTimesheet();
+  }, [fetchMonthlyTimesheet]);
+
+  useEffect(() => {
+    void fetchPrefillForDate(selectedDate);
+  }, [selectedDate, fetchPrefillForDate]);
+
+  const handleSaveTimesheet = async () => {
+    if (selectedDate > todayVN()) {
+      setNotice({ type: 'err', text: 'Không thể khai báo công ca cho ngày trong tương lai.' });
+      return;
+    }
+    setSaving(true);
+    setNotice(null);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
-      const res = await fetch('/api/attendance/clock', {
+      const payload: Record<string, unknown> = { workDate: selectedDate, isDayOff };
+      if (!isDayOff) {
+        payload.shifts = shifts.map(s => ({ start: s.start, end: s.end, workMode: s.workMode }));
+      }
+      const res = await fetch('/api/attendance/timesheet/save', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ action, shiftCode: 'OFFICE' }),
+        body: JSON.stringify(payload),
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setClockNotice(`Chấm công ${action === 'in' ? 'VÀO' : 'RA'} thành công!`);
-        await fetchAttendance();
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setNotice({ type: 'err', text: body.error || body.detail || `Lỗi lưu công ca (${res.status})` });
       } else {
-        setClockNotice(data?.detail || data?.error || `Lỗi khi chấm công (${res.status})`);
+        setNotice({ type: 'ok', text: body.message || `Đã lưu công ca ngày ${selectedDate}.` });
+        window.dispatchEvent(new CustomEvent('ft-timesheet-saved', { detail: { date: selectedDate } }));
+        await fetchMonthlyTimesheet();
       }
     } catch (err: unknown) {
-      setClockNotice((err as Error).message || 'Không thể kết nối máy chấm công');
+      setNotice({ type: 'err', text: (err as Error).message || 'Không thể kết nối máy chủ.' });
     } finally {
-      setClocking(false);
+      setSaving(false);
     }
   };
 
+  const groupedByDate = useMemo(() => {
+    const map = new Map<string, TimesheetEntryRow[]>();
+    for (const e of entries) {
+      const list = map.get(e.workDate) || [];
+      list.push(e);
+      map.set(e.workDate, list);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [entries]);
+
   return (
-    <div className="flex-1 w-full h-full flex flex-col bg-slate-950/80 text-slate-100 p-5 overflow-y-auto space-y-5">
-      <div className="flex items-center justify-between pb-3 border-b border-white/10">
+    <div className="flex-1 w-full h-full flex flex-col bg-slate-950/85 text-slate-100 p-5 overflow-y-auto space-y-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/10">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30">
             <Clock className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-white">Trạm Chấm Công & Công Ca</h2>
+            <h2 className="text-base font-semibold text-white">Công ca & Chấm công (Đồng bộ 2D)</h2>
             <p className="text-xs text-slate-400">
-              Nhân viên: <strong className="text-white">{currentUserName || 'Thành viên'}</strong> • Ca hành chính chuẩn
+              Nhân viên: <strong className="text-white">{currentUserName || 'Thành viên'}</strong> • Dữ liệu chuẩn Timesheet
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={fetchAttendance}
+            onClick={() => {
+              void fetchMonthlyTimesheet();
+              void fetchPrefillForDate(selectedDate);
+            }}
             className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition cursor-pointer"
             title="Làm mới"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loadingMonth || loadingPrefill ? 'animate-spin' : ''}`} />
           </button>
           <button
             type="button"
-            onClick={() => onOpenBrowser('/?view=attendance&embed=1&os=1', 'Chấm công & Giờ làm')}
+            onClick={() => onOpenBrowser('/?view=attendance&embed=1&os=1', 'Công ca & Chấm công')}
             className="px-3 py-1.5 rounded-lg bg-sky-600/30 hover:bg-sky-600/50 text-sky-300 border border-sky-500/40 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
           >
             <ExternalLink className="w-3.5 h-3.5" />
-            <span>Xem bảng công</span>
+            <span>Mở toàn trang Công ca 2D</span>
           </button>
         </div>
       </div>
 
-      {/* Clock Action Banner */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-950/70 to-slate-900/90 border border-sky-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div>
-          <span className="text-xs text-sky-400 font-semibold uppercase tracking-wider">Trạng thái chấm công</span>
-          <h3 className="text-sm font-semibold text-white mt-1">
-            {currentStatus?.clockIn ? (
-              <span className="text-emerald-400 flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4" /> Đang trong ca (Vào lúc {String(currentStatus.clockIn)})
-              </span>
-            ) : (
-              <span className="text-slate-300 flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4 text-amber-400" /> Chưa chấm công ca hôm nay
-              </span>
-            )}
-          </h3>
-          {clockNotice && (
-            <p className="text-xs font-medium text-emerald-300 mt-1.5 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/30 inline-block">
-              {clockNotice}
-            </p>
+      {/* Warning if missing past dates */}
+      {missingDates.length > 0 && (
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-200">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              Bạn có <strong>{missingDates.length} ngày</strong> chưa khai báo công ca: {missingDates.slice(0, 3).join(', ')}
+              {missingDates.length > 3 ? '...' : ''}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedDate(missingDates[0]);
+              setTab('declare');
+            }}
+            className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-semibold shrink-0 transition cursor-pointer"
+          >
+            Bổ sung ngay
+          </button>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex items-center gap-2 border-b border-white/10 pb-2">
+        <button
+          type="button"
+          onClick={() => setTab('declare')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+            tab === 'declare'
+              ? 'bg-sky-600 text-white shadow'
+              : 'bg-white/5 text-slate-400 hover:text-white'
+          }`}
+        >
+          Khai báo công ca
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('monthly')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+            tab === 'monthly'
+              ? 'bg-sky-600 text-white shadow'
+              : 'bg-white/5 text-slate-400 hover:text-white'
+          }`}
+        >
+          Bảng công tháng ({groupedByDate.length} ngày)
+        </button>
+      </div>
+
+      {tab === 'declare' ? (
+        <div className="space-y-4">
+          {/* Date selector + Day off toggle */}
+          <div className="p-4 rounded-xl bg-slate-900/70 border border-white/10 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-slate-300 font-medium">Ngày công ca:</label>
+              <input
+                type="date"
+                value={selectedDate}
+                max={todayVN()}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="px-3 py-1.5 rounded-lg bg-slate-950 border border-white/15 text-xs text-white focus:outline-none focus:border-sky-400"
+              />
+              {selectedDate === todayVN() && (
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                  Hôm nay
+                </span>
+              )}
+            </div>
+
+            <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isDayOff}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setIsDayOff(checked);
+                  if (!checked && shifts.length === 0) {
+                    setShifts([{ start: '08:00', end: '12:00', workMode: 'direct' }]);
+                  }
+                }}
+                className="rounded border-white/20 bg-slate-950 text-sky-500"
+              />
+              <span>Đánh dấu Nghỉ làm (Day off)</span>
+            </label>
+          </div>
+
+          {notice && (
+            <div
+              className={`p-3 rounded-xl text-xs font-medium border ${
+                notice.type === 'ok'
+                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
+              }`}
+            >
+              {notice.text}
+            </div>
           )}
-        </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            type="button"
-            disabled={clocking}
-            onClick={() => handleClock('in')}
-            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-emerald-950/50 transition cursor-pointer disabled:opacity-50"
-          >
-            <LogIn className="w-4 h-4" />
-            <span>Chấm công Vào</span>
-          </button>
-          <button
-            type="button"
-            disabled={clocking}
-            onClick={() => handleClock('out')}
-            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-rose-950/50 transition cursor-pointer disabled:opacity-50"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Chấm công Ra</span>
-          </button>
-        </div>
-      </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-        <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/10">
-          <span className="text-xs text-slate-400">Số ngày đi làm</span>
-          <p className="text-xl font-bold text-white mt-1">{summary.workDays ?? 0} <span className="text-xs text-slate-400 font-normal">ngày</span></p>
-        </div>
-        <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/10">
-          <span className="text-xs text-slate-400">Tổng giờ công</span>
-          <p className="text-xl font-bold text-sky-400 mt-1">
-            {summary.totalMinutes ? Math.round((summary.totalMinutes / 60) * 10) / 10 : 0} <span className="text-xs text-slate-400 font-normal">giờ</span>
-          </p>
-        </div>
-        <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/10">
-          <span className="text-xs text-slate-400">Ca hoàn thành</span>
-          <p className="text-xl font-bold text-emerald-400 mt-1">{summary.completedShifts ?? 0}</p>
-        </div>
-        <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/10">
-          <span className="text-xs text-slate-400">Số lần muộn</span>
-          <p className="text-xl font-bold text-amber-400 mt-1">{summary.lateShifts ?? 0}</p>
-        </div>
-      </div>
-
-      {/* Lịch sử gần nhất */}
-      <div className="rounded-xl bg-slate-900/50 border border-white/10 overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/10">
-          <span className="text-xs font-semibold text-white">Lịch sử chấm công gần đây</span>
-        </div>
-        {records.length === 0 ? (
-          <div className="py-8 text-center text-xs text-slate-500">Chưa có bản ghi chấm công nào</div>
-        ) : (
-          <div className="divide-y divide-white/5">
-            {records.slice(0, 7).map((r, idx) => (
-              <div key={r.id || idx} className="p-3 hover:bg-white/5 transition flex items-center justify-between text-xs">
-                <div>
-                  <span className="font-semibold text-slate-200">{r.date || 'Hôm nay'}</span>
-                  <span className="text-slate-500 ml-2">Ca: {r.shiftName || 'Hành chính'}</span>
-                </div>
-                <div className="flex items-center gap-4 text-slate-400">
-                  <span>Vào: <strong className="text-emerald-400">{r.clockIn || '--:--'}</strong></span>
-                  <span>Ra: <strong className="text-rose-400">{r.clockOut || '--:--'}</strong></span>
+          {loadingPrefill ? (
+            <div className="py-10 flex items-center justify-center gap-2 text-xs text-slate-400">
+              <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
+              <span>Đang tải cấu hình ca ngày {selectedDate}...</span>
+            </div>
+          ) : isDayOff ? (
+            <div className="p-6 rounded-xl bg-slate-900/50 border border-white/10 text-center space-y-2">
+              <p className="text-sm font-semibold text-amber-300">Ngày {selectedDate} được đánh dấu là Nghỉ làm</p>
+              <p className="text-xs text-slate-400">Bấm "Lưu công ca" để xác nhận trạng thái nghỉ làm vào bảng công tháng.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-300">Danh sách các ca làm việc ({shifts.length} ca)</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShifts([
+                      { start: '08:00', end: '12:00', workMode: 'direct' },
+                      { start: '13:30', end: '17:30', workMode: 'direct' },
+                    ])}
+                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] text-slate-300 border border-white/10 transition cursor-pointer"
+                  >
+                    Mẫu: Sáng + Chiều (Trực tiếp)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShifts(prev => [...prev, { start: '13:30', end: '17:30', workMode: 'direct' }])}
+                    className="px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-[11px] text-sky-300 border border-sky-500/30 flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" /> Thêm ca
+                  </button>
                 </div>
               </div>
-            ))}
+
+              {shifts.map((shift, idx) => (
+                <div key={idx} className="p-3.5 rounded-xl bg-slate-900/60 border border-white/10 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xs font-semibold text-sky-400 w-10">Ca {idx + 1}</span>
+                    <input
+                      type="time"
+                      value={shift.start}
+                      onChange={(e) => setShifts(prev => prev.map((s, i) => (i === idx ? { ...s, start: e.target.value } : s)))}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-white/15 text-xs text-white"
+                    />
+                    <span className="text-slate-500 text-xs">→</span>
+                    <input
+                      type="time"
+                      value={shift.end}
+                      onChange={(e) => setShifts(prev => prev.map((s, i) => (i === idx ? { ...s, end: e.target.value } : s)))}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-white/15 text-xs text-white"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShifts(prev => prev.map((s, i) => (i === idx ? { ...s, workMode: 'direct' } : s)))}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium flex items-center gap-1 border transition cursor-pointer ${
+                        shift.workMode === 'direct'
+                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                          : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <MapPin className="w-3 h-3" /> Trực tiếp
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShifts(prev => prev.map((s, i) => (i === idx ? { ...s, workMode: 'online' } : s)))}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium flex items-center gap-1 border transition cursor-pointer ${
+                        shift.workMode === 'online'
+                          ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
+                          : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Laptop className="w-3 h-3" /> Online
+                    </button>
+                    {shifts.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setShifts(prev => prev.filter((_, i) => i !== idx))}
+                        className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 transition cursor-pointer"
+                        title="Xóa ca"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="button"
+              disabled={saving || loadingPrefill || !canEdit}
+              onClick={handleSaveTimesheet}
+              className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-sky-950/50 transition cursor-pointer disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              <span>{canEdit ? 'Lưu công ca' : 'Đã khóa chỉnh sửa'}</span>
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Month selector & KPI */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">Tháng:</span>
+              <input
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="px-3 py-1.5 rounded-lg bg-slate-900 border border-white/15 text-xs text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/10">
+              <span className="text-xs text-slate-400">Tổng giờ công</span>
+              <p className="text-xl font-bold text-sky-400 mt-1">
+                {fmtHoursFromMinutes(summary?.totalMinutes || 0)} <span className="text-xs font-normal text-slate-400">giờ</span>
+              </p>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/10">
+              <span className="text-xs text-slate-400">Giờ Trực tiếp</span>
+              <p className="text-xl font-bold text-emerald-400 mt-1">
+                {fmtHoursFromMinutes(summary?.directMinutes || 0)} <span className="text-xs font-normal text-slate-400">giờ</span>
+              </p>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/10">
+              <span className="text-xs text-slate-400">Giờ Online</span>
+              <p className="text-xl font-bold text-indigo-400 mt-1">
+                {fmtHoursFromMinutes(summary?.onlineMinutes || 0)} <span className="text-xs font-normal text-slate-400">giờ</span>
+              </p>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/10">
+              <span className="text-xs text-slate-400">Ngày đã khai báo</span>
+              <p className="text-xl font-bold text-white mt-1">
+                {summary?.workedDays ?? groupedByDate.length} <span className="text-xs font-normal text-slate-400">ngày</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Monthly grouped entries */}
+          <div className="rounded-xl bg-slate-900/50 border border-white/10 overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+              <span className="text-xs font-semibold text-white">Chi tiết bảng công tháng {month}</span>
+              <span className="text-[11px] text-slate-400">{entries.length} bản ghi ca</span>
+            </div>
+            {loadingMonth ? (
+              <div className="py-8 text-center text-xs text-slate-400">Đang tải bảng công...</div>
+            ) : groupedByDate.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-500">Chưa có dữ liệu công ca trong tháng này</div>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {groupedByDate.map(([dateStr, dayEntries]) => (
+                  <div key={dateStr} className="p-3 hover:bg-white/5 transition flex items-center justify-between gap-3 text-xs">
+                    <div className="space-y-1">
+                      <div className="font-semibold text-slate-200">{dateStr}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {dayEntries[0]?.isDayOff ? (
+                          <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px]">
+                            Nghỉ làm
+                          </span>
+                        ) : (
+                          dayEntries.map((item) => (
+                            <span
+                              key={item.id}
+                              className={`px-2 py-0.5 rounded border text-[11px] ${
+                                item.workMode === 'direct'
+                                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                                  : 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300'
+                              }`}
+                            >
+                              {item.shiftStart}–{item.shiftEnd} ({item.workMode === 'direct' ? 'Trực tiếp' : 'Online'})
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDate(dateStr);
+                        setTab('declare');
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 text-[11px] flex items-center gap-1 shrink-0 transition cursor-pointer"
+                    >
+                      <Edit3 className="w-3 h-3" /> Sửa
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

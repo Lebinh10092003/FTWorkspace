@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -158,8 +158,53 @@ export default function OfficeWorkspace({
   const [activeCameraView, setActiveCameraView] = useState<'home' | 'desks' | 'meeting' | 'server'>('home');
   const [isWalkModeActive, setIsWalkModeActive] = useState<boolean>(false);
   const [osInitialApp, setOsInitialApp] = useState<WindowId | undefined>(undefined);
+  const [osInitialModule, setOsInitialModule] = useState<{ key: string; title: string } | null>(null);
   const [osInitialPrompt, setOsInitialPrompt] = useState<string | undefined>(undefined);
   const [osInitialColleague, setOsInitialColleague] = useState<{ name: string; role?: string; department?: string; email?: string } | null>(null);
+
+  const handleOpenDesktopAppFromPhone = useCallback((appOrModuleId: string) => {
+    const mapping: Record<string, { app?: WindowId; module?: { key: string; title: string } }> = {
+      assistant: { app: 'assistant' },
+      exam: { app: 'exam' },
+      examination: { app: 'exam' },
+      reports: { app: 'reports' },
+      'weekly-report': { app: 'reports' },
+      attendance: { app: 'attendance' },
+      finance: { app: 'finance' },
+      'finance-report': { app: 'finance' },
+      social: { app: 'social' },
+      'social-dashboard': { app: 'social' },
+      training: { app: 'training' },
+      'digital-training': { app: 'training' },
+      docs: { app: 'docs' },
+      resources: { app: 'docs' },
+      'admin-docs': { app: 'docs' },
+      terminal: { app: 'terminal' },
+      game: { app: 'game' },
+      settings: { app: 'settings' },
+      apps: { app: 'apps' },
+      browser: { app: 'browser' },
+      'work-schedule': { module: { key: 'work-schedule', title: 'Lịch công tác & Giao việc' } },
+      'document-number': { module: { key: 'document-number', title: 'Cấp số công văn' } },
+      'funding-proposal': { module: { key: 'funding-proposal', title: 'Đề xuất kinh phí' } },
+      'communication-tools': { module: { key: 'communication-tools', title: 'Công cụ truyền thông' } },
+      tools: { module: { key: 'communication-tools', title: 'Công cụ truyền thông' } },
+      'account-management': { module: { key: 'account-management', title: 'Quản lý tài khoản' } },
+    };
+
+    const target = mapping[appOrModuleId];
+    if (target?.app) {
+      setOsInitialApp(target.app);
+      setOsInitialModule(null);
+    } else if (target?.module) {
+      setOsInitialApp('browser');
+      setOsInitialModule(target.module);
+    } else {
+      setOsInitialApp('browser');
+      setOsInitialModule({ key: appOrModuleId, title: appOrModuleId });
+    }
+    setIsDesktopOSOpen(true);
+  }, []);
 
   const { isPlaying: isAmbiencePlaying, toggleAmbience } = useOfficeAmbience();
 
@@ -825,6 +870,7 @@ export default function OfficeWorkspace({
       <OfficeSmartphoneGuide
         onNavigate2D={onBackTo2D}
         onOpenDesktopOS={() => setIsDesktopOSOpen(true)}
+        onOpenDesktopApp={handleOpenDesktopAppFromPhone}
         onOpenAppsDrawer={() => setShowAppsDrawer(true)}
         onCallBot={handleCallBot}
         onTriggerPatrol={handleTriggerPatrol}
@@ -1045,12 +1091,14 @@ export default function OfficeWorkspace({
           onClose={() => {
             setIsDesktopOSOpen(false);
             setOsInitialApp(undefined);
+            setOsInitialModule(null);
             setOsInitialPrompt(undefined);
             setOsInitialColleague(null);
           }}
           idToken={idToken}
           currentUser={{ name: userName, role: userRole }}
           initialApp={osInitialApp}
+          initialModule={osInitialModule}
           initialPrompt={osInitialPrompt}
           initialColleague={osInitialColleague}
           onNavigateModule={(mode) => {

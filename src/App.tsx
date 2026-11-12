@@ -1379,8 +1379,9 @@ export default function App() {
   // The 3D office takes full-bleed viewport without 2D sidebar clutter.
   // Every other screen gets the shared rail and command palette.
   const content = renderContent();
+  const isEmbedMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('embed') === '1';
   const chromeLessViews: ViewMode[] = ['office', 'competition-landing-public', 'competition-hub', 'guest-invigilation', 'public-exam-registration', 'training-assessment-public'];
-  const framedContent = authChecking || chromeLessViews.includes(viewMode) ? content : (
+  const framedContent = authChecking || chromeLessViews.includes(viewMode) || isEmbedMode ? content : (
     <WorkspaceAreaFrame
       activeAreaId={areaForView(viewMode)}
       canAccess={canAccessArea}
