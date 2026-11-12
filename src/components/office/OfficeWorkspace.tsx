@@ -23,12 +23,11 @@ import {
   Compass,
   Calendar,
   MessageSquare,
-  Cpu,
-  Plus,
-  Check
+  Cpu
 } from 'lucide-react';
-import VirtualDesktopOS from './VirtualDesktopOS';
+import VirtualDesktopOS, { type WindowId } from './VirtualDesktopOS';
 import OfficeSmartphoneGuide from './OfficeSmartphoneGuide';
+import OfficeInSceneWorkstation from './OfficeInSceneWorkstation';
 import WorkspaceNotifications from '../WorkspaceNotifications';
 import AccountMenu from '../AccountMenu';
 import CommandPalette from '../layout/CommandPalette';
@@ -140,10 +139,6 @@ export default function OfficeWorkspace({
   const [webglError, setWebglError] = useState<string | null>(null);
   const [isDesktopOSOpen, setIsDesktopOSOpen] = useState(false);
   const [activeInSceneModal, setActiveInSceneModal] = useState<string | null>(null);
-  const [inSceneLoading, setInSceneLoading] = useState(false);
-  const [inSceneScheduleItems, setInSceneScheduleItems] = useState<any[]>([]);
-  const [inSceneExamPapers, setInSceneExamPapers] = useState<any[]>([]);
-  const [inSceneFilter, setInSceneFilter] = useState<'all' | 'doing' | 'done'>('all');
   const [showAppsDrawer, setShowAppsDrawer] = useState(false);
   const [hudCollapsed, setHudCollapsed] = useState(false);
   const [showTips, setShowTips] = useState(true);
@@ -162,9 +157,7 @@ export default function OfficeWorkspace({
   }>({ active: false, phase: 'IDLE' });
   const [activeCameraView, setActiveCameraView] = useState<'home' | 'desks' | 'meeting' | 'server'>('home');
   const [isWalkModeActive, setIsWalkModeActive] = useState<boolean>(false);
-  const [inSceneNewTaskTitle, setInSceneNewTaskTitle] = useState<string>('');
-  const [inSceneCreatingTask, setInSceneCreatingTask] = useState<boolean>(false);
-  const [osInitialApp, setOsInitialApp] = useState<'assistant' | 'exam' | 'reports' | 'docs' | 'terminal' | 'game' | undefined>(undefined);
+  const [osInitialApp, setOsInitialApp] = useState<WindowId | undefined>(undefined);
   const [osInitialPrompt, setOsInitialPrompt] = useState<string | undefined>(undefined);
   const [osInitialColleague, setOsInitialColleague] = useState<{ name: string; role?: string; department?: string; email?: string } | null>(null);
 
@@ -334,62 +327,6 @@ export default function OfficeWorkspace({
     );
   };
 
-  const isInSceneTaskDone = (status?: string) => {
-    const s = (status || '').toLowerCase();
-    return s === 'completed' || s === 'reviewed' || s === 'done';
-  };
-
-  const handleInSceneCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inSceneNewTaskTitle.trim()) return;
-    setInSceneCreatingTask(true);
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
-    try {
-      const res = await fetch('/api/work-schedule/items', {
-        method: 'POST',
-        headers,
-        credentials: 'include',
-        body: JSON.stringify({
-          title: inSceneNewTaskTitle.trim(),
-          date: new Date().toISOString().slice(0, 10),
-          priority: 'medium',
-          status: 'todo',
-        }),
-      });
-      if (res.ok) {
-        setInSceneNewTaskTitle('');
-        const listRes = await fetch('/api/work-schedule/items', { headers, credentials: 'include' });
-        if (listRes.ok) {
-          const data = await listRes.json();
-          setInSceneScheduleItems(Array.isArray(data?.items) ? data.items : []);
-        }
-      }
-    } catch {
-      // bỏ qua lỗi
-    } finally {
-      setInSceneCreatingTask(false);
-    }
-  };
-
-  const handleInSceneToggleTask = async (item: any) => {
-    const done = isInSceneTaskDone(item.status);
-    const nextStatus = done ? 'todo' : 'completed';
-    setInSceneScheduleItems(prev => prev.map(it => (it.id === item.id ? { ...it, status: nextStatus } : it)));
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
-    try {
-      await fetch(`/api/work-schedule/items/${item.id}`, {
-        method: 'PATCH',
-        headers,
-        credentials: 'include',
-        body: JSON.stringify({ status: nextStatus }),
-      });
-    } catch {
-      // rollback
-    }
-  };
-
   const handleOpenSearch = () => {
     if (onOpenCommandPalette) {
       onOpenCommandPalette();
@@ -482,41 +419,6 @@ export default function OfficeWorkspace({
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [accessibleModules, roster, isDark, canAccessView, onNavigate]);
-
-  // Fetch dữ liệu thực tế cho In-Scene Modal khi mở trong 3D
-  useEffect(() => {
-    if (!activeInSceneModal) return;
-    let cancelled = false;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
-
-    if (activeInSceneModal === 'work-schedule' || activeInSceneModal === 'weekly-report') {
-      setInSceneLoading(true);
-      fetch('/api/work-schedule/items', { headers, credentials: 'include' })
-        .then(res => (res.ok ? res.json() : null))
-        .then(data => {
-          if (cancelled) return;
-          setInSceneScheduleItems(Array.isArray(data?.items) ? data.items : []);
-          setInSceneLoading(false);
-        })
-        .catch(() => {
-          if (!cancelled) setInSceneLoading(false);
-        });
-    } else if (activeInSceneModal === 'examination') {
-      setInSceneLoading(true);
-      fetch('/api/examination/papers', { headers, credentials: 'include' })
-        .then(res => (res.ok ? res.json() : null))
-        .then(data => {
-          if (cancelled) return;
-          setInSceneExamPapers(Array.isArray(data?.items) ? data.items : []);
-          setInSceneLoading(false);
-        })
-        .catch(() => {
-          if (!cancelled) setInSceneLoading(false);
-        });
-    }
-    return () => { cancelled = true; };
-  }, [activeInSceneModal, idToken]);
 
   // Nếu iframe load xong nhưng không gửi ready trong 12s, tắt spinner
   useEffect(() => {
@@ -1165,270 +1067,34 @@ export default function OfficeWorkspace({
       </div>
 
       {activeInSceneModal && (
-        <div className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="w-full max-w-2xl rounded-3xl border border-white/20 bg-slate-900/95 shadow-2xl backdrop-blur-2xl p-6 text-white">
-            {/* Header Modal */}
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#D97757] to-amber-500 flex items-center justify-center text-white shadow-lg">
-                  <Box className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">
-                    {OFFICE_MODULE_ITEMS.find(m => m.id === activeInSceneModal)?.label || 'Phân hệ Workspace'}
-                  </h3>
-                  <p className="text-xs text-slate-400">Tương tác trực tiếp trong không gian 3D</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveInSceneModal(null)}
-                  className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Body Modal */}
-            <div className="py-4 space-y-3">
-              {inSceneLoading ? (
-                <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2">
-                  <LoaderCircle className="w-7 h-7 animate-spin text-[#D97757]" />
-                  <span className="text-xs">Đang tải dữ liệu thực tế từ hệ thống...</span>
-                </div>
-              ) : activeInSceneModal === 'work-schedule' || activeInSceneModal === 'weekly-report' ? (
-                <div className="space-y-3">
-                  {/* Form tạo nhanh nhiệm vụ in-scene */}
-                  <form onSubmit={handleInSceneCreateTask} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={inSceneNewTaskTitle}
-                      onChange={(e) => setInSceneNewTaskTitle(e.target.value)}
-                      placeholder="Thêm nhanh nhiệm vụ mới cho hôm nay..."
-                      className="flex-1 px-3 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
-                    />
-                    <button
-                      type="submit"
-                      disabled={inSceneCreatingTask || !inSceneNewTaskTitle.trim()}
-                      className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs flex items-center gap-1 transition cursor-pointer shrink-0"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>{inSceneCreatingTask ? 'Đang thêm...' : 'Thêm việc'}</span>
-                    </button>
-                  </form>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setInSceneFilter('all')}
-                        className={`px-3 py-1 rounded-lg font-semibold transition ${inSceneFilter === 'all' ? 'bg-[#D97757] text-white shadow' : 'text-slate-400 hover:text-white'}`}
-                      >
-                        Tất cả ({inSceneScheduleItems.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setInSceneFilter('doing')}
-                        className={`px-3 py-1 rounded-lg font-semibold transition ${inSceneFilter === 'doing' ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-                      >
-                        Đang làm ({inSceneScheduleItems.filter(i => !isInSceneTaskDone(i.status)).length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setInSceneFilter('done')}
-                        className={`px-3 py-1 rounded-lg font-semibold transition ${inSceneFilter === 'done' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-                      >
-                        Đã xong ({inSceneScheduleItems.filter(i => isInSceneTaskDone(i.status)).length})
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                    {inSceneScheduleItems.length === 0 ? (
-                      <div className="p-4 rounded-2xl bg-slate-800/40 border border-slate-700/40 text-center text-xs text-slate-400">
-                        Chưa có lịch công tác hoặc nhiệm vụ phát sinh hôm nay. Hãy nhập nhanh ở ô trên!
-                      </div>
-                    ) : (
-                      inSceneScheduleItems
-                        .filter(it => {
-                          const done = isInSceneTaskDone(it.status);
-                          if (inSceneFilter === 'doing') return !done;
-                          if (inSceneFilter === 'done') return done;
-                          return true;
-                        })
-                        .slice(0, 12)
-                        .map((it, idx) => {
-                          const done = isInSceneTaskDone(it.status);
-                          const assigneeName = it.executor?.name || it.executor?.email || it.assignee || 'Tôi';
-                          return (
-                            <div key={it.id || idx} className="p-2.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between text-xs hover:border-slate-600 transition">
-                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleInSceneToggleTask(it)}
-                                  title={done ? 'Đánh dấu chưa xong' : 'Đánh dấu hoàn thành'}
-                                  className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition cursor-pointer ${
-                                    done
-                                      ? 'bg-emerald-500 border-emerald-400 text-slate-950'
-                                      : 'border-slate-400 hover:border-cyan-400 bg-slate-900/60'
-                                  }`}
-                                >
-                                  {done && <Check className="w-3 h-3 stroke-[3]" />}
-                                </button>
-                                <div className="min-w-0">
-                                  <p className={`font-semibold truncate ${done ? 'line-through text-slate-400' : 'text-slate-100'}`}>
-                                    {it.title || it.content || it.task || 'Nhiệm vụ công tác'}
-                                  </p>
-                                  <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                                    {assigneeName} {it.date ? `· ${it.date}` : it.time ? `· ${it.time}` : ''}
-                                  </p>
-                                </div>
-                              </div>
-                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                                done
-                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                              }`}>
-                                {done ? 'Hoàn thành' : 'Đang thực hiện'}
-                              </span>
-                            </div>
-                          );
-                        })
-                    )}
-                  </div>
-                </div>
-              ) : activeInSceneModal === 'examination' ? (
-                <div className="space-y-3">
-                  <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-bold text-slate-200">Hệ thống Khảo thí & Ngân hàng đề</p>
-                      <p className="text-xs text-slate-400 mt-0.5">Quản lý kỳ thi, đề thi chuẩn hóa và chấm thi tự động AI</p>
-                    </div>
-                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                      {inSceneExamPapers.length} đề thi
-                    </span>
-                  </div>
-
-                  <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                    {inSceneExamPapers.length === 0 ? (
-                      <div className="p-4 rounded-2xl bg-slate-800/40 border border-slate-700/40 text-center text-xs text-slate-400">
-                        Ngân hàng đề thi đang sẵn sàng. Mở phân hệ để tạo hoặc chấm thi.
-                      </div>
-                    ) : (
-                      inSceneExamPapers.slice(0, 6).map((paper, idx) => (
-                        <div key={paper.id || idx} className="p-3 rounded-2xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between text-xs">
-                          <div className="min-w-0 pr-3">
-                            <p className="font-semibold text-slate-100 truncate">{paper.title || paper.name || `Đề thi #${idx + 1}`}</p>
-                            <p className="text-[11px] text-slate-400 mt-0.5">{paper.subject || 'Đánh giá năng lực'} · {paper.question_count || 40} câu hỏi</p>
-                          </div>
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0 bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                            {paper.status || 'READY'}
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ) : activeInSceneModal === 'account-management' ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-300 font-semibold">Danh sách nhân sự & Bot AI ({roster.length} thành viên)</span>
-                    <span className="text-emerald-400 font-mono text-[11px]">{workingCount} đang làm · {idleCount} giải lao</span>
-                  </div>
-                  <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
-                    {roster.map((worker) => (
-                      <div key={worker.id} className="p-2.5 rounded-xl bg-slate-800/70 border border-slate-700/60 flex items-center justify-between text-xs hover:bg-slate-750 transition">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${worker.is_bot ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-700 text-slate-200'}`}>
-                            {worker.is_bot ? '🤖' : (worker.name || '?')[0].toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-slate-100 truncate">{worker.name}</p>
-                            <p className="text-[10px] text-slate-400 truncate">{worker.role || worker.title || 'Thành viên'} · {worker.department || 'Văn phòng'}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${worker.is_bot ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : worker.isIdle ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'}`}>
-                            {worker.is_bot ? 'AI Bot' : worker.isIdle ? 'Nghỉ ngơi' : 'Làm việc'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (iframeRef.current?.contentWindow) {
-                                iframeRef.current.contentWindow.postMessage(
-                                  { type: 'ft-office:focusWorker', name: worker.name, userId: worker.user_id },
-                                  window.location.origin
-                                );
-                              }
-                              setActiveInSceneModal(null);
-                            }}
-                            className="px-2 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 text-[10px] font-semibold transition cursor-pointer"
-                          >
-                            Lia camera
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : activeInSceneModal === 'resources' ? (
-                <div className="space-y-3">
-                  <div className="p-3 rounded-2xl bg-slate-800/70 border border-slate-700/60 text-xs">
-                    <p className="font-semibold text-slate-200">Kho tài liệu & Quy chuẩn FermatTech</p>
-                    <p className="text-slate-400 mt-1">Hệ thống biểu mẫu, giáo trình và tài nguyên dùng chung đã tích hợp trong không gian làm việc.</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {[
-                      { title: 'Tài liệu & Biểu mẫu', desc: 'Quy trình, biểu mẫu hành chính', icon: '📁' },
-                      { title: 'Ngân hàng đề số', desc: 'Tài nguyên trắc nghiệm & tự luận', icon: '📝' },
-                      { title: 'Quy chuẩn khảo thí', desc: 'Quy chế coi thi & chấm điểm', icon: '⚖️' },
-                      { title: 'Slide & Media', desc: 'Thư viện hình ảnh thương hiệu', icon: '🎨' },
-                    ].map((item, idx) => (
-                      <div key={idx} className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/40 hover:border-cyan-500/40 transition flex items-start gap-2.5">
-                        <span className="text-lg">{item.icon}</span>
-                        <div>
-                          <p className="font-semibold text-slate-100">{item.title}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">{item.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="h-96 w-full rounded-2xl overflow-hidden border border-slate-800 bg-slate-950">
-                  <iframe
-                    src={`/?view=${OFFICE_MODULE_ITEMS.find(m => m.id === activeInSceneModal)?.mode || activeInSceneModal}&embed=1&os=1`}
-                    title={OFFICE_MODULE_ITEMS.find(m => m.id === activeInSceneModal)?.label || 'Phân hệ'}
-                    className="w-full h-full border-none"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Footer Modal */}
-            <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveInSceneModal(null);
-                  setIsDesktopOSOpen(true);
-                }}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-[#D97757] hover:bg-[#c46849] text-white transition cursor-pointer"
-              >
-                Mở rộng trên FermatOS
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveInSceneModal(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
-              >
-                Đóng (Ở lại 3D)
-              </button>
-            </div>
-          </div>
-        </div>
+        <OfficeInSceneWorkstation
+          activeModal={activeInSceneModal}
+          onClose={() => setActiveInSceneModal(null)}
+          onOpenDesktopOS={(appId) => {
+            setActiveInSceneModal(null);
+            if (appId) {
+              setOsInitialApp(appId as WindowId);
+            }
+            setIsDesktopOSOpen(true);
+          }}
+          idToken={idToken || undefined}
+          currentUser={{ name: userName, role: userRole }}
+          roster={roster}
+          onFocusWorker={(worker) => {
+            if (iframeRef.current?.contentWindow) {
+              iframeRef.current.contentWindow.postMessage(
+                { type: 'ft-office:focusWorker', name: worker.name, userId: worker.user_id },
+                window.location.origin
+              );
+            }
+          }}
+          onNavigateModule={(mode) => {
+            setActiveInSceneModal(null);
+            if (canAccessView(mode)) {
+              onNavigate(mode);
+            }
+          }}
+        />
       )}
 
       {/* Command Palette khi bấm nút Tìm kiếm (Ctrl+K) trong Văn phòng 3D */}
