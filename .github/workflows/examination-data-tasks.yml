@@ -14,6 +14,7 @@ on:
           - reconcile-calendar-2027
           - rename-sco-competitions
           - set-round-date
+          - set-registration-fees
           - audit-registrations
           - repair-session-sheets
           - restore-session-sheet-history
@@ -133,6 +134,8 @@ jobs:
             rename-sco-competitions)
               CMD="rename_sco_competitions $FLAG"
               if [ -n "$ONLY" ]; then CMD="$CMD --only '$ONLY'"; fi ;;
+            set-registration-fees)
+              CMD="set_registration_fees $FLAG" ;;
             set-round-date)
               : "${SESSION:?Cần nhập session}"; : "${ROUND:?Cần nhập round}"; : "${DATE:?Cần nhập date}"
               CMD="set_exam_round_date --session '$SESSION' --round '$ROUND' --batch '${BATCH:-1}' --date '$DATE' $FLAG" ;;

@@ -4,6 +4,8 @@ import { competitionIdentity } from './competitionIdentity';
 import { todayVN } from '../../lib/vnDate';
 
 export const money = (amount: number) => `${amount.toLocaleString('vi-VN')}đ`;
+/** Lệ phí hiển thị: null là chưa công bố, 0 là miễn phí. */
+export const feeLabel = (fee?: number | null, unknown = 'Lệ phí thông báo sau') => fee == null ? unknown : fee === 0 ? 'Miễn phí' : money(fee);
 
 const AREA_BY_CODE: Record<string, string> = { FIAIO: 'Trí tuệ nhân tạo', FISO: 'Khoa học' };
 export const GROUPS: Array<{ key: string; title: string; areas: string[] }> = [
