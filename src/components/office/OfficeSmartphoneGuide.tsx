@@ -76,18 +76,21 @@ const MAPPING_ITEMS: MappingItem[] = [
     location3D: 'Bàn làm việc của bạn (Desks Area)',
     guide3D: 'Nhấp trực tiếp vào màn hình máy tính 3D trên bàn làm việc hoặc bấm "FermatOS" để mở hệ điều hành ảo với AI Chat, Khảo thí và Báo cáo.',
     zone3D: 'desks',
+    osAppId: 'assistant',
     specialAction: 'os'
   },
   {
     id: 'attendance',
     title2D: 'Điểm danh & Chấm công',
-    desc2D: 'Chấm công vào/ra ca, kiểm tra hiện diện & vị trí làm việc',
+    desc2D: 'Khai báo công ca trực tiếp/online, kiểm tra bảng công tháng',
     icon: Clock,
     color: 'from-emerald-500 to-teal-600',
     location3D: 'Trạm chấm công ở Cửa chính (Entrance Station)',
-    guide3D: 'Nằm ngay lối vào chính của văn phòng 3D. Nhìn ra cửa ra vào để thấy máy chấm công nhận diện hoặc chuyển góc nhìn toàn cảnh.',
+    guide3D: 'Nằm ngay lối vào chính của văn phòng 3D hoặc mở trực tiếp Trạm Chấm Công & Công Ca trong FermatOS.',
     zone3D: 'home',
-    targetMode: 'attendance'
+    targetMode: 'attendance',
+    osAppId: 'attendance',
+    specialAction: 'os'
   },
   {
     id: 'exam',
@@ -99,6 +102,7 @@ const MAPPING_ITEMS: MappingItem[] = [
     guide3D: 'Khu vực cụm bàn Khảo thí góc phía trong, hoặc mở app "Khảo thí" trong FermatOS trên bàn làm việc.',
     zone3D: 'desks',
     targetMode: 'examination',
+    osAppId: 'examination',
     specialAction: 'os'
   },
   {
@@ -111,6 +115,7 @@ const MAPPING_ITEMS: MappingItem[] = [
     guide3D: 'Bảng thông báo lớn trên tường văn phòng và ứng dụng Báo cáo tuần tích hợp ngay trong máy tính bàn 3D.',
     zone3D: 'meeting',
     targetMode: 'communication-tools/weekly-report',
+    osAppId: 'weekly-report',
     specialAction: 'os'
   },
   {
@@ -122,7 +127,9 @@ const MAPPING_ITEMS: MappingItem[] = [
     location3D: 'Phòng Công nghệ & Cụm máy trạm Studio AI',
     guide3D: 'Phòng công nghệ phía sau vách kính, nơi các bot AI xử lý bài đăng và trợ lý ảo làm việc liên tục.',
     zone3D: 'server',
-    targetMode: 'social-dashboard'
+    targetMode: 'social-dashboard',
+    osAppId: 'social-dashboard',
+    specialAction: 'os'
   },
   {
     id: 'roster',
@@ -247,8 +254,13 @@ export default function OfficeSmartphoneGuide({
 
   const handleAction = (item: MappingItem) => {
     if (item.specialAction === 'os') {
-      onOpenDesktopOS();
-      setCopiedHint('Đã mở Máy tính ảo Desktop OS trên bàn 3D!');
+      if (onOpenDesktopApp && item.osAppId) {
+        onOpenDesktopApp(item.osAppId);
+      } else {
+        onOpenDesktopOS();
+      }
+      setIsOpen(false);
+      setCopiedHint('Đã mở đúng ứng dụng trên Máy tính ảo Desktop OS!');
       setTimeout(() => setCopiedHint(null), 2500);
       return;
     }
@@ -442,7 +454,7 @@ export default function OfficeSmartphoneGuide({
                       { id: 'digital-training', label: 'Đào tạo số', icon: Layers, bg: 'from-sky-500 to-indigo-600', mode: 'digital-training' },
                       { id: 'finance-report', label: 'Tài chính', icon: Wallet, bg: 'from-emerald-600 to-green-700', mode: 'finance-report' },
                       { id: 'tools', label: 'Công cụ', icon: Wrench, bg: 'from-violet-500 to-fuchsia-600', mode: 'communication-tools' },
-                      { id: 'admin-docs', label: 'Công văn', icon: FileText, bg: 'from-slate-500 to-slate-700', mode: 'document-number' },
+                      { id: 'document-number', label: 'Công văn', icon: FileText, bg: 'from-slate-500 to-slate-700', mode: 'document-number' },
                       { id: 'account-management', label: 'Nhân sự', icon: Users, bg: 'from-blue-500 to-cyan-600', mode: 'account-management' },
                       { id: 'settings', label: 'Cài đặt', icon: Settings, bg: 'from-zinc-500 to-slate-700', mode: 'office' },
                     ]
@@ -684,9 +696,12 @@ export default function OfficeSmartphoneGuide({
                             <button
                               type="button"
                               onClick={() => {
-                                onOpenDesktopOS();
-                                setCopiedHint('Đã mở Máy tính ảo!');
-                                setTimeout(() => setCopiedHint(null), 2500);
+                                if (onOpenDesktopApp && item.osAppId) {
+                                  onOpenDesktopApp(item.osAppId);
+                                } else {
+                                  onOpenDesktopOS();
+                                }
+                                setIsOpen(false);
                               }}
                               className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10.5px] font-bold transition cursor-pointer flex items-center gap-1 shadow-sm"
                             >

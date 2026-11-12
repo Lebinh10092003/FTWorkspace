@@ -59,6 +59,7 @@ export type VirtualDesktopOSProps = {
   onReleaseBot?: () => void;
   onTriggerPatrol?: () => void;
   initialApp?: WindowId;
+  initialModule?: { key: string; title: string } | null;
   initialPrompt?: string;
   initialColleague?: { name: string; role?: string; department?: string; email?: string } | null;
   botState?: {
@@ -349,6 +350,7 @@ function VirtualDesktopOSInner({
   onReleaseBot = () => {},
   onTriggerPatrol = () => {},
   initialApp,
+  initialModule,
   initialPrompt,
   initialColleague,
   botState = { state: 'IDLE', queueLength: 0 },
@@ -356,8 +358,9 @@ function VirtualDesktopOSInner({
   currentUser,
   idToken = null,
 }: VirtualDesktopOSProps) {
-  const [activeWindow, setActiveWindow] = useState<WindowId>(initialApp || 'assistant');
-  const [topZ, setTopZ] = useState(10);
+  const [activeWindow, setActiveWindow] = useState<WindowId | null>(initialApp || 'assistant');
+  const [topZ, setTopZ] = useState(20);
+  const topZRef = useRef(20);
   const [timeStr, setTimeStr] = useState('');
   const [terminalLogs, setTerminalLogs] = useState<string[]>([
     '[SYSTEM] FermatOS v2.6 Workstation Booted successfully.',
@@ -822,47 +825,65 @@ function VirtualDesktopOSInner({
     }
   };
 
-  const focusWindow = (id: WindowId) => {
-    const nextZ = topZ + 1;
-    setTopZ(nextZ);
-    setActiveWindow(id);
-    setWindows(prev => ({
-      ...prev,
-      [id]: { ...prev[id], isOpen: true, isMinimized: false, zIndex: nextZ },
-    }));
-  };
+  const getNextZ = useCallback((currentWindows: Record<WindowId, OSWindow>) => {
+    const maxWinZ = Math.max(topZRef.current, ...Object.values(currentWindows).map(w => w.zIndex || 0), 20);
+    const nextZ = maxWinZ + 1;
+    topZRef.current = nextZ;
+    return nextZ;
+  }, []);
 
-  const toggleMinimize = (id: WindowId) => {
-    setWindows(prev => ({
-      ...prev,
-      [id]: { ...prev[id], isMinimized: !prev[id].isMinimized },
-    }));
-  };
+  const focusWindow = useCallback((id: WindowId) => {
+    setWindows(prev => {
+      const nextZ = getNextZ(prev);
+      setTopZ(nextZ);
+      setActiveWindow(id);
+      return {
+        ...prev,
+        [id]: { ...prev[id], isOpen: true, isMinimized: false, zIndex: nextZ },
+      };
+    });
+  }, [getNextZ]);
 
-  const closeWindow = (id: WindowId) => {
+  const toggleMinimize = useCallback((id: WindowId) => {
+    setWindows(prev => {
+      const target = prev[id];
+      if (!target) return prev;
+      if (target.isMinimized) {
+        const nextZ = getNextZ(prev);
+        setTopZ(nextZ);
+        setActiveWindow(id);
+        return {
+          ...prev,
+          [id]: { ...target, isOpen: true, isMinimized: false, zIndex: nextZ },
+        };
+      }
+      setActiveWindow(curr => (curr === id ? null : curr));
+      return {
+        ...prev,
+        [id]: { ...target, isMinimized: true },
+      };
+    });
+  }, [getNextZ]);
+
+  const closeWindow = useCallback((id: WindowId) => {
+    setActiveWindow(curr => (curr === id ? null : curr));
     setWindows(prev => ({
       ...prev,
       [id]: { ...prev[id], isOpen: false },
     }));
-  };
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
-    if (initialApp) {
-      setActiveWindow(initialApp);
-      setTopZ(prevZ => {
-        const nextZ = prevZ + 1;
-        setWindows(prevW => ({
-          ...prevW,
-          [initialApp]: { ...prevW[initialApp], isOpen: true, isMinimized: false, zIndex: nextZ },
-        }));
-        return nextZ;
-      });
+    if (initialModule) {
+      openModuleInBrowser(initialModule.key, initialModule.title);
+    } else if (initialApp) {
+      focusWindow(initialApp);
     }
     if (initialPrompt) {
       setInputChat(initialPrompt);
     }
-  }, [isOpen, initialApp, initialPrompt]);
+  }, [isOpen, initialApp, initialModule, initialPrompt, focusWindow]);
 
   const handleSendChat = async (presetText?: string) => {
     const textToSend = presetText !== undefined ? presetText : inputChat;
@@ -1300,12 +1321,12 @@ function VirtualDesktopOSInner({
           </div>
 
           {/* Khu vực chứa các cửa sổ (Windows Area) */}
-          <div className="relative flex-1 ml-2">
+          <div className="relative flex-1 ml-2 z-10 isolate">
             
             {/* CỬA SỔ 1: TRỢ LÝ AI WORKSTATION */}
             {windows.assistant.isOpen && !windows.assistant.isMinimized && (
               <div
-                onClick={() => focusWindow('assistant')}
+                onMouseDownCapture={() => focusWindow('assistant')}
                 style={{ zIndex: windows.assistant.zIndex }}
                 className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
@@ -1498,7 +1519,7 @@ function VirtualDesktopOSInner({
             {/* CỬA SỔ 2: KHẢO THÍ & NGÂN HÀNG ĐỀ THI */}
             {windows.exam.isOpen && !windows.exam.isMinimized && (
               <div
-                onClick={() => focusWindow('exam')}
+                onMouseDownCapture={() => focusWindow('exam')}
                 style={{ zIndex: windows.exam.zIndex }}
                 className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
@@ -1602,7 +1623,7 @@ function VirtualDesktopOSInner({
             {/* CỬA SỔ 3: BÁO CÁO TUẦN & GIÁM ĐỐC */}
             {windows.reports.isOpen && !windows.reports.isMinimized && (
               <div
-                onClick={() => focusWindow('reports')}
+                onMouseDownCapture={() => focusWindow('reports')}
                 style={{ zIndex: windows.reports.zIndex }}
                 className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
@@ -1841,10 +1862,102 @@ function VirtualDesktopOSInner({
               </div>
             )}
 
+            {/* CỬA SỔ 3B: KHO TÀI LIỆU & QUY CHUẨN */}
+            {windows.docs.isOpen && !windows.docs.isMinimized && (
+              <div
+                onMouseDownCapture={() => focusWindow('docs')}
+                style={{ zIndex: windows.docs.zIndex }}
+                className="absolute inset-2 bg-slate-900/95 border border-white/20 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 text-slate-100"
+              >
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/75 border-b border-white/10 text-xs select-none">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); closeWindow('docs'); }}
+                      className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 font-bold transition cursor-pointer"
+                      title="Đóng (Close)"
+                    >✕</button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleMinimize('docs'); }}
+                      className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 font-bold transition cursor-pointer"
+                      title="Thu nhỏ (Minimize)"
+                    >–</button>
+                    <button
+                      type="button"
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] opacity-60 cursor-default"
+                      title="Toàn màn hình"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <Folder className="w-4 h-4 text-amber-400" />
+                    <span>KHO TÀI LIỆU & BIỂU MẪU FERMAT</span>
+                  </div>
+                  <div className="w-12" />
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-slate-950/60">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+                    <div>
+                      <h3 className="text-base font-bold text-white">Tài nguyên & Văn bản nội bộ</h3>
+                      <p className="text-xs text-slate-400 mt-0.5">Truy cập nhanh Kho tài liệu dùng chung, Số công văn và Đề xuất kinh phí ngay trong FermatOS.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openModuleInBrowser('resources', 'Kho tài nguyên dùng chung')}
+                      className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Mở phân hệ Tài nguyên 2D</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => openModuleInBrowser('resources', 'Kho tài nguyên & Biểu mẫu')}
+                      className="p-4 rounded-2xl bg-slate-900/80 hover:bg-slate-800/90 border border-white/10 hover:border-amber-400/40 text-left transition space-y-2 cursor-pointer"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                        <Folder className="w-5 h-5" />
+                      </div>
+                      <div className="text-sm font-semibold text-white">Tài nguyên chung</div>
+                      <p className="text-xs text-slate-400">Quy trình, slide đào tạo, template biểu mẫu chuẩn của công ty.</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openModuleInBrowser('document-number', 'Cấp số công văn')}
+                      className="p-4 rounded-2xl bg-slate-900/80 hover:bg-slate-800/90 border border-white/10 hover:border-sky-400/40 text-left transition space-y-2 cursor-pointer"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="text-sm font-semibold text-white">Cấp số công văn</div>
+                      <p className="text-xs text-slate-400">Tra cứu và đăng ký số công văn đi/đến hành chính.</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openModuleInBrowser('funding-proposal', 'Đề xuất kinh phí')}
+                      className="p-4 rounded-2xl bg-slate-900/80 hover:bg-slate-800/90 border border-white/10 hover:border-emerald-400/40 text-left transition space-y-2 cursor-pointer"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                        <Wallet className="w-5 h-5" />
+                      </div>
+                      <div className="text-sm font-semibold text-white">Đề xuất kinh phí</div>
+                      <p className="text-xs text-slate-400">Tạo tờ trình và theo dõi trạng thái duyệt đề xuất kinh phí.</p>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* CỬA SỔ 4: HQ CONSOLE TERMINAL */}
             {windows.terminal.isOpen && !windows.terminal.isMinimized && (
               <div
-                onClick={() => focusWindow('terminal')}
+                onMouseDownCapture={() => focusWindow('terminal')}
                 style={{ zIndex: windows.terminal.zIndex }}
                 className="absolute inset-2 bg-[#111827] border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150 font-mono text-emerald-400"
               >
@@ -1897,7 +2010,7 @@ function VirtualDesktopOSInner({
             {/* CỬA SỔ 5: MINI GAME XẢ STRESS */}
             {windows.game.isOpen && !windows.game.isMinimized && (
               <div
-                onClick={() => focusWindow('game')}
+                onMouseDownCapture={() => focusWindow('game')}
                 style={{ zIndex: windows.game.zIndex }}
                 className="absolute inset-2 bg-slate-900/90 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
@@ -1983,7 +2096,7 @@ function VirtualDesktopOSInner({
             {/* CỬA SỔ 6: CÀI ĐẶT HỆ THỐNG (SYSTEM SETTINGS) */}
             {windows.settings.isOpen && !windows.settings.isMinimized && (
               <div
-                onClick={() => focusWindow('settings')}
+                onMouseDownCapture={() => focusWindow('settings')}
                 style={{ zIndex: windows.settings.zIndex }}
                 className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
@@ -2211,7 +2324,7 @@ function VirtualDesktopOSInner({
             {/* CỬA SỔ 7: LAUNCHPAD (TẤT CẢ ỨNG DỤNG & PHÂN HỆ) */}
             {windows.apps.isOpen && !windows.apps.isMinimized && (
               <div
-                onClick={() => focusWindow('apps')}
+                onMouseDownCapture={() => focusWindow('apps')}
                 style={{ zIndex: windows.apps.zIndex }}
                 className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
@@ -2262,7 +2375,7 @@ function VirtualDesktopOSInner({
             {/* CỬA SỔ 8: FERMAT SAFARI (TRÌNH DUYỆT PHÂN HỆ) */}
             {windows.browser.isOpen && !windows.browser.isMinimized && (
               <div
-                onClick={() => focusWindow('browser')}
+                onMouseDownCapture={() => focusWindow('browser')}
                 style={{ zIndex: windows.browser.zIndex }}
                 className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
@@ -2319,7 +2432,7 @@ function VirtualDesktopOSInner({
             {/* CỬA SỔ 9: SỔ KẾ TOÁN & DÒNG TIỀN */}
             {windows.finance.isOpen && !windows.finance.isMinimized && (
               <div
-                onClick={() => focusWindow('finance')}
+                onMouseDownCapture={() => focusWindow('finance')}
                 style={{ zIndex: windows.finance.zIndex }}
                 className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
@@ -2342,7 +2455,7 @@ function VirtualDesktopOSInner({
             {/* CỬA SỔ 10: WAR-ROOM TRUYỀN THÔNG & ĐA KÊNH */}
             {windows.social.isOpen && !windows.social.isMinimized && (
               <div
-                onClick={() => focusWindow('social')}
+                onMouseDownCapture={() => focusWindow('social')}
                 style={{ zIndex: windows.social.zIndex }}
                 className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
@@ -2365,7 +2478,7 @@ function VirtualDesktopOSInner({
             {/* CỬA SỔ 11: CÔNG NGHỆ & ĐÀO TẠO SỐ */}
             {windows.training.isOpen && !windows.training.isMinimized && (
               <div
-                onClick={() => focusWindow('training')}
+                onMouseDownCapture={() => focusWindow('training')}
                 style={{ zIndex: windows.training.zIndex }}
                 className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
@@ -2388,7 +2501,7 @@ function VirtualDesktopOSInner({
             {/* CỬA SỔ 12: TRẠM CHẤM CÔNG & CÔNG CA */}
             {windows.attendance.isOpen && !windows.attendance.isMinimized && (
               <div
-                onClick={() => focusWindow('attendance')}
+                onMouseDownCapture={() => focusWindow('attendance')}
                 style={{ zIndex: windows.attendance.zIndex }}
                 className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
               >
