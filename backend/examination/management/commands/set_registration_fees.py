@@ -24,10 +24,11 @@ FEES = {
     'SCO': {QUALIFIER: 250_000, NATIONAL_FINAL: 450_000, INTERNATIONAL: 0, 'single': 450_000},
     'FERMAT': {QUALIFIER: 250_000, NATIONAL_FINAL: 450_000},
 }
+# Hạn đăng ký theo ngày thi của từng đợt (mã kỳ trên server không thống nhất).
 BATCH_DEADLINES = {
-    'fimo-2026-2027': ['2026-10-04', '2026-11-29', '2027-02-21'],
-    'fieo-2026-2027': ['2026-10-04', '2026-11-29', '2027-02-21'],
-    'iaio-2026-2027': ['2026-10-03', '2026-10-18'],
+    'FIMO': {'2026-10-11': '2026-10-04', '2026-12-06': '2026-11-29', '2027-02-28': '2027-02-21'},
+    'FIEO': {'2026-10-18': '2026-10-04', '2026-12-13': '2026-11-29', '2027-03-07': '2027-02-21'},
+    'SIAIO': {'2026-10-04': '2026-10-03', '2026-10-25': '2026-10-18'},
 }
 BACKUP_DIR = '/home/workspace/ft-workspace-data/backups'
 
@@ -63,12 +64,13 @@ def planned_rounds(session, code):
         if fee is not None and item.get('fee') in (None, ''):
             item['fee'] = fee
             changes.append(f"{item['name']}: " + ('miễn phí' if fee == 0 else f'lệ phí {fee:,}đ'.replace(',', '.')))
-        if index == 0 and session.id in BATCH_DEADLINES:
+        if index == 0 and code in BATCH_DEADLINES:
             slots = [dict(slot) for slot in item.get('slots') or [] if isinstance(slot, dict)]
-            for position, (slot, deadline) in enumerate(zip(slots, BATCH_DEADLINES[session.id])):
-                if not slot.get('registrationDeadline'):
+            for position, slot in enumerate(slots):
+                deadline = BATCH_DEADLINES[code].get(str(slot.get('date') or '').strip())
+                if deadline and not slot.get('registrationDeadline'):
                     slot['registrationDeadline'] = deadline
-                    changes.append(f"{item['name']} đợt {position + 1}: hạn đăng ký {deadline}")
+                    changes.append(f"{item['name']} đợt {position + 1} (thi {slot['date']}): hạn đăng ký {deadline}")
             item['slots'] = slots
     return rounds, changes
 
@@ -83,6 +85,8 @@ class Command(BaseCommand):
         plans, skipped = [], []
         for code, session, _name in candidate_sessions():
             if not phase_open(session.phase):
+                if family(code) or code == 'WAICY':
+                    skipped.append(f'{code} ({session.id}): giai đoạn "{session.phase}" đã qua tuyển sinh, không hiện trên form')
                 continue
             if not family(code):
                 skipped.append(f'{code} ({session.id}): không có quy tắc lệ phí, giữ nguyên')
@@ -90,8 +94,10 @@ class Command(BaseCommand):
             rounds, changes = planned_rounds(session, code)
             if changes:
                 plans.append((session, rounds, changes))
+            else:
+                skipped.append(f'{code} ({session.id}): đã đủ lệ phí/hạn, không cần điền')
         for session, _rounds, changes in plans:
-            self.stdout.write(f'{session.id} · {session.name}')
+            self.stdout.write(f'{session.id} · {session.name} · giai đoạn "{session.phase}"')
             for change in changes:
                 self.stdout.write(f'  + {change}')
         for line in skipped:

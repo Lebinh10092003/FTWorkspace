@@ -20,7 +20,7 @@ class SetRegistrationFeesTests(TestCase):
         fimo = ExamSession.objects.get(pk='fimo-2026-2027') if ExamSession.objects.filter(pk='fimo-2026-2027').exists() else session(
             'fimo-2026-2027', 'FIMO', [])
         ExamSession.objects.filter(pk=fimo.pk).update(phase='Tuyển sinh', rounds=[
-            {'id': 'q', 'name': 'Vòng loại Quốc gia', 'slots': [{'id': 's1', 'date': '2026-10-11'}, {'id': 's2', 'date': '2026-12-06'}]},
+            {'id': 'q', 'name': 'Vòng loại Quốc gia', 'slots': [{'id': 's1', 'date': '2026-10-11'}, {'id': 's2', 'date': '2026-12-06'}, {'id': 's3', 'date': '2027-01-01'}]},
             {'id': 'f', 'name': 'Vòng Chung kết Quốc gia'}, {'id': 'i', 'name': 'Vòng Chung kết Quốc tế'}])
         other = session('aysbc-test', 'AYSBC', [{'id': 'a', 'name': 'Vòng Quốc gia'}])
         call_command('set_registration_fees', stdout=StringIO())
@@ -32,5 +32,5 @@ class SetRegistrationFeesTests(TestCase):
         self.assertEqual([item.get('fee') for item in sco.rounds], [250000, 500000, 0])
         self.assertEqual(single.rounds[0]['fee'], 450000)
         self.assertEqual([item.get('fee') for item in fimo.rounds], [250000, 450000, None])
-        self.assertEqual([slot['registrationDeadline'] for slot in fimo.rounds[0]['slots']], ['2026-10-04', '2026-11-29'])
+        self.assertEqual([slot.get('registrationDeadline') for slot in fimo.rounds[0]['slots']], ['2026-10-04', '2026-11-29', None])
         self.assertNotIn('fee', other.rounds[0])
