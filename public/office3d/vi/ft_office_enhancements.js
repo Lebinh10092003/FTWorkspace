@@ -1019,7 +1019,8 @@
     });
   }
 
-  let cafeVanAnchor = { x: -13.5, z: 18.0 };
+  let cafeVanAnchor = { x: -13.2, z: 17.8 };
+  let cafeVanChairSpot = { x: -12.9, z: 17.3, face: Math.PI * 0.25 };
 
   function findSceneRoot() {
     if (office && office.scene) return office.scene;
@@ -1043,28 +1044,40 @@
     if (!THREE) return;
     const scene = findSceneRoot();
     if (!scene) return;
-    if (scene.getObjectByName('ft_cafe_van_group')) return;
 
-    // Dò tìm tòa nhà mặt tiền màu cam ở bên kia ngã tư đối diện khu văn phòng (nếu có)
-    let detectedX = -13.5;
-    let detectedZ = 18.0;
+    // Nếu đã dựng rồi thì không dựng lại trùng lặp
+    const existingGroup = scene.getObjectByName('ft_cafe_van_group');
+    if (existingGroup && existingGroup.userData && existingGroup.userData.version === 'v2_building') {
+      return;
+    }
+    if (existingGroup) {
+      scene.remove(existingGroup);
+    }
+
+    // Dò tìm tòa nhà mặt tiền có biển hiệu cam ở góc phố ngoài trời
+    let detectedMesh = null;
+    let bestDist = Infinity;
+    let detectedWp = new THREE.Vector3(-13.5, 3.1, 18.5);
+    let signSize = new THREE.Vector3(3.6, 1.1, 0.2);
+    let signCenter = new THREE.Vector3(-13.5, 3.1, 18.5);
+
     try {
-      let bestDist = Infinity;
       scene.traverse((obj) => {
         if (!obj.isMesh || !obj.material) return;
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
         for (const m of mats) {
           if (!m || !m.color) continue;
           const r = m.color.r, g = m.color.g, b = m.color.b;
+          // Biển hiệu cam của căn nhà góc phố ngoài trời
           if (r > 0.65 && g > 0.22 && g < 0.62 && b < 0.3) {
             const wp = new THREE.Vector3();
             obj.getWorldPosition(wp);
             if (wp.x < -7 && wp.z > 8 && wp.z < 28 && wp.y > 0.5 && wp.y < 6) {
-              const dist = Math.hypot(wp.x + 12, wp.z - 16);
+              const dist = Math.hypot(wp.x + 13, wp.z - 18);
               if (dist < bestDist) {
                 bestDist = dist;
-                detectedX = wp.x;
-                detectedZ = wp.z - 1.2;
+                detectedMesh = obj;
+                detectedWp.copy(wp);
               }
             }
           }
@@ -1072,173 +1085,187 @@
       });
     } catch (e) {}
 
-    cafeVanAnchor = { x: detectedX, z: detectedZ };
+    if (detectedMesh) {
+      try {
+        const box = new THREE.Box3().setFromObject(detectedMesh);
+        box.getSize(signSize);
+        box.getCenter(signCenter);
+      } catch (e) {
+        signCenter.copy(detectedWp);
+      }
+    }
+
+    cafeVanAnchor = { x: signCenter.x, z: signCenter.z };
+
+    // Tạo canvas texture biển hiệu "QUÁN CF VÂN" tone cà phê ấm cúng, sang trọng
+    const signCanvas = document.createElement('canvas');
+    signCanvas.width = 1024;
+    signCanvas.height = 256;
+    const sctx = signCanvas.getContext('2d');
+    sctx.fillStyle = '#26140A';
+    sctx.fillRect(0, 0, 1024, 256);
+    sctx.strokeStyle = '#D97706';
+    sctx.lineWidth = 14;
+    sctx.strokeRect(10, 10, 1004, 236);
+    sctx.strokeStyle = '#78350F';
+    sctx.lineWidth = 4;
+    sctx.strokeRect(26, 26, 972, 204);
+    sctx.fillStyle = '#FEF3C7';
+    sctx.font = 'bold 88px sans-serif';
+    sctx.textAlign = 'center';
+    sctx.fillText('☕ QUÁN CF VÂN', 512, 118);
+    sctx.fillStyle = '#FCD34D';
+    sctx.font = '600 36px sans-serif';
+    sctx.fillText('CÀ PHÊ NGUYÊN CHẤT • TRÀ • ĐỒ UỐNG', 512, 192);
+
+    const signTex = new THREE.CanvasTexture(signCanvas);
+    if (THREE.SRGBColorSpace) signTex.colorSpace = THREE.SRGBColorSpace;
+
+    // 1. Sửa trực tiếp biển hiệu của căn nhà hiện hữu thành Quán CF Vân
+    if (detectedMesh) {
+      try {
+        detectedMesh.material = new THREE.MeshStandardMaterial({
+          map: signTex,
+          roughness: 0.35,
+          metalness: 0.1,
+          side: THREE.DoubleSide
+        });
+        if (detectedMesh.material.map) detectedMesh.material.map.needsUpdate = true;
+        detectedMesh.material.needsUpdate = true;
+      } catch (e) {}
+    }
 
     const group = new THREE.Group();
     group.name = 'ft_cafe_van_group';
-    group.position.set(cafeVanAnchor.x, 0, cafeVanAnchor.z);
+    group.userData = { version: 'v2_building' };
 
-    // 1. Biển hiệu nổi "QUÁN CF VÂN"
-    const signCanvas = document.createElement('canvas');
-    signCanvas.width = 512;
-    signCanvas.height = 160;
-    const sctx = signCanvas.getContext('2d');
-    sctx.fillStyle = '#3B1F0B';
-    sctx.fillRect(0, 0, 512, 160);
-    sctx.strokeStyle = '#F59E0B';
-    sctx.lineWidth = 8;
-    sctx.strokeRect(8, 8, 496, 144);
-    sctx.fillStyle = '#FEF3C7';
-    sctx.font = 'bold 54px sans-serif';
-    sctx.textAlign = 'center';
-    sctx.fillText('☕ QUÁN CF VÂN', 256, 82);
-    sctx.fillStyle = '#FCD34D';
-    sctx.font = '600 22px sans-serif';
-    sctx.fillText('CÀ PHÊ NGUYÊN CHẤT • TRÀ • ĐỒ UỐNG', 256, 128);
+    // 2. Gắn biển hiệu nổi 3D ép khít vào mặt tiền căn nhà (đảm bảo độ dày và sắc nét)
+    const isXAligned = signSize.x >= signSize.z;
+    const signWidth = Math.max(isXAligned ? signSize.x : signSize.z, 3.2);
+    const signHeight = Math.max(signSize.y, 0.95);
+    const signBoardMat = [
+      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+      new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35, metalness: 0.1 }),
+      new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35, metalness: 0.1 })
+    ];
 
-    const signTex = new THREE.CanvasTexture(signCanvas);
     const signBoard = new THREE.Mesh(
-      new THREE.BoxGeometry(3.6, 1.1, 0.16),
-      [
-        new THREE.MeshStandardMaterial({ color: 0x3b1f0b, roughness: 0.7 }),
-        new THREE.MeshStandardMaterial({ color: 0x3b1f0b, roughness: 0.7 }),
-        new THREE.MeshStandardMaterial({ color: 0x3b1f0b, roughness: 0.7 }),
-        new THREE.MeshStandardMaterial({ color: 0x3b1f0b, roughness: 0.7 }),
-        new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35 }),
-        new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35 })
-      ]
+      new THREE.BoxGeometry(
+        isXAligned ? signWidth : 0.08,
+        signHeight,
+        isXAligned ? 0.08 : signWidth
+      ),
+      signBoardMat
     );
-    signBoard.position.set(0, 3.15, 0.25);
+    // Ép khít mặt trước biển hiệu tòa nhà
+    signBoard.position.set(
+      signCenter.x + (isXAligned ? 0 : 0.06),
+      signCenter.y,
+      signCenter.z + (isXAligned ? -0.06 : 0)
+    );
     group.add(signBoard);
 
-    // 2. Mái hiên sọc cafe che mặt tiền
-    const awnCanvas = document.createElement('canvas');
-    awnCanvas.width = 256;
-    awnCanvas.height = 128;
-    const actx = awnCanvas.getContext('2d');
-    for (let i = 0; i < 8; i++) {
-      actx.fillStyle = i % 2 === 0 ? '#78350F' : '#FEF3C7';
-      actx.fillRect(i * 32, 0, 32, 128);
-    }
-    const awnTex = new THREE.CanvasTexture(awnCanvas);
-    const awning = new THREE.Mesh(
-      new THREE.BoxGeometry(4.0, 0.1, 1.3),
-      new THREE.MeshStandardMaterial({ map: awnTex, roughness: 0.8 })
+    // Đèn rọi ấm áp chiếu vào biển hiệu Quán CF Vân
+    const signLight = new THREE.PointLight(0xfde68a, 1.1, 7);
+    signLight.position.set(
+      signCenter.x + (isXAligned ? 0 : 0.4),
+      signCenter.y + 0.35,
+      signCenter.z + (isXAligned ? -0.4 : 0)
     );
-    awning.position.set(0, 2.35, -0.45);
-    awning.rotation.x = 0.28;
-    group.add(awning);
+    group.add(signLight);
 
-    // 3. Quầy pha chế (Bar counter + máy espresso)
-    const barCounter = new THREE.Mesh(
-      new THREE.BoxGeometry(2.6, 0.95, 0.65),
-      new THREE.MeshStandardMaterial({ color: 0x5c3419, roughness: 0.6 })
-    );
-    barCounter.position.set(0, 0.475, 0.15);
-    group.add(barCounter);
+    // 3. Bố trí bàn ghế cafe trên vỉa hè SÁT VÁCH CĂN NHÀ (không lấn ra lòng đường!)
+    const sidewalkX = signCenter.x + (isXAligned ? 0.3 : 0.65);
+    const sidewalkZ = signCenter.z - (isXAligned ? 0.75 : 0.3);
 
-    const barTop = new THREE.Mesh(
-      new THREE.BoxGeometry(2.7, 0.08, 0.75),
-      new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.25, metalness: 0.2 })
-    );
-    barTop.position.set(0, 0.98, 0.15);
-    group.add(barTop);
-
-    const espressoBody = new THREE.Mesh(
-      new THREE.BoxGeometry(0.55, 0.42, 0.38),
-      new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.25, metalness: 0.8 })
-    );
-    espressoBody.position.set(-0.55, 1.23, 0.15);
-    group.add(espressoBody);
-
-    const warmLight = new THREE.PointLight(0xfde68a, 1.25, 9);
-    warmLight.position.set(0, 2.2, -0.8);
-    group.add(warmLight);
-
-    // 4. Bàn ghế cafe ngoài trời + ô dù che nắng + ly tách
-    const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.65 });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b3a19, roughness: 0.6 });
     const metalMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.4, metalness: 0.6 });
     const cupMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
     const coffeeMat = new THREE.MeshStandardMaterial({ color: 0x3b1f0b, roughness: 0.1 });
-    const umbrellaMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.75, side: THREE.DoubleSide });
-
-    [
-      { x: -1.4, z: -1.65, hasUmbrella: true },
-      { x: 0.1, z: -2.0, hasUmbrella: false },
-      { x: 1.5, z: -1.65, hasUmbrella: true }
-    ].forEach((tp) => {
-      const tGroup = new THREE.Group();
-      tGroup.position.set(tp.x, 0, tp.z);
-
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.72, 10), metalMat);
-      leg.position.y = 0.36;
-      tGroup.add(leg);
-
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 0.04, 16), metalMat);
-      base.position.y = 0.02;
-      tGroup.add(base);
-
-      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.05, 20), woodMat);
-      top.position.y = 0.73;
-      tGroup.add(top);
-
-      [-0.14, 0.14].forEach((cx) => {
-        const saucer = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.015, 12), cupMat);
-        saucer.position.set(cx, 0.765, 0.05);
-        tGroup.add(saucer);
-        const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.04, 0.09, 12), cupMat);
-        cup.position.set(cx, 0.815, 0.05);
-        tGroup.add(cup);
-        const liq = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.048, 0.01, 10), coffeeMat);
-        liq.position.set(cx, 0.858, 0.05);
-        tGroup.add(liq);
-      });
-
-      [-0.62, 0.62].forEach((gx) => {
-        const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.04, 12), woodMat);
-        seat.position.set(gx, 0.44, 0);
-        tGroup.add(seat);
-        const cLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.43, 8), metalMat);
-        cLeg.position.set(gx, 0.215, 0);
-        tGroup.add(cLeg);
-        const back = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.36, 0.34), woodMat);
-        back.position.set(gx + (gx > 0 ? 0.18 : -0.18), 0.62, 0);
-        tGroup.add(back);
-      });
-
-      if (tp.hasUmbrella) {
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.35, 8), metalMat);
-        pole.position.y = 1.18;
-        tGroup.add(pole);
-        const canopy = new THREE.Mesh(new THREE.ConeGeometry(1.15, 0.42, 8), umbrellaMat);
-        canopy.position.y = 2.42;
-        tGroup.add(canopy);
-      }
-
-      group.add(tGroup);
-    });
-
-    // 5. 2 chậu cây cảnh xanh 2 bên cửa quán
     const potMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.8 });
     const leafMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.7 });
-    [-2.2, 2.2].forEach((px) => {
-      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.18, 0.42, 12), potMat);
-      pot.position.set(px, 0.21, -0.5);
-      group.add(pot);
-      const bush = new THREE.Mesh(new THREE.SphereGeometry(0.36, 12, 10), leafMat);
-      bush.position.set(px, 0.66, -0.5);
-      group.add(bush);
-    });
+
+    const cafeTableGroup = new THREE.Group();
+    cafeTableGroup.position.set(sidewalkX, 0, sidewalkZ);
+
+    // Bàn cafe tròn nhỏ xinh xắn trên vỉa hè
+    const tableLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.7, 10), metalMat);
+    tableLeg.position.y = 0.35;
+    cafeTableGroup.add(tableLeg);
+
+    const tableBase = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.03, 14), metalMat);
+    tableBase.position.y = 0.015;
+    cafeTableGroup.add(tableBase);
+
+    const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.04, 18), woodMat);
+    tableTop.position.y = 0.71;
+    cafeTableGroup.add(tableTop);
+
+    // Tách cafe trên bàn
+    const saucer = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.06, 0.015, 12), cupMat);
+    saucer.position.set(0.05, 0.74, 0.02);
+    cafeTableGroup.add(saucer);
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.038, 0.075, 12), cupMat);
+    cup.position.set(0.05, 0.78, 0.02);
+    cafeTableGroup.add(cup);
+    const liq = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.01, 10), coffeeMat);
+    liq.position.set(0.05, 0.815, 0.02);
+    cafeTableGroup.add(liq);
+
+    // Ghế của Giám đốc (ngồi sát vách quán nhìn ra ngã tư)
+    const directorChairOffset = { x: -0.42, z: 0.15 };
+    const chairSeat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.035, 12), woodMat);
+    chairSeat.position.set(directorChairOffset.x, 0.44, directorChairOffset.z);
+    cafeTableGroup.add(chairSeat);
+
+    const chairLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.43, 8), metalMat);
+    chairLeg.position.set(directorChairOffset.x, 0.215, directorChairOffset.z);
+    cafeTableGroup.add(chairLeg);
+
+    const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.32, 0.28), woodMat);
+    chairBack.position.set(directorChairOffset.x - 0.14, 0.58, directorChairOffset.z);
+    chairBack.rotation.y = 0.15;
+    cafeTableGroup.add(chairBack);
+
+    // Ghế đối diện phụ
+    const guestChairOffset = { x: 0.42, z: -0.12 };
+    const gSeat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.035, 12), woodMat);
+    gSeat.position.set(guestChairOffset.x, 0.44, guestChairOffset.z);
+    cafeTableGroup.add(gSeat);
+
+    const gLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.43, 8), metalMat);
+    gLeg.position.set(guestChairOffset.x, 0.215, guestChairOffset.z);
+    cafeTableGroup.add(gLeg);
+
+    // 1 chậu cây cảnh nhỏ đặt ở góc vỉa hè sát chân tường quán
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.36, 12), potMat);
+    pot.position.set(sidewalkX - 1.2, 0.18, sidewalkZ + 0.3);
+    group.add(pot);
+    const bush = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), leafMat);
+    bush.position.set(sidewalkX - 1.2, 0.55, sidewalkZ + 0.3);
+    group.add(bush);
+
+    group.add(cafeTableGroup);
+
+    // Lưu điểm ngồi chính xác của Giám đốc trên vỉa hè
+    cafeVanChairSpot = {
+      x: sidewalkX + directorChairOffset.x,
+      z: sidewalkZ + directorChairOffset.z,
+      face: Math.PI * 0.22
+    };
 
     scene.add(group);
   }
 
   function getCafeVanSpot() {
     return {
-      x: cafeVanAnchor.x + 0.1,
+      x: cafeVanChairSpot.x,
       y: 0,
-      z: cafeVanAnchor.z - 1.38,
-      face: Math.PI * 0.15,
+      z: cafeVanChairSpot.z,
+      face: cafeVanChairSpot.face,
       sit: true
     };
   }
