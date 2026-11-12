@@ -2,7 +2,7 @@ import type { UserRole } from '../../types';
 
 export type ExaminationPage = 'overview' | 'competitions' | 'sessions' | 'candidates' | 'registration-forms' | 'unmatched-transfers' | 'invigilation' | 'classes' | 'teachers' | 'partners' | 'import' | 'papers' | 'paper-create' | 'paper-detail' | 'blueprints' | 'blueprint-detail' | 'ai-config' | 'competition-detail' | 'session-detail' | 'candidate-detail' | 'class-detail' | 'teacher-detail';
 export type DraftDate = { day: string; month: string; year: string; planned: boolean; unknown: boolean };
-export type SessionRoundSlot = { id: string; label?: string; date?: string; time?: string; mode?: string; link?: string; location?: string; note?: string };
+export type SessionRoundSlot = { id: string; label?: string; date?: string; time?: string; mode?: string; link?: string; location?: string; note?: string; registrationDeadline?: string };
 /** `fee` và `registrationDeadline`: lệ phí, hạn đăng ký của vòng. Form đăng ký công khai thu lệ phí vòng đầu. */
 export type SessionRound = { id: string; name: string; label: string; date?: string; slots?: SessionRoundSlot[]; fee?: number | null; registrationDeadline?: string };
 export type ExaminationSession = { id: string; competitionId?: string; competitionName?: string; code: string; name: string; parent: string; organizer: string; time: string; candidates: number; national: string; nationalDate?: string; international: string; internationalDate?: string; phase: string; note: string; registrationSheetUrl?: string; registrationSheetTab?: string; academicYear?: string; outputSheetUrl?: string; outputSheetTab?: string; roomSheetUrl?: string; rounds?: SessionRound[]; updatedAt?: string; createdAt?: string };

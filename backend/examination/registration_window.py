@@ -6,7 +6,9 @@ Quy tắc chủ dự án chốt ngày 12/11/2026:
 - Lệ phí và hạn đăng ký khai theo từng vòng trong kỳ tổ chức. Thí sinh mới đăng
   ký vào vòng đầu tiên (vòng loại nếu có, không có thì vòng chung kết), nên form
   thu lệ phí vòng đầu. Các vòng sau chỉ hiện để phụ huynh biết trước.
-- Hạn đăng ký để trống thì lấy ngày thi sớm nhất của vòng đầu.
+- Vòng đầu có thể tổ chức nhiều đợt (vd FIMO vòng loại 3 đợt): mỗi đợt có hạn
+  đăng ký riêng, form lấy đợt gần nhất chưa hết hạn. Đợt chưa khai hạn thì dùng
+  ngày thi của đợt đó.
 """
 import re
 from datetime import date
@@ -83,14 +85,31 @@ def round_dates(round_config):
     return sorted(day for day in (parse_date(value) for value in values) if day)
 
 
-def registration_deadline(round_config):
+def deadline_options(round_config):
+    """[(hạn, khai riêng?, số đợt hoặc None)] của một vòng, sắp theo ngày."""
     if not round_config:
-        return None
-    explicit = parse_date(round_config.get('registrationDeadline'))
-    if explicit:
-        return explicit
-    dates = round_dates(round_config)
-    return dates[0] if dates else None
+        return []
+    options = []
+    slots = [slot for slot in round_config.get('slots') or [] if isinstance(slot, dict)]
+    for index, slot in enumerate(slots):
+        explicit = parse_date(slot.get('registrationDeadline'))
+        day = explicit or parse_date(slot.get('date'))
+        if day:
+            options.append((day, bool(explicit), index + 1 if len(slots) > 1 else None))
+    explicit_round = parse_date(round_config.get('registrationDeadline'))
+    if explicit_round:
+        options.append((explicit_round, True, None))
+    if not options and parse_date(round_config.get('date')):
+        options.append((parse_date(round_config.get('date')), False, None))
+    return sorted(set(options), key=lambda item: (item[0], not item[1]))
+
+
+def registration_deadline(round_config, today=None):
+    """Hạn gần nhất chưa qua; hết cả thì trả hạn cuối để báo đã hết hạn."""
+    today = today or timezone.localdate()
+    options = deadline_options(round_config)
+    upcoming = [item for item in options if item[0] >= today]
+    return (upcoming or options[-1:] or [None])[0]
 
 
 def session_offer(session, today=None):
@@ -98,7 +117,8 @@ def session_offer(session, today=None):
     today = today or timezone.localdate()
     rounds = session_rounds(session)
     entry = rounds[0] if rounds else None
-    deadline = registration_deadline(entry)
+    chosen = registration_deadline(entry, today)
+    deadline, explicit, batch = chosen if chosen else (None, False, None)
     opens = months_before(deadline, WINDOW_MONTHS) if deadline else None
     if not phase_open(session.phase):
         status = 'closed-phase'
@@ -114,8 +134,8 @@ def session_offer(session, today=None):
         'status': status,
         'deadline': deadline.isoformat() if deadline else '',
         'opensOn': opens.isoformat() if opens else '',
-        'deadlineIsExplicit': bool(entry and parse_date(entry.get('registrationDeadline'))),
-        'entryRound': str(entry.get('name') or '') if entry else '',
+        'deadlineIsExplicit': explicit,
+        'entryRound': (f"{entry.get('name') or ''} · đợt {batch}" if batch else str(entry.get('name') or '')) if entry else '',
         'fee': clean_fee(entry.get('fee')) if entry else None,
         'laterRounds': [{'name': str(item.get('name') or ''), 'fee': clean_fee(item.get('fee'))} for item in rounds[1:]],
     }

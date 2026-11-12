@@ -94,6 +94,24 @@ class RegistrationPageTests(TestCase):
         self.assertNotEqual(listed['FIMO'][0].id, later_fimo.id)
         self.assertNotIn('FIMO', open_registration_sessions(['FIMO']))
 
+    def test_multi_batch_entry_round_uses_the_next_open_batch(self):
+        from datetime import timedelta
+        from .registration_window import session_offer
+        today = timezone.localdate()
+        day = lambda offset: (today + timedelta(days=offset)).isoformat()
+        slots = [{'id': 'b1', 'date': day(-30), 'registrationDeadline': day(-37)},
+                 {'id': 'b2', 'date': day(24), 'registrationDeadline': day(17)},
+                 {'id': 'b3', 'date': day(108), 'registrationDeadline': ''}]
+        session = ExamSession.objects.create(id='fimo-batches', competition_id='TESTF', code='TESTF', name='batches',
+            parent='FT', organizer='FT', time='', sort_key='batches', phase='Tuyển sinh',
+            rounds=[{'id': 'q', 'name': 'Vòng loại Quốc gia', 'date': day(-30), 'slots': slots, 'fee': 250000}])
+        offer = session_offer(session)
+        self.assertEqual((offer['status'], offer['deadline'], offer['deadlineIsExplicit']), ('open', day(17), True))
+        self.assertEqual(offer['entryRound'], 'Vòng loại Quốc gia · đợt 2')
+        later = session_offer(session, today + timedelta(days=20))
+        self.assertEqual((later['deadline'], later['deadlineIsExplicit'], later['entryRound']), (day(108), False, 'Vòng loại Quốc gia · đợt 3'))
+        self.assertEqual(session_offer(session, today + timedelta(days=120))['status'], 'expired')
+
     def test_unknown_fee_is_saved_without_an_amount(self):
         ExamSession.objects.filter(pk=SESSION_IDS['SIAIO']).update(rounds=open_rounds(fee=None))
         option = next(item for item in APIClient().get('/api/public/examination/registration').data['competitions'] if item['code'] == 'SIAIO')
@@ -106,12 +124,13 @@ class RegistrationPageTests(TestCase):
 
     def test_session_editor_keeps_round_fee_and_registration_deadline(self):
         session = ExamSession.objects.get(pk=SESSION_IDS['SIBO'])
-        rounds = [{'id': 'r1', 'name': 'Vòng loại', 'date': '2027-01-10', 'slots': [], 'fee': '350.000', 'registrationDeadline': '2026-12-20'},
+        rounds = [{'id': 'r1', 'name': 'Vòng loại', 'date': '2027-01-10', 'slots': [{'id': 's1', 'date': '2027-01-10', 'registrationDeadline': '2027-01-03'}, {'id': 's2', 'date': '2027-02-10', 'registrationDeadline': 'sai'}], 'fee': '350.000', 'registrationDeadline': '2026-12-20'},
                   {'id': 'r2', 'name': 'Chung kết', 'date': '', 'slots': [], 'fee': -5, 'registrationDeadline': 'không rõ'}]
         response = self.client.put(f'/api/examination/sessions/{session.id}', {'rounds': rounds}, format='json')
         self.assertEqual(response.status_code, 200, response.data)
         session.refresh_from_db()
         self.assertEqual([(item['fee'], item['registrationDeadline']) for item in session.rounds], [(350000, '2026-12-20'), (None, '')])
+        self.assertEqual([slot['registrationDeadline'] for slot in session.rounds[0]['slots']], ['2027-01-03', ''])
 
     def test_invalid_hidden_codes_and_mismatched_class_are_rejected(self):
         content = deepcopy(DEFAULT_CONTENT)

@@ -1413,7 +1413,7 @@ def session_create(request):
                     'name': str(r['name']).strip(),
                     'label': str(r.get('label') or timing.get('label') or '').strip(),
                     'date': r.get('date') or timing.get('date'),
-                    'slots': [{key: str(slot.get(key) or '').strip() for key in ('id', 'date', 'time', 'mode', 'link', 'location', 'note')} for slot in r.get('slots', []) if isinstance(slot, dict)],
+                    'slots': [{**{key: str(slot.get(key) or '').strip() for key in ('id', 'date', 'time', 'mode', 'link', 'location', 'note')}, 'registrationDeadline': clean_iso_date(slot.get('registrationDeadline'))} for slot in r.get('slots', []) if isinstance(slot, dict)],
                     # Lệ phí và hạn đăng ký của vòng; form đăng ký công khai thu lệ phí vòng đầu.
                     'fee': clean_fee(r.get('fee')),
                     'registrationDeadline': clean_iso_date(r.get('registrationDeadline')),
@@ -1500,7 +1500,7 @@ def session_detail(request, pk):
                         'name': str(r['name']).strip(),
                         'label': str(r.get('label') or timing.get('label') or '').strip(),
                     'date': r.get('date') or timing.get('date'),
-                    'slots': [{key: str(slot.get(key) or '').strip() for key in ('id', 'date', 'time', 'mode', 'link', 'location', 'note')} for slot in r.get('slots', []) if isinstance(slot, dict)],
+                    'slots': [{**{key: str(slot.get(key) or '').strip() for key in ('id', 'date', 'time', 'mode', 'link', 'location', 'note')}, 'registrationDeadline': clean_iso_date(slot.get('registrationDeadline'))} for slot in r.get('slots', []) if isinstance(slot, dict)],
                     # Lệ phí và hạn đăng ký của vòng; form đăng ký công khai thu lệ phí vòng đầu.
                     'fee': clean_fee(r.get('fee')),
                     'registrationDeadline': clean_iso_date(r.get('registrationDeadline')),
