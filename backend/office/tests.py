@@ -15,14 +15,22 @@ from office.models import (
     HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS,
     ONLINE_TIMEOUT_SECONDS,
     ROOM_ACCOUNTING,
+    ROOM_CAPACITIES,
     ROOM_COMMON,
     ROOM_DIRECTOR,
     ROOM_EXAM,
+    ROOM_MEDIA,
     ROOM_TECH,
+    STATUS_HOME,
+    STATUS_IDLE,
+    STATUS_OFFLINE,
+    STATUS_WORKING,
     OfficePresence,
     OfficeSeat,
+    is_director_account,
     suggest_seat_for_user,
 )
+from office.views import guess_gender_from_vietnamese_name
 
 
 class OfficeBackendTests(TestCase):
@@ -85,6 +93,12 @@ class OfficeBackendTests(TestCase):
         """Tất cả API văn phòng phải yêu cầu đăng nhập."""
         res_hb = self.client.post('/api/office/heartbeat/')
         self.assertIn(res_hb.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+        res_status_get = self.client.get('/api/office/status/')
+        self.assertIn(res_status_get.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+        res_status_post = self.client.post('/api/office/status/', {'status': STATUS_WORKING}, format='json')
+        self.assertIn(res_status_post.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
         res_roster = self.client.get('/api/office/roster/')
         self.assertIn(res_roster.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])

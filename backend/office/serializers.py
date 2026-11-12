@@ -7,6 +7,7 @@ from .models import (
     ROOM_DIRECTOR,
     ROOM_TECH,
     ROOM_EXAM,
+    ROOM_MEDIA,
     ROOM_ACCOUNTING,
     ROOM_CAPACITIES,
     OfficeSeat,
@@ -38,7 +39,14 @@ class AvatarConfigSerializer(serializers.Serializer):
     hair_color = serializers.CharField(max_length=20, required=False)
     outfit_color = serializers.CharField(max_length=20, required=False)
     glasses = serializers.CharField(max_length=30, required=False)
+    gender = serializers.CharField(max_length=10, required=False)
     show_presence = serializers.BooleanField(required=False)
+
+    def validate_gender(self, value):
+        val = value.strip().lower()
+        if val not in ('male', 'female'):
+            raise serializers.ValidationError("Giới tính không hợp lệ. Cho phép: male, female.")
+        return val
 
     def validate_skin_color(self, value):
         val = value.strip().lower()

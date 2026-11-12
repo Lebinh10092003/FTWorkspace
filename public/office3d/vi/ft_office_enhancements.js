@@ -270,11 +270,14 @@
     // 3. Vòng lặp nhấp nháy mắt, đèn ăng-ten Robot & bảo vệ mesh người luôn ẩn
     setInterval(animateRobotEyes, 350);
 
-    // 4. Tuần tra Giám đốc định kỳ tự động (lần đầu sau 18s, sau đó mỗi 75 - 120s)
+    // 4. Giám đốc thường xuyên ngồi ở Quán CF Vân, định kỳ đi tuần tra văn phòng
+    setTimeout(() => {
+      if (!isPatrolling) sendDirectorToCafeVan();
+    }, 8000);
     setTimeout(() => {
       if (!isPatrolling) triggerDirectorPatrol();
       scheduleNextDirectorPatrol();
-    }, 18000);
+    }, 35000);
 
     // 5. Đảm bảo lắng nghe lệnh điều khiển từ Host (đã gọi sớm khi load script)
     setupMessageListeners();
@@ -945,15 +948,15 @@
     // Kích hoạt hiệu ứng nhân viên đang giải lao hốt hoảng chạy về bàn
     triggerRushToDesk();
 
-    // Lộ trình đi vào TẤT CẢ các phòng trong văn phòng qua graph NODES chuẩn
+      // Lộ trình đi vào TẤT CẢ các phòng trong văn phòng qua graph NODES chuẩn
     const patrolWaypoints = [
       makeNodeWaypoint(nodes, ['MF1', 'MTi'], Math.PI, 'Phòng họp FermatTech: thiết bị & lịch họp chuẩn bị sẵn sàng chưa? 👥'),
       makeNodeWaypoint(nodes, ['LBm', 'LBi'], Math.PI / 2, 'Studio AI & Thư viện: tiến độ sáng tạo nội dung thế nào rồi? 🎨'),
-      makeNodeWaypoint(nodes, ['P0b0', 'M1'], 0, 'Khu làm việc trung tâm: mọi người tập trung cao độ nhé! 💻'),
+      makeNodeWaypoint(nodes, ['P0b0', 'M1'], 0, 'Phòng chung: mọi người tập trung cao độ nhé! 💻'),
       makeNodeWaypoint(nodes, ['D0i', 'D0b'], 0, 'Vào kiểm tra Phòng Công nghệ: server và code chạy ổn định chứ các bạn? ⚡'),
       makeNodeWaypoint(nodes, ['D1i', 'D1b'], 0, 'Vào kiểm tra Phòng Khảo thí: ngân hàng đề thi bảo mật tốt nhé! 📝'),
-      makeNodeWaypoint(nodes, ['D2i', 'D2b'], 0, 'Vào kiểm tra Phòng Kế toán: đối soát sổ sách đúng hạn nhé! 💵'),
-      makeNodeWaypoint(nodes, ['D3i', 'D3b'], 0, 'Ghé thăm Phòng Dự án: mọi đầu việc tiến triển tốt chứ? 📊'),
+      makeNodeWaypoint(nodes, ['D2i', 'D2b'], 0, 'Vào kiểm tra Kế toán & HR: đối soát sổ sách & nhân sự đúng hạn nhé! 💵'),
+      makeNodeWaypoint(nodes, ['D3i', 'D3b'], 0, 'Ghé thăm Phòng Truyền thông: chiến dịch media & nội dung tiến triển tốt chứ? 📣'),
       makeNodeWaypoint(nodes, ['PA1', 'PA4'], -Math.PI / 2, 'Khu Pantry: giải lao uống nước xong nhớ quay lại bàn làm việc nhé! ☕'),
       makeNodeWaypoint(nodes, ['LG1', 'LG3'], -Math.PI / 2, 'Khu giải lao Lounge: hết giờ nghỉ rồi, ai đang thư giãn mau về chỗ! 🎮'),
       director.homeSpot ? director.homeSpot() : { x: -5.4, z: -6.75, node: 'DRs', face: 0, sit: true }
@@ -1013,6 +1016,75 @@
     });
   }
 
+  function getCafeVanSpot() {
+    try {
+      const nav = ftOffice && ftOffice.getNav ? ftOffice.getNav() : null;
+      const doors = nav && typeof nav.doors === 'function' ? nav.doors() : [];
+      const cf = doors.find(d => d.key === 'highlands' || (d.name && d.name.includes('CF Vân')));
+      if (cf) {
+        const inside = Array.isArray(cf.inside) && cf.inside[0] ? cf.inside[0] : { x: cf.x, z: cf.z };
+        return { x: inside.x, z: inside.z, face: cf.face || 0, sit: true, door: cf };
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function sendDirectorToCafeVan() {
+    const director = ftOffice && ftOffice.getDirector ? ftOffice.getDirector() : null;
+    const cf = getCafeVanSpot();
+    if (!director || !cf || isPatrolling || director.offstage) return;
+    if (cf.door && typeof cf.door.pass === 'function') cf.door.pass();
+    director.job = { stage: 'cafe', sess: '__cafe_van' };
+    director.station = 'cafe';
+    director.pose = 'stand';
+    director.anim = 'walk';
+    director.goTo({ x: cf.x, z: cf.z, face: cf.face, sit: true }, () => {
+      if (isPatrolling) return;
+      director.pose = 'sit';
+      director.anim = 'coffee';
+      if (typeof director.say === 'function') {
+        director.say('idle', '☕ Ra Quán CF Vân làm ly cà phê, xử lý việc từ xa đây!');
+      }
+    });
+  }
+
+  function applyFemaleAvatar(worker, session) {
+    if (!worker || !worker.P || worker._ftIsBot || worker._ftRobotUpgraded) return;
+    const T = window.THREE;
+    if (!T) return;
+    const isFemale = (session && session.gender === 'female') || worker._ftGender === 'female';
+    const hip = worker.P.hip || worker.P.torso;
+    const head = worker.P.head;
+
+    if (hip) {
+      const oldSkirt = hip.getObjectByName && hip.getObjectByName('ft_female_skirt');
+      if (isFemale && !oldSkirt) {
+        const skirtGeo = new T.CylinderGeometry(0.17, 0.25, 0.22, 14);
+        const skirtMat = new T.MeshStandardMaterial({ color: '#1E293B', roughness: 0.75 });
+        const skirt = new T.Mesh(skirtGeo, skirtMat);
+        skirt.name = 'ft_female_skirt';
+        skirt.position.set(0, -0.08, 0);
+        hip.add(skirt);
+      } else if (!isFemale && oldSkirt) {
+        hip.remove(oldSkirt);
+      }
+    }
+    if (head) {
+      const oldHair = head.getObjectByName && head.getObjectByName('ft_female_hair');
+      if (isFemale && !oldHair) {
+        const hairColor = (session && session.cfg && session.cfg.hair) || '#2B2B2B';
+        const hairGeo = new T.BoxGeometry(0.24, 0.26, 0.10);
+        const hairMat = new T.MeshStandardMaterial({ color: hairColor, roughness: 0.8 });
+        const hair = new T.Mesh(hairGeo, hairMat);
+        hair.name = 'ft_female_hair';
+        hair.position.set(0, -0.02, -0.14);
+        head.add(hair);
+      } else if (!isFemale && oldHair) {
+        head.remove(oldHair);
+      }
+    }
+  }
+
   function runPatrolChain(director, waypoints, index) {
     if (!isPatrolling) return;
 
@@ -1026,6 +1098,9 @@
       director.say('idle', 'Mọi người làm việc rất nghiêm túc, tốt lắm! 👏');
 
       setTimeout(triggerWorkersRelief, 1800);
+      setTimeout(() => {
+        if (!isPatrolling) sendDirectorToCafeVan();
+      }, 15000);
       return;
     }
 
@@ -1112,6 +1187,22 @@
                         (r.user_id && (session.user_id === r.user_id || id === String(r.user_id)));
         if (isMatch) {
           if (r.is_bot) session.is_bot = true;
+          const gender = (r.avatar && r.avatar.gender) || r.gender || session.gender || 'male';
+          session.gender = gender;
+          worker._ftGender = gender;
+          applyFemaleAvatar(worker, session);
+
+          if (r.status === 'home') {
+            worker.offstage = true;
+            if (worker.root) worker.root.visible = false;
+            if (worker.tagObj) worker.tagObj.visible = false;
+            continue;
+          } else if (r.online !== false) {
+            worker.offstage = false;
+            if (worker.root) worker.root.visible = true;
+            if (worker.tagObj) worker.tagObj.visible = true;
+          }
+
           const isIdle = Boolean(r.is_idle || r.status === 'idle');
           if (isIdle) {
             worker._ftIsIdle = true;
@@ -1122,7 +1213,15 @@
               badge.textContent = '💤';
               worker.tagEl.appendChild(badge);
             }
-            if (Math.random() < 0.25 && typeof worker.say === 'function') {
+            if (Math.random() < 0.2 && worker.phase !== 'walk' && typeof worker.goTo === 'function') {
+              const cf = getCafeVanSpot();
+              if (cf) {
+                if (cf.door && typeof cf.door.pass === 'function') cf.door.pass();
+                worker.goTo({ x: cf.x, z: cf.z, face: cf.face, sit: true }, () => {
+                  if (typeof worker.say === 'function') worker.say('idle', '☕ Ra CF Vân hóng gió tí!');
+                });
+              }
+            } else if (Math.random() < 0.25 && typeof worker.say === 'function') {
               worker.say('idle', 'Khò khò... Zzz 💤');
             }
           } else {

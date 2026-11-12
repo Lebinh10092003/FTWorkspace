@@ -31,7 +31,12 @@ import OfficeInSceneWorkstation from './OfficeInSceneWorkstation';
 import WorkspaceNotifications from '../WorkspaceNotifications';
 import AccountMenu from '../AccountMenu';
 import CommandPalette from '../layout/CommandPalette';
-import { useOfficeHeartbeat } from './useOfficeHeartbeat';
+import {
+  useOfficeHeartbeat,
+  type WorkStatus,
+  OFFICE_WORK_STATUS_STORAGE_KEY,
+  OFFICE_WORK_STATUS_EVENT
+} from './useOfficeHeartbeat';
 import { useOfficeAmbience } from './useOfficeAmbience';
 
 export function checkWebGLSupport(): boolean {
@@ -80,7 +85,14 @@ const OFFICE_MODULE_ITEMS: { id: string; label: string; mode: string }[] = [
 
 // Khung 3D giữ sống giữa các lần mở: iframe nằm trong một khối cố định gắn vào body, khi rời trang chỉ ẩn đi
 // (không hủy) nên quay lại không phải khởi tạo lại cảnh 3D.
-const ROOM_LABELS: Record<string, string> = { director: 'Phòng giám đốc', tech: 'Phòng công nghệ', exam: 'Phòng khảo thí', accounting: 'Phòng kế toán', common: 'Phòng chung' };
+const ROOM_LABELS: Record<string, string> = {
+  director: 'Phòng giám đốc',
+  tech: 'Phòng công nghệ',
+  exam: 'Phòng khảo thí',
+  media: 'Phòng truyền thông',
+  accounting: 'Kế toán & HR',
+  common: 'Phòng chung',
+};
 
 let frameHost: HTMLDivElement | null = null;
 let frameEl: HTMLIFrameElement | null = null;
@@ -161,6 +173,14 @@ export default function OfficeWorkspace({
   const [osInitialModule, setOsInitialModule] = useState<{ key: string; title: string } | null>(null);
   const [osInitialPrompt, setOsInitialPrompt] = useState<string | undefined>(undefined);
   const [osInitialColleague, setOsInitialColleague] = useState<{ name: string; role?: string; department?: string; email?: string } | null>(null);
+  const [myWorkStatus, setMyWorkStatus] = useState<WorkStatus>(() => {
+    try {
+      const saved = localStorage.getItem(OFFICE_WORK_STATUS_STORAGE_KEY);
+      if (saved === 'working' || saved === 'idle' || saved === 'home') return saved;
+    } catch {}
+    return 'working';
+  });
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const handleOpenDesktopAppFromPhone = useCallback((appOrModuleId: string) => {
     const mapping: Record<string, { app?: WindowId; module?: { key: string; title: string } }> = {
@@ -210,8 +230,82 @@ export default function OfficeWorkspace({
 
   const webglSupported = useMemo(() => checkWebGLSupport(), []);
 
-  // Kích hoạt theo dõi nhịp hiện diện và tự động chuyển trạng thái làm việc / rảnh (Việc 033)
-  useOfficeHeartbeat(idToken, Boolean(idToken));
+  // Đồng bộ trạng thái làm việc / rảnh / về nhà qua heartbeat
+  useOfficeHeartbeat(idToken, Boolean(idToken), myWorkStatus, (nextStatus) => {
+    setMyWorkStatus(nextStatus);
+    setRoster(prev => {
+      const isHome = nextStatus === 'home';
+      const isIdle = nextStatus === 'idle';
+      const updated = prev.map((u: any) => {
+        if (!u?.is_me) return u;
+        return {
+          ...u,
+          work_status: nextStatus,
+          status: nextStatus,
+          online: !isHome,
+          is_idle: isIdle,
+        };
+      });
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          { type: 'ft-office:roster', roster: updated },
+          window.location.origin
+        );
+      }
+      return updated;
+    });
+  });
+
+  // Cập nhật trạng thái làm việc từ topbar
+  const handleUpdateWorkStatus = async (newStatus: WorkStatus) => {
+    if (updatingStatus) return;
+    setMyWorkStatus(newStatus);
+    setUpdatingStatus(true);
+    try {
+      localStorage.setItem(OFFICE_WORK_STATUS_STORAGE_KEY, newStatus);
+    } catch {}
+    window.dispatchEvent(new CustomEvent(OFFICE_WORK_STATUS_EVENT, { detail: newStatus }));
+
+    // Cập nhật ngay roster gửi xuống iframe 3D (không ép is_me luôn là working khi user chọn idle/home)
+    const isHome = newStatus === 'home';
+    const isIdle = newStatus === 'idle';
+    setRoster(prev => {
+      const updated = prev.map((u: any) => {
+        if (!u?.is_me) return u;
+        return {
+          ...u,
+          work_status: newStatus,
+          status: newStatus,
+          online: !isHome,
+          is_idle: isIdle,
+        };
+      });
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          { type: 'ft-office:roster', roster: updated },
+          window.location.origin
+        );
+      }
+      return updated;
+    });
+
+    try {
+      if (idToken) {
+        await fetch('/api/office/status/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ status: newStatus }),
+        });
+      }
+    } catch {
+      // Lỗi mạng im lặng
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
 
   // Danh sách các phân hệ mà người dùng hiện tại được phép truy cập
   const accessibleModules = useMemo(() => {
@@ -273,8 +367,30 @@ export default function OfficeWorkspace({
       if (!res.ok) return [];
       const data = await res.json().catch(() => ({}));
       const raw = Array.isArray(data.roster) ? data.roster : [];
-      // Người đang mở trang này chắc chắn đang online (tránh nhân vật rời văn phòng trong lúc chờ nhịp đầu tiên)
-      const list = raw.map((u: any) => (u?.is_me ? { ...u, online: true, status: u.status === 'idle' ? 'idle' : 'working' } : u));
+      // Không ép is_me luôn là working khi user chọn idle/home
+      const list = raw.map((u: any) => {
+        if (!u?.is_me) return u;
+        const ws: WorkStatus =
+          u.work_status === 'home' || u.work_status === 'idle' || u.work_status === 'working'
+            ? u.work_status
+            : (u.status === 'home' ? 'home' : (u.status === 'idle' ? 'idle' : 'working'));
+        const isHome = ws === 'home';
+        const isIdle = ws === 'idle';
+        return {
+          ...u,
+          work_status: ws,
+          status: ws,
+          online: !isHome,
+          is_idle: isIdle,
+        };
+      });
+      const me = list.find((u: any) => u?.is_me);
+      if (me && me.work_status) {
+        setMyWorkStatus(me.work_status);
+        try {
+          localStorage.setItem(OFFICE_WORK_STATUS_STORAGE_KEY, me.work_status);
+        } catch {}
+      }
       setRoster(list);
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(
@@ -567,10 +683,62 @@ export default function OfficeWorkspace({
           </button>
         </div>
 
-        {/* Cụm Giữa: Các công cụ tương tác 3D (Máy tính OS, Robot, Sếp, Nhân sự) */}
+        {/* Cụm Giữa: Các công cụ tương tác 3D (Trạng thái, Máy tính OS, Robot, Sếp, Nhân sự) */}
         <div className="flex items-center gap-1.5 sm:gap-2">
           {!hudCollapsed && (
             <>
+              {/* Bộ chuyển 3 trạng thái: Đang làm việc / Rảnh / Về nhà */}
+              <div
+                className="flex items-center p-0.5 rounded-xl bg-slate-900 border border-slate-700/80 shadow-inner"
+                role="group"
+                aria-label="Trạng thái làm việc"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleUpdateWorkStatus('working')}
+                  disabled={updatingStatus}
+                  className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    myWorkStatus === 'working'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/70'
+                  }`}
+                  title="Chuyển trạng thái: Đang làm việc (working)"
+                >
+                  <span className={`h-2 w-2 rounded-full ${myWorkStatus === 'working' ? 'bg-emerald-200 animate-pulse' : 'bg-emerald-500'}`} />
+                  <span className="hidden lg:inline">Đang làm việc</span>
+                  <span className="lg:hidden">Làm</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateWorkStatus('idle')}
+                  disabled={updatingStatus}
+                  className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    myWorkStatus === 'idle'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/70'
+                  }`}
+                  title="Chuyển trạng thái: Rảnh (idle)"
+                >
+                  <span className={`h-2 w-2 rounded-full ${myWorkStatus === 'idle' ? 'bg-amber-200 animate-pulse' : 'bg-amber-400'}`} />
+                  <span>Rảnh</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateWorkStatus('home')}
+                  disabled={updatingStatus}
+                  className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    myWorkStatus === 'home'
+                      ? 'bg-rose-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/70'
+                  }`}
+                  title="Chuyển trạng thái: Về nhà (home)"
+                >
+                  <span className={`h-2 w-2 rounded-full ${myWorkStatus === 'home' ? 'bg-rose-200' : 'bg-rose-400'}`} />
+                  <span className="hidden sm:inline">Về nhà</span>
+                  <span className="sm:hidden">Về</span>
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={() => setIsDesktopOSOpen(true)}
@@ -835,15 +1003,15 @@ export default function OfficeWorkspace({
                     {u.is_bot ? ' 🤖' : ''}
                   </div>
                   <div className="truncate text-[11px] text-slate-500">
-                    {[ROOM_LABELS[u.room] || u.department, u.role].filter(Boolean).join(' · ')}
+                    {[ROOM_LABELS[u.room] || ROOM_LABELS[u.seat?.room] || u.department, u.role].filter(Boolean).join(' · ')}
                   </div>
                 </div>
                 <span className={`shrink-0 text-[11px] font-medium px-1.5 py-0.5 rounded-md ${
                   u.online
                     ? (u.status === 'idle' ? 'bg-amber-500/10 text-amber-300' : 'bg-emerald-500/10 text-emerald-300')
-                    : 'text-slate-500'
+                    : (u.work_status === 'home' || u.status === 'home' ? 'bg-rose-500/10 text-rose-300' : 'text-slate-500')
                 }`}>
-                  {u.online ? (u.status === 'idle' ? 'Rảnh' : 'Đang làm') : 'Ngoại tuyến'}
+                  {u.online ? (u.status === 'idle' ? 'Rảnh' : 'Đang làm') : (u.work_status === 'home' || u.status === 'home' ? 'Về nhà' : 'Ngoại tuyến')}
                 </span>
               </div>
             ))}
@@ -924,7 +1092,7 @@ export default function OfficeWorkspace({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-400">Khu vực:</span>
-              <span className="font-medium text-slate-200">{selectedColleague.room || selectedColleague.department || 'Văn phòng trung tâm'}</span>
+              <span className="font-medium text-slate-200">{ROOM_LABELS[selectedColleague.room] || ROOM_LABELS[selectedColleague.seat?.room] || selectedColleague.room || selectedColleague.department || 'Văn phòng trung tâm'}</span>
             </div>
           </div>
 
