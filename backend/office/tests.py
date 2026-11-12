@@ -487,10 +487,76 @@ nonexistent_email@test.com,tech,1,false
             self.assertEqual(res.status_code, status.HTTP_200_OK)
             self.assertEqual(res.json()['user_status'], 'working')
 
-        # 5. Sau 4 phút -> hết timeout -> offline dù is_idle=False
+        # 5. Sau 4 phút -> không timeout offline; vẫn trả STATUS_WORKING và online=True
         t3 = t2 + timedelta(seconds=240)
         with patch('django.utils.timezone.now', return_value=t3):
+            presence = OfficePresence.objects.get(user=self.dev_user)
+            self.assertEqual(presence.get_status(t3, is_me=True), STATUS_WORKING)
             roster_res = self.client.get('/api/office/roster/')
             dev_entry = next(m for m in roster_res.json()['roster'] if m['is_me'])
-            self.assertEqual(dev_entry['status'], 'offline')
+            self.assertEqual(dev_entry['status'], STATUS_WORKING)
+            self.assertTrue(dev_entry['online'])
+
+        # 6. Chuyển sang STATUS_IDLE và kiểm tra sau 4 phút vẫn trả STATUS_IDLE và online=True
+        with patch('django.utils.timezone.now', return_value=t3):
+            res = self.client.post('/api/office/status/', {'status': STATUS_IDLE}, format='json')
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            self.assertEqual(res.json()['user_status'], STATUS_IDLE)
+            self.assertTrue(res.json()['online'])
+
+        t4 = t3 + timedelta(seconds=240)
+        with patch('django.utils.timezone.now', return_value=t4):
+            roster_res = self.client.get('/api/office/roster/')
+            dev_entry = next(m for m in roster_res.json()['roster'] if m['is_me'])
+            self.assertEqual(dev_entry['status'], STATUS_IDLE)
+            self.assertTrue(dev_entry['online'])
+
+        # 7. Chỉ khi work_status == STATUS_HOME thì online=False
+        with patch('django.utils.timezone.now', return_value=t4):
+            res = self.client.post('/api/office/status/', {'status': STATUS_HOME}, format='json')
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            self.assertFalse(res.json()['online'])
+
+            roster_res = self.client.get('/api/office/roster/')
+            dev_entry = next(m for m in roster_res.json()['roster'] if m['is_me'])
+            self.assertEqual(dev_entry['status'], STATUS_HOME)
             self.assertFalse(dev_entry['online'])
+
+    def test_all_five_fb_bots_routed_to_media_room(self):
+        """Toàn bộ 5 FB bots (kể cả khi đang gắn seat ROOM_EXAM) phải được xếp vào ROOM_MEDIA."""
+        from office.management.commands.office_seed_seats import _classify_user_for_seed
+
+        bot_specs = [
+            ('bot.fb.trend@fermat.vn', 'AI Săn tin & Xu hướng', 'Chuyên viên Săn tin AI'),
+            ('bot.fb.material@fermat.vn', 'AI Xử lý tư liệu', 'Chuyên viên Tư liệu AI'),
+            ('bot.fb.writer@fermat.vn', 'AI Soạn thảo bài viết', 'Biên tập viên AI'),
+            ('bot.fb.reviewer@fermat.vn', 'AI Kiểm duyệt nội dung', 'Kiểm duyệt viên AI'),
+            ('bot.fb.publisher@fermat.vn', 'AI Đăng bài tự động', 'Điều phối xuất bản AI'),
+        ]
+        bot_names = set()
+        for idx, (email, name, title_name) in enumerate(bot_specs, start=3):
+            jt, _ = JobTitle.objects.get_or_create(name=title_name)
+            bot_user = UserProfile.objects.create(
+                email=email,
+                name=name,
+                role='BOT',
+                department=self.dept_exam,
+                job_title=jt,
+                employment_status='ACTIVE',
+            )
+            OfficeSeat.objects.create(user=bot_user, room=ROOM_EXAM, seat_index=idx, is_head=False)
+            bot_names.add(name)
+            self.assertEqual(_classify_user_for_seed(bot_user)['room'], ROOM_MEDIA)
+
+        self.client.force_authenticate(user=self.dev_user)
+        roster_res = self.client.get('/api/office/roster/')
+        self.assertEqual(roster_res.status_code, status.HTTP_200_OK)
+        roster = roster_res.json()['roster']
+
+        bot_entries = [m for m in roster if m['name'] in bot_names]
+        self.assertEqual(len(bot_entries), 5)
+        for entry in bot_entries:
+            self.assertEqual(entry['seat']['room'], ROOM_MEDIA)
+            self.assertTrue(entry['is_bot'])
+            self.assertTrue(entry['online'])
+

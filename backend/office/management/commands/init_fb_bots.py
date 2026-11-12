@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from authentication.models import UserProfile, Department, JobTitle
-from office.models import OfficeSeat, OfficePresence, ROOM_EXAM
+from office.models import OfficeSeat, OfficePresence, ROOM_MEDIA
 from social.bot_models import FbBotProfile, FbDraftPost
 
 BOTS = [
@@ -9,7 +9,7 @@ BOTS = [
         "email": "bot.fb.trend@fermat.vn",
         "name": "AI Săn tin & Xu hướng",
         "role": "Chuyên viên Săn tin AI",
-        "seat_index": 3,
+        "seat_index": 1,
         "avatar": {"shirt": "#10B981", "hair": "#1E293B", "hairStyle": "spiky", "glasses": True},
     },
     {
@@ -17,7 +17,7 @@ BOTS = [
         "email": "bot.fb.material@fermat.vn",
         "name": "AI Xử lý tư liệu",
         "role": "Chuyên viên Tư liệu AI",
-        "seat_index": 4,
+        "seat_index": 2,
         "avatar": {"shirt": "#F59E0B", "hair": "#3B2F2F", "hairStyle": "plain"},
     },
     {
@@ -25,7 +25,7 @@ BOTS = [
         "email": "bot.fb.writer@fermat.vn",
         "name": "AI Soạn thảo bài viết",
         "role": "Biên tập viên AI",
-        "seat_index": 5,
+        "seat_index": 3,
         "avatar": {"shirt": "#3B82F6", "hair": "#18181B", "hairStyle": "plain"},
     },
     {
@@ -33,7 +33,7 @@ BOTS = [
         "email": "bot.fb.reviewer@fermat.vn",
         "name": "AI Kiểm duyệt nội dung",
         "role": "Kiểm duyệt viên AI",
-        "seat_index": 6,
+        "seat_index": 4,
         "avatar": {"shirt": "#8B5CF6", "hair": "#4C1D95", "hairStyle": "spiky", "glasses": True},
     },
     {
@@ -41,13 +41,13 @@ BOTS = [
         "email": "bot.fb.publisher@fermat.vn",
         "name": "AI Đăng bài tự động",
         "role": "Điều phối xuất bản AI",
-        "seat_index": 7,
+        "seat_index": 5,
         "avatar": {"shirt": "#EC4899", "hair": "#1F2937", "hairStyle": "plain"},
     },
 ]
 
 class Command(BaseCommand):
-    help = "Khởi tạo 5 nhân sự bot Facebook ngồi tại phòng Khảo thí"
+    help = "Khởi tạo 5 nhân sự bot Facebook ngồi tại phòng Truyền thông"
 
     def handle(self, *args, **options):
         exam_dept = (
@@ -82,10 +82,11 @@ class Command(BaseCommand):
 
             seat, _ = OfficeSeat.objects.get_or_create(
                 user=user,
-                defaults={"room": ROOM_EXAM, "seat_index": b["seat_index"], "is_head": False}
+                defaults={"room": ROOM_MEDIA, "seat_index": b["seat_index"], "is_head": False}
             )
-            seat.room = ROOM_EXAM
+            seat.room = ROOM_MEDIA
             seat.seat_index = b["seat_index"]
+            seat.is_head = False
             seat.save()
 
             presence, _ = OfficePresence.objects.get_or_create(
