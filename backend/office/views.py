@@ -1,64 +1,137 @@
-import hashlib
 import collections
+import hashlib
 import logging
+import re
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.models import UserProfile
-from authentication.permissions import IsAdmin, IsWorkspaceAuthenticated, request_role
+from authentication.permissions import IsAdmin, IsWorkspaceAuthenticated
 from .models import (
     HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS,
-    ONLINE_TIMEOUT_SECONDS,
     ROOM_COMMON,
+    ROOM_DIRECTOR,
+    ROOM_MEDIA,
+    STATUS_HOME,
+    STATUS_IDLE,
+    STATUS_OFFLINE,
+    STATUS_WORKING,
     OfficePresence,
     OfficeSeat,
+    is_director_account,
+    remove_vietnamese_accents,
     suggest_seat_for_user,
 )
 from .serializers import AvatarConfigSerializer, OfficeSeatUpdateSerializer
 
 logger = logging.getLogger(__name__)
 
+VALID_WORK_STATUSES = (STATUS_WORKING, STATUS_IDLE, STATUS_HOME)
+
+EXACT_FEMALE_TOKENS = {
+    'thị', 'hoa', 'lan', 'linh', 'vân', 'hương', 'trang', 'thảo', 'ngọc',
+    'hà', 'mai', 'phương', 'quỳnh', 'nga', 'huyền', 'yến', 'nhung', 'dung',
+    'hằng', 'thúy', 'tuyết', 'diệp', 'nhi', 'vy', 'my', 'uyên', 'tâm',
+    'chi', 'trinh', 'oanh', 'hạnh', 'liên', 'đào', 'nguyệt', 'kiều', 'diễm',
+    'loan', 'lệ', 'thu', 'xuân', 'hồng',
+}
+
+UNACCENTED_FEMALE_TOKENS = {
+    'thi', 'hoa', 'lan', 'linh', 'huong', 'trang', 'thao', 'quynh', 'nga',
+    'huyen', 'yen', 'nhung', 'thuy', 'tuyet', 'diep', 'nhi', 'vy', 'uyen',
+    'trinh', 'oanh', 'hanh', 'lien', 'nguyet', 'kieu', 'diem', 'loan',
+}
+
+
+def guess_gender_from_vietnamese_name(name: str) -> str:
+    """Suy đoán giới tính ('male' | 'female') từ tên tiếng Việt."""
+    if not name:
+        return 'male'
+    clean_name = str(name).strip().lower()
+    words = re.findall(r'[^\W\d_]+', clean_name, flags=re.UNICODE)
+    if not words:
+        return 'male'
+    # Kiểm tra tên đệm + tên (bỏ họ để tránh nhầm họ Đào, Hà, Mai, Hồng...)
+    check_words = set(words[1:]) if len(words) > 1 else set(words)
+    if check_words & EXACT_FEMALE_TOKENS:
+        return 'female'
+    norm_words = {remove_vietnamese_accents(w) for w in check_words}
+    if norm_words & UNACCENTED_FEMALE_TOKENS:
+        return 'female'
+    return 'male'
+
 
 class HeartbeatView(APIView):
     """
     POST /api/office/heartbeat/
     Cập nhật last_seen của người dùng đang đăng nhập.
-    Hỗ trợ gửi trạng thái rảnh: { idle: boolean } (Việc 033).
-    Web gọi mỗi ~60 giây khi tab đang mở hoặc ngay khi đổi trạng thái làm việc/rảnh.
-    Có rate limit ghi để bảo vệ SQLite (không ghi nếu lần cuối < 30s và idle không đổi).
+    Hỗ trợ gửi trạng thái: { idle: boolean, status?: 'working' | 'idle' | 'home' }.
+    Web gọi mỗi ~60 giây khi tab đang mở hoặc ngay khi đổi trạng thái làm việc/rảnh/về nhà.
+    Có rate limit ghi để bảo vệ SQLite (không ghi nếu lần cuối < 30s và trạng thái không đổi).
     """
     permission_classes = [IsWorkspaceAuthenticated]
 
     def post(self, request):
         user = request.user
         now = timezone.now()
+        data = request.data if isinstance(request.data, dict) else {}
 
-        # Đọc cờ idle từ body (mặc định False nếu không truyền)
-        raw_idle = request.data.get('idle') if isinstance(request.data, dict) else False
-        is_idle = bool(raw_idle)
+        raw_status = data.get('status')
+        if raw_status is not None and raw_status not in VALID_WORK_STATUSES:
+            return Response(
+                {'error': "Trạng thái không hợp lệ. Cho phép: 'working', 'idle', 'home'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        has_idle = 'idle' in data and data.get('idle') is not None
+        raw_idle = bool(data.get('idle')) if has_idle else False
 
         presence, created = OfficePresence.objects.get_or_create(
             user=user,
-            defaults={'last_seen': now, 'show_presence': True, 'is_idle': is_idle},
+            defaults={
+                'last_seen': now,
+                'show_presence': True,
+                'is_idle': (raw_status == STATUS_IDLE) if raw_status is not None else raw_idle,
+                'work_status': raw_status if raw_status is not None else (STATUS_IDLE if raw_idle else STATUS_WORKING),
+            },
         )
 
         rate_limited = False
-        idle_changed = (presence.is_idle != is_idle)
-
         if not created:
-            # Nếu idle thay đổi thì luôn ghi ngay (bỏ qua rate limit 30s để phản hồi tức thì)
-            if not idle_changed and presence.last_seen and (now - presence.last_seen).total_seconds() < HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS:
+            old_work_status = presence.work_status
+            old_is_idle = presence.is_idle
+
+            if raw_status is not None:
+                next_work_status = raw_status
+                next_is_idle = (raw_status == STATUS_IDLE)
+            elif has_idle:
+                next_is_idle = raw_idle
+                if old_work_status == STATUS_HOME:
+                    next_work_status = STATUS_HOME
+                elif next_is_idle:
+                    next_work_status = STATUS_IDLE
+                else:
+                    next_work_status = STATUS_WORKING
+            else:
+                next_is_idle = False if old_work_status != STATUS_IDLE else old_is_idle
+                next_work_status = old_work_status
+
+            state_changed = (next_work_status != old_work_status) or (next_is_idle != old_is_idle)
+
+            if not state_changed and presence.last_seen and (now - presence.last_seen).total_seconds() < HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS:
                 rate_limited = True
             else:
                 presence.last_seen = now
-                presence.is_idle = is_idle
-                presence.save(update_fields=['last_seen', 'is_idle', 'updated_at'])
+                presence.work_status = next_work_status
+                presence.is_idle = next_is_idle
+                presence.save(update_fields=['last_seen', 'work_status', 'is_idle', 'updated_at'])
 
         return Response({
             'status': 'ok',
-            'online': True,
+            'online': presence.work_status != STATUS_HOME,
+            'work_status': presence.work_status,
             'is_idle': presence.is_idle,
             'user_status': presence.get_status(now, is_me=True),
             'last_seen': presence.last_seen.isoformat() if presence.last_seen else now.isoformat(),
@@ -66,14 +139,66 @@ class HeartbeatView(APIView):
         })
 
 
+OfficeHeartbeatView = HeartbeatView
+
+
+class OfficeStatusView(APIView):
+    """
+    GET /api/office/status/
+    POST /api/office/status/
+    Xem hoặc cập nhật trạng thái làm việc: { status: 'working' | 'idle' | 'home' }.
+    """
+    permission_classes = [IsWorkspaceAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        presence, _ = OfficePresence.objects.get_or_create(
+            user=user,
+            defaults={'show_presence': True, 'work_status': STATUS_WORKING, 'is_idle': False},
+        )
+        return Response({
+            'status': 'ok',
+            'work_status': presence.work_status,
+            'is_idle': presence.is_idle,
+            'online': presence.work_status != STATUS_HOME,
+            'user_status': presence.get_status(timezone.now(), is_me=True),
+        })
+
+    def post(self, request):
+        user = request.user
+        now = timezone.now()
+        data = request.data if isinstance(request.data, dict) else {}
+        target_status = data.get('status')
+        if target_status not in VALID_WORK_STATUSES:
+            return Response(
+                {'error': "Trạng thái không hợp lệ. Cho phép: 'working', 'idle', 'home'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        presence, _ = OfficePresence.objects.get_or_create(
+            user=user,
+            defaults={'last_seen': now, 'show_presence': True},
+        )
+        presence.work_status = target_status
+        presence.is_idle = (target_status == STATUS_IDLE)
+        presence.last_seen = now
+        presence.save(update_fields=['work_status', 'is_idle', 'last_seen', 'updated_at'])
+
+        return Response({
+            'status': 'ok',
+            'work_status': presence.work_status,
+            'is_idle': presence.is_idle,
+            'online': presence.work_status != STATUS_HOME,
+            'user_status': presence.get_status(now, is_me=True),
+            'last_seen': presence.last_seen.isoformat(),
+        })
+
+
 class OfficeRosterView(APIView):
     """
     GET /api/office/roster/
     Trả danh sách nhân viên an toàn cho mọi người dùng đã đăng nhập.
-    Chỉ gồm: tên hiển thị, phòng ban, chức danh, chỗ ngồi, online (bool), is_me, avatar.
-    Ẩn người đã nghỉ việc.
-    Không trả email, điện thoại, lịch hay dữ liệu riêng của người khác.
-    Nếu show_presence = False thì người khác luôn thấy offline.
+    Mặc định toàn bộ nhân sự ACTIVE đều online trừ khi work_status == 'home'.
     """
     permission_classes = [IsWorkspaceAuthenticated]
 
@@ -82,18 +207,52 @@ class OfficeRosterView(APIView):
         current_email = getattr(request.user, 'email', '')
 
         # Lấy tất cả nhân viên đang hoạt động (ACTIVE)
-        active_users = UserProfile.objects.filter(
-            employment_status='ACTIVE'
-        ).select_related('department', 'job_title', 'office_seat', 'office_presence')
+        active_users = list(
+            UserProfile.objects.filter(
+                employment_status='ACTIVE'
+            ).select_related('department', 'job_title', 'office_seat', 'office_presence')
+        )
 
-        roster = []
-        room_counters = collections.defaultdict(int)
+        # Bước 1: Xác định khu vực và chỗ ngồi cố định trước để tránh trùng seat_index
+        used_seats = collections.defaultdict(set)
+        preliminary = []
         for u in active_users:
-            is_me = (u.email.strip().lower() == current_email.strip().lower()) if (u.email and current_email) else False
-            member_id = hashlib.sha256(u.email.encode('utf-8')).hexdigest()[:12] if u.email else f"u_{u.pk}"
+            is_director_user = is_director_account(u)
+            is_bot = bool(getattr(u, 'role', '') == 'BOT' or (u.email and u.email.strip().lower().startswith('bot.')))
+            job_title_name = u.job_title.name if getattr(u, 'job_title', None) else ''
+            bot_text = f"{u.name or ''} {getattr(u, 'role', '') or ''} {job_title_name} {u.email or ''}".lower()
+            bot_norm = remove_vietnamese_accents(bot_text)
 
-            # Chỗ ngồi: ưu tiên OfficeSeat trong DB, nếu chưa có thì gợi ý theo phòng ban
-            if hasattr(u, 'office_seat') and u.office_seat:
+            is_assistant = bool(is_bot and any(k in bot_text or k in bot_norm for k in ['assistant', 'trợ lý', 'tro ly', 'hermes']))
+            is_media_bot = bool(
+                is_bot
+                and not is_assistant
+                and any(
+                    k in bot_text or k in bot_norm
+                    for k in [
+                        'truyền thông', 'truyen thong', 'đăng bài', 'dang bai',
+                        'soạn thảo', 'soan thao', 'social', 'media', 'facebook', 'zalo',
+                    ]
+                )
+            )
+
+            if is_director_user:
+                room = ROOM_DIRECTOR
+                seat_index = 1
+                is_head = True
+            elif is_assistant:
+                room = ROOM_COMMON
+                seat_index = None
+                is_head = False
+            elif is_media_bot:
+                room = ROOM_MEDIA
+                seat_index = (
+                    u.office_seat.seat_index
+                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_MEDIA
+                    else None
+                )
+                is_head = False
+            elif hasattr(u, 'office_seat') and u.office_seat:
                 room = u.office_seat.room
                 seat_index = u.office_seat.seat_index
                 is_head = u.office_seat.is_head
@@ -103,42 +262,91 @@ class OfficeRosterView(APIView):
                 seat_index = sug.get('seat_index')
                 is_head = sug.get('is_head', False)
 
-            # Phân bổ seat_index tuần tự không trùng lặp nếu chưa có
+            if seat_index is not None and seat_index > 0:
+                used_seats[room].add(seat_index)
+
+            preliminary.append({
+                'user': u,
+                'room': room,
+                'seat_index': seat_index,
+                'is_head': is_head,
+                'is_director_user': is_director_user,
+                'is_bot': is_bot,
+                'is_assistant': is_assistant,
+            })
+
+        # Bước 2: Gán seat_index tự động không trùng lặp và xây dựng roster payload
+        roster = []
+        next_seat_counter = collections.defaultdict(lambda: 1)
+
+        for entry in preliminary:
+            u = entry['user']
+            room = entry['room']
+            seat_index = entry['seat_index']
+            is_head = entry['is_head']
+            is_director_user = entry['is_director_user']
+            is_bot = entry['is_bot']
+            is_assistant = entry['is_assistant']
+
             if seat_index is None or seat_index == 0:
-                room_counters[room] += 1
-                seat_index = room_counters[room]
+                candidate = next_seat_counter[room]
+                while candidate in used_seats[room]:
+                    candidate += 1
+                seat_index = candidate
+                used_seats[room].add(seat_index)
+                next_seat_counter[room] = candidate + 1
+
+            is_me = (u.email.strip().lower() == current_email.strip().lower()) if (u.email and current_email) else False
+            member_id = hashlib.sha256(u.email.encode('utf-8')).hexdigest()[:12] if u.email else f"u_{u.pk}"
 
             seat_data = {
                 'room': room,
                 'seat_index': seat_index,
                 'is_head': is_head,
             }
-            # Hiện diện và avatar
+
             presence = getattr(u, 'office_presence', None)
-            avatar_cfg = presence.avatar_config if presence and isinstance(presence.avatar_config, dict) else {}
+            avatar_cfg = dict(presence.avatar_config) if presence and isinstance(presence.avatar_config, dict) else {}
             show_presence = presence.show_presence if presence else True
+            work_status = getattr(presence, 'work_status', STATUS_WORKING) if presence else STATUS_WORKING
+            is_presence_idle = getattr(presence, 'is_idle', False) if presence else False
 
-            # Tính trạng thái online: có nhịp trong 3 phút
-            is_bot = bool(getattr(u, 'role', '') == 'BOT' or (u.email and u.email.strip().lower().startswith('bot.')))
-            is_assistant = bool(is_bot and ('assistant' in (u.email or '').lower() or 'trợ lý' in (u.name or '').lower()))
-            raw_online = True if is_bot else (presence.is_online(now) if presence else False)
+            display_name = avatar_cfg.get('display_name') or u.name or (u.email.split('@')[0] if u.email else 'Thành viên')
 
-            # Tính trạng thái working / idle / offline
+            gender = avatar_cfg.get('gender')
+            if gender not in ('male', 'female'):
+                gender = guess_gender_from_vietnamese_name(u.name or display_name or '')
+
+            # Auto online cho nhân sự ACTIVE (chưa có presence hoặc chưa timeout), trừ khi work_status == 'home' hoặc hết timeout heartbeat
             if is_bot:
-                user_status = 'working'
+                user_status = STATUS_WORKING
+                raw_online = True
                 is_user_idle = False
-            elif presence:
-                user_status = presence.get_status(now, is_me=is_me)
-                is_user_idle = presence.is_idle
+            elif presence is None:
+                user_status = STATUS_WORKING
+                raw_online = True
+                is_user_idle = False
             else:
-                user_status = 'offline'
-                is_user_idle = False
+                user_status = presence.get_status(now, is_me=is_me)
+                if user_status in (STATUS_OFFLINE, STATUS_HOME):
+                    raw_online = False
+                    is_user_idle = False
+                elif user_status == STATUS_IDLE:
+                    raw_online = True
+                    is_user_idle = True
+                else:
+                    raw_online = True
+                    is_user_idle = False
 
             # Nếu tắt hiện diện thì người khác luôn thấy offline
-            display_online = raw_online if (is_me or show_presence) else False
+            if not is_me and not show_presence:
+                display_online = False
+                display_status = STATUS_OFFLINE
+            else:
+                display_online = raw_online
+                display_status = user_status
 
-            # Tên hiển thị an toàn: lấy tên tuỳ chỉnh avatar hoặc UserProfile.name
-            display_name = avatar_cfg.get('display_name') or u.name or (u.email.split('@')[0] if u.email else 'Thành viên')
+            is_director = bool(is_director_user or (room == ROOM_DIRECTOR and is_head))
 
             member_info = {
                 'name': display_name,
@@ -148,36 +356,44 @@ class OfficeRosterView(APIView):
                 'id': member_id,
                 'seat': seat_data,
                 'online': display_online,
-                'status': user_status,
+                'status': display_status,
+                'work_status': work_status,
                 'is_idle': is_user_idle,
                 'is_bot': is_bot,
                 'is_assistant': is_assistant,
+                'is_director': is_director,
                 'is_me': is_me,
-                'avatar': avatar_cfg,
+                'gender': gender,
+                'avatar': {**avatar_cfg, 'gender': gender},
             }
 
             if is_me:
-                # Chính người dùng được biết cấu hình ẩn hiện của mình
                 member_info['show_presence'] = show_presence
 
             roster.append(member_info)
 
-        # Đảm bảo luôn có Robot Trợ lý AI chuyên trách trong văn phòng
+        # Đảm bảo luôn có Robot Trợ lý AI chuyên trách trong văn phòng (phòng chung)
         if not any(m.get('is_assistant') for m in roster):
+            assistant_seat = 1
+            while assistant_seat in used_seats[ROOM_COMMON]:
+                assistant_seat += 1
             roster.append({
                 'name': 'Robot Trợ lý AI',
                 'department': 'Văn phòng trung tâm',
                 'job_title': 'Trợ lý AI Workspace',
                 'role': 'Trợ lý AI Workspace',
                 'id': 'bot-assistant',
-                'seat': {'room': ROOM_COMMON, 'seat_index': 1, 'is_head': False},
+                'seat': {'room': ROOM_COMMON, 'seat_index': assistant_seat, 'is_head': False},
                 'online': True,
-                'status': 'working',
+                'status': STATUS_WORKING,
+                'work_status': STATUS_WORKING,
                 'is_idle': False,
                 'is_bot': True,
                 'is_assistant': True,
+                'is_director': False,
                 'is_me': False,
-                'avatar': {'shirt': '#0EA5E9', 'skin_color': '#E2E8F0', 'glasses': False},
+                'gender': 'male',
+                'avatar': {'shirt': '#0EA5E9', 'skin_color': '#E2E8F0', 'glasses': False, 'gender': 'male'},
             })
 
         return Response({'roster': roster})
@@ -197,9 +413,13 @@ class MyAvatarView(APIView):
             user=user,
             defaults={'show_presence': True, 'avatar_config': {}},
         )
+        avatar = dict(presence.avatar_config or {})
+        if 'gender' not in avatar:
+            avatar['gender'] = guess_gender_from_vietnamese_name(user.name or '')
         return Response({
             'show_presence': presence.show_presence,
-            'avatar': presence.avatar_config or {},
+            'avatar': avatar,
+            'gender': avatar.get('gender', 'male'),
         })
 
     def put(self, request):
@@ -214,7 +434,7 @@ class MyAvatarView(APIView):
         if 'show_presence' in validated:
             presence.show_presence = validated['show_presence']
 
-        avatar_keys = ['display_name', 'skin_color', 'hair_style', 'hair_color', 'outfit_color', 'glasses']
+        avatar_keys = ['display_name', 'skin_color', 'hair_style', 'hair_color', 'outfit_color', 'glasses', 'gender']
         current_config = dict(presence.avatar_config or {})
         for key in avatar_keys:
             if key in validated:
@@ -227,6 +447,7 @@ class MyAvatarView(APIView):
             'status': 'ok',
             'show_presence': presence.show_presence,
             'avatar': presence.avatar_config,
+            'gender': presence.avatar_config.get('gender', 'male'),
         })
 
 

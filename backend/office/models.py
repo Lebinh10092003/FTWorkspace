@@ -1,3 +1,4 @@
+import unicodedata
 from django.db import models
 from django.utils import timezone
 
@@ -5,6 +6,7 @@ from django.utils import timezone
 ROOM_DIRECTOR = 'director'
 ROOM_TECH = 'tech'
 ROOM_EXAM = 'exam'
+ROOM_MEDIA = 'media'
 ROOM_ACCOUNTING = 'accounting'
 ROOM_COMMON = 'common'
 
@@ -12,14 +14,16 @@ ROOM_CHOICES = [
     (ROOM_DIRECTOR, 'Phòng Giám đốc'),
     (ROOM_TECH, 'Phòng Công nghệ'),
     (ROOM_EXAM, 'Phòng Khảo thí'),
-    (ROOM_ACCOUNTING, 'Phòng Kế toán'),
-    (ROOM_COMMON, 'Phòng khách chung'),
+    (ROOM_MEDIA, 'Phòng Truyền thông'),
+    (ROOM_ACCOUNTING, 'Phòng Kế toán & HR'),
+    (ROOM_COMMON, 'Phòng chung'),
 ]
 
 ROOM_CAPACITIES = {
     ROOM_DIRECTOR: 1,
     ROOM_TECH: 4,
     ROOM_EXAM: 8,
+    ROOM_MEDIA: 6,
     ROOM_ACCOUNTING: 2,
     ROOM_COMMON: None,
 }
@@ -29,7 +33,30 @@ HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS = 30  # Giới hạn tần suất ghi SQLit
 
 STATUS_WORKING = 'working'
 STATUS_IDLE = 'idle'
+STATUS_HOME = 'home'
 STATUS_OFFLINE = 'offline'
+
+WORK_STATUS_CHOICES = [
+    (STATUS_WORKING, 'Đang làm việc'),
+    (STATUS_IDLE, 'Rảnh'),
+    (STATUS_HOME, 'Về nhà'),
+]
+
+
+def remove_vietnamese_accents(text: str) -> str:
+    """Chuẩn hóa chuỗi tiếng Việt về dạng không dấu, viết thường."""
+    if not text:
+        return ''
+    normalized = unicodedata.normalize('NFKD', str(text))
+    stripped = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+    return stripped.replace('đ', 'd').replace('Đ', 'D').lower().strip()
+
+
+def is_director_account(user) -> bool:
+    """Kiểm tra tài khoản Giám đốc (Lê Đức Thuận)."""
+    raw_name = getattr(user, 'name', '') or ''
+    norm_name = remove_vietnamese_accents(raw_name)
+    return 'le duc thuan' in norm_name or 'lê đức thuận' in raw_name.lower()
 
 
 class OfficeSeat(models.Model):
@@ -65,6 +92,11 @@ class OfficePresence(models.Model):
     )
     last_seen = models.DateTimeField(null=True, blank=True)
     is_idle = models.BooleanField(default=False)
+    work_status = models.CharField(
+        max_length=20,
+        choices=WORK_STATUS_CHOICES,
+        default=STATUS_WORKING,
+    )
     show_presence = models.BooleanField(default=True)
     avatar_config = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -75,7 +107,7 @@ class OfficePresence(models.Model):
         verbose_name_plural = 'Hiện diện văn phòng'
 
     def __str__(self):
-        return f'{self.user_id} (seen: {self.last_seen}, idle: {self.is_idle}, visible: {self.show_presence})'
+        return f'{self.user_id} (seen: {self.last_seen}, status: {self.work_status}, idle: {self.is_idle}, visible: {self.show_presence})'
 
     def is_online(self, now=None) -> bool:
         if not self.last_seen:
@@ -87,42 +119,63 @@ class OfficePresence(models.Model):
     def get_status(self, now=None, is_me=False) -> str:
         """
         Tính trạng thái của người dùng:
-        - 'offline': quá 3 phút hoặc show_presence tắt (với người khác)
-        - 'idle': online nhưng is_idle = True
-        - 'working': online và đang thao tác
+        - 'offline': show_presence tắt (với người khác) hoặc đã hết timeout heartbeat
+        - 'home': work_status == 'home'
+        - 'idle': work_status == 'idle' hoặc (work_status == 'working' và is_idle == True)
+        - 'working': đang làm việc
         """
-        online = self.is_online(now)
-        if not online or (not is_me and not self.show_presence):
+        if not is_me and not self.show_presence:
             return STATUS_OFFLINE
-        if self.is_idle:
+        if self.work_status == STATUS_HOME:
+            return STATUS_HOME
+        if self.last_seen is not None and not self.is_online(now):
+            return STATUS_OFFLINE
+        if self.work_status == STATUS_IDLE or (self.work_status == STATUS_WORKING and self.is_idle):
             return STATUS_IDLE
         return STATUS_WORKING
 
 
 def suggest_seat_for_user(user) -> dict:
-    """Tận dụng UserProfile.department/job_title/manager/role để gợi ý khu mặc định."""
-    dept_name = ''
-    if getattr(user, 'department', None) and getattr(user.department, 'name', None):
-        dept_name = user.department.name.lower()
-    
-    title_name = ''
-    if getattr(user, 'job_title', None) and getattr(user.job_title, 'name', None):
-        title_name = user.job_title.name.lower()
-    
-    role = str(getattr(user, 'role', '') or '').upper()
-
-    is_head = any(keyword in title_name for keyword in ['trưởng', 'lead', 'head', 'chủ nhiệm', 'giám đốc', 'director'])
-
-    # Ban giám đốc
-    if role == 'ADMIN' or any(keyword in title_name or keyword in dept_name for keyword in ['giám đốc', 'ban giám đốc', 'director', 'ceo']):
+    """Tận dụng UserProfile.name/department/job_title/role để gợi ý khu mặc định."""
+    if is_director_account(user):
         return {
             'room': ROOM_DIRECTOR,
             'is_head': True,
             'seat_index': 1,
         }
 
+    dept_name = ''
+    if getattr(user, 'department', None) and getattr(user.department, 'name', None):
+        dept_name = user.department.name.lower()
+
+    title_name = ''
+    if getattr(user, 'job_title', None) and getattr(user.job_title, 'name', None):
+        title_name = user.job_title.name.lower()
+
+    role = str(getattr(user, 'role', '') or '').upper()
+    combined = f'{dept_name} {title_name}'.strip()
+    combined_norm = remove_vietnamese_accents(combined)
+
+    is_head = any(keyword in title_name for keyword in ['trưởng', 'lead', 'head', 'chủ nhiệm', 'giám đốc', 'director'])
+
+    # Ban giám đốc
+    if role == 'ADMIN' or any(keyword in combined or keyword in combined_norm for keyword in ['giám đốc', 'giam doc', 'ban giám đốc', 'director', 'ceo']):
+        return {
+            'room': ROOM_DIRECTOR,
+            'is_head': True,
+            'seat_index': 1,
+        }
+
+    # Truyền thông (tách riêng với Khảo thí)
+    if any(keyword in combined or keyword in combined_norm for keyword in ['truyền thông', 'truyen thong', 'media', 'marketing', 'social', 'content']):
+        return {
+            'room': ROOM_MEDIA,
+            'is_head': is_head,
+            'seat_index': 1 if is_head else None,
+        }
+
     # Công nghệ
-    if any(keyword in dept_name or keyword in title_name for keyword in ['công nghệ', 'kỹ thuật', 'tech', 'it', 'phát triển', 'lập trình']):
+    if any(keyword in combined or keyword in combined_norm for keyword in ['công nghệ', 'cong nghe', 'kỹ thuật', 'ky thuat', 'tech', 'it', 'phát triển', 'phat trien', 'lập trình', 'lap trinh']):
         return {
             'room': ROOM_TECH,
             'is_head': is_head,
@@ -130,15 +183,15 @@ def suggest_seat_for_user(user) -> dict:
         }
 
     # Khảo thí
-    if any(keyword in dept_name or keyword in title_name for keyword in ['khảo thí', 'đề thi', 'exam', 'testing']):
+    if any(keyword in combined or keyword in combined_norm for keyword in ['khảo thí', 'khao thi', 'đề thi', 'de thi', 'exam', 'testing']):
         return {
             'room': ROOM_EXAM,
             'is_head': is_head,
             'seat_index': 1 if is_head else None,
         }
 
-    # Kế toán
-    if any(keyword in dept_name or keyword in title_name for keyword in ['kế toán', 'tài chính', 'accounting', 'finance']):
+    # Kế toán & HR (bỏ phòng HR riêng)
+    if any(keyword in combined or keyword in combined_norm for keyword in ['kế toán', 'ke toan', 'tài chính', 'tai chinh', 'accounting', 'finance', 'hr', 'nhân sự', 'nhan su']):
         return {
             'room': ROOM_ACCOUNTING,
             'is_head': is_head,

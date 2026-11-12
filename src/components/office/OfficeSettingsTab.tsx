@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Check, Eye, EyeOff, LoaderCircle } from 'lucide-react';
+import { Box, Check, Eye, EyeOff, LoaderCircle, User } from 'lucide-react';
 
 export type OfficeSettingsTabProps = {
   idToken: string | null;
@@ -8,6 +8,7 @@ export type OfficeSettingsTabProps = {
 
 export default function OfficeSettingsTab({ idToken, onOpenOffice }: OfficeSettingsTabProps) {
   const [showPresence, setShowPresence] = useState(true);
+  const [gender, setGender] = useState<'male' | 'female'>('male');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -27,9 +28,13 @@ export default function OfficeSettingsTab({ idToken, onOpenOffice }: OfficeSetti
         if (typeof data.show_presence === 'boolean') {
           setShowPresence(data.show_presence);
         }
+        const savedGender = data?.avatar?.gender ?? data?.gender;
+        if (savedGender === 'female' || savedGender === 'male') {
+          setGender(savedGender);
+        }
       })
       .catch(() => {
-        // Giữ mặc định true
+        // Giữ mặc định
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -71,6 +76,42 @@ export default function OfficeSettingsTab({ idToken, onOpenOffice }: OfficeSetti
       // Revert lại nếu lỗi
       setShowPresence(!nextValue);
       setNotice({ type: 'error', text: 'Lỗi khi cập nhật cài đặt hiện diện.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleGenderChange = async (nextGender: 'male' | 'female') => {
+    if (!idToken || saving || nextGender === gender) return;
+
+    const prevGender = gender;
+    setGender(nextGender);
+    setSaving(true);
+    setNotice(null);
+
+    try {
+      const response = await fetch('/api/office/me/avatar/', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ gender: nextGender }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Không thể lưu giới tính nhân vật.');
+      }
+
+      setNotice({
+        type: 'success',
+        text: nextGender === 'female'
+          ? 'Đã cập nhật tạo hình nhân vật 3D: Nữ.'
+          : 'Đã cập nhật tạo hình nhân vật 3D: Nam.',
+      });
+    } catch {
+      setGender(prevGender);
+      setNotice({ type: 'error', text: 'Lỗi khi lưu giới tính nhân vật 3D.' });
     } finally {
       setSaving(false);
     }
@@ -148,6 +189,59 @@ export default function OfficeSettingsTab({ idToken, onOpenOffice }: OfficeSetti
                     showPresence ? 'translate-x-5' : 'translate-x-0'
                   }`}
                 />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Lựa chọn giới tính nhân vật 3D (Nam / Nữ) */}
+        <div className="mt-6 border-t border-[var(--ft-border)] pt-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-lg p-2 bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
+                <User className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-sm font-bold text-[var(--ft-text-main)]">
+                  Giới tính nhân vật 3D
+                </span>
+                <p className="mt-0.5 text-xs text-[var(--ft-text-sub)] leading-relaxed">
+                  Chọn tạo hình nhân vật Nam hoặc Nữ đại diện cho bạn trong Văn phòng 3D.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0" role="radiogroup" aria-label="Giới tính nhân vật 3D">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={gender === 'male'}
+                disabled={saving}
+                onClick={() => handleGenderChange('male')}
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-bold transition cursor-pointer disabled:opacity-50 ${
+                  gender === 'male'
+                    ? 'border-sky-600 bg-sky-600 text-white shadow-sm'
+                    : 'border-[var(--ft-border)] bg-[var(--ft-surface-1)] text-[var(--ft-text-main)] hover:bg-[var(--ft-surface-2)]'
+                }`}
+              >
+                <span>Nam</span>
+                {gender === 'male' && <Check className="h-3.5 w-3.5" />}
+              </button>
+
+              <button
+                type="button"
+                role="radio"
+                aria-checked={gender === 'female'}
+                disabled={saving}
+                onClick={() => handleGenderChange('female')}
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-bold transition cursor-pointer disabled:opacity-50 ${
+                  gender === 'female'
+                    ? 'border-rose-500 bg-rose-500 text-white shadow-sm'
+                    : 'border-[var(--ft-border)] bg-[var(--ft-surface-1)] text-[var(--ft-text-main)] hover:bg-[var(--ft-surface-2)]'
+                }`}
+              >
+                <span>Nữ</span>
+                {gender === 'female' && <Check className="h-3.5 w-3.5" />}
               </button>
             </div>
           </div>
