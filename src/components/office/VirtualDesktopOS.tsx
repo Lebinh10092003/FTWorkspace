@@ -42,6 +42,14 @@ import {
   Wallet,
   Wrench
 } from 'lucide-react';
+import { FermatOSLaunchpad } from './FermatOSLaunchpad';
+import { FermatOSSafari } from './FermatOSSafari';
+import {
+  FermatOSFinanceWindow,
+  FermatOSSocialWindow,
+  FermatOSTrainingWindow,
+  FermatOSAttendanceWindow,
+} from './FermatOSDepartmentApps';
 
 export type VirtualDesktopOSProps = {
   isOpen: boolean;
@@ -68,7 +76,20 @@ export type VirtualDesktopOSProps = {
   idToken?: string | null;
 };
 
-export type WindowId = 'assistant' | 'exam' | 'reports' | 'docs' | 'terminal' | 'game' | 'settings' | 'apps' | 'browser';
+export type WindowId =
+  | 'assistant'
+  | 'exam'
+  | 'reports'
+  | 'docs'
+  | 'terminal'
+  | 'game'
+  | 'settings'
+  | 'apps'
+  | 'browser'
+  | 'finance'
+  | 'social'
+  | 'training'
+  | 'attendance';
 
 interface OSWindow {
   id: WindowId;
@@ -651,6 +672,11 @@ function VirtualDesktopOSInner({
   const [searchModuleQuery, setSearchModuleQuery] = useState('');
   const [browserUrl, setBrowserUrl] = useState<string>('/?view=examination');
   const [browserTitle, setBrowserTitle] = useState<string>('Khảo thí & Đề thi số');
+  const [browserHistory, setBrowserHistory] = useState<{ url: string; title: string }[]>([
+    { url: '/?view=examination', title: 'Khảo thí & Đề thi số' },
+  ]);
+  const [browserHistIdx, setBrowserHistIdx] = useState(0);
+  const [safariReloadKey, setSafariReloadKey] = useState(0);
 
   const [windows, setWindows] = useState<Record<WindowId, OSWindow>>({
     assistant: { id: 'assistant', title: 'Trợ lý AI Workstation', icon: Bot, isOpen: true, isMinimized: false, zIndex: 1 },
@@ -662,6 +688,10 @@ function VirtualDesktopOSInner({
     settings: { id: 'settings', title: 'Cài đặt hệ thống FermatOS', icon: Settings, isOpen: false, isMinimized: false, zIndex: 7 },
     apps: { id: 'apps', title: 'Launchpad · Tất cả ứng dụng', icon: LayoutGrid, isOpen: false, isMinimized: false, zIndex: 8 },
     browser: { id: 'browser', title: 'Fermat Safari · Trình duyệt phân hệ', icon: Globe, isOpen: false, isMinimized: false, zIndex: 9 },
+    finance: { id: 'finance', title: 'Sổ Kế Toán & Dòng Tiền', icon: Wallet, isOpen: false, isMinimized: false, zIndex: 10 },
+    social: { id: 'social', title: 'War-room Truyền Thông', icon: Share2, isOpen: false, isMinimized: false, zIndex: 11 },
+    training: { id: 'training', title: 'Công Nghệ & Đào Tạo Số', icon: Cpu, isOpen: false, isMinimized: false, zIndex: 12 },
+    attendance: { id: 'attendance', title: 'Trạm Chấm Công & Công Ca', icon: Clock, isOpen: false, isMinimized: false, zIndex: 13 },
   });
 
   const handleSelectWallpaper = (wpId: string) => {
@@ -678,10 +708,51 @@ function VirtualDesktopOSInner({
     } catch {}
   };
 
-  const openModuleInBrowser = (moduleKey: string, moduleName: string) => {
-    setBrowserUrl(`/?view=${moduleKey}&embed=1&os=1`);
+  const openModuleInBrowser = (moduleKeyOrUrl: string, moduleName: string) => {
+    const nextUrl =
+      moduleKeyOrUrl.startsWith('/') || moduleKeyOrUrl.startsWith('http')
+        ? moduleKeyOrUrl
+        : `/?view=${moduleKeyOrUrl}&embed=1&os=1`;
+    setBrowserUrl(nextUrl);
     setBrowserTitle(moduleName);
+    setBrowserHistory((prev) => {
+      const sliced = prev.slice(0, browserHistIdx + 1);
+      return [...sliced, { url: nextUrl, title: moduleName }];
+    });
+    setBrowserHistIdx((prev) => prev + 1);
     focusWindow('browser');
+  };
+
+  const handleOpenModule = (moduleKey: string, moduleName: string, nativeWindow?: string) => {
+    if (nativeWindow && nativeWindow in windows) {
+      focusWindow(nativeWindow as WindowId);
+    } else {
+      openModuleInBrowser(moduleKey, moduleName);
+    }
+  };
+
+  const handleSafariBack = () => {
+    if (browserHistIdx > 0) {
+      const nextIdx = browserHistIdx - 1;
+      const entry = browserHistory[nextIdx];
+      if (entry) {
+        setBrowserHistIdx(nextIdx);
+        setBrowserUrl(entry.url);
+        setBrowserTitle(entry.title);
+      }
+    }
+  };
+
+  const handleSafariForward = () => {
+    if (browserHistIdx < browserHistory.length - 1) {
+      const nextIdx = browserHistIdx + 1;
+      const entry = browserHistory[nextIdx];
+      if (entry) {
+        setBrowserHistIdx(nextIdx);
+        setBrowserUrl(entry.url);
+        setBrowserTitle(entry.title);
+      }
+    }
   };
 
   const currentWallpaperObj = WALLPAPERS.find(w => w.id === selectedWallpaper) || WALLPAPERS[0];
@@ -1030,6 +1101,10 @@ function VirtualDesktopOSInner({
                         settings: { id: 'settings', title: 'Cài đặt hệ thống FermatOS', icon: Settings, isOpen: false, isMinimized: false, zIndex: 7 },
                         apps: { id: 'apps', title: 'Launchpad · Tất cả ứng dụng', icon: LayoutGrid, isOpen: false, isMinimized: false, zIndex: 8 },
                         browser: { id: 'browser', title: 'Fermat Safari · Trình duyệt phân hệ', icon: Globe, isOpen: false, isMinimized: false, zIndex: 9 },
+                        finance: { id: 'finance', title: 'Sổ Kế Toán & Dòng Tiền', icon: Wallet, isOpen: false, isMinimized: false, zIndex: 10 },
+                        social: { id: 'social', title: 'War-room Truyền Thông', icon: Share2, isOpen: false, isMinimized: false, zIndex: 11 },
+                        training: { id: 'training', title: 'Công Nghệ & Đào Tạo Số', icon: Cpu, isOpen: false, isMinimized: false, zIndex: 12 },
+                        attendance: { id: 'attendance', title: 'Trạm Chấm Công & Công Ca', icon: Clock, isOpen: false, isMinimized: false, zIndex: 13 },
                       });
                     }}
                     className="w-full text-left px-3 py-1.5 hover:bg-sky-500 hover:text-white transition flex items-center gap-2"
@@ -2175,70 +2250,12 @@ function VirtualDesktopOSInner({
                   <div className="w-12" />
                 </div>
 
-                {/* Thanh tìm kiếm Launchpad */}
-                <div className="p-4 bg-slate-950/50 border-b border-white/10 flex items-center justify-between gap-4">
-                  <div className="relative flex-1 max-w-md">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Tìm kiếm ứng dụng, phân hệ làm việc..."
-                      value={searchModuleQuery}
-                      onChange={(e) => setSearchModuleQuery(e.target.value)}
-                      className="w-full bg-slate-900 border border-white/15 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-sky-400 transition"
-                    />
-                  </div>
-                  <span className="text-xs text-slate-400">
-                    Hiển thị {ALL_WORKSPACE_MODULES.filter(m => m.name.toLowerCase().includes(searchModuleQuery.toLowerCase()) || m.desc.toLowerCase().includes(searchModuleQuery.toLowerCase())).length} phân hệ
-                  </span>
-                </div>
-
-                {/* Danh sách ứng dụng */}
-                <div className="flex-1 p-5 overflow-y-auto">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
-                    {ALL_WORKSPACE_MODULES
-                      .filter(m =>
-                        m.name.toLowerCase().includes(searchModuleQuery.toLowerCase()) ||
-                        m.desc.toLowerCase().includes(searchModuleQuery.toLowerCase()) ||
-                        m.category.toLowerCase().includes(searchModuleQuery.toLowerCase())
-                      )
-                      .map(mod => {
-                        const ModIcon = mod.icon;
-                        return (
-                          <div
-                            key={mod.id}
-                            className="p-3.5 rounded-2xl bg-slate-900/70 border border-white/10 hover:border-white/20 transition-all hover:bg-slate-850/80 flex flex-col justify-between group"
-                          >
-                            <div>
-                              <div className="flex items-start justify-between gap-2">
-                                <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${mod.color} flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform`}>
-                                  <ModIcon className="w-5 h-5" />
-                                </div>
-                                {mod.badge && (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-sky-300 border border-white/15">
-                                    {mod.badge}
-                                  </span>
-                                )}
-                              </div>
-                              <h4 className="font-bold text-xs text-white mt-2.5">{mod.name}</h4>
-                              <span className="text-[10px] text-slate-400 block font-medium">{mod.category}</span>
-                              <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">{mod.desc}</p>
-                            </div>
-
-                            <div className="mt-3.5 flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => openModuleInBrowser(mod.moduleKey, mod.name)}
-                                className="flex-1 py-1.5 px-2 rounded-xl bg-sky-500/20 hover:bg-sky-500 text-sky-300 hover:text-white border border-sky-500/30 text-xs font-semibold transition flex items-center justify-center gap-1.5"
-                              >
-                                <Globe className="w-3 h-3" />
-                                <span>Mở trên FermatOS</span>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
+                {/* Launchpad component 5 khối phòng ban */}
+                <FermatOSLaunchpad
+                  searchQuery={searchModuleQuery}
+                  onSearchChange={setSearchModuleQuery}
+                  onOpenModule={handleOpenModule}
+                />
               </div>
             )}
 
@@ -2284,49 +2301,114 @@ function VirtualDesktopOSInner({
                   <div className="w-12" />
                 </div>
 
-                {/* Thanh điều hướng URL Safari */}
-                <div className="px-3.5 py-2 bg-slate-950/60 border-b border-white/10 flex items-center gap-3 text-xs">
-                  <div className="flex items-center gap-1.5 text-slate-400">
-                    <button
-                      type="button"
-                      onClick={() => focusWindow('apps')}
-                      className="p-1 hover:bg-white/10 rounded-lg text-slate-300 transition"
-                      title="Quay lại Launchpad"
-                    >
-                      <LayoutGrid className="w-3.5 h-3.5" />
-                    </button>
+                {/* FermatOSSafari Browser Viewport */}
+                <FermatOSSafari
+                  url={browserUrl}
+                  title={browserTitle}
+                  canGoBack={browserHistIdx > 0}
+                  canGoForward={browserHistIdx < browserHistory.length - 1}
+                  onBack={handleSafariBack}
+                  onForward={handleSafariForward}
+                  onReload={() => setSafariReloadKey((k) => k + 1)}
+                  onBackToLaunchpad={() => focusWindow('apps')}
+                  reloadKey={safariReloadKey}
+                />
+              </div>
+            )}
+
+            {/* CỬA SỔ 9: SỔ KẾ TOÁN & DÒNG TIỀN */}
+            {windows.finance.isOpen && !windows.finance.isMinimized && (
+              <div
+                onClick={() => focusWindow('finance')}
+                style={{ zIndex: windows.finance.zIndex }}
+                className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+              >
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/80 border-b border-white/10 text-xs select-none">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); closeWindow('finance'); }} className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Đóng"><span className="opacity-0 group-hover:opacity-100">×</span></button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); toggleMinimize('finance'); }} className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Thu nhỏ"><span className="opacity-0 group-hover:opacity-100">−</span></button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); focusWindow('finance'); }} className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Phóng to"><span className="opacity-0 group-hover:opacity-100">+</span></button>
                   </div>
-
-                  <div className="flex-1 flex items-center gap-2 bg-slate-900 border border-white/15 rounded-xl px-3 py-1 text-slate-200">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-[11px] font-mono text-slate-300 select-all flex-1 truncate">
-                      {typeof window !== 'undefined' ? window.location.origin : ''}{browserUrl}
-                    </span>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <Wallet className="w-4 h-4 text-emerald-400" />
+                    <span>SỔ KẾ TOÁN & DÒNG TIỀN ĐIỆN TỬ</span>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (typeof window !== 'undefined') {
-                        window.open(browserUrl, '_blank');
-                      }
-                    }}
-                    className="p-1.5 bg-white/5 hover:bg-white/15 rounded-xl text-slate-300 border border-white/10 transition flex items-center gap-1 text-[11px]"
-                    title="Mở trong tab trình duyệt mới"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Mở tab ngoài</span>
-                  </button>
+                  <div className="w-12" />
                 </div>
+                <FermatOSFinanceWindow idToken={idToken || undefined} onOpenBrowser={openModuleInBrowser} />
+              </div>
+            )}
 
-                {/* Viewport phân hệ */}
-                <div className="flex-1 relative bg-slate-950/80">
-                  <iframe
-                    src={browserUrl}
-                    title={browserTitle}
-                    className="w-full h-full border-none bg-slate-900"
-                  />
+            {/* CỬA SỔ 10: WAR-ROOM TRUYỀN THÔNG & ĐA KÊNH */}
+            {windows.social.isOpen && !windows.social.isMinimized && (
+              <div
+                onClick={() => focusWindow('social')}
+                style={{ zIndex: windows.social.zIndex }}
+                className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+              >
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/80 border-b border-white/10 text-xs select-none">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); closeWindow('social'); }} className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Đóng"><span className="opacity-0 group-hover:opacity-100">×</span></button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); toggleMinimize('social'); }} className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Thu nhỏ"><span className="opacity-0 group-hover:opacity-100">−</span></button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); focusWindow('social'); }} className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Phóng to"><span className="opacity-0 group-hover:opacity-100">+</span></button>
+                  </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <Share2 className="w-4 h-4 text-rose-400" />
+                    <span>WAR-ROOM TRUYỀN THÔNG & ĐA KÊNH</span>
+                  </div>
+                  <div className="w-12" />
                 </div>
+                <FermatOSSocialWindow idToken={idToken || undefined} onOpenBrowser={openModuleInBrowser} />
+              </div>
+            )}
+
+            {/* CỬA SỔ 11: CÔNG NGHỆ & ĐÀO TẠO SỐ */}
+            {windows.training.isOpen && !windows.training.isMinimized && (
+              <div
+                onClick={() => focusWindow('training')}
+                style={{ zIndex: windows.training.zIndex }}
+                className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+              >
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/80 border-b border-white/10 text-xs select-none">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); closeWindow('training'); }} className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Đóng"><span className="opacity-0 group-hover:opacity-100">×</span></button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); toggleMinimize('training'); }} className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Thu nhỏ"><span className="opacity-0 group-hover:opacity-100">−</span></button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); focusWindow('training'); }} className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Phóng to"><span className="opacity-0 group-hover:opacity-100">+</span></button>
+                  </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <Cpu className="w-4 h-4 text-indigo-400" />
+                    <span>CÔNG NGHỆ & ĐÀO TẠO SỐ</span>
+                  </div>
+                  <div className="w-12" />
+                </div>
+                <FermatOSTrainingWindow idToken={idToken || undefined} onOpenBrowser={openModuleInBrowser} />
+              </div>
+            )}
+
+            {/* CỬA SỔ 12: TRẠM CHẤM CÔNG & CÔNG CA */}
+            {windows.attendance.isOpen && !windows.attendance.isMinimized && (
+              <div
+                onClick={() => focusWindow('attendance')}
+                style={{ zIndex: windows.attendance.zIndex }}
+                className="absolute inset-2 bg-slate-900/95 border-2 border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+              >
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-950/80 border-b border-white/10 text-xs select-none">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); closeWindow('attendance'); }} className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Đóng"><span className="opacity-0 group-hover:opacity-100">×</span></button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); toggleMinimize('attendance'); }} className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Thu nhỏ"><span className="opacity-0 group-hover:opacity-100">−</span></button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); focusWindow('attendance'); }} className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] hover:opacity-80 flex items-center justify-center text-[7px] text-black/60 group font-bold transition cursor-pointer" title="Phóng to"><span className="opacity-0 group-hover:opacity-100">+</span></button>
+                  </div>
+                  <div className="flex items-center gap-2 font-bold tracking-wide text-slate-200">
+                    <Clock className="w-4 h-4 text-sky-400" />
+                    <span>TRẠM CHẤM CÔNG & CÔNG CA</span>
+                  </div>
+                  <div className="w-12" />
+                </div>
+                <FermatOSAttendanceWindow
+                  idToken={idToken || undefined}
+                  currentUserName={currentUser?.name || currentUser?.email}
+                  onOpenBrowser={openModuleInBrowser}
+                />
               </div>
             )}
 
