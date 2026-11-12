@@ -100,6 +100,7 @@ class RegistrationPageTests(TestCase):
         today = timezone.localdate()
         day = lambda offset: (today + timedelta(days=offset)).isoformat()
         slots = [{'id': 'b1', 'date': day(-30), 'registrationDeadline': day(-37)},
+                 {'id': 'b1-ca2', 'date': day(-30), 'registrationDeadline': day(-37)},
                  {'id': 'b2', 'date': day(24), 'registrationDeadline': day(17)},
                  {'id': 'b3', 'date': day(108), 'registrationDeadline': ''}]
         session = ExamSession.objects.create(id='fimo-batches', competition_id='TESTF', code='TESTF', name='batches',

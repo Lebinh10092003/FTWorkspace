@@ -70,7 +70,7 @@ def planned_rounds(session, code):
                 deadline = BATCH_DEADLINES[code].get(str(slot.get('date') or '').strip())
                 if deadline and not slot.get('registrationDeadline'):
                     slot['registrationDeadline'] = deadline
-                    changes.append(f"{item['name']} đợt {position + 1} (thi {slot['date']}): hạn đăng ký {deadline}")
+                    changes.append(f"{item['name']} (thi {slot['date']}): hạn đăng ký {deadline}")
             item['slots'] = slots
     return rounds, changes
 
@@ -100,7 +100,9 @@ class Command(BaseCommand):
             else:
                 skipped.append(f'{code} ({session.id}): đã đủ lệ phí/hạn, không cần điền')
         for session, _rounds, changes in plans:
-            self.stdout.write(f'{session.id} · {session.name} · giai đoạn "{session.phase}"')
+            offer = session_offer(session)
+            self.stdout.write(f'{session.id} · {session.name} · giai đoạn "{session.phase}" · trên form: {offer["status"]}'
+                              f' (hạn {offer["deadline"] or "?"}, mở từ {offer["opensOn"] or "?"}) · vòng đầu ngày {", ".join(sorted({str(slot.get("date")) for item in (session.rounds or [])[:1] if isinstance(item, dict) for slot in item.get("slots") or [] if isinstance(slot, dict)})) or "?"}')
             for change in changes:
                 self.stdout.write(f'  + {change}')
         for line in skipped:
