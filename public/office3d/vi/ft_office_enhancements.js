@@ -129,12 +129,15 @@
   const botQueue = [];
   let activeBotMission = null;
 
-  // CSS quy chuẩn cho tag và bubble không tràn màn hình trên mobile
+  // CSS quy chuẩn cho tag và bubble: ẩn tag trôi nổi mặc định, chỉ hiện tên nhỏ khi di chuột vào nhân vật
   (function injectResponsiveStyles() {
     const styleId = 'ft-office-responsive-styles';
-    if (document.getElementById(styleId)) return;
-    const style = document.createElement('style');
-    style.id = styleId;
+    let style = document.getElementById(styleId);
+    if (!style) {
+      style = document.createElement('style');
+      style.id = styleId;
+      if (document.head) document.head.appendChild(style);
+    }
     style.textContent = `
       #stage-wrap,
       #stage,
@@ -144,6 +147,7 @@
         max-width: none !important;
         min-width: 100% !important;
       }
+      /* Mặc định ẩn nhãn tên trôi nổi trên đầu nhân viên để không rối mắt */
       .labels .tag,
       .tag--boss,
       .tag--on,
@@ -152,19 +156,66 @@
       .tag--stuck,
       .tag--lost,
       .tag--me {
-        max-width: 145px !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
+        opacity: 0 !important;
+        pointer-events: auto !important;
+        transform: scale(0.85) !important;
+        transition: opacity 0.2s ease, transform 0.2s ease !important;
+        max-width: 140px !important;
+        font-size: 11px !important;
       }
+      /* Chỉ khi di chuột (hover) vào người đó hoặc tag thì mới hiển thị tên nhỏ gọn */
+      .labels .tag:hover,
+      .labels .tag.ft-hovered,
+      .labels .tag:focus,
+      .tag--boss:hover,
+      .tag--boss.ft-hovered,
+      .tag--on:hover,
+      .tag--on.ft-hovered,
+      .tag--sub:hover,
+      .tag--sub.ft-hovered,
+      .tag--me:hover,
+      .tag--me.ft-hovered {
+        opacity: 1 !important;
+        transform: scale(1) !important;
+        z-index: 9999 !important;
+      }
+      /* Bong bóng chat cảm thán luôn hiển thị bình thường khi có thoại */
       .bubble, [class*="bubble"] {
-        max-width: 220px !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        max-width: 200px !important;
         word-break: break-word !important;
         white-space: normal !important;
         line-height: 1.3 !important;
+        font-size: 12px !important;
       }
     `;
-    if (document.head) document.head.appendChild(style);
+  })();
+
+  // Hook setHoverPerson để kích hoạt hiển thị nhãn tên nhỏ khi di chuột vào mô hình 3D
+  (function setupHoverPersonHook() {
+    let hoveredTag = null;
+    function hook(targetObj) {
+      if (!targetObj) return;
+      const orig = targetObj.setHoverPerson;
+      targetObj.setHoverPerson = function(worker, evt) {
+        if (hoveredTag) {
+          hoveredTag.classList.remove('ft-hovered');
+          hoveredTag = null;
+        }
+        if (worker && worker.tagEl) {
+          worker.tagEl.classList.add('ft-hovered');
+          hoveredTag = worker.tagEl;
+        }
+        if (typeof orig === 'function') {
+          try { orig(worker, evt); } catch (e) {}
+        }
+      };
+    }
+    hook(window);
+    if (window.__ftOffice) hook(window.__ftOffice);
+    if (window.__office) hook(window.__office);
   })();
 
   function isAssistantBot(id, session) {
@@ -264,8 +315,12 @@
     upgradeAllBotsToRobotMesh();
     setInterval(upgradeAllBotsToRobotMesh, 800);
 
-    // 2. Chạy vòng lặp thoại ngẫu nhiên chất FermatTech
-    setInterval(tickFermatIdleQuotes, 8000);
+    // 2. Chạy vòng lặp thoại ngẫu nhiên chất FermatTech (tần suất thấp, nhẹ nhàng)
+    setInterval(tickFermatIdleQuotes, 45000);
+
+    // 2b. Kiểm tra chống ngồi đè lên nhau giữa các nhân sự & bot
+    preventOverlappingDesks();
+    setInterval(preventOverlappingDesks, 1500);
 
     // 3. Vòng lặp nhấp nháy mắt, đèn ăng-ten Robot & bảo vệ mesh người luôn ẩn
     setInterval(animateRobotEyes, 350);
@@ -1051,55 +1106,24 @@
 
     // Nếu đã dựng rồi thì không dựng lại trùng lặp
     const existingGroup = scene.getObjectByName('ft_cafe_van_group');
-    if (existingGroup && existingGroup.userData && existingGroup.userData.version === 'v2_building') {
+    if (existingGroup && existingGroup.userData && existingGroup.userData.version === 'v3_complete') {
       return;
     }
     if (existingGroup) {
       scene.remove(existingGroup);
     }
 
-    // Dò tìm tòa nhà mặt tiền có biển hiệu cam ở góc phố ngoài trời
-    let detectedMesh = null;
-    let bestDist = Infinity;
-    let detectedWp = new THREE.Vector3(-13.5, 3.1, 18.5);
-    let signSize = new THREE.Vector3(3.6, 1.1, 0.2);
-    let signCenter = new THREE.Vector3(-13.5, 3.1, 18.5);
+    const group = new THREE.Group();
+    group.name = 'ft_cafe_van_group';
+    group.userData = { version: 'v3_complete' };
 
-    try {
-      scene.traverse((obj) => {
-        if (!obj.isMesh || !obj.material) return;
-        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-        for (const m of mats) {
-          if (!m || !m.color) continue;
-          const r = m.color.r, g = m.color.g, b = m.color.b;
-          // Biển hiệu cam của căn nhà góc phố ngoài trời
-          if (r > 0.65 && g > 0.22 && g < 0.62 && b < 0.3) {
-            const wp = new THREE.Vector3();
-            obj.getWorldPosition(wp);
-            if (wp.x < -7 && wp.z > 8 && wp.z < 28 && wp.y > 0.5 && wp.y < 6) {
-              const dist = Math.hypot(wp.x + 13, wp.z - 18);
-              if (dist < bestDist) {
-                bestDist = dist;
-                detectedMesh = obj;
-                detectedWp.copy(wp);
-              }
-            }
-          }
-        }
-      });
-    } catch (e) {}
+    // Vị trí vỉa hè phía trước mặt tiền Quán CF Vân (sát vách tòa nhà phía Tây)
+    const sidewalkX = -13.8;
+    const sidewalkZ = 10.5;
+    const facadeX = -14.15;
+    const facadeZ = 10.5;
 
-    if (detectedMesh) {
-      try {
-        const box = new THREE.Box3().setFromObject(detectedMesh);
-        box.getSize(signSize);
-        box.getCenter(signCenter);
-      } catch (e) {
-        signCenter.copy(detectedWp);
-      }
-    }
-
-    cafeVanAnchor = { x: signCenter.x, z: signCenter.z };
+    cafeVanAnchor = { x: facadeX, z: facadeZ };
 
     // Tạo canvas texture biển hiệu "QUÁN CF VÂN" tone cà phê ấm cúng, sang trọng
     const signCanvas = document.createElement('canvas');
@@ -1115,77 +1139,39 @@
     sctx.lineWidth = 4;
     sctx.strokeRect(26, 26, 972, 204);
     sctx.fillStyle = '#FEF3C7';
-    sctx.font = 'bold 88px sans-serif';
+    sctx.font = 'bold 84px sans-serif';
     sctx.textAlign = 'center';
-    sctx.fillText('☕ QUÁN CF VÂN', 512, 118);
+    sctx.fillText('☕ QUÁN CF VÂN', 512, 114);
     sctx.fillStyle = '#FCD34D';
-    sctx.font = '600 36px sans-serif';
-    sctx.fillText('CÀ PHÊ NGUYÊN CHẤT • TRÀ • ĐỒ UỐNG', 512, 192);
+    sctx.font = '600 34px sans-serif';
+    sctx.fillText('CÀ PHÊ NGUYÊN CHẤT • TRÀ • ĐỒ UỐNG', 512, 186);
 
     const signTex = new THREE.CanvasTexture(signCanvas);
     if (THREE.SRGBColorSpace) signTex.colorSpace = THREE.SRGBColorSpace;
 
-    // 1. Sửa trực tiếp biển hiệu của căn nhà hiện hữu thành Quán CF Vân
-    if (detectedMesh) {
-      try {
-        detectedMesh.material = new THREE.MeshStandardMaterial({
-          map: signTex,
-          roughness: 0.35,
-          metalness: 0.1,
-          side: THREE.DoubleSide
-        });
-        if (detectedMesh.material.map) detectedMesh.material.map.needsUpdate = true;
-        detectedMesh.material.needsUpdate = true;
-      } catch (e) {}
-    }
+    // 1. Gắn biển hiệu nổi 3D ép khít vào mặt tiền căn nhà nhìn ra đường
+    const signBoardMat = [
+      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+      new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35, metalness: 0.1 }),
+      new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35, metalness: 0.1 })
+    ];
 
-    const group = new THREE.Group();
-    group.name = 'ft_cafe_van_group';
-    group.userData = { version: 'v2_building' };
+    const signBoard = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 1.05, 3.8),
+      signBoardMat
+    );
+    signBoard.position.set(facadeX, 3.2, facadeZ);
+    group.add(signBoard);
 
-    // 2. Gắn biển hiệu nổi 3D ép khít vào mặt tiền căn nhà (CHỈ KHI tìm thấy mesh mặt tiền)
-    if (detectedMesh) {
-      const isXAligned = signSize.x >= signSize.z;
-      const signWidth = Math.max(isXAligned ? signSize.x : signSize.z, 3.2);
-      const signHeight = Math.max(signSize.y, 0.95);
-      const signBoardMat = [
-        new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
-        new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
-        new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
-        new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
-        new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35, metalness: 0.1 }),
-        new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35, metalness: 0.1 })
-      ];
+    // Đèn LED chiếu sáng biển hiệu ấm áp
+    const signLight = new THREE.PointLight(0xfde68a, 1.2, 8);
+    signLight.position.set(facadeX + 0.5, 3.4, facadeZ);
+    group.add(signLight);
 
-      const signBoard = new THREE.Mesh(
-        new THREE.BoxGeometry(
-          isXAligned ? signWidth : 0.08,
-          signHeight,
-          isXAligned ? 0.08 : signWidth
-        ),
-        signBoardMat
-      );
-      signBoard.position.set(
-        signCenter.x + (isXAligned ? 0 : 0.06),
-        signCenter.y,
-        signCenter.z + (isXAligned ? -0.06 : 0)
-      );
-      group.add(signBoard);
-
-      const signLight = new THREE.PointLight(0xfde68a, 1.1, 7);
-      signLight.position.set(
-        signCenter.x + (isXAligned ? 0 : 0.4),
-        signCenter.y + 0.35,
-        signCenter.z + (isXAligned ? -0.4 : 0)
-      );
-      group.add(signLight);
-    }
-
-    // 3. Bố trí bàn ghế cafe trên vỉa hè SÁT VÁCH CĂN NHÀ (không lấn ra lòng đường!)
-    const isXAligned = signSize.x >= signSize.z;
-    const sidewalkX = detectedMesh ? (signCenter.x + (isXAligned ? 0.3 : 0.65)) : -12.5;
-    const sidewalkZ = detectedMesh ? (signCenter.z - (isXAligned ? 0.75 : 0.3)) : 17.5;
-
+    // 2. Bố trí bàn ghế cafe trên vỉa hè SÁT VÁCH CĂN NHÀ
     const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b3a19, roughness: 0.6 });
     const metalMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.4, metalness: 0.6 });
     const cupMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
@@ -1220,8 +1206,8 @@
     liq.position.set(0.05, 0.815, 0.02);
     cafeTableGroup.add(liq);
 
-    // Ghế của Giám đốc (ngồi sát vách quán nhìn ra ngã tư)
-    const directorChairOffset = { x: -0.42, z: 0.15 };
+    // Ghế chính của Giám đốc (ngồi sát vách quán nhìn ra đường)
+    const directorChairOffset = { x: 0.25, z: 0.0 };
     const chairSeat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.035, 12), woodMat);
     chairSeat.position.set(directorChairOffset.x, 0.44, directorChairOffset.z);
     cafeTableGroup.add(chairSeat);
@@ -1232,11 +1218,10 @@
 
     const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.32, 0.28), woodMat);
     chairBack.position.set(directorChairOffset.x - 0.14, 0.58, directorChairOffset.z);
-    chairBack.rotation.y = 0.15;
     cafeTableGroup.add(chairBack);
 
     // Ghế đối diện phụ
-    const guestChairOffset = { x: 0.42, z: -0.12 };
+    const guestChairOffset = { x: -0.25, z: 0.0 };
     const gSeat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.035, 12), woodMat);
     gSeat.position.set(guestChairOffset.x, 0.44, guestChairOffset.z);
     cafeTableGroup.add(gSeat);
@@ -1245,13 +1230,15 @@
     gLeg.position.set(guestChairOffset.x, 0.215, guestChairOffset.z);
     cafeTableGroup.add(gLeg);
 
-    // 1 chậu cây cảnh nhỏ đặt ở góc vỉa hè sát chân tường quán
-    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.36, 12), potMat);
-    pot.position.set(sidewalkX - 1.2, 0.18, sidewalkZ + 0.3);
-    group.add(pot);
-    const bush = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), leafMat);
-    bush.position.set(sidewalkX - 1.2, 0.55, sidewalkZ + 0.3);
-    group.add(bush);
+    // Chậu cây cảnh nhỏ đặt ở góc vỉa hè sát chân tường quán
+    for (const zOff of [-1.2, 1.2]) {
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.14, 0.35, 12), potMat);
+      pot.position.set(sidewalkX - 0.3, 0.18, sidewalkZ + zOff);
+      group.add(pot);
+      const bush = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), leafMat);
+      bush.position.set(sidewalkX - 0.3, 0.52, sidewalkZ + zOff);
+      group.add(bush);
+    }
 
     // Dù che nắng quán cà phê màu kem trang nhã
     const umbrellaPole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.2, 10), metalMat);
@@ -1269,25 +1256,25 @@
     const menuBoardMat = new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.9 });
     const menuFrameMat = new THREE.MeshStandardMaterial({ color: 0x78350F, roughness: 0.7 });
     const aFrame = new THREE.Group();
-    aFrame.position.set(sidewalkX + 0.85, 0, sidewalkZ - 0.35);
+    aFrame.position.set(sidewalkX, 0, sidewalkZ - 0.9);
     const legL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.75, 0.04), menuFrameMat);
-    legL.position.set(-0.2, 0.36, 0);
-    legL.rotation.z = -0.08;
+    legL.position.set(0, 0.36, -0.15);
+    legL.rotation.x = -0.08;
     const legR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.75, 0.04), menuFrameMat);
-    legR.position.set(0.2, 0.36, 0);
-    legR.rotation.z = 0.08;
-    const boardPanel = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.5, 0.02), menuBoardMat);
+    legR.position.set(0, 0.36, 0.15);
+    legR.rotation.x = 0.08;
+    const boardPanel = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.5, 0.38), menuBoardMat);
     boardPanel.position.set(0, 0.38, 0);
     aFrame.add(legL, legR, boardPanel);
     group.add(aFrame);
 
     group.add(cafeTableGroup);
 
-    // Lưu điểm ngồi chính xác của Giám đốc trên vỉa hè
+    // Lưu điểm ngồi chính xác của Giám đốc trên vỉa hè Quán CF Vân
     cafeVanChairSpot = {
       x: sidewalkX + directorChairOffset.x,
       z: sidewalkZ + directorChairOffset.z,
-      face: Math.PI * 0.22
+      face: Math.PI / 2
     };
 
     scene.add(group);
@@ -1314,7 +1301,7 @@
       { x: -2.4, z: 3.3, node: 'L2' },    // Hành lang trung tâm
       { x: -2.4, z: 8.4, node: 'L4' },    // Cửa chính văn phòng
       { x: -2.4, z: 10.5 },               // Bước ra sảnh vỉa hè ngoài trời
-      { x: -7.5, z: 14.5 },               // Đi dọc vỉa hè về góc ngã tư
+      { x: -7.5, z: 10.5 },               // Đi thẳng qua đường tới Quán CF Vân
       { x: cf.x, z: cf.z, face: cf.face, sit: true } // Ghế vỉa hè Quán CF Vân
     ];
 
@@ -1495,8 +1482,43 @@
   /**
    * 4. LÀM GIÀU KHO THOẠI VU VƠ NGẪU NHIÊN CHUẨN FERMATTECH
    */
+  /**
+   * Đảm bảo các nhân viên và bot không bao giờ ngồi đè lên nhau.
+   * Nếu phát hiện 2 worker có khoảng cách < 0.45m khi ngồi làm việc,
+   * tự động giãn cách worker thứ 2 sang vị trí kế bên không bị che khuất.
+   */
+  function preventOverlappingDesks() {
+    if (!ftOffice || !ftOffice.getWorkers) return;
+    const workers = Array.from(ftOffice.getWorkers().values());
+    if (workers.length < 2) return;
+
+    for (let i = 0; i < workers.length; i++) {
+      const w1 = workers[i];
+      if (!w1 || !w1.pos || w1.offstage || w1.phase === 'walk') continue;
+
+      for (let j = i + 1; j < workers.length; j++) {
+        const w2 = workers[j];
+        if (!w2 || !w2.pos || w2.offstage || w2.phase === 'walk') continue;
+
+        const dx = w1.pos.x - w2.pos.x;
+        const dz = (w1.pos.y !== undefined ? w1.pos.y : (w1.pos.z || 0)) -
+                   (w2.pos.y !== undefined ? w2.pos.y : (w2.pos.z || 0));
+        const dist = Math.hypot(dx, dz);
+
+        if (dist < 0.45) {
+          const shift = 0.85;
+          w2.pos.x += (Math.abs(dx) > 0.01 ? Math.sign(dx) * -shift : shift);
+          if (w2.root && w2.root.position) {
+            w2.root.position.x = w2.pos.x;
+          }
+        }
+      }
+    }
+  }
+
   function tickFermatIdleQuotes() {
     if (isPatrolling) return;
+    if (Math.random() < 0.6) return; // Giảm tần suất nói vu vơ để không ồn ào rối mắt
     if (!ftOffice.getWorkers || !ftOffice.getSessions) return;
 
     const workers = Array.from(ftOffice.getWorkers().entries());
