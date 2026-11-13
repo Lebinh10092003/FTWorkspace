@@ -13,6 +13,7 @@ from .models import (
     HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS,
     ROOM_COMMON,
     ROOM_DIRECTOR,
+    ROOM_EXAM,
     ROOM_MEDIA,
     STATUS_HOME,
     STATUS_IDLE,
@@ -259,10 +260,10 @@ class OfficeRosterView(APIView):
                 seat_index = None
                 is_head = False
             elif is_media_bot:
-                room = ROOM_MEDIA
+                room = ROOM_EXAM
                 seat_index = (
                     u.office_seat.seat_index
-                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_MEDIA
+                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_EXAM
                     else None
                 )
                 is_head = False
