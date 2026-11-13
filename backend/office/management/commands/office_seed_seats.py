@@ -95,7 +95,7 @@ def _classify_user_for_seed(user):
     )
     if is_media_bot:
         return {
-            'room': ROOM_MEDIA,
+            'room': ROOM_EXAM,
             'seat_index': None,
             'is_head': False,
             'priority': 2,
