@@ -166,18 +166,26 @@ def suggest_seat_for_user(user) -> dict:
 
     email_lower = (getattr(user, 'email', '') or '').strip().lower()
 
-    # Robot Trợ lý AI thường trực phòng chung
+    # Robot Trợ lý AI thường trực phòng ngoài / phòng sinh hoạt chung (khu vực music box)
     if 'assistant' in email_lower or any(k in combined or k in combined_norm for k in ['assistant', 'trợ lý', 'tro ly', 'hermes']):
         return {
             'room': ROOM_COMMON,
-            'is_head': True,
+            'is_head': False,
             'seat_index': 0,
         }
 
-    # 5 Bot AI Khảo thí (bot.fb.*)
+    # 5 Bot AI Truyền thông (bot.fb.*) đặt tại Phòng Truyền thông (D2 - phòng truyền thông mới)
     if 'bot.fb.' in email_lower or (role == 'BOT' and any(k in combined or k in combined_norm for k in ['facebook', 'trend', 'material', 'writer', 'reviewer', 'publisher', 'đăng bài', 'soạn thảo'])):
         return {
-            'room': ROOM_EXAM,
+            'room': ROOM_MEDIA,
+            'is_head': False,
+            'seat_index': None,
+        }
+
+    # Lê Văn Bình (binhlv) thuộc Ban/Phòng Truyền thông
+    if 'binhlv' in email_lower:
+        return {
+            'room': ROOM_MEDIA,
             'is_head': False,
             'seat_index': None,
         }
@@ -206,12 +214,12 @@ def suggest_seat_for_user(user) -> dict:
             'seat_index': 1 if is_head else None,
         }
 
-    # Kế toán & HR (bỏ phòng HR riêng)
+    # Kế toán & HR chuyển ra phòng ngoài (khu vực chung)
     if any(keyword in combined or keyword in combined_norm for keyword in ['kế toán', 'ke toan', 'tài chính', 'tai chinh', 'accounting', 'finance', 'hr', 'nhân sự', 'nhan su']):
         return {
-            'room': ROOM_ACCOUNTING,
+            'room': ROOM_COMMON,
             'is_head': is_head,
-            'seat_index': 1 if is_head else None,
+            'seat_index': None,
         }
 
     # Mặc định phòng chung

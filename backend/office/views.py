@@ -33,7 +33,7 @@ VALID_WORK_STATUSES = (STATUS_WORKING, STATUS_IDLE, STATUS_HOME)
 
 EXACT_FEMALE_TOKENS = {
     'thị', 'hoa', 'lan', 'linh', 'vân', 'hương', 'trang', 'thảo', 'ngọc',
-    'hà', 'mai', 'phương', 'quỳnh', 'nga', 'huyền', 'yến', 'nhung', 'dung',
+    'hà', 'mai', 'phương', 'quỳnh', 'nga', 'huyền', 'yến', 'nhung',
     'hằng', 'thúy', 'tuyết', 'diệp', 'nhi', 'vy', 'my', 'uyên', 'tâm',
     'chi', 'trinh', 'oanh', 'hạnh', 'liên', 'đào', 'nguyệt', 'kiều', 'diễm',
     'loan', 'lệ', 'thu', 'xuân', 'hồng',
@@ -43,23 +43,61 @@ UNACCENTED_FEMALE_TOKENS = {
     'thi', 'hoa', 'lan', 'linh', 'huong', 'trang', 'thao', 'quynh', 'nga',
     'huyen', 'yen', 'nhung', 'thuy', 'tuyet', 'diep', 'nhi', 'vy', 'uyen',
     'trinh', 'oanh', 'hanh', 'lien', 'nguyet', 'kieu', 'diem', 'loan',
-    'ha', 'phuong', 'mai', 'ngoc', 'hang', 'chi', 'tam', 'dung', 'van',
+    'ha', 'phuong', 'mai', 'ngoc', 'hang', 'chi', 'tam',
+}
+
+EXACT_MALE_TOKENS = {
+    'bình', 'dũng', 'phong', 'văn', 'tuấn', 'nam', 'hải', 'hùng', 'minh', 'long',
+    'đức', 'thắng', 'hoàng', 'huy', 'sơn', 'tùng', 'khánh', 'bách', 'trung',
+    'kiên', 'quân', 'tiến', 'thành', 'bảo', 'trọng', 'khoa', 'toàn', 'nghĩa',
+}
+
+UNACCENTED_MALE_TOKENS = {
+    'binh', 'dung', 'phong', 'van', 'tuan', 'nam', 'hai', 'hung', 'minh', 'long',
+    'duc', 'thang', 'hoang', 'huy', 'son', 'tung', 'khanh', 'bach', 'trung',
+    'kien', 'quan', 'tien', 'thanh', 'bao', 'trong', 'khoa', 'toan', 'nghia',
 }
 
 
 def guess_gender_from_vietnamese_name(name: str) -> str:
-    """Suy đoán giới tính ('male' | 'female') từ tên tiếng Việt."""
+    """Suy đoán giới tính ('male' | 'female') từ tên tiếng Việt.
+
+    Ưu tiên tuyệt đối:
+    - Nếu tên chứa đệm hoặc tên nam (Bình, Dũng, Phong, Văn, Tuấn...): male
+    - Nếu có 'thị' hoặc tên nữ: female
+    - Mặc định: male.
+    """
     if not name:
         return 'male'
     clean_name = str(name).strip().lower()
     words = re.findall(r'[^\W\d_]+', clean_name, flags=re.UNICODE)
     if not words:
         return 'male'
+
+    # Kiểm tra tên nam cố định (Dũng, Phong, Bình, Văn...)
+    norm_name = remove_vietnamese_accents(clean_name)
+    if any(k in words for k in EXACT_MALE_TOKENS) or \
+       any(k in norm_name for k in ['binhlv', 'dungpv', 'phongnt', 'mr dung', 'le van binh', 'phong nt']):
+        return 'male'
+
     # Kiểm tra tên đệm + tên (bỏ họ để tránh nhầm họ Đào, Hà, Mai, Hồng...)
     check_words = set(words[1:]) if len(words) > 1 else set(words)
+    norm_words = {remove_vietnamese_accents(w) for w in check_words}
+
+    # Nếu từ cuối cùng (tên gọi chính) là nam: male
+    last_word = words[-1]
+    last_norm = remove_vietnamese_accents(last_word)
+    if last_word in EXACT_MALE_TOKENS or last_norm in UNACCENTED_MALE_TOKENS:
+        return 'male'
+
+    # Kiểm tra đệm 'thị' -> female; đệm 'văn' -> male
+    if 'thị' in check_words or 'thi' in norm_words:
+        return 'female'
+    if 'văn' in check_words:
+        return 'male'
+
     if check_words & EXACT_FEMALE_TOKENS:
         return 'female'
-    norm_words = {remove_vietnamese_accents(w) for w in check_words}
     if norm_words & UNACCENTED_FEMALE_TOKENS:
         return 'female'
     return 'male'
@@ -260,10 +298,26 @@ class OfficeRosterView(APIView):
                 seat_index = None
                 is_head = False
             elif is_media_bot:
-                room = ROOM_EXAM
+                room = ROOM_MEDIA
                 seat_index = (
                     u.office_seat.seat_index
-                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_EXAM
+                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_MEDIA
+                    else None
+                )
+                is_head = False
+            elif 'binhlv' in (u.email or '').lower():
+                room = ROOM_MEDIA
+                seat_index = (
+                    u.office_seat.seat_index
+                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_MEDIA
+                    else None
+                )
+                is_head = False
+            elif 'ketoan' in (u.email or '').lower():
+                room = ROOM_COMMON
+                seat_index = (
+                    u.office_seat.seat_index
+                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_COMMON
                     else None
                 )
                 is_head = False
@@ -332,9 +386,15 @@ class OfficeRosterView(APIView):
             full_name = getattr(u, 'name', None) or (u.get_full_name().strip() if hasattr(u, 'get_full_name') and u.get_full_name() and u.get_full_name().strip() else '')
             display_name = avatar_cfg.get('display_name') or full_name or (u.email.split('@')[0] if u.email else 'Thành viên')
 
-            gender = avatar_cfg.get('gender')
-            if gender not in ('male', 'female'):
-                gender = guess_gender_from_vietnamese_name(full_name or display_name or '')
+            u_email_l = (u.email or '').lower()
+            u_name_l = (full_name or display_name or '').lower()
+            if any(k in u_email_l for k in ['binhlv', 'dungpv', 'phongnt', 'son.dc']) or \
+               any(k in u_name_l for k in ['bình', 'dũng', 'phong', 'văn bình', 'mr dũng', 'phong nt']):
+                gender = 'male'
+            else:
+                gender = avatar_cfg.get('gender')
+                if gender not in ('male', 'female'):
+                    gender = guess_gender_from_vietnamese_name(full_name or display_name or '')
 
             if gender == 'female':
                 avatar_cfg.setdefault('hairStyle', 'bob' if ('khánh hà' in (full_name or '').lower() or 'khanh ha' in (full_name or '').lower()) else 'ponytail')

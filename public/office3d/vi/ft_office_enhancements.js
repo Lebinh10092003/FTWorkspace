@@ -876,7 +876,11 @@
 
     worker.say('idle', '🤖 Đã xong việc! Tôi quay về bàn trực đây.');
 
-    const home = worker.homeSpot ? worker.homeSpot() : null;
+    // Vị trí trực thường trực của Trợ lý AI: phòng ngoài sinh hoạt chung tại hộp music box (KTV)
+    const assistantHomeSpot = { x: -0.75, z: 6.2, face: 0, node: 'L4', sit: false };
+    const home = isAssistantBot(worker.id, ftOffice.getSessions ? ftOffice.getSessions().get(worker.id) : null)
+      ? assistantHomeSpot
+      : (worker.homeSpot ? worker.homeSpot() : null);
     if (home) {
       worker.goTo(home, () => {
         worker.anim = 'type';
@@ -958,8 +962,8 @@
       makeNodeWaypoint(nodes, ['P0b0', 'M1'], 0, 'Phòng chung: mọi người tập trung cao độ nhé! 💻'),
       makeNodeWaypoint(nodes, ['D0i', 'D0b'], 0, 'Vào kiểm tra Phòng Công nghệ: server và code chạy ổn định chứ các bạn? ⚡'),
       makeNodeWaypoint(nodes, ['D1i', 'D1b'], 0, 'Vào kiểm tra Phòng Khảo thí: ngân hàng đề thi bảo mật tốt nhé! 📝'),
-      makeNodeWaypoint(nodes, ['D2i', 'D2b'], 0, 'Vào kiểm tra Kế toán & HR: đối soát sổ sách & nhân sự đúng hạn nhé! 💵'),
-      makeNodeWaypoint(nodes, ['D3i', 'D3b'], 0, 'Ghé thăm Phòng Truyền thông: chiến dịch media & nội dung tiến triển tốt chứ? 📣'),
+      makeNodeWaypoint(nodes, ['D2i', 'D2b'], 0, 'Vào kiểm tra Phòng Truyền thông: 5 bot AI và các chiến dịch media chạy tốt chứ? 📣'),
+      makeNodeWaypoint(nodes, ['D3i', 'D3b'], 0, 'Ghé thăm Media Studio: nội dung truyền thông & video tiến triển tốt nhé! 🎬'),
       makeNodeWaypoint(nodes, ['PA1', 'PA4'], -Math.PI / 2, 'Khu Pantry: giải lao uống nước xong nhớ quay lại bàn làm việc nhé! ☕'),
       makeNodeWaypoint(nodes, ['LG1', 'LG3'], -Math.PI / 2, 'Khu giải lao Lounge: hết giờ nghỉ rồi, ai đang thư giãn mau về chỗ! 🎮'),
       director.homeSpot ? director.homeSpot() : { x: -5.4, z: -6.75, node: 'DRs', face: 0, sit: true }
@@ -1362,9 +1366,24 @@
     const T = window.THREE;
     if (!T) return;
     const sName = (session?.name || worker?.name || '').toLowerCase();
-    const isFemale = (session && session.gender === 'female') ||
-      worker._ftGender === 'female' ||
-      /thị|hà\b|hai ha|khanh ha|phương|mai|linh|lan|hoa|vân|hương|trang|thảo|ngọc|liên|quỳnh|yến|nhung|dung|hằng/i.test(sName);
+    const sEmail = (session?.email || '').toLowerCase();
+
+    // Ngoại lệ Nam tuyệt đối: Bình, Dũng, Phong hoặc được đánh dấu male
+    const isExplicitMale = (session && session.gender === 'male') ||
+      worker._ftGender === 'male' ||
+      /\b(bình|binh|dũng|dung|phong|văn bình|mr dũng|dungpv|phongnt|binhlv)\b/i.test(sName) ||
+      sEmail.includes('binhlv') || sEmail.includes('dungpv') || sEmail.includes('phongnt') ||
+      /(bình|dũng|phong)/i.test(sName);
+
+    let isFemale = false;
+    if (!isExplicitMale) {
+      if ((session && session.gender === 'female') || worker._ftGender === 'female') {
+        isFemale = true;
+      } else {
+        // Tên nữ có dấu hoặc từ khoá đặc trưng (tránh nhầm "dũng" với "dung")
+        isFemale = /thị|hà\b|hai ha|khanh ha|phương|mai|linh|lan|hoa|vân\b|hương|trang|thảo|ngọc|liên|quỳnh|yến|nhung|\bthùy dung\b|\bmỹ dung\b|\bkim dung\b|hằng/i.test(sName);
+      }
+    }
 
     const torso = worker.P.spine || worker.P.hip || worker.P.torso;
     const head = worker.P.head;
