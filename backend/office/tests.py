@@ -522,8 +522,8 @@ nonexistent_email@test.com,tech,1,false
             self.assertEqual(dev_entry['status'], STATUS_HOME)
             self.assertFalse(dev_entry['online'])
 
-    def test_all_five_fb_bots_routed_to_exam_room(self):
-        """Toàn bộ 5 FB bots (kể cả khi khởi tạo) được xếp vào ROOM_EXAM."""
+    def test_all_five_fb_bots_routed_to_media_room(self):
+        """Toàn bộ 5 FB bots (kể cả khi khởi tạo) được xếp vào ROOM_MEDIA."""
         from office.management.commands.office_seed_seats import _classify_user_for_seed
 
         bot_specs = [
@@ -534,7 +534,7 @@ nonexistent_email@test.com,tech,1,false
             ('bot.fb.publisher@fermat.vn', 'AI Đăng bài tự động', 'Điều phối xuất bản AI'),
         ]
         bot_names = set()
-        for idx, (email, name, title_name) in enumerate(bot_specs, start=3):
+        for idx, (email, name, title_name) in enumerate(bot_specs, start=1):
             jt, _ = JobTitle.objects.get_or_create(name=title_name)
             bot_user = UserProfile.objects.create(
                 email=email,
@@ -544,9 +544,9 @@ nonexistent_email@test.com,tech,1,false
                 job_title=jt,
                 employment_status='ACTIVE',
             )
-            OfficeSeat.objects.create(user=bot_user, room=ROOM_EXAM, seat_index=idx, is_head=False)
+            OfficeSeat.objects.create(user=bot_user, room=ROOM_MEDIA, seat_index=idx, is_head=False)
             bot_names.add(name)
-            self.assertEqual(_classify_user_for_seed(bot_user)['room'], ROOM_EXAM)
+            self.assertEqual(_classify_user_for_seed(bot_user)['room'], ROOM_MEDIA)
 
         self.client.force_authenticate(user=self.dev_user)
         roster_res = self.client.get('/api/office/roster/')
@@ -556,7 +556,16 @@ nonexistent_email@test.com,tech,1,false
         bot_entries = [m for m in roster if m['name'] in bot_names]
         self.assertEqual(len(bot_entries), 5)
         for entry in bot_entries:
-            self.assertEqual(entry['seat']['room'], ROOM_EXAM)
+            self.assertEqual(entry['seat']['room'], ROOM_MEDIA)
             self.assertTrue(entry['is_bot'])
             self.assertTrue(entry['online'])
+
+    def test_male_gender_heuristics(self):
+        """Kiểm tra nhận diện giới tính nam cho Dũng, Phong, Lê Văn Bình."""
+        from office.views import guess_gender_from_vietnamese_name
+        self.assertEqual(guess_gender_from_vietnamese_name('Mr Dũng'), 'male')
+        self.assertEqual(guess_gender_from_vietnamese_name('Phong NT'), 'male')
+        self.assertEqual(guess_gender_from_vietnamese_name('Lê Văn Bình'), 'male')
+        self.assertEqual(guess_gender_from_vietnamese_name('Nguyễn Văn Tuấn'), 'male')
+        self.assertEqual(guess_gender_from_vietnamese_name('Trần Thị Hà'), 'female')
 
