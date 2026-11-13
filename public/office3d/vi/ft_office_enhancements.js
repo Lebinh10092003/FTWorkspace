@@ -1139,47 +1139,48 @@
     group.name = 'ft_cafe_van_group';
     group.userData = { version: 'v2_building' };
 
-    // 2. Gắn biển hiệu nổi 3D ép khít vào mặt tiền căn nhà (đảm bảo độ dày và sắc nét)
-    const isXAligned = signSize.x >= signSize.z;
-    const signWidth = Math.max(isXAligned ? signSize.x : signSize.z, 3.2);
-    const signHeight = Math.max(signSize.y, 0.95);
-    const signBoardMat = [
-      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
-      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
-      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
-      new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
-      new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35, metalness: 0.1 }),
-      new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35, metalness: 0.1 })
-    ];
+    // 2. Gắn biển hiệu nổi 3D ép khít vào mặt tiền căn nhà (CHỈ KHI tìm thấy mesh mặt tiền)
+    if (detectedMesh) {
+      const isXAligned = signSize.x >= signSize.z;
+      const signWidth = Math.max(isXAligned ? signSize.x : signSize.z, 3.2);
+      const signHeight = Math.max(signSize.y, 0.95);
+      const signBoardMat = [
+        new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+        new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+        new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+        new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
+        new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35, metalness: 0.1 }),
+        new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.35, metalness: 0.1 })
+      ];
 
-    const signBoard = new THREE.Mesh(
-      new THREE.BoxGeometry(
-        isXAligned ? signWidth : 0.08,
-        signHeight,
-        isXAligned ? 0.08 : signWidth
-      ),
-      signBoardMat
-    );
-    // Ép khít mặt trước biển hiệu tòa nhà
-    signBoard.position.set(
-      signCenter.x + (isXAligned ? 0 : 0.06),
-      signCenter.y,
-      signCenter.z + (isXAligned ? -0.06 : 0)
-    );
-    group.add(signBoard);
+      const signBoard = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          isXAligned ? signWidth : 0.08,
+          signHeight,
+          isXAligned ? 0.08 : signWidth
+        ),
+        signBoardMat
+      );
+      signBoard.position.set(
+        signCenter.x + (isXAligned ? 0 : 0.06),
+        signCenter.y,
+        signCenter.z + (isXAligned ? -0.06 : 0)
+      );
+      group.add(signBoard);
 
-    // Đèn rọi ấm áp chiếu vào biển hiệu Quán CF Vân
-    const signLight = new THREE.PointLight(0xfde68a, 1.1, 7);
-    signLight.position.set(
-      signCenter.x + (isXAligned ? 0 : 0.4),
-      signCenter.y + 0.35,
-      signCenter.z + (isXAligned ? -0.4 : 0)
-    );
-    group.add(signLight);
+      const signLight = new THREE.PointLight(0xfde68a, 1.1, 7);
+      signLight.position.set(
+        signCenter.x + (isXAligned ? 0 : 0.4),
+        signCenter.y + 0.35,
+        signCenter.z + (isXAligned ? -0.4 : 0)
+      );
+      group.add(signLight);
+    }
 
     // 3. Bố trí bàn ghế cafe trên vỉa hè SÁT VÁCH CĂN NHÀ (không lấn ra lòng đường!)
-    const sidewalkX = signCenter.x + (isXAligned ? 0.3 : 0.65);
-    const sidewalkZ = signCenter.z - (isXAligned ? 0.75 : 0.3);
+    const isXAligned = signSize.x >= signSize.z;
+    const sidewalkX = detectedMesh ? (signCenter.x + (isXAligned ? 0.3 : 0.65)) : -12.5;
+    const sidewalkZ = detectedMesh ? (signCenter.z - (isXAligned ? 0.75 : 0.3)) : 17.5;
 
     const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b3a19, roughness: 0.6 });
     const metalMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.4, metalness: 0.6 });
@@ -1248,6 +1249,34 @@
     bush.position.set(sidewalkX - 1.2, 0.55, sidewalkZ + 0.3);
     group.add(bush);
 
+    // Dù che nắng quán cà phê màu kem trang nhã
+    const umbrellaPole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.2, 10), metalMat);
+    umbrellaPole.position.set(-0.35, 1.1, -0.35);
+    cafeTableGroup.add(umbrellaPole);
+
+    const umbrellaCanopy = new THREE.Mesh(
+      new THREE.ConeGeometry(0.95, 0.42, 16),
+      new THREE.MeshStandardMaterial({ color: 0xF3E8D6, roughness: 0.8, side: THREE.DoubleSide })
+    );
+    umbrellaCanopy.position.set(-0.35, 2.1, -0.35);
+    cafeTableGroup.add(umbrellaCanopy);
+
+    // Bảng đen menu chữ A đặt trên vỉa hè
+    const menuBoardMat = new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.9 });
+    const menuFrameMat = new THREE.MeshStandardMaterial({ color: 0x78350F, roughness: 0.7 });
+    const aFrame = new THREE.Group();
+    aFrame.position.set(sidewalkX + 0.85, 0, sidewalkZ - 0.35);
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.75, 0.04), menuFrameMat);
+    legL.position.set(-0.2, 0.36, 0);
+    legL.rotation.z = -0.08;
+    const legR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.75, 0.04), menuFrameMat);
+    legR.position.set(0.2, 0.36, 0);
+    legR.rotation.z = 0.08;
+    const boardPanel = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.5, 0.02), menuBoardMat);
+    boardPanel.position.set(0, 0.38, 0);
+    aFrame.add(legL, legR, boardPanel);
+    group.add(aFrame);
+
     group.add(cafeTableGroup);
 
     // Lưu điểm ngồi chính xác của Giám đốc trên vỉa hè
@@ -1274,46 +1303,90 @@
     const director = ftOffice && ftOffice.getDirector ? ftOffice.getDirector() : null;
     if (!director || isPatrolling || director.offstage) return;
     const cf = getCafeVanSpot();
+
+    // Chuỗi điểm di chuyển an toàn từ văn phòng ra Quán CF Vân ngoài trời (tránh đâm xuyên tường)
+    const exitPath = [
+      { x: -3.1, z: -2.3, node: 'L0' },   // Cửa phòng Giám đốc ra hành lang
+      { x: -2.4, z: 3.3, node: 'L2' },    // Hành lang trung tâm
+      { x: -2.4, z: 8.4, node: 'L4' },    // Cửa chính văn phòng
+      { x: -2.4, z: 10.5 },               // Bước ra sảnh vỉa hè ngoài trời
+      { x: -7.5, z: 14.5 },               // Đi dọc vỉa hè về góc ngã tư
+      { x: cf.x, z: cf.z, face: cf.face, sit: true } // Ghế vỉa hè Quán CF Vân
+    ];
+
+    let step = 0;
     director.job = { stage: 'cafe', sess: '__cafe_van' };
     director.station = 'cafe';
     director.pose = 'stand';
     director.anim = 'walk';
-    director.goTo({ x: cf.x, z: cf.z, face: cf.face, sit: true }, () => {
-      if (isPatrolling) return;
-      director.pose = 'sit';
-      director.anim = 'coffee';
-      if (typeof director.say === 'function') {
-        director.say('idle', '☕ Ngồi Quán CF Vân làm ly cà phê, điều hành công việc từ xa!');
+
+    function nextStep() {
+      if (isPatrolling || !director.job || director.job.sess !== '__cafe_van') return;
+      if (step >= exitPath.length) {
+        director.pose = 'sit';
+        director.anim = 'coffee';
+        if (typeof director.say === 'function') {
+          director.say('idle', '☕ Ngồi Quán CF Vân làm ly cà phê, điều hành công việc từ xa!');
+        }
+        return;
       }
-    });
+
+      const target = exitPath[step];
+      step++;
+      let reached = false;
+      const stepTimer = setTimeout(() => {
+        if (!reached && !isPatrolling && director.job?.sess === '__cafe_van') {
+          reached = true;
+          if (director.pos && target.x !== undefined && target.z !== undefined) {
+            director.pos.x = target.x;
+            director.pos.y = target.z;
+          }
+          nextStep();
+        }
+      }, 5500);
+
+      director.goTo(target, () => {
+        if (!reached) {
+          reached = true;
+          clearTimeout(stepTimer);
+          nextStep();
+        }
+      });
+    }
+
+    nextStep();
   }
 
   function applyFemaleAvatar(worker, session) {
     if (!worker || !worker.P || worker._ftIsBot || worker._ftRobotUpgraded) return;
     const T = window.THREE;
     if (!T) return;
-    const isFemale = (session && session.gender === 'female') || worker._ftGender === 'female';
-    const hip = worker.P.hip || worker.P.torso;
+    const sName = (session?.name || worker?.name || '').toLowerCase();
+    const isFemale = (session && session.gender === 'female') ||
+      worker._ftGender === 'female' ||
+      /thị|hà\b|hai ha|khanh ha|phương|mai|linh|lan|hoa|vân|hương|trang|thảo|ngọc|liên|quỳnh|yến|nhung|dung|hằng/i.test(sName);
+
+    const torso = worker.P.spine || worker.P.hip || worker.P.torso;
     const head = worker.P.head;
 
-    if (hip) {
-      const oldSkirt = hip.getObjectByName && hip.getObjectByName('ft_female_skirt');
+    if (torso) {
+      const oldSkirt = torso.getObjectByName && torso.getObjectByName('ft_female_skirt');
       if (isFemale && !oldSkirt) {
-        const skirtGeo = new T.CylinderGeometry(0.17, 0.25, 0.22, 14);
+        const skirtGeo = new T.CylinderGeometry(0.18, 0.28, 0.22, 14);
         const skirtMat = new T.MeshStandardMaterial({ color: '#1E293B', roughness: 0.75 });
         const skirt = new T.Mesh(skirtGeo, skirtMat);
         skirt.name = 'ft_female_skirt';
-        skirt.position.set(0, -0.08, 0);
-        hip.add(skirt);
+        skirt.position.set(0, -0.18, 0);
+        torso.add(skirt);
       } else if (!isFemale && oldSkirt) {
-        hip.remove(oldSkirt);
+        torso.remove(oldSkirt);
       }
     }
     if (head) {
       const oldHair = head.getObjectByName && head.getObjectByName('ft_female_hair');
       if (isFemale && !oldHair) {
         const hairColor = (session && session.cfg && session.cfg.hair) || '#2B2B2B';
-        const hairGeo = new T.BoxGeometry(0.24, 0.26, 0.10);
+        const hairGeo = new T.BoxGeometry(0.24, 0.26, 0.12);
         const hairMat = new T.MeshStandardMaterial({ color: hairColor, roughness: 0.8 });
         const hair = new T.Mesh(hairGeo, hairMat);
         hair.name = 'ft_female_hair';
@@ -1340,7 +1413,7 @@
       setTimeout(triggerWorkersRelief, 1800);
       setTimeout(() => {
         if (!isPatrolling) sendDirectorToCafeVan();
-      }, 5000);
+      }, 6000);
       return;
     }
 
@@ -1353,7 +1426,23 @@
     // Khi Sếp tiến vào phòng mới, tiếp tục quét xem có ai đang giải lao để hối chạy về chỗ
     triggerRushToDesk();
 
+    let finished = false;
+    const patrolTimer = setTimeout(() => {
+      if (!finished && isPatrolling) {
+        console.warn(`[FT Office] Director patrol wp ${index} timeout safeguard, auto proceeding`);
+        finished = true;
+        if (director.pos && wp.x !== undefined && wp.z !== undefined) {
+          director.pos.x = wp.x;
+          director.pos.y = wp.z;
+        }
+        runPatrolChain(director, waypoints, index + 1);
+      }
+    }, 6500);
+
     director.goTo(wp, () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(patrolTimer);
       if (!isPatrolling) return;
       const isLastHome = index === waypoints.length - 1;
       if (isLastHome) {
@@ -1366,12 +1455,11 @@
       if (wp.text) {
         director.say('idle', wp.text);
       }
-      // Quét lại 1 lần khi đứng trong phòng
       triggerRushToDesk();
 
       setTimeout(() => {
         runPatrolChain(director, waypoints, index + 1);
-      }, 2800);
+      }, 2500);
     });
   }
 

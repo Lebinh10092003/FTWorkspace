@@ -13,6 +13,7 @@ from .models import (
     HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS,
     ROOM_COMMON,
     ROOM_DIRECTOR,
+    ROOM_EXAM,
     ROOM_MEDIA,
     STATUS_HOME,
     STATUS_IDLE,
@@ -42,6 +43,7 @@ UNACCENTED_FEMALE_TOKENS = {
     'thi', 'hoa', 'lan', 'linh', 'huong', 'trang', 'thao', 'quynh', 'nga',
     'huyen', 'yen', 'nhung', 'thuy', 'tuyet', 'diep', 'nhi', 'vy', 'uyen',
     'trinh', 'oanh', 'hanh', 'lien', 'nguyet', 'kieu', 'diem', 'loan',
+    'ha', 'phuong', 'mai', 'ngoc', 'hang', 'chi', 'tam', 'dung', 'van',
 }
 
 
@@ -258,10 +260,10 @@ class OfficeRosterView(APIView):
                 seat_index = None
                 is_head = False
             elif is_media_bot:
-                room = ROOM_MEDIA
+                room = ROOM_EXAM
                 seat_index = (
                     u.office_seat.seat_index
-                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_MEDIA
+                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_EXAM
                     else None
                 )
                 is_head = False
@@ -327,11 +329,16 @@ class OfficeRosterView(APIView):
             work_status = getattr(presence, 'work_status', STATUS_WORKING) if presence else STATUS_WORKING
             is_presence_idle = getattr(presence, 'is_idle', False) if presence else False
 
-            display_name = avatar_cfg.get('display_name') or u.name or (u.email.split('@')[0] if u.email else 'Thành viên')
+            full_name = getattr(u, 'name', None) or (u.get_full_name().strip() if hasattr(u, 'get_full_name') and u.get_full_name() and u.get_full_name().strip() else '')
+            display_name = avatar_cfg.get('display_name') or full_name or (u.email.split('@')[0] if u.email else 'Thành viên')
 
             gender = avatar_cfg.get('gender')
             if gender not in ('male', 'female'):
-                gender = guess_gender_from_vietnamese_name(u.name or display_name or '')
+                gender = guess_gender_from_vietnamese_name(full_name or display_name or '')
+
+            if gender == 'female':
+                avatar_cfg.setdefault('hairStyle', 'bob' if ('khánh hà' in (full_name or '').lower() or 'khanh ha' in (full_name or '').lower()) else 'ponytail')
+                avatar_cfg.setdefault('shirt', '#F2B8B5' if ('hà' in (full_name or '').lower() or 'ha' in (full_name or '').lower()) else '#E7C6D3')
 
             # Auto online cho nhân sự ACTIVE (không timeout offline), chỉ offline khi work_status == 'home' hoặc ẩn hiện diện
             if is_bot or presence is None:
@@ -386,16 +393,16 @@ class OfficeRosterView(APIView):
 
         # Đảm bảo luôn có Robot Trợ lý AI chuyên trách trong văn phòng (phòng chung)
         if not any(m.get('is_assistant') for m in roster):
-            assistant_seat = 1
-            while assistant_seat in used_seats[ROOM_COMMON]:
-                assistant_seat += 1
             roster.append({
                 'name': 'Robot Trợ lý AI',
                 'department': 'Văn phòng trung tâm',
                 'job_title': 'Trợ lý AI Workspace',
                 'role': 'Trợ lý AI Workspace',
                 'id': 'bot-assistant',
-                'seat': {'room': ROOM_COMMON, 'seat_index': assistant_seat, 'is_head': False},
+                'seat': {'room': ROOM_COMMON, 'seat_index': 0, 'is_head': True},
+                'seat_index': 0,
+                'room': ROOM_COMMON,
+                'is_head': True,
                 'online': True,
                 'status': STATUS_WORKING,
                 'work_status': STATUS_WORKING,
@@ -405,7 +412,7 @@ class OfficeRosterView(APIView):
                 'is_director': False,
                 'is_me': False,
                 'gender': 'male',
-                'avatar': {'shirt': '#0EA5E9', 'skin_color': '#E2E8F0', 'glasses': False, 'gender': 'male'},
+                'avatar': {'shirt': '#0EA5E9', 'skin_color': '#E2E8F0', 'hairStyle': 'plain', 'glasses': False, 'gender': 'male'},
             })
 
         return Response({'roster': roster})

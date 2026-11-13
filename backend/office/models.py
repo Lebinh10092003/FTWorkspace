@@ -164,6 +164,24 @@ def suggest_seat_for_user(user) -> dict:
             'seat_index': 1,
         }
 
+    email_lower = (getattr(user, 'email', '') or '').strip().lower()
+
+    # Robot Trợ lý AI thường trực phòng chung
+    if 'assistant' in email_lower or any(k in combined or k in combined_norm for k in ['assistant', 'trợ lý', 'tro ly', 'hermes']):
+        return {
+            'room': ROOM_COMMON,
+            'is_head': True,
+            'seat_index': 0,
+        }
+
+    # 5 Bot AI Khảo thí (bot.fb.*)
+    if 'bot.fb.' in email_lower or (role == 'BOT' and any(k in combined or k in combined_norm for k in ['facebook', 'trend', 'material', 'writer', 'reviewer', 'publisher', 'đăng bài', 'soạn thảo'])):
+        return {
+            'room': ROOM_EXAM,
+            'is_head': False,
+            'seat_index': None,
+        }
+
     # Truyền thông (tách riêng với Khảo thí)
     if any(keyword in combined or keyword in combined_norm for keyword in ['truyền thông', 'truyen thong', 'media', 'marketing', 'social', 'content']):
         return {
