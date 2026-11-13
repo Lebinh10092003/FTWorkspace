@@ -182,10 +182,10 @@ def suggest_seat_for_user(user) -> dict:
             'seat_index': None,
         }
 
-    # Lê Văn Bình (binhlv) thuộc Ban/Phòng Truyền thông
+    # Lê Văn Bình (binhlv) thuộc Phòng Công nghệ
     if 'binhlv' in email_lower:
         return {
-            'room': ROOM_MEDIA,
+            'room': ROOM_TECH,
             'is_head': False,
             'seat_index': None,
         }
@@ -214,12 +214,12 @@ def suggest_seat_for_user(user) -> dict:
             'seat_index': 1 if is_head else None,
         }
 
-    # Kế toán & HR chuyển ra phòng ngoài (khu vực chung)
+    # Kế toán & HR
     if any(keyword in combined or keyword in combined_norm for keyword in ['kế toán', 'ke toan', 'tài chính', 'tai chinh', 'accounting', 'finance', 'hr', 'nhân sự', 'nhan su']):
         return {
-            'room': ROOM_COMMON,
+            'room': ROOM_ACCOUNTING,
             'is_head': is_head,
-            'seat_index': None,
+            'seat_index': 1 if is_head else None,
         }
 
     # Mặc định phòng chung

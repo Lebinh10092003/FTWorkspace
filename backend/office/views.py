@@ -11,10 +11,12 @@ from authentication.models import UserProfile
 from authentication.permissions import IsAdmin, IsWorkspaceAuthenticated
 from .models import (
     HEARTBEAT_MIN_WRITE_INTERVAL_SECONDS,
+    ROOM_ACCOUNTING,
     ROOM_COMMON,
     ROOM_DIRECTOR,
     ROOM_EXAM,
     ROOM_MEDIA,
+    ROOM_TECH,
     STATUS_HOME,
     STATUS_IDLE,
     STATUS_OFFLINE,
@@ -306,18 +308,18 @@ class OfficeRosterView(APIView):
                 )
                 is_head = False
             elif 'binhlv' in (u.email or '').lower():
-                room = ROOM_MEDIA
+                room = ROOM_TECH
                 seat_index = (
                     u.office_seat.seat_index
-                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_MEDIA
+                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_TECH
                     else None
                 )
                 is_head = False
-            elif 'ketoan' in (u.email or '').lower():
-                room = ROOM_COMMON
+            elif 'ketoan' in (u.email or '').lower() or (getattr(u, 'department', None) and any(k in (u.department.name or '').lower() for k in ['kế toán', 'ke toan', 'accounting', 'tài chính'])):
+                room = ROOM_ACCOUNTING
                 seat_index = (
                     u.office_seat.seat_index
-                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_COMMON
+                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_ACCOUNTING
                     else None
                 )
                 is_head = False
