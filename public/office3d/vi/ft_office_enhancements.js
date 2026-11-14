@@ -179,16 +179,58 @@
         transform: scale(1) !important;
         z-index: 9999 !important;
       }
-      /* Bong bóng chat cảm thán luôn hiển thị bình thường khi có thoại */
+      /* Bong bóng chat thoại màu trắng thân thiện, nhỏ gọn, tinh tế */
       .bubble, [class*="bubble"] {
         opacity: 1 !important;
         visibility: visible !important;
         pointer-events: auto !important;
-        max-width: 200px !important;
+        background: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid rgba(0, 0, 0, 0.08) !important;
+        border-radius: 9px !important;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12) !important;
+        max-width: 135px !important;
         word-break: break-word !important;
         white-space: normal !important;
-        line-height: 1.3 !important;
-        font-size: 12px !important;
+        line-height: 1.25 !important;
+        font-size: 11px !important;
+        padding: 4px 8px 4px 6px !important;
+        gap: 5px !important;
+      }
+      .bubble::after {
+        content: "" !important;
+        position: absolute !important;
+        bottom: -5px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        border-width: 5px 5px 0 5px !important;
+        border-style: solid !important;
+        border-color: #ffffff transparent transparent transparent !important;
+        display: block !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
+      .bubble .b-ico, .bubble [class*="ico"] {
+        background: #f1f5f9 !important;
+        color: #475569 !important;
+        border-radius: 5px !important;
+        width: 16px !important;
+        height: 16px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-size: 10px !important;
+        flex-shrink: 0 !important;
+      }
+      .bubble .b-ico svg {
+        width: 10px !important;
+        height: 10px !important;
+      }
+      .bubble .b-txt, .bubble [class*="txt"], .bubble span {
+        color: #1e293b !important;
+        font-weight: 500 !important;
+        font-size: 11px !important;
+        line-height: 1.25 !important;
       }
     `;
   })();
@@ -316,7 +358,7 @@
     setInterval(upgradeAllBotsToRobotMesh, 800);
 
     // 2. Chạy vòng lặp thoại ngẫu nhiên chất FermatTech (tần suất thấp, nhẹ nhàng)
-    setInterval(tickFermatIdleQuotes, 45000);
+    setInterval(tickFermatIdleQuotes, 90000);
 
     // 2b. Kiểm tra chống ngồi đè lên nhau giữa các nhân sự & bot
     preventOverlappingDesks();
@@ -342,6 +384,8 @@
 
     // Phơi bày hàm nội bộ
     window.__ftPatrolNow = triggerDirectorPatrol;
+    window.__ftSendDirectorToCafeVan = sendDirectorToCafeVan;
+    window.__ftReturnDirector = returnDirectorFromCafeVan;
     window.__ftCallBotToDesk = callBotToUserDesk;
     window.__ftReleaseBot = releaseActiveBot;
 
@@ -994,6 +1038,13 @@
     const director = ftOffice.getDirector ? ftOffice.getDirector() : null;
     if (!director || isPatrolling || director.offstage) return;
 
+    if (director._ftAtCafeVan) {
+      returnDirectorFromCafeVan(() => {
+        triggerDirectorPatrol();
+      });
+      return;
+    }
+
     const nav = ftOffice.getNav ? ftOffice.getNav() : null;
     const nodes = nav?.NODES || {};
 
@@ -1290,62 +1341,113 @@
     };
   }
 
+  function returnDirectorFromCafeVan(onComplete) {
+    const director = ftOffice && ftOffice.getDirector ? ftOffice.getDirector() : null;
+    if (!director) {
+      if (typeof onComplete === 'function') onComplete();
+      return;
+    }
+    director._ftAtCafeVan = false;
+    director.job = null;
+    director.station = 'director';
+    director.pose = 'stand';
+    director.anim = 'walk';
+
+    const liftHelper = window.__ftLift;
+    const nav = ftOffice.getNav ? ftOffice.getNav() : null;
+    const doorIn = (liftHelper && liftHelper.getDoorIn && liftHelper.getDoorIn()) || (nav && nav.DOOR_IN) || { x: -6.3, z: -6.95, face: -Math.PI / 2 };
+
+    if (liftHelper && typeof liftHelper.liftArrive === 'function') {
+      const groundDoor = { x: -7.5, z: 10.5 };
+      director.goTo(groundDoor, () => {
+        director.street = false;
+        liftHelper.liftArrive(director);
+        if (director.root && typeof director.gy === 'function') {
+          director.root.position.y = director.gy();
+        }
+        if (director.pos) {
+          director.pos.x = doorIn.x;
+          director.pos.y = doorIn.z;
+        }
+        if (typeof onComplete === 'function') onComplete();
+      });
+    } else {
+      director.street = false;
+      if (director.pos) {
+        director.pos.x = -2.4;
+        director.pos.y = 8.4;
+      }
+      if (director.root && typeof director.gy === 'function') {
+        director.root.position.y = director.gy();
+      }
+      if (typeof onComplete === 'function') onComplete();
+    }
+  }
+
   function sendDirectorToCafeVan() {
     const director = ftOffice && ftOffice.getDirector ? ftOffice.getDirector() : null;
-    if (!director || isPatrolling || director.offstage) return;
+    if (!director || isPatrolling || director.offstage || director._ftAtCafeVan) return;
     const cf = getCafeVanSpot();
+    const nav = ftOffice.getNav ? ftOffice.getNav() : null;
+    const liftHelper = window.__ftLift;
 
-    // Chuỗi điểm di chuyển an toàn từ văn phòng ra Quán CF Vân ngoài trời (tránh đâm xuyên tường)
-    const exitPath = [
-      { x: -3.1, z: -2.3, node: 'L0' },   // Cửa phòng Giám đốc ra hành lang
-      { x: -2.4, z: 3.3, node: 'L2' },    // Hành lang trung tâm
-      { x: -2.4, z: 8.4, node: 'L4' },    // Cửa chính văn phòng
-      { x: -2.4, z: 10.5 },               // Bước ra sảnh vỉa hè ngoài trời
-      { x: -7.5, z: 10.5 },               // Đi thẳng qua đường tới Quán CF Vân
-      { x: cf.x, z: cf.z, face: cf.face, sit: true } // Ghế vỉa hè Quán CF Vân
-    ];
-
-    let step = 0;
     director.job = { stage: 'cafe', sess: '__cafe_van' };
     director.station = 'cafe';
     director.pose = 'stand';
     director.anim = 'walk';
 
-    function nextStep() {
-      if (isPatrolling || !director.job || director.job.sess !== '__cafe_van') return;
-      if (step >= exitPath.length) {
-        director.pose = 'sit';
-        director.anim = 'coffee';
-        if (typeof director.say === 'function') {
-          director.say('idle', '☕ Ngồi Quán CF Vân làm ly cà phê, điều hành công việc từ xa!');
-        }
-        return;
-      }
+    const doorIn = (liftHelper && liftHelper.getDoorIn && liftHelper.getDoorIn()) || (nav && nav.DOOR_IN) || { x: -6.3, z: -6.95, face: -Math.PI / 2 };
 
-      const target = exitPath[step];
-      step++;
-      let reached = false;
-      const stepTimer = setTimeout(() => {
-        if (!reached && !isPatrolling && director.job?.sess === '__cafe_van') {
-          reached = true;
-          if (director.pos && target.x !== undefined && target.z !== undefined) {
-            director.pos.x = target.x;
-            director.pos.y = target.z;
+    if (liftHelper && typeof liftHelper.liftDown === 'function') {
+      director.goTo(doorIn, () => {
+        if (isPatrolling) return;
+        liftHelper.liftDown(director, () => {
+          if (isPatrolling) return;
+          director.street = true;
+          if (director.root && typeof director.gy === 'function') {
+            director.root.position.y = director.gy();
           }
-          nextStep();
-        }
-      }, 5500);
-
-      director.goTo(target, () => {
-        if (!reached) {
-          reached = true;
-          clearTimeout(stepTimer);
-          nextStep();
-        }
+          director._ftAtCafeVan = true;
+          director.pose = 'stand';
+          director.anim = 'walk';
+          director.goTo({ x: cf.x, z: cf.z, face: cf.face, sit: true }, () => {
+            if (isPatrolling) return;
+            director.pose = 'sit';
+            director.anim = 'coffee';
+            if (typeof director.say === 'function') {
+              director.say('idle', '☕ Ngồi Quán CF Vân làm ly cà phê, điều hành công việc từ xa!');
+              setTimeout(() => { if (director.lastSay?.text?.includes('CF Vân')) director.hush && director.hush(); }, 3200);
+            }
+          });
+        });
       });
+    } else {
+      const exitPath = [
+        { x: -3.1, z: -2.3, node: 'L0' },
+        { x: -2.4, z: 3.3, node: 'L2' },
+        { x: -2.4, z: 8.4, node: 'L4' },
+        { x: -2.4, z: 10.5 },
+        { x: -7.5, z: 10.5 },
+        { x: cf.x, z: cf.z, face: cf.face, sit: true }
+      ];
+      let step = 0;
+      function nextStep() {
+        if (isPatrolling || !director.job || director.job.sess !== '__cafe_van') return;
+        if (step >= exitPath.length) {
+          director._ftAtCafeVan = true;
+          director.pose = 'sit';
+          director.anim = 'coffee';
+          if (typeof director.say === 'function') {
+            director.say('idle', '☕ Ngồi Quán CF Vân làm ly cà phê, điều hành công việc từ xa!');
+            setTimeout(() => { if (director.lastSay?.text?.includes('CF Vân')) director.hush && director.hush(); }, 3200);
+          }
+          return;
+        }
+        const target = exitPath[step++];
+        director.goTo(target, nextStep);
+      }
+      nextStep();
     }
-
-    nextStep();
   }
 
   function applyFemaleAvatar(worker, session) {
@@ -1518,7 +1620,7 @@
 
   function tickFermatIdleQuotes() {
     if (isPatrolling) return;
-    if (Math.random() < 0.6) return; // Giảm tần suất nói vu vơ để không ồn ào rối mắt
+    if (Math.random() < 0.75) return; // Giảm tần suất bong bóng thoại theo yêu cầu
     if (!ftOffice.getWorkers || !ftOffice.getSessions) return;
 
     const workers = Array.from(ftOffice.getWorkers().entries());
@@ -1534,6 +1636,11 @@
     const text = pool[Math.floor(Math.random() * pool.length)];
 
     worker.say('idle', text);
+    setTimeout(() => {
+      if (worker && worker.bubbleObj && worker.bubbleObj.visible && worker.lastSay?.type === 'idle') {
+        worker.hush && worker.hush();
+      }
+    }, 2800);
   }
 
   function handleRosterUpdate(roster) {
