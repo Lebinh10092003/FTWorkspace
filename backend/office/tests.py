@@ -569,3 +569,48 @@ nonexistent_email@test.com,tech,1,false
         self.assertEqual(guess_gender_from_vietnamese_name('Nguyễn Văn Tuấn'), 'male')
         self.assertEqual(guess_gender_from_vietnamese_name('Trần Thị Hà'), 'female')
 
+    def test_accounting_personnel_mapping_and_bot_exclusion(self):
+        """Kiểm tra Thu Hà & Khánh Hà được xếp vào Kế toán & HR; Bot không chiếm phòng Kế toán."""
+        thu_ha = UserProfile.objects.create(
+            email='ha.ntt@fermat.test',
+            name='Nguyễn Thị Thu Hà',
+            role='EMPLOYEE',
+            employment_status='ACTIVE',
+        )
+        khanh_ha = UserProfile.objects.create(
+            email='khanhha@fermat.test',
+            name='Phan Khánh Hà',
+            role='EMPLOYEE',
+            employment_status='ACTIVE',
+        )
+        acc_bot = UserProfile.objects.create(
+            email='ft.acc.lead.bot@fermat.test',
+            name='Bot Kế toán Ảo',
+            role='BOT',
+            employment_status='ACTIVE',
+        )
+        OfficeSeat.objects.create(user=acc_bot, room=ROOM_ACCOUNTING, seat_index=1, is_head=True)
+
+        self.client.force_authenticate(user=self.dev_user)
+        roster_res = self.client.get('/api/office/roster/')
+        self.assertEqual(roster_res.status_code, status.HTTP_200_OK)
+        roster = roster_res.json()['roster']
+
+        ha_entry = next(m for m in roster if m['name'] == 'Nguyễn Thị Thu Hà')
+        self.assertEqual(ha_entry['seat']['room'], ROOM_ACCOUNTING)
+        self.assertEqual(ha_entry['seat']['seat_index'], 1)
+        self.assertTrue(ha_entry['seat']['is_head'])
+        self.assertEqual(ha_entry['avatar']['gender'], 'female')
+
+        khanh_entry = next(m for m in roster if m['name'] == 'Phan Khánh Hà')
+        self.assertEqual(khanh_entry['seat']['room'], ROOM_ACCOUNTING)
+        self.assertEqual(khanh_entry['seat']['seat_index'], 2)
+        self.assertFalse(khanh_entry['seat']['is_head'])
+        self.assertEqual(khanh_entry['avatar']['gender'], 'female')
+
+        # Bot ảo không được ngồi accounting
+        bot_entry = next(m for m in roster if m['name'] == 'Bot Kế toán Ảo')
+        self.assertNotEqual(bot_entry['seat']['room'], ROOM_ACCOUNTING)
+        self.assertEqual(bot_entry['seat']['room'], ROOM_MEDIA)
+
+

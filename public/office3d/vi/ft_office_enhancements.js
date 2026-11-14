@@ -1157,22 +1157,31 @@
 
     // Nếu đã dựng rồi thì không dựng lại trùng lặp
     const existingGroup = scene.getObjectByName('ft_cafe_van_group');
-    if (existingGroup && existingGroup.userData && existingGroup.userData.version === 'v3_complete') {
+    if (existingGroup && existingGroup.userData && existingGroup.userData.version === 'v5_sync') {
       return;
     }
     if (existingGroup) {
       scene.remove(existingGroup);
     }
 
+    // Dọn sạch biển / cấu trúc quán Bia Hơi cũ nếu còn tồn tại trong scene gốc
+    scene.traverse((obj) => {
+      if (!obj) return;
+      if (obj.name && /nhau|bia_hoi|beer_shop/i.test(obj.name) && obj.name !== 'ft_cafe_van_group') {
+        obj.visible = false;
+      }
+    });
+
     const group = new THREE.Group();
     group.name = 'ft_cafe_van_group';
-    group.userData = { version: 'v3_complete' };
+    group.userData = { version: 'v5_sync' };
 
-    // Vị trí vỉa hè phía trước mặt tiền Quán CF Vân (sát vách tòa nhà phía Tây)
-    const sidewalkX = -13.8;
-    const sidewalkZ = 10.5;
-    const facadeX = -14.15;
-    const facadeZ = 10.5;
+    // Vị trí chuẩn của Shophouse Quán CF Vân (tòa nhà mặt tiền đối diện ngã tư, slot rent)
+    // Tường nhà nằm tại x = -14.2, mặt tiền hướng +X nhìn ra đường lớn.
+    const facadeX = -14.12;
+    const facadeZ = 8.7;
+    const sidewalkX = -12.6;
+    const sidewalkZ = 8.7;
 
     cafeVanAnchor = { x: facadeX, z: facadeZ };
 
@@ -1200,7 +1209,7 @@
     const signTex = new THREE.CanvasTexture(signCanvas);
     if (THREE.SRGBColorSpace) signTex.colorSpace = THREE.SRGBColorSpace;
 
-    // 1. Gắn biển hiệu nổi 3D ép khít vào mặt tiền căn nhà nhìn ra đường
+    // 1. Gắn biển hiệu nổi 3D ép khít vào mặt tiền căn nhà nhìn ra đường (+X)
     const signBoardMat = [
       new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
       new THREE.MeshStandardMaterial({ color: 0x26140a, roughness: 0.7 }),
@@ -1222,7 +1231,7 @@
     signLight.position.set(facadeX + 0.5, 3.4, facadeZ);
     group.add(signLight);
 
-    // 2. Bố trí bàn ghế cafe trên vỉa hè SÁT VÁCH CĂN NHÀ
+    // 2. Bố trí bàn ghế cafe trên vỉa hè rộng rãi, không đâm xuyên tường hay kính tòa phụ
     const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b3a19, roughness: 0.6 });
     const metalMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.4, metalness: 0.6 });
     const cupMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
@@ -1257,8 +1266,8 @@
     liq.position.set(0.05, 0.815, 0.02);
     cafeTableGroup.add(liq);
 
-    // Ghế chính của Giám đốc (ngồi sát vách quán nhìn ra đường)
-    const directorChairOffset = { x: 0.25, z: 0.0 };
+    // Ghế chính của Giám đốc (ngồi sát vách quán nhìn ra đường hướng +X)
+    const directorChairOffset = { x: -0.28, z: 0.0 };
     const chairSeat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.035, 12), woodMat);
     chairSeat.position.set(directorChairOffset.x, 0.44, directorChairOffset.z);
     cafeTableGroup.add(chairSeat);
@@ -1271,8 +1280,8 @@
     chairBack.position.set(directorChairOffset.x - 0.14, 0.58, directorChairOffset.z);
     cafeTableGroup.add(chairBack);
 
-    // Ghế đối diện phụ
-    const guestChairOffset = { x: -0.25, z: 0.0 };
+    // Ghế đối diện phụ (nhìn vào trong)
+    const guestChairOffset = { x: 0.28, z: 0.0 };
     const gSeat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.035, 12), woodMat);
     gSeat.position.set(guestChairOffset.x, 0.44, guestChairOffset.z);
     cafeTableGroup.add(gSeat);
@@ -1282,32 +1291,32 @@
     cafeTableGroup.add(gLeg);
 
     // Chậu cây cảnh nhỏ đặt ở góc vỉa hè sát chân tường quán
-    for (const zOff of [-1.2, 1.2]) {
+    for (const zOff of [-1.5, 1.5]) {
       const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.14, 0.35, 12), potMat);
-      pot.position.set(sidewalkX - 0.3, 0.18, sidewalkZ + zOff);
+      pot.position.set(facadeX + 0.3, 0.18, facadeZ + zOff);
       group.add(pot);
       const bush = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), leafMat);
-      bush.position.set(sidewalkX - 0.3, 0.52, sidewalkZ + zOff);
+      bush.position.set(facadeX + 0.3, 0.52, facadeZ + zOff);
       group.add(bush);
     }
 
     // Dù che nắng quán cà phê màu kem trang nhã
     const umbrellaPole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.2, 10), metalMat);
-    umbrellaPole.position.set(-0.35, 1.1, -0.35);
+    umbrellaPole.position.set(-0.35, 1.1, -0.45);
     cafeTableGroup.add(umbrellaPole);
 
     const umbrellaCanopy = new THREE.Mesh(
       new THREE.ConeGeometry(0.95, 0.42, 16),
       new THREE.MeshStandardMaterial({ color: 0xF3E8D6, roughness: 0.8, side: THREE.DoubleSide })
     );
-    umbrellaCanopy.position.set(-0.35, 2.1, -0.35);
+    umbrellaCanopy.position.set(-0.35, 2.1, -0.45);
     cafeTableGroup.add(umbrellaCanopy);
 
     // Bảng đen menu chữ A đặt trên vỉa hè
     const menuBoardMat = new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.9 });
     const menuFrameMat = new THREE.MeshStandardMaterial({ color: 0x78350F, roughness: 0.7 });
     const aFrame = new THREE.Group();
-    aFrame.position.set(sidewalkX, 0, sidewalkZ - 0.9);
+    aFrame.position.set(sidewalkX, 0, sidewalkZ - 1.1);
     const legL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.75, 0.04), menuFrameMat);
     legL.position.set(0, 0.36, -0.15);
     legL.rotation.x = -0.08;
@@ -1321,11 +1330,11 @@
 
     group.add(cafeTableGroup);
 
-    // Lưu điểm ngồi chính xác của Giám đốc trên vỉa hè Quán CF Vân
+    // Lưu điểm ngồi chính xác của Giám đốc trên vỉa hè Quán CF Vân (hướng nhìn ra đường face: 0)
     cafeVanChairSpot = {
       x: sidewalkX + directorChairOffset.x,
       z: sidewalkZ + directorChairOffset.z,
-      face: Math.PI / 2
+      face: 0
     };
 
     scene.add(group);
@@ -1645,7 +1654,33 @@
 
   function handleRosterUpdate(roster) {
     if (!Array.isArray(roster)) return;
+
+    // Chuẩn hóa và cố định vị trí nhân sự Kế toán & HR; không cho Bot AI chiếm phòng Kế toán
     roster.forEach(r => {
+      const rName = (r.name || '').toLowerCase();
+      const rEmail = (r.email || '').toLowerCase();
+      const isThuHa = rName.includes('thu hà') || rName.includes('thu ha') || rEmail.includes('ha.ntt') || rEmail.includes('thuha');
+      const isKhanhHa = rName.includes('khánh hà') || rName.includes('khanh ha') || rName.includes('quỳnh anh') || rName.includes('quynh anh') || rEmail.includes('khanhha') || rEmail.includes('quynhanh');
+
+      if (isThuHa) {
+        r.room = 'accounting';
+        r.seat_index = 1;
+        r.is_head = true;
+        r.is_bot = false;
+        r.role = 'STAFF';
+        r.gender = 'female';
+      } else if (isKhanhHa) {
+        r.room = 'accounting';
+        r.seat_index = 2;
+        r.is_head = false;
+        r.is_bot = false;
+        r.role = 'STAFF';
+        r.gender = 'female';
+      } else if (r.room === 'accounting' && (r.is_bot || /bot|ai|trợ lý|robot/i.test(r.name || '') || /bot|ai/i.test(r.role || ''))) {
+        r.room = 'media';
+        r.seat_index = null;
+      }
+
       if (r.is_bot || /bot|ai|trợ lý|robot/i.test(r.name || '') || /bot|ai/i.test(r.role || '')) {
         if (r.id !== undefined && r.id !== null) botUserIds.add(String(r.id));
         if (r.user_id !== undefined && r.user_id !== null) botUserIds.add(String(r.user_id));

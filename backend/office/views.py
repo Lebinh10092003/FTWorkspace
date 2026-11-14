@@ -315,13 +315,31 @@ class OfficeRosterView(APIView):
                     else None
                 )
                 is_head = False
-            elif 'ketoan' in (u.email or '').lower() or (getattr(u, 'department', None) and any(k in (u.department.name or '').lower() for k in ['kế toán', 'ke toan', 'accounting', 'tài chính'])):
+            elif not is_bot and (
+                any(k in (u.email or '').lower() for k in ['ketoan', 'ha.ntt', 'thuha', 'thu.ha', 'khanhha', 'khanh.ha', 'quynhanh', 'quynh.anh'])
+                or any(k in (u.name or '').lower() for k in ['thu hà', 'thu ha', 'khánh hà', 'khanh ha', 'quỳnh anh', 'quynh anh'])
+                or (getattr(u, 'department', None) and any(k in (u.department.name or '').lower() for k in ['kế toán', 'ke toan', 'accounting', 'tài chính']))
+            ):
                 room = ROOM_ACCOUNTING
-                seat_index = (
-                    u.office_seat.seat_index
-                    if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_ACCOUNTING
-                    else None
-                )
+                u_email_l = (u.email or '').lower()
+                u_name_l = (u.name or '').lower()
+                if any(k in u_email_l for k in ['ha.ntt', 'thuha', 'thu.ha']) or any(k in u_name_l for k in ['thu hà', 'thu ha']):
+                    seat_index = 1
+                    is_head = True
+                elif any(k in u_email_l for k in ['khanhha', 'khanh.ha', 'quynhanh', 'quynh.anh']) or any(k in u_name_l for k in ['khánh hà', 'khanh ha', 'quỳnh anh', 'quynh anh']):
+                    seat_index = 2
+                    is_head = False
+                else:
+                    seat_index = (
+                        u.office_seat.seat_index
+                        if hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_ACCOUNTING
+                        else None
+                    )
+                    is_head = False
+            elif is_bot and hasattr(u, 'office_seat') and u.office_seat and u.office_seat.room == ROOM_ACCOUNTING:
+                # Bot không được chiếm phòng Kế toán & HR, chuyển sang phòng Media
+                room = ROOM_MEDIA
+                seat_index = None
                 is_head = False
             elif hasattr(u, 'office_seat') and u.office_seat:
                 room = u.office_seat.room
