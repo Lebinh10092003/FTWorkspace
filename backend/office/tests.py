@@ -620,7 +620,7 @@ nonexistent_email@test.com,tech,1,false
         self.assertEqual(roster_res.status_code, status.HTTP_200_OK)
         roster = roster_res.json()['roster']
 
-        director_entry = next((m for m in roster if m.get('is_director') or m.get('room') == ROOM_DIRECTOR), None)
+        director_entry = next((m for m in roster if 'thuan' in remove_vietnamese_accents(m.get('name') or '')), None)
         self.assertIsNotNone(director_entry)
         assert director_entry is not None
         self.assertEqual(director_entry['name'], 'Lê Đức Thuận')

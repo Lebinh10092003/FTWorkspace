@@ -517,13 +517,13 @@ class OfficeRosterView(APIView):
             })
 
         # Đảm bảo luôn có Giám đốc (Lê Đức Thuận) trong văn phòng 3D
-        if not any(m.get('is_director') or (m.get('seat') and m['seat'].get('room') == ROOM_DIRECTOR) for m in roster):
+        if not any('thuan' in remove_vietnamese_accents(m.get('name') or '') for m in roster):
             roster.append({
                 'name': 'Lê Đức Thuận',
                 'department': 'Ban Giám đốc',
                 'job_title': 'Giám đốc',
                 'role': 'Giám đốc điều hành',
-                'id': 'ft-director',
+                'id': 'director-thuan',
                 'seat': {'room': ROOM_DIRECTOR, 'seat_index': 1, 'is_head': True},
                 'seat_index': 1,
                 'room': ROOM_DIRECTOR,
