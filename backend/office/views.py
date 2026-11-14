@@ -61,47 +61,68 @@ UNACCENTED_MALE_TOKENS = {
 }
 
 
+FEMALE_ANH_PREFIXES = {'quỳnh', 'mai', 'lan', 'phương', 'ngọc', 'huyền', 'thị', 'thùy', 'thúy', 'trâm', 'vân', 'hà', 'quynh', 'thuy', 'tram'}
+MALE_ANH_PREFIXES = {'văn', 'đức', 'tuấn', 'việt', 'quang', 'hoàng', 'minh', 'hùng', 'thế', 'van', 'duc', 'tuan', 'viet'}
+
+
 def guess_gender_from_vietnamese_name(name: str) -> str:
     """Suy đoán giới tính ('male' | 'female') từ tên tiếng Việt.
 
     Ưu tiên tuyệt đối:
-    - Nếu tên chứa đệm hoặc tên nam (Bình, Dũng, Phong, Văn, Tuấn...): male
-    - Nếu có 'thị' hoặc tên nữ: female
+    - Nếu tên chứa nick cố định (Mr Dũng, Phong NT, Bình LV...): male
+    - Nếu từ cuối cùng (tên chính) là Nữ rõ ràng (Hà, Trang, Linh, Hương...): female
+    - Nếu từ cuối cùng là 'Anh': xét tiền tố (Quỳnh Anh, Mai Anh -> female; Tuấn Anh -> male)
+    - Nếu từ cuối cùng là Nam rõ ràng (Bình, Dũng, Phong, Tuấn, Nam...): male
+    - Xét đệm: 'thị' -> female, 'văn' -> male
     - Mặc định: male.
     """
     if not name:
         return 'male'
     clean_name = str(name).strip().lower()
+    norm_name = remove_vietnamese_accents(clean_name)
+
+    # Ưu tiên các định danh nam đặc biệt (Mr, username, v.v.)
+    if any(k in norm_name for k in ['binhlv', 'dungpv', 'phongnt', 'mr dung', 'le van binh', 'phong nt', 'mr ']):
+        return 'male'
+
     words = re.findall(r'[^\W\d_]+', clean_name, flags=re.UNICODE)
     if not words:
         return 'male'
 
-    # Kiểm tra tên nam cố định (Dũng, Phong, Bình, Văn...)
-    norm_name = remove_vietnamese_accents(clean_name)
-    if any(k in words for k in EXACT_MALE_TOKENS) or \
-       any(k in norm_name for k in ['binhlv', 'dungpv', 'phongnt', 'mr dung', 'le van binh', 'phong nt']):
-        return 'male'
-
-    # Kiểm tra tên đệm + tên (bỏ họ để tránh nhầm họ Đào, Hà, Mai, Hồng...)
-    check_words = set(words[1:]) if len(words) > 1 else set(words)
-    norm_words = {remove_vietnamese_accents(w) for w in check_words}
-
-    # Nếu từ cuối cùng (tên gọi chính) là nam: male
     last_word = words[-1]
     last_norm = remove_vietnamese_accents(last_word)
+
+    # Nếu tên kết thúc là 'anh' (lưỡng tính)
+    if last_norm == 'anh':
+        other_words = {remove_vietnamese_accents(w) for w in words[:-1]}
+        if other_words & FEMALE_ANH_PREFIXES:
+            return 'female'
+        if other_words & MALE_ANH_PREFIXES:
+            return 'male'
+
+    # Nếu từ cuối cùng (tên gọi chính) là Nữ rõ ràng -> female (ví dụ Phan Khánh Hà, Đào Minh Trang)
+    if last_word in EXACT_FEMALE_TOKENS or last_norm in UNACCENTED_FEMALE_TOKENS:
+        return 'female'
+
+    # Nếu từ cuối cùng (tên gọi chính) là Nam rõ ràng -> male
     if last_word in EXACT_MALE_TOKENS or last_norm in UNACCENTED_MALE_TOKENS:
         return 'male'
+
+    # Kiểm tra tên đệm + tên (bỏ họ nếu >= 3 từ)
+    check_words = set(words[1:]) if len(words) > 2 else set(words)
+    norm_words = {remove_vietnamese_accents(w) for w in check_words}
 
     # Kiểm tra đệm 'thị' -> female; đệm 'văn' -> male
     if 'thị' in check_words or 'thi' in norm_words:
         return 'female'
-    if 'văn' in check_words:
+    if 'văn' in check_words or 'van' in norm_words:
         return 'male'
 
-    if check_words & EXACT_FEMALE_TOKENS:
+    if check_words & EXACT_FEMALE_TOKENS or norm_words & UNACCENTED_FEMALE_TOKENS:
         return 'female'
-    if norm_words & UNACCENTED_FEMALE_TOKENS:
-        return 'female'
+    if check_words & EXACT_MALE_TOKENS or norm_words & UNACCENTED_MALE_TOKENS:
+        return 'male'
+
     return 'male'
 
 
