@@ -28,6 +28,7 @@ from office.models import (
     OfficePresence,
     OfficeSeat,
     is_director_account,
+    remove_vietnamese_accents,
     suggest_seat_for_user,
 )
 from office.views import guess_gender_from_vietnamese_name
