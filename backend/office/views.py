@@ -516,6 +516,30 @@ class OfficeRosterView(APIView):
                 'avatar': {'shirt': '#0EA5E9', 'skin_color': '#E2E8F0', 'hairStyle': 'plain', 'glasses': False, 'gender': 'male'},
             })
 
+        # Đảm bảo luôn có Giám đốc (Lê Đức Thuận) trong văn phòng 3D
+        if not any(m.get('is_director') or (m.get('seat') and m['seat'].get('room') == ROOM_DIRECTOR) for m in roster):
+            roster.append({
+                'name': 'Lê Đức Thuận',
+                'department': 'Ban Giám đốc',
+                'job_title': 'Giám đốc',
+                'role': 'Giám đốc điều hành',
+                'id': 'ft-director',
+                'seat': {'room': ROOM_DIRECTOR, 'seat_index': 1, 'is_head': True},
+                'seat_index': 1,
+                'room': ROOM_DIRECTOR,
+                'is_head': True,
+                'online': True,
+                'status': STATUS_WORKING,
+                'work_status': STATUS_WORKING,
+                'is_idle': False,
+                'is_bot': False,
+                'is_assistant': False,
+                'is_director': True,
+                'is_me': False,
+                'gender': 'male',
+                'avatar': {'shirt': '#2B3A55', 'skin_color': '#E2E8F0', 'hairStyle': 'plain', 'glasses': True, 'gender': 'male'},
+            })
+
         return Response({'roster': roster})
 
 

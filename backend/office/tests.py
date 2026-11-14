@@ -613,4 +613,20 @@ nonexistent_email@test.com,tech,1,false
         self.assertNotEqual(bot_entry['seat']['room'], ROOM_ACCOUNTING)
         self.assertEqual(bot_entry['seat']['room'], ROOM_MEDIA)
 
+    def test_director_always_present_in_roster(self):
+        """Kiểm tra Giám đốc (Lê Đức Thuận) luôn hiện diện trong roster phòng director."""
+        self.client.force_authenticate(user=self.dev_user)
+        roster_res = self.client.get('/api/office/roster/')
+        self.assertEqual(roster_res.status_code, status.HTTP_200_OK)
+        roster = roster_res.json()['roster']
+
+        director_entry = next((m for m in roster if m.get('is_director') or m.get('room') == ROOM_DIRECTOR), None)
+        self.assertIsNotNone(director_entry)
+        assert director_entry is not None
+        self.assertEqual(director_entry['name'], 'Lê Đức Thuận')
+        self.assertEqual(director_entry['seat']['room'], ROOM_DIRECTOR)
+        self.assertTrue(director_entry['seat']['is_head'])
+        self.assertTrue(director_entry['online'])
+
+
 
