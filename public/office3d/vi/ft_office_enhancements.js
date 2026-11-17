@@ -1187,12 +1187,19 @@
     const g = window.FTCafeVan.build(THREE, {});
     scene.add(g);
 
-    // Ẩn vật thể cũ của quán nhậu/bia hơi quanh lô này (không đụng vào toà nhà mới)
+    // Ẩn vật thể cũ của quán nhậu/bia hơi nằm trong lô này (không đụng toà nhà mới, không lan sang lô khác)
+    const insideLot = new Set();
+    g.traverse((o) => insideLot.add(o.uuid));
+    const lotBox = new THREE.Box3(
+      new THREE.Vector3(window.FTCafeVan.LOT.frontX - 1.0, -1, window.FTCafeVan.LOT.zMin - 1.0),
+      new THREE.Vector3(window.FTCafeVan.LOT.backX + 1.0, 30, window.FTCafeVan.LOT.zMax + 1.0)
+    );
     scene.traverse((obj) => {
-      if (!obj || obj === g) return;
-      if (obj.name && /nhau|bia_hoi|beer_shop/i.test(obj.name) && obj.name !== 'ft_cafe_van_group') {
-        obj.visible = false;
-      }
+      if (!obj || insideLot.has(obj.uuid)) return;
+      if (!obj.name || !/nhau|bia_hoi|beer_shop/i.test(obj.name) || obj.name === 'ft_cafe_van_group') return;
+      const wp = new THREE.Vector3();
+      obj.getWorldPosition(wp);
+      if (lotBox.containsPoint(wp)) obj.visible = false;
     });
 
     // Giữ điểm neo / chỗ ngồi của Giám đốc theo đúng lô mới
