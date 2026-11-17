@@ -429,8 +429,8 @@
 
     var winW = 1.02;
     var winH = 1.45;
-    var winGlassW = 0.92;
-    var winGlassH = 1.35;
+    var winGlassW = 0.90;
+    var winGlassH = 1.33;
     var winZ = [7.35, midZ, 10.05];
     var winRows = [
       { bottom: 4.10, lit: 1 },   // tầng 2, cửa giữa sáng
@@ -442,13 +442,20 @@
       var winCenterY = row.bottom + winH / 2;
       for (cidx = 0; cidx < winZ.length; cidx++) {
         var zc = winZ[cidx];
-        // Khung nhôm dày, mặt ngoài nhô 6 cm; kính lùi 3 cm vào trong khung để thấy chiều sâu
-        addBox(windows, 0.10, winH, winW, aluLight, LOT.frontX + 0.01, winCenterY, zc);
+        // Khung nhôm 4 thanh (không đặc), mặt ngoài nhô 7 cm; kính lùi 4 cm vào trong khung
+        var fD = 0.10;                                        // dày khung theo phương x
+        var fB = 0.055;                                       // bề rộng thanh khung
+        var fX = LOT.frontX + 0.02;
+        addBox(windows, fD, fB, winW, aluLight, fX, winCenterY + winH / 2 - fB / 2, zc);
+        addBox(windows, fD, fB, winW, aluLight, fX, winCenterY - winH / 2 + fB / 2, zc);
+        addBox(windows, fD, winH - fB * 2, fB, aluLight, fX, winCenterY, zc - winW / 2 + fB / 2);
+        addBox(windows, fD, winH - fB * 2, fB, aluLight, fX, winCenterY, zc + winW / 2 - fB / 2);
         var lit = (r === 0 && cidx === 1) || (r === 1 && cidx === 0);
-        addPlane(windows, winGlassW, winGlassH, lit ? winLitMat : winGlassMat, LOT.frontX + 0.03, winCenterY, zc);
-        var innerLit = new THREE.Mesh(planeGeo(winGlassW - 0.12, winGlassH - 0.12), lit ? winGlowMat : winDarkMat);
+        addPlane(windows, winGlassW, winGlassH, lit ? winLitMat : winGlassMat, LOT.frontX + 0.028, winCenterY, zc);
+        // nền sau kính: sáng (đèn trong nhà) hoặc tối
+        var innerLit = new THREE.Mesh(planeGeo(winGlassW - 0.10, winGlassH - 0.10), lit ? winGlowMat : winDarkMat);
         innerLit.rotation.y = Math.PI / 2;
-        innerLit.position.set(LOT.frontX - 0.02, winCenterY, zc);
+        innerLit.position.set(LOT.frontX + 0.006, winCenterY, zc);
         windows.add(innerLit);
         addBox(windows, 0.10, 0.07, winW + 0.14, stucco, LOT.frontX + 0.045, row.bottom - 0.035, zc);
 
@@ -466,7 +473,6 @@
     addBox(windows, 0.01, 0.02, 0.45, metalBlack, LOT.frontX + 0.205, 6.20, 10.60);
     addBox(windows, 0.01, 0.02, 0.45, metalBlack, LOT.frontX + 0.205, 6.30, 10.60);
 
-    // Ống thoát nước ở góc phải
     // Ống thoát nước gắn trên tường hông (ngoài mặt tiền, không cắm vào trụ góc)
     addCyl(group, 0.05, 0.05, 9.15, 10, pipeMat, -16.60, 4.725, LOT.zMax + 0.055);
     addCyl(group, 0.05, 0.05, 0.35, 8, pipeMat, -16.60, 0.175, LOT.zMax + 0.055);
@@ -509,7 +515,7 @@
 
     // Ghế riêng của Giám đốc giữa hai bàn (khớp cafeVanChairSpot bên enhancements)
     addBox(terrace, 0.40, 0.05, 0.42, woodCounter, bistroX, 0.44, midZ);
-    addBox(terrace, 0.40, 0.38, 0.05, woodCounter, bistroX, 0.64, midZ + 0.185);
+    addBox(terrace, 0.05, 0.38, 0.40, woodCounter, bistroX - 0.185, 0.64, midZ);
     addBox(terrace, 0.06, 0.40, 0.06, metalBlack, bistroX - 0.15, 0.22, midZ - 0.15);
     addBox(terrace, 0.06, 0.40, 0.06, metalBlack, bistroX + 0.15, 0.22, midZ - 0.15);
 
@@ -532,7 +538,7 @@
     var tumXMax = tumXMin + 1.60;                  // -16.80
     var tumZMin = LOT.zMax - 1.80;                 // 9.30
     var tumZMax = tumZMin + 1.50;                  // 10.80
-    var tumBottom = yTop;                          // 9.40
+    var tumBottom = y4 + 0.02;                     // đặt trên mặt sàn thượng (trong lan can)
     var tumTop = tumBottom + 1.40;                 // 10.80
     var tumCX = (tumXMin + tumXMax) / 2;
     var tumCZ = (tumZMin + tumZMax) / 2;

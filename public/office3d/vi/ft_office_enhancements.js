@@ -1187,6 +1187,14 @@
     const g = window.FTCafeVan.build(THREE, {});
     scene.add(g);
 
+    // Ẩn vật thể cũ của quán nhậu/bia hơi quanh lô này (không đụng vào toà nhà mới)
+    scene.traverse((obj) => {
+      if (!obj || obj === g) return;
+      if (obj.name && /nhau|bia_hoi|beer_shop/i.test(obj.name) && obj.name !== 'ft_cafe_van_group') {
+        obj.visible = false;
+      }
+    });
+
     // Giữ điểm neo / chỗ ngồi của Giám đốc theo đúng lô mới
     const LOT = window.FTCafeVan.LOT;
     const lotMidZ = (LOT.zMin + LOT.zMax) / 2;
