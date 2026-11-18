@@ -10,9 +10,9 @@
 
   var LOT = {
     frontX: -15.46,     // mặt phẳng mặt tiền
-    backX: -19.60,      // tường hậu (sâu 4.14 m vào trong lô)
+    backX: -20.35,      // tường hậu — sát tường toà cao tầng phía sau (cách 0.10 m)
     zMin: 6.30, zMax: 11.10,   // bề ngang 4.80 m
-    groundY: 0,
+    groundY: -0.46,     // cao độ vỉa hè thật của cảnh (đo bằng raycast)
     hGround: 2.95,      // tầng trệt
     hFascia: 0.75,      // dải biển 2.95 -> 3.70
     hFloor2: 2.85,      // 3.70 -> 6.55
@@ -98,6 +98,7 @@
     var y3 = y2 + LOT.hFloor2;                   // 6.55
     var y4 = y3 + LOT.hFloor3;                   // 9.05
     var yTop = y4 + LOT.hParapet;                // 9.40
+    var gy = LOT.groundY;                        // cao độ vỉa hè (-0.46)
 
     var rearT = 0.20;                            // tường hậu
     var sideT = 0.18;                            // tường bên
@@ -185,6 +186,33 @@
       return obj;
     }
 
+    /**
+     * Ghế đủ 4 chân đứng trên mặt sàn (không phải tấm phẳng lơ lửng).
+     * baseY = cao độ mặt sàn ghế đứng; hướng lưng theo trục z.
+     */
+    function addChair(parent, cx, baseY, cz, dirZ, legMat, seatMat) {
+      var seatH = 0.42, seatT = 0.05, w = 0.40, d = 0.42, legT = 0.04;
+      addBox(parent, w, seatT, d, seatMat, cx, baseY + seatH, cz);          // mặt ghế
+      addBox(parent, w, 0.36, seatT, seatMat, cx, baseY + seatH + 0.20, cz + dirZ * (d / 2 - 0.02)); // lưng
+      var ox = w / 2 - 0.04, oz = d / 2 - 0.04;
+      var legs = [[ox, oz], [-ox, oz], [ox, -oz], [-ox, -oz]];
+      for (var li = 0; li < legs.length; li++) {
+        addBox(parent, legT, seatH, legT, legMat, cx + legs[li][0], baseY + seatH / 2, cz + legs[li][1]);
+      }
+    }
+
+    /** Ghế có lưng quay theo trục x (dùng cho ghế Giám đốc nhìn ra đường). */
+    function addChairX(parent, cx, baseY, cz, dirX, legMat, seatMat) {
+      var seatH = 0.42, seatT = 0.05, w = 0.42, d = 0.40, legT = 0.04;
+      addBox(parent, w, seatT, d, seatMat, cx, baseY + seatH, cz);
+      addBox(parent, seatT, 0.36, d, seatMat, cx + dirX * (w / 2 - 0.02), baseY + seatH + 0.20, cz);
+      var ox = w / 2 - 0.04, oz = d / 2 - 0.04;
+      var legs = [[ox, oz], [-ox, oz], [ox, -oz], [-ox, -oz]];
+      for (var li = 0; li < legs.length; li++) {
+        addBox(parent, legT, seatH, legT, legMat, cx + legs[li][0], baseY + seatH / 2, cz + legs[li][1]);
+      }
+    }
+
     // ---- Vật liệu chính ----
     var stucco = mat(0xe6ddca, { roughness: 0.92, metalness: 0.02 });
     var alu = mat(0x2b3440, { roughness: 0.36, metalness: 0.72 });
@@ -248,7 +276,8 @@
     var upperH = y4 - (y1 - 0.10);
     addBox(shell, frontT, upperH, W, stucco, LOT.frontX - frontT / 2, (y1 - 0.10 + y4) / 2, midZ);
 
-    // Sàn tầng 1, tầng 2 và sàn mái
+    // Sàn tầng trệt (đặt trên vỉa hè, không hở gầm), tầng 2 và sàn mái
+    addBox(shell, D, 0.20, W, stucco, midX, gy - 0.10, midZ);
     addBox(shell, D, 0.20, W, stucco, midX, y1, midZ);
     addBox(shell, D, 0.18, W, stucco, midX, y3, midZ);
     addBox(shell, D, 0.18, W, stucco, midX, y4 - 0.09, midZ);
@@ -306,8 +335,8 @@
 
     // Quầy bar: thân gỗ + mặt đá
     var barX = LOT.backX + 1.40;
-    addBox(inside, 0.62, 0.95, 1.80, woodCounter, barX, 0.475, midZ);
-    addBox(inside, 0.72, 0.06, 1.92, stone, barX, 0.98, midZ);
+    addBox(inside, 0.62, 0.95, 1.80, woodCounter, barX, gy + 0.475, midZ);
+    addBox(inside, 0.72, 0.06, 1.92, stone, barX, gy + 0.98, midZ);
 
     // Bảng đen MENU trên tường hậu
     var menuTex = menuTexture(THREE);
@@ -317,52 +346,51 @@
       metalness: 0.04
     });
     if (menuTex) menuMat.map = menuTex;
-    addPlane(inside, 1.30, 0.80, menuMat, LOT.backX + rearT + 0.02, 1.72, midZ);
+    addPlane(inside, 1.30, 0.80, menuMat, LOT.backX + rearT + 0.02, gy + 1.72, midZ);
 
-    // 2 bàn tròn nhỏ + 4 ghế
-    var tableCX = -16.55;
-    var tableZs = [7.55, 9.80];
+    // 2 bàn tròn nhỏ + 4 ghế (ghế có 4 chân đứng trên sàn)
+    var tableCX = LOT.frontX - 1.09;
+    var tableZs = [midZ - 1.15, midZ + 1.10];
     var i;
     for (i = 0; i < tableZs.length; i++) {
       var tz = tableZs[i];
-      addCyl(inside, 0.30, 0.30, 0.05, 18, woodCounter, tableCX, 0.72, tz);
-      addCyl(inside, 0.04, 0.04, 0.70, 10, metalBlack, tableCX, 0.35, tz);
+      addCyl(inside, 0.26, 0.26, 0.04, 18, woodCounter, tableCX, gy + 0.72, tz);
+      addCyl(inside, 0.04, 0.04, 0.70, 10, metalBlack, tableCX, gy + 0.35, tz);
+      addCyl(inside, 0.16, 0.18, 0.03, 14, metalBlack, tableCX, gy + 0.015, tz);
 
       var chairOffsets = [-0.48, 0.48];
       var c;
       for (c = 0; c < chairOffsets.length; c++) {
         var cz = tz + chairOffsets[c];
-        addBox(inside, 0.40, 0.05, 0.40, woodCounter, tableCX, 0.44, cz);
-        var backZ = cz + (chairOffsets[c] < 0 ? -0.175 : 0.175);
-        addBox(inside, 0.40, 0.40, 0.05, woodCounter, tableCX, 0.64, backZ);
+        addChair(inside, tableCX, gy, cz, chairOffsets[c] < 0 ? -1 : 1, metalBlack, woodCounter);
       }
     }
 
     // 3 đèn thả trần: chao nón vàng + bóng phát sáng
-    var lampZs = [7.55, midZ, 9.80];
+    var lampZs = [tableZs[0], midZ, tableZs[1]];
     for (i = 0; i < lampZs.length; i++) {
       var shade = new THREE.Mesh(coneGeo(0.18, 0.30, 12, true), brass);
-      shade.position.set(-16.90, 2.70, lampZs[i]);
+      shade.position.set(LOT.frontX - 1.30, gy + 2.70, lampZs[i]);
       inside.add(shade);
       var bulb = new THREE.Mesh(sphereGeo(0.05, 8, 6), bulbMat);
-      bulb.position.set(-16.90, 2.50, lampZs[i]);
+      bulb.position.set(LOT.frontX - 1.30, gy + 2.50, lampZs[i]);
       inside.add(bulb);
       // dây treo đèn lên trần
-      addCyl(inside, 0.008, 0.008, 0.14, 5, metalBlack, -16.90, 2.78, lampZs[i]);
+      addCyl(inside, 0.008, 0.008, 0.14, 5, metalBlack, LOT.frontX - 1.30, gy + 2.78, lampZs[i]);
     }
 
     // 2 chậu cây trong quán
     var plantZs = [glassZMin + 0.23, glassZMax - 0.23];
     for (i = 0; i < plantZs.length; i++) {
-      addCyl(inside, 0.14, 0.12, 0.30, 10, terracotta, -15.85, 0.15, plantZs[i]);
+      addCyl(inside, 0.14, 0.12, 0.30, 10, terracotta, LOT.frontX - 0.39, gy + 0.15, plantZs[i]);
       var foliage = new THREE.Mesh(sphereGeo(0.22, 8, 6), grass);
-      foliage.position.set(-15.85, 0.45, plantZs[i]);
+      foliage.position.set(LOT.frontX - 0.39, gy + 0.45, plantZs[i]);
       inside.add(foliage);
     }
 
     // Ánh sáng ấm duy nhất hắt ra vỉa hè
     var light = new THREE.PointLight(0xffb46b, 6, 6.5, 2);
-    light.position.set(-17.0, 2.3, midZ);
+    light.position.set(LOT.frontX - 1.54, gy + 2.3, midZ);
     group.add(light);
 
     // ============================================================
@@ -392,7 +420,7 @@
       signMat.map = signTex;
       signMat.emissiveMap = signTex;
     }
-    addPlane(fascia, 3.55, 0.62, signMat, LOT.frontX + 0.125, 3.32, midZ);
+    addPlane(fascia, 3.55, 0.62, signMat, LOT.frontX + 0.125, gy + 3.32, midZ);
 
     // ============================================================
     // 5. MÁI HIÊN (AWNING), KHÔNG CỘT CHỐNG
@@ -402,9 +430,11 @@
     group.add(awning);
 
     var awnX0 = LOT.frontX;
-    var awnY0 = 2.97;   // gối 2 cm vào dải fascia để không hở khe sáng
-    var awnX1 = LOT.frontX + 1.01;                // -14.45
-    var awnY1 = 2.72;
+    var awnY0 = y1 + 0.02;   // gối 2 cm vào dải fascia để không hở khe sáng
+    // Chỉ nhô 0.24 m: mái hiên sâu 1 m che kín sân hiên, ở góc nhìn từ trên
+    // toàn bộ bàn ghế + Giám đốc bị tấm mái nuốt mất.
+    var awnX1 = LOT.frontX + 0.24;                // -15.22
+    var awnY1 = y1 - 0.07;
     var awnRun = awnX1 - awnX0;
     var awnDrop = awnY0 - awnY1;
     var awnLen = Math.sqrt(awnRun * awnRun + awnDrop * awnDrop);
@@ -433,8 +463,8 @@
     var winGlassH = 1.33;
     var winZ = [7.35, midZ, 10.05];
     var winRows = [
-      { bottom: 4.10, lit: 1 },   // tầng 2, cửa giữa sáng
-      { bottom: 6.95, lit: 0 }    // tầng 3, cửa trái sáng
+      { bottom: gy + 4.10, lit: 1 },   // tầng 2, cửa giữa sáng
+      { bottom: gy + 6.95, lit: 0 }    // tầng 3, cửa trái sáng
     ];
     var r, cidx;
     for (r = 0; r < winRows.length; r++) {
@@ -468,14 +498,14 @@
     }
 
     // Cục nóng điều hoà + 3 thanh tản nhiệt
-    addBox(windows, 0.35, 0.45, 0.55, aluLight, LOT.frontX + 0.025, 6.20, 10.60);
-    addBox(windows, 0.01, 0.02, 0.45, metalBlack, LOT.frontX + 0.205, 6.10, 10.60);
-    addBox(windows, 0.01, 0.02, 0.45, metalBlack, LOT.frontX + 0.205, 6.20, 10.60);
-    addBox(windows, 0.01, 0.02, 0.45, metalBlack, LOT.frontX + 0.205, 6.30, 10.60);
+    addBox(windows, 0.35, 0.45, 0.55, aluLight, LOT.frontX + 0.025, gy + 6.20, 10.60);
+    addBox(windows, 0.01, 0.02, 0.45, metalBlack, LOT.frontX + 0.205, gy + 6.10, 10.60);
+    addBox(windows, 0.01, 0.02, 0.45, metalBlack, LOT.frontX + 0.205, gy + 6.20, 10.60);
+    addBox(windows, 0.01, 0.02, 0.45, metalBlack, LOT.frontX + 0.205, gy + 6.30, 10.60);
 
     // Ống thoát nước gắn trên tường hông (ngoài mặt tiền, không cắm vào trụ góc)
-    addCyl(group, 0.05, 0.05, 9.15, 10, pipeMat, -16.60, 4.725, LOT.zMax + 0.055);
-    addCyl(group, 0.05, 0.05, 0.35, 8, pipeMat, -16.60, 0.175, LOT.zMax + 0.055);
+    addCyl(group, 0.05, 0.05, 9.15, 10, pipeMat, -16.60, gy + 4.725, LOT.zMax + 0.055);
+    addCyl(group, 0.05, 0.05, 0.35, 8, pipeMat, -16.60, gy + 0.175, LOT.zMax + 0.055);
 
     // ============================================================
     // 7. SÂN HIÊN TRÊN VỈA HÈ
@@ -484,47 +514,48 @@
     terrace.name = 'ft_cafe_van_terrace';
     group.add(terrace);
 
-    // Thảm lát gạch nhẹ
-    addBox(terrace, 0.91, 0.03, W, tileMat, LOT.frontX + 0.455, 0.015, midZ);
+    // Bó vỉa + thảm lát: đặt TRÊN vỉa hè thật (gy), cao 0.12 m — không còn tấm
+    // sàn lơ lửng cách mặt đường gần nửa mét.
+    var terraceH = 0.12;
+    var ty = gy + terraceH;                       // mặt sàn sân hiên
+    var terW = 0.95;
+    addBox(terrace, terW, terraceH, W, stone, LOT.frontX + terW / 2, gy + terraceH / 2, midZ);
+    addBox(terrace, terW - 0.04, 0.02, W - 0.04, tileMat, LOT.frontX + terW / 2, ty + 0.01, midZ);
 
-    // 2 bàn bistro tròn + 4 ghế nhỏ
-    var bistroX = LOT.frontX + 0.54;              // -14.92
-    var bistroZs = [7.85, 9.55];
-    var chairOff = 0.35;
+    // 2 bàn bistro tròn + 4 ghế nhỏ (ghế 4 chân đứng trên thảm)
+    var bistroX = LOT.frontX + 0.52;              // -14.94
+    var bistroZs = [midZ - 0.85, midZ + 0.85];
+    var chairOff = 0.43;
     for (i = 0; i < bistroZs.length; i++) {
       var bz = bistroZs[i];
-      addCyl(terrace, 0.26, 0.26, 0.04, 18, woodCounter, bistroX, 0.70, bz);
-      addCyl(terrace, 0.035, 0.045, 0.70, 10, metalBlack, bistroX, 0.35, bz);
+      addCyl(terrace, 0.26, 0.26, 0.04, 18, woodCounter, bistroX, ty + 0.70, bz);
+      addCyl(terrace, 0.035, 0.045, 0.70, 10, metalBlack, bistroX, ty + 0.35, bz);
+      addCyl(terrace, 0.17, 0.19, 0.03, 14, metalBlack, bistroX, ty + 0.015, bz);
 
       var offs = [-chairOff, chairOff];
       var j;
       for (j = 0; j < offs.length; j++) {
-        var chz = bz + offs[j];
-        addBox(terrace, 0.40, 0.05, 0.42, woodCounter, bistroX, 0.44, chz);
-        var chBackZ = chz + (offs[j] < 0 ? -0.185 : 0.185);
-        addBox(terrace, 0.40, 0.38, 0.05, woodCounter, bistroX, 0.64, chBackZ);
+        addChair(terrace, bistroX, ty, bz + offs[j], offs[j] < 0 ? -1 : 1, metalBlack, woodCounter);
       }
     }
 
     // 2 chậu cây vuông sát trụ
-    var planterZs = [LOT.zMin + 0.25, LOT.zMax - 0.25];
+    var planterZs = [LOT.zMin + 0.28, LOT.zMax - 0.28];
     for (i = 0; i < planterZs.length; i++) {
-      addBox(terrace, 0.35, 0.38, 0.35, terracotta, LOT.frontX + 0.24, 0.19, planterZs[i]);
-      addBox(terrace, 0.30, 0.32, 0.30, grass, LOT.frontX + 0.24, 0.52, planterZs[i]);
+      addBox(terrace, 0.35, 0.38, 0.35, terracotta, LOT.frontX + 0.26, ty + 0.19, planterZs[i]);
+      addBox(terrace, 0.30, 0.32, 0.30, grass, LOT.frontX + 0.26, ty + 0.52, planterZs[i]);
     }
 
-    // Ghế riêng của Giám đốc giữa hai bàn (khớp cafeVanChairSpot bên enhancements)
-    addBox(terrace, 0.40, 0.05, 0.42, woodCounter, bistroX, 0.44, midZ);
-    addBox(terrace, 0.05, 0.38, 0.40, woodCounter, bistroX - 0.185, 0.64, midZ);
-    addBox(terrace, 0.06, 0.40, 0.06, metalBlack, bistroX - 0.15, 0.22, midZ - 0.15);
-    addBox(terrace, 0.06, 0.40, 0.06, metalBlack, bistroX + 0.15, 0.22, midZ - 0.15);
+    // Ghế riêng của Giám đốc giữa hai bàn, lưng quay vào quán, nhìn ra đường
+    // (khớp cafeVanChairSpot bên enhancements: x = frontX + 0.52, z = midZ)
+    addChairX(terrace, bistroX, ty, midZ, -1, metalBlack, woodCounter);
 
-    // Bảng menu chữ A
+    // Bảng menu chữ A (hai chân chạm thảm)
     var boardZ = LOT.zMax - 0.75;                  // 10.35
-    var boardX = LOT.frontX + 0.48;                // -14.98
-    var panelA = addBox(terrace, 0.02, 0.70, 0.45, menuBlack, boardX - 0.06, 0.35, boardZ);
+    var boardX = LOT.frontX + 0.46;                // -14.99
+    var panelA = addBox(terrace, 0.02, 0.70, 0.45, menuBlack, boardX - 0.06, ty + 0.35, boardZ);
     panelA.rotation.z = -0.10;
-    var panelB = addBox(terrace, 0.02, 0.70, 0.45, menuBlack, boardX + 0.06, 0.35, boardZ);
+    var panelB = addBox(terrace, 0.02, 0.70, 0.45, menuBlack, boardX + 0.06, ty + 0.35, boardZ);
     panelB.rotation.z = 0.10;
 
     // ============================================================
