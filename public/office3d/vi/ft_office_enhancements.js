@@ -381,9 +381,21 @@
       }
     }, 5000);
 
-    setTimeout(() => {
-      if (!isPatrolling) sendDirectorToCafeVan();
-    }, 3000);
+    // Giám đốc ra quán ngay khi scene sẵn sàng. Lần thử đầu hay trượt vì director
+    // còn offstage lúc mới load → phải thử lại theo nhịp, không dùng một-shot setTimeout.
+    let cafeAttempts = 0;
+    const cafeTimer = setInterval(() => {
+      const d = ftOffice && ftOffice.getDirector ? ftOffice.getDirector() : null;
+      if (!d) return;
+      if (d._ftAtCafeVan) {
+        clearInterval(cafeTimer);
+        return;
+      }
+      if (isPatrolling || d.offstage) return;
+      sendDirectorToCafeVan();
+      if (d._ftAtCafeVan) clearInterval(cafeTimer);
+      if (++cafeAttempts > 120) clearInterval(cafeTimer);
+    }, 2000);
     setTimeout(() => {
       if (!isPatrolling) triggerDirectorPatrol();
       scheduleNextDirectorPatrol();
@@ -1048,12 +1060,8 @@
     const director = ftOffice.getDirector ? ftOffice.getDirector() : null;
     if (!director || isPatrolling || director.offstage) return;
 
-    if (director._ftAtCafeVan) {
-      returnDirectorFromCafeVan(() => {
-        triggerDirectorPatrol();
-      });
-      return;
-    }
+    // Sếp đang ngồi ở quán CF Vân: KHÔNG kéo về đi tuần tra nữa, để trạng thái quán là mặc định.
+    if (director._ftAtCafeVan) return;
 
     const nav = ftOffice.getNav ? ftOffice.getNav() : null;
     const nodes = nav?.NODES || {};
@@ -1141,6 +1149,8 @@
 
   let cafeVanAnchor = { x: -13.2, z: 17.8 };
   let cafeVanChairSpot = { x: -12.9, z: 17.3, face: Math.PI * 0.25 };
+  // Mặt sàn sân hiên thật (bó vỉa 0.12 m trên vỉa hè) — chân Sếp phải đứng đúng cao độ này
+  let cafeVanSeatY = 0.12;
 
   function findSceneRoot() {
     if (office && office.scene) return office.scene;
@@ -1207,13 +1217,14 @@
     const lotMidZ = (LOT.zMin + LOT.zMax) / 2;
     cafeVanAnchor = { x: LOT.frontX, z: lotMidZ };
     // ghế giám đốc nằm trên sân hiên, trùng với ghế đã dựng trong FTCafeVan.build()
-    cafeVanChairSpot = { x: LOT.frontX + 0.54, z: lotMidZ, face: 0 };
+    cafeVanChairSpot = { x: LOT.frontX + 0.52, z: lotMidZ, face: Math.PI / 2 };
+    cafeVanSeatY = LOT.groundY + 0.12;
   }
 
   function getCafeVanSpot() {
     return {
       x: cafeVanChairSpot.x,
-      y: 0,
+      y: cafeVanSeatY,
       z: cafeVanChairSpot.z,
       face: cafeVanChairSpot.face,
       sit: true
@@ -1272,16 +1283,18 @@
     director.face = director.faceTarget = cf.face;
     director.pose = 'sit';
     director.anim = 'coffee';
+    // gy() = (this.street ? this.ground : 0) — street=true mà thiếu ground thì y = NaN,
+    // ma trận NaN làm toàn bộ mesh Giám đốc biến mất khỏi scene.
+    director.ground = cf.y;
 
     if (director.root) {
       director.root.visible = true;
-      if (typeof director.gy === 'function') {
-        director.root.position.y = director.gy();
-      }
       if (director.root.position) {
         director.root.position.x = cf.x;
+        director.root.position.y = cf.y;
         director.root.position.z = cf.z;
       }
+      director.root.updateMatrixWorld(true);
     }
     if (director.tagObj) director.tagObj.visible = true;
 
