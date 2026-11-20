@@ -877,6 +877,24 @@ export default function OfficeWorkspace({
               <button
                 type="button"
                 onClick={() => {
+                  // Bật/tắt khung chat "Công ty My Office" ngay trong cảnh 3D (cùng origin nên bấm thẳng nút của khung)
+                  try {
+                    const doc = iframeRef.current?.contentDocument;
+                    (doc?.getElementById('btn-chat') as HTMLElement | null)?.click();
+                  } catch {
+                    /* iframe chưa sẵn sàng */
+                  }
+                }}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-slate-200 transition cursor-pointer whitespace-nowrap shrink-0 hover:bg-slate-800"
+                title="Bật/tắt chat công ty trong văn phòng 3D"
+              >
+                <MessageSquare className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+                <span className="hidden sm:inline">Chat</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   setShowList(v => !v);
                   setShowAppsDrawer(false);
                 }}
