@@ -158,13 +158,20 @@ class Command(BaseCommand):
                     if not sheets:
                         raise CommandError(f'{session.pk}: chưa gắn tab Google Sheet.')
                     for sheet in sheets:
-                        self.expand(service, session, layout, sheet, options['apply'])
+                        try:
+                            target = _output_sheet_target(sheet, service)
+                        except ValueError as exc:
+                            # A linked Sheet without a tab (e.g. an unconfigured summary
+                            # link) is not a session tab: report it, keep going.
+                            self.stdout.write(f'{session.pk}: bỏ qua liên kết Sheet {sheet.pk} ({exc})')
+                            continue
+                        self.expand(service, session, layout, sheet, options['apply'], target)
         except BlockingIOError as exc:
             raise CommandError('Hàng đợi ghi Google Sheet khảo thí đang chạy; chưa thay đổi gì, hãy chạy lại sau ít phút.') from exc
 
-    def expand(self, service, session, layout, sheet, apply):
+    def expand(self, service, session, layout, sheet, apply, target=None):
         spreadsheet_id = extract_spreadsheet_id(sheet.url)
-        target = _output_sheet_target(sheet, service)
+        target = target or _output_sheet_target(sheet, service)
         title = target['title']
         range_title = _sheet_range_title(title)
         grid = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=f'{range_title}!A1:ZZ').execute(num_retries=6).get('values', [])
