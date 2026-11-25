@@ -97,6 +97,19 @@ def submitted_on(row):
         return None
 
 
+def submitted_at(row):
+    """ISO giờ Việt Nam từ ô "Dấu thời gian" (dd/mm/yyyy hh:mm[:ss]); không đọc được thì ''."""
+    match = re.match(r'\s*(\d{1,2})/(\d{1,2})/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?', clean(row[0]) if row else '')
+    if not match:
+        return ''
+    day, month, year, hour, minute, second = (int(value or 0) for value in match.groups())
+    try:
+        value = datetime.datetime(year, month, day, hour, minute, second)
+    except ValueError:
+        return ''
+    return timezone.make_aware(value).isoformat()
+
+
 def source_uid(row, row_number):
     timestamp = clean(row[0]) if row else ''
     if timestamp:
@@ -234,6 +247,11 @@ def import_form_rows(tab, rows, headers=None):
                         payment_proof = clean(row[proof_column]) if len(row) > proof_column else ''
                     registration = dict(participation.registration_data or {})
                     registration.update({'formTab': tab, 'formRow': row_number, 'paymentProof': payment_proof})
+                    # Thời điểm gửi Form (sớm nhất) để đếm đăng ký mới theo ngày;
+                    # dòng có thể được nhập vào web muộn hơn nhiều.
+                    submitted = submitted_at(row)
+                    if submitted and (not registration.get('formSubmittedAt') or submitted < registration['formSubmittedAt']):
+                        registration['formSubmittedAt'] = submitted
                     registration.setdefault('registeredAt', participation.created_at.isoformat())
                     registration.setdefault('registrationProfile', {
                         'name': name, 'birth_date': birth_date, 'identity': identity, 'email': email, 'phone': phone, 'parent': parent,

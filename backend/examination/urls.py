@@ -87,6 +87,7 @@ urlpatterns = [
     path('examination/candidates/<str:pk>/sessions/<str:session_id>', views.candidate_remove_from_session, name='candidate_remove_from_session'),
     path('examination/candidates/<str:pk>/sessions/<str:session_id>/transfer', views.candidate_transfer_session, name='candidate_transfer_session'),
     path('examination/candidates/<str:pk>/sessions/<str:session_id>/batches', views.candidate_add_batch, name='candidate_add_batch'),
+    path('examination/registration-stats', views.registration_stats, name='registration_stats'),
     path('examination/sheet-publication', views.sheet_publication_config, name='sheet_publication_config'),
     path('examination/sheet-publication/sync', views.sheet_publication_sync, name='sheet_publication_sync'),
     path('examination/sheets', views.sheets_list, name='sheets_list'),

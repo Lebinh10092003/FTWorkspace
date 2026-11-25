@@ -26,6 +26,7 @@ import SearchableSelect from "./SearchableSelect";
 import UnmatchedTransfers from "./finance/UnmatchedTransfers";
 import { matchesSearch } from "../lib/searchText";
 import { DateBadge, DeadlineLegend as Legend, Metric, SessionsTable, TimeField, dateValue, emptyDate, todayIso, sessionDisplayName, sessionTimelineLabel, sessionRecencyKey, formatGrade, BirthDateControl, LIST_PAGE_SIZE, TablePagination } from "./examination/ui";
+import { DailyIncrease, useDailyRegistrations } from "./examination/DailyRegistrations";
 import { roundDates, sessionRounds } from "./examination/rounds";
 import { examinationPathFor, examinationRouteFromPath } from "./examination/routes";
 import ResponsiveDataList from "./ui/ResponsiveDataList";
@@ -518,6 +519,10 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     [overviewSourceSessions],
   );
   const overviewSessions = useMemo(() => (overviewCompetitionFilter ? overviewSourceSessions.filter((session) => session.code === overviewCompetitionFilter) : overviewSourceSessions), [overviewSourceSessions, overviewCompetitionFilter]);
+  // Đăng ký mới hôm nay / hôm qua (Form, trang đăng ký, nhập tay, Excel trường).
+  const dailyRegistrations = useDailyRegistrations(isGuest ? null : idToken, candidates.length);
+  const overviewNewToday = dailyRegistrations ? overviewSessions.reduce((sum, session) => sum + (dailyRegistrations.today.bySession[session.id] || 0), 0) : 0;
+  const overviewNewYesterday = dailyRegistrations ? overviewSessions.reduce((sum, session) => sum + (dailyRegistrations.yesterday.bySession[session.id] || 0), 0) : 0;
   useEffect(() => {
     if (overviewCompetitionFilter && !overviewSourceSessions.some((session) => session.code === overviewCompetitionFilter)) setOverviewCompetitionFilter("");
   }, [overviewCompetitionFilter, overviewSourceSessions]);
@@ -1145,7 +1150,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         </div>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <Metric label="Các cuộc thi đang theo dõi" value={String(overviewSessions.length).padStart(2, "0")} icon={Trophy} onClick={() => overviewCompetitionFilter && setOverviewCompetitionFilter("")} />
-          <Metric label="Tổng số thí sinh" value={overviewSessions.reduce((sum, session) => sum + Number(session.candidates || 0), 0).toLocaleString("vi-VN")} icon={Users} onClick={() => go("candidates")} />
+          <Metric label="Tổng số thí sinh" value={overviewSessions.reduce((sum, session) => sum + Number(session.candidates || 0), 0).toLocaleString("vi-VN")} icon={Users} onClick={() => go("candidates")} hint={dailyRegistrations ? <DailyIncrease today={overviewNewToday} yesterday={overviewNewYesterday} unit="lượt đăng ký" /> : undefined} />
         </div>
       </section>
       <div className="ft-examination-overview-grid grid min-w-0 gap-6 xl:grid-cols-3">
@@ -1696,6 +1701,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
           <p className="text-sm font-bold text-emerald-900">Tổng thí sinh</p>
           <p className="mt-1 text-3xl font-extrabold text-emerald-950">{candidates.length.toLocaleString("vi-VN")}</p>
           <p className="mt-1 text-xs text-emerald-800">Mỗi mã FT được tính một lần.</p>
+          {dailyRegistrations && <div className="mt-2 text-sm"><DailyIncrease today={dailyRegistrations.today.newCandidates} yesterday={dailyRegistrations.yesterday.newCandidates} unit="thí sinh" /></div>}
         </div>
         {hasCandidateFilters && <div className="min-w-[220px] rounded-xl border border-sky-200 bg-sky-50 px-5 py-4">
           <p className="text-sm font-bold text-sky-900">Khớp tìm kiếm / bộ lọc</p>

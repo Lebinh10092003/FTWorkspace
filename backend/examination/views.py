@@ -2138,6 +2138,14 @@ def candidate_remove_from_session(request, pk, session_id):
     sync_session_candidate_totals()
     return Response(serialize_candidate(cand))
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def registration_stats(request):
+    """Đăng ký mới hôm nay và hôm qua (theo kỳ và theo mã FT) cho thẻ tổng quan."""
+    from .registration_stats import daily_registration_stats
+    return Response(daily_registration_stats())
+
+
 @api_view(['POST'])
 @permission_classes([IsManagerOrAdmin])
 def candidate_add_batch(request, pk, session_id):

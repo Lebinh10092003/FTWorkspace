@@ -23,7 +23,7 @@ var QUEUE_BUDGET_MS = 4 * 60 * 1000;
 // The _SYNC_LOG tab records failed and recovered runs. Change the version on
 // every paste into Apps Script: the next good run logs it, proving it is live.
 var SYNC_LOG_TAB = '_SYNC_LOG';
-var SYNC_LOG_VERSION = '2026-11-25b';
+var SYNC_LOG_VERSION = '2026-11-25c';
 var SYNC_LOG_VERSION_KEY = 'WORKSPACE_SYNC_LOG_VERSION';
 var FULL_RESYNC_VERSION_KEY = 'WORKSPACE_FULL_RESYNC_VERSION';
 
