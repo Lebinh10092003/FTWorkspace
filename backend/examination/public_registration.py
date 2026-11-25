@@ -258,6 +258,8 @@ def public_registration(request):
                     'registrationCode': code,
                 },
             )
+            from .registration_batch import place_new_registration
+            place_new_registration(participation)
             fee = offers[code]['fee']
             if fee is not None:
                 billing = participation.billing

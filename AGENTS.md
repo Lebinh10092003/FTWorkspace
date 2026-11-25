@@ -47,7 +47,8 @@ Commit `6985864` từng chuyển sang "duyệt tay + banner + quét mỗi phút"
 - **Lượt cá nhân của học sinh có trong danh sách trường:** chỉ giữ riêng khi đã có thanh toán/chứng từ/kế toán xử lý (`has_individual_accounting`); còn lại chuyển vào nhóm trường và bỏ khoản thu cá nhân trống, để tổng của trường đủ và không tính hai lần.
 - **Nhập tay cho học sinh của trường** (dòng file không nhập được): chọn "Đăng ký qua" trường + lệ phí trong "Thêm hồ sơ"/"Thêm thí sinh từ kho" (`attach_to_school`, `refresh_group_billing`).
 - Khi đối chiếu danh sách trường với web: kiểm tra **cả thiếu lẫn thừa** theo từng cuộc thi, sai thông tin, tab Sheet, và tổng lệ phí.
-- **Đăng ký không bao giờ tự xếp phòng, ngày thi, giờ/ca thi, hình thức thi hay link.** Nhóm nhập sau để trống, chờ Khảo thí xếp. Không sao chép theo nhóm trước hoặc theo vòng đã diễn ra.
+- **Đăng ký không bao giờ tự xếp phòng, giờ/ca thi, hình thức thi hay link.** Ngoại lệ duy nhất (chốt 25/11/2026): vòng đầu tổ chức nhiều đợt (FIMO, FIEO) thì thí sinh cá nhân đăng ký mới (Form, trang đăng ký) được xếp vào **đợt đang mở** — chỉ đợt + ngày thi (`registration_batch.py`); người Khảo thí đã xếp thì giữ nguyên. Nhóm trường nhập sau để trống, chờ Khảo thí xếp. Không sao chép theo nhóm trước hoặc theo vòng đã diễn ra.
+- **Sheet đăng ký Form 2026–2027 đọc và ghi theo tiêu đề cột** (`FORM_COLUMNS` trong `form_registration.py` và `Code.gs`), không theo vị trí: kế toán có thể chèn cột như "Hóa đơn" vào giữa tab.
 
 ## Dữ liệu thí sinh trong từng kỳ
 - **Mỗi kỳ chỉ chứa kết quả của chính kỳ đó.** Thêm thí sinh có sẵn (từ kho, Excel, Sheet) vào kỳ mới **không bao giờ** chép kết quả vòng thi của kỳ khác. Mọi đường ghi kết quả đi qua `history_for_session` (bỏ dòng có `sessionId` khác hoặc mã vòng không có trong kỳ).

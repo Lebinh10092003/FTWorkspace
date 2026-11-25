@@ -11,6 +11,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from .models import Candidate, CandidateParticipation, ExamSession, FormRegistrationLink
+from .registration_batch import place_new_registration
 from .sync import clean_profile_text
 from .sync import form_grade_and_class, format_identity, format_phone, format_person_name, merge_contest_codes, next_code, parse_dob, sync_session_candidate_totals, valid_candidate_name
 
@@ -202,6 +203,8 @@ def import_form_rows(tab, rows, headers=None):
                         candidate=candidate, session=session,
                         defaults={'source': f'{SHEET_URL}#{tab}'},
                     )
+                    if participation_created:
+                        place_new_registration(participation)
                     payment_proof = clean(row[13]) if tab == 'FIMO, FIEO' and len(row) > 13 else ''
                     if tab == 'SIPhO, SIChO, SIBO, SILSO':
                         payment_proof = ' | '.join(clean(row[i]) for i in (13, 15) if i < len(row) and clean(row[i]))
