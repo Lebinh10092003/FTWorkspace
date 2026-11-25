@@ -23,9 +23,82 @@ var QUEUE_BUDGET_MS = 4 * 60 * 1000;
 // The _SYNC_LOG tab records failed and recovered runs. Change the version on
 // every paste into Apps Script: the next good run logs it, proving it is live.
 var SYNC_LOG_TAB = '_SYNC_LOG';
-var SYNC_LOG_VERSION = '2026-11-25';
+var SYNC_LOG_VERSION = '2026-11-25b';
 var SYNC_LOG_VERSION_KEY = 'WORKSPACE_SYNC_LOG_VERSION';
 var FULL_RESYNC_VERSION_KEY = 'WORKSPACE_FULL_RESYNC_VERSION';
+
+// Standard Form column order (the SIPhO tab). Staff insert columns such as
+// "Hóa đơn" mid-tab, so both directions find each field by its header; a
+// repeated header (contest choice, payment) takes its n-th occurrence.
+// Keep in step with FORM_COLUMNS in backend/examination/form_registration.py.
+var FORM_COLUMNS = [
+  [0, /^dấu thời gian/], [1, /^địa chỉ email/], [2, /họ và tên thí sinh/], [3, /ngày sinh/],
+  [4, /cccd|hộ chiếu/], [5, /email liên hệ/], [6, /tỉnh/], [7, /^xã|xã\//], [8, /địa chỉ hiện tại/],
+  [9, /số điện thoại/], [10, /^trường/], [11, /^khối/], [12, /^chọn cuộc thi/],
+  [13, /thanh toán|nộp lệ phí/], [14, /^chọn cuộc thi/], [15, /thanh toán|nộp lệ phí/],
+  [16, /họ tên phụ huynh/], [17, /mã đăng ký workspace/]
+];
+var MARKER_HEADER = 'Mã đăng ký Workspace';
+
+function headerKey_(value) {
+  return String(value || '').trim().replace(/^\s*\d+\s*[.)]\s*/, '').toLowerCase();
+}
+
+function formLayout_(headers) {
+  var keys = headers.map(headerKey_);
+  var used = {};
+  var layout = {};
+  FORM_COLUMNS.forEach(function(spec) {
+    for (var column = 0; column < keys.length; column++) {
+      if (!used[column] && keys[column] && spec[1].test(keys[column])) {
+        used[column] = true;
+        layout[spec[0]] = column;
+        return;
+      }
+    }
+  });
+  return layout;
+}
+
+function ensureColumns_(sheet, count) {
+  if (sheet.getMaxColumns() < count) sheet.insertColumnsAfter(sheet.getMaxColumns(), count - sheet.getMaxColumns());
+}
+
+/** 0-based column of every standard field on this tab; adds the marker column when missing. */
+function tabLayout_(sheet) {
+  var headers = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getDisplayValues()[0];
+  var layout = formLayout_(headers);
+  if (layout[2] === undefined) {
+    // No Form headers yet: the standard positions, marker in column R.
+    layout = {};
+    for (var index = 0; index < FORM_COLUMNS.length; index++) layout[index] = index;
+    var current = String(headers[17] || '').trim();
+    if (current && current !== MARKER_HEADER) throw new Error('Cột R của ' + sheet.getName() + ' đang được dùng.');
+    if (!current) {
+      ensureColumns_(sheet, 18);
+      sheet.getRange(1, 18).setValue(MARKER_HEADER);
+    }
+    return layout;
+  }
+  if (layout[17] === undefined) {
+    var taken = Object.keys(layout).map(function(key) { return layout[key]; });
+    var freeR = !String(headers[17] || '').trim() && taken.indexOf(17) < 0;
+    layout[17] = freeR ? 17 : headers.length;
+    ensureColumns_(sheet, layout[17] + 1);
+    sheet.getRange(1, layout[17] + 1).setValue(MARKER_HEADER);
+  }
+  return layout;
+}
+
+/** Standard-order values (as sent by Workspace) placed in this tab's real columns. */
+function sheetRow_(layout, values) {
+  var width = 0;
+  Object.keys(layout).forEach(function(key) { width = Math.max(width, layout[key] + 1); });
+  var row = [];
+  for (var column = 0; column < width; column++) row.push('');
+  Object.keys(layout).forEach(function(key) { row[layout[key]] = values[key]; });
+  return row;
+}
 
 function sendRegistrationRows_(sheet, firstRow, count) {
   if (!sheet || REGISTRATION_TABS.indexOf(sheet.getName()) < 0 || count < 1) return;
@@ -37,7 +110,9 @@ function sendRegistrationRows_(sheet, firstRow, count) {
   var start = Math.max(2, firstRow);
   var end = Math.min(last, firstRow + count - 1);
   if (end < start) return;
-  var values = sheet.getRange(start, 1, end - start + 1, Math.min(30, Math.max(16, sheet.getLastColumn()))).getDisplayValues();
+  var width = Math.min(30, Math.max(16, sheet.getLastColumn()));
+  var headers = sheet.getRange(1, 1, 1, width).getDisplayValues()[0];
+  var values = sheet.getRange(start, 1, end - start + 1, width).getDisplayValues();
   var rows = values.map(function(value, index) { return {rowNumber: start + index, values: value}; });
   var response = UrlFetchApp.fetch(url, {
     method: 'post',
@@ -46,6 +121,7 @@ function sendRegistrationRows_(sheet, firstRow, count) {
     payload: JSON.stringify({
       spreadsheetId: REGISTRATION_SPREADSHEET_ID,
       sheetTab: sheet.getName(),
+      headers: headers,
       rows: rows
     }),
     muteHttpExceptions: true
@@ -323,20 +399,19 @@ function pullWorkspaceRegistrations_() {
   if (response.getResponseCode() !== 200) throw new Error('Không thể lấy đăng ký Workspace: ' + response.getResponseCode());
   var pending = JSON.parse(response.getContentText()).registrations || [];
   var markerIndexes = {};
+  var layouts = {};
   pending.forEach(function(item) {
     Object.keys(item.tabs || {}).forEach(function(tab) {
       if (REGISTRATION_TABS.indexOf(tab) < 0) throw new Error('Tab không hợp lệ: ' + tab);
       var sheet = book.getSheetByName(tab);
       if (!sheet) throw new Error('Thiếu tab ' + tab);
-      if (sheet.getMaxColumns() < 18) sheet.insertColumnsAfter(sheet.getMaxColumns(), 18 - sheet.getMaxColumns());
-      var header = String(sheet.getRange(1, 18).getDisplayValue() || '').trim();
-      if (header && header !== 'Mã đăng ký Workspace') throw new Error('Cột R của ' + tab + ' đang được dùng.');
-      if (!header) sheet.getRange(1, 18).setValue('Mã đăng ký Workspace');
+      if (!layouts[tab]) layouts[tab] = tabLayout_(sheet);
+      var layout = layouts[tab];
       if (!markerIndexes[tab]) {
         var indexByMarker = {};
         var lastRow = sheet.getLastRow();
         if (lastRow >= 2) {
-          var existing = sheet.getRange(2, 18, lastRow - 1, 1).getDisplayValues();
+          var existing = sheet.getRange(2, layout[17] + 1, lastRow - 1, 1).getDisplayValues();
           for (var index = 0; index < existing.length; index++) {
             if (existing[index][0]) indexByMarker[existing[index][0]] = index + 2;
           }
@@ -348,7 +423,7 @@ function pullWorkspaceRegistrations_() {
       if (!rowNumber) {
         var values = item.tabs[tab];
         if (!Array.isArray(values) || values.length !== 18 || values[17] !== marker) throw new Error('Dòng đăng ký không hợp lệ.');
-        sheet.appendRow(values);
+        sheet.appendRow(sheetRow_(layout, values));
         rowNumber = sheet.getLastRow();
         markerIndexes[tab][marker] = rowNumber;
       }

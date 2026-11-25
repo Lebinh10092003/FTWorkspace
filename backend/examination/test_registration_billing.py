@@ -202,6 +202,66 @@ class RegistrationAndBillingTests(TestCase):
             self.assertEqual(CandidateParticipation.objects.count(), 2)
             self.assertEqual(FormRegistrationLink.objects.count(), 2)
 
+    def test_webhook_reads_columns_by_header_when_staff_insert_a_column(self):
+        # Tab FIMO, FIEO thật (25/11/2026): kế toán chèn "Hóa đơn" vào cột B.
+        headers = ['Dấu thời gian', 'Hóa đơn', 'Địa chỉ email', '1. Họ và tên thí sinh', '2. Ngày sinh',
+                   '3. CCCD/Hộ chiếu của thí sinh', '4. Email liên hệ của thí sinh', '5. Tỉnh/ Thành phố:',
+                   '6. Xã/ phường:', '7. Địa chỉ hiện tại', '8. Số điện thoại liên hệ của PHHS/ Thí sinh',
+                   '9. Trường:', '10. Khối và lớp', 'Chọn cuộc thi đăng ký tham gia:', 'Đã nộp lệ phí',
+                   'Cột 13', 'Họ tên phụ huynh']
+        row = ['25/11/2026 9:11:59', '884', 'parent@example.test', 'Trần Thị Thử', '01/01/2017',
+               '001201099999', 'parent@example.test', 'TP. Hà Nội', 'Phường A', 'Số 3', '0912345678',
+               'Trường A', '3A1', 'FIMO – Toán', 'Có', '', 'Nguyễn Văn B']
+        payload = {'spreadsheetId': SPREADSHEET_ID, 'sheetTab': 'FIMO, FIEO', 'headers': headers,
+                   'rows': [{'rowNumber': 39, 'values': row}]}
+        with patch.dict('os.environ', {'EXAMINATION_REGISTRATION_WEBHOOK_SECRET': 'test-secret'}):
+            response = self.client.post('/api/examination/form-registration/webhook', payload, format='json',
+                                        HTTP_X_EXAMINATION_WEBHOOK_SECRET='test-secret')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['created'], 1, response.data)
+        candidate = Candidate.objects.get()
+        self.assertEqual((candidate.name, candidate.identity, candidate.phone, candidate.school, candidate.parent),
+                         ('Trần Thị Thử', '001201099999', '0912345678', 'Trường A', 'Nguyễn Văn B'))
+        participation = CandidateParticipation.objects.get()
+        self.assertEqual(participation.session_id, SESSION_IDS['FIMO'])
+        self.assertEqual(participation.registration_data['paymentProof'], 'Có')
+
+    def test_public_registration_export_writes_by_header_and_refreshes_only_profile_cells(self):
+        from .public_registration_sheet import MARKER_HEADER
+        created = self.client.post('/api/public/examination/registration', self.public_payload(), format='multipart')
+        self.assertEqual(created.status_code, 201)
+        item = PublicExamRegistration.objects.select_related('candidate').get()
+        item.contest_codes = ['FIEO']
+        item.save()
+        headers = ['Dấu thời gian', 'Hóa đơn', 'Địa chỉ email', '1. Họ và tên thí sinh', '2. Ngày sinh',
+                   '3. CCCD/Hộ chiếu', '4. Email liên hệ', '5. Tỉnh/ Thành phố:', '6. Xã/ phường:',
+                   '7. Địa chỉ hiện tại', '8. Số điện thoại', '9. Trường:', '10. Khối và lớp',
+                   'Chọn cuộc thi đăng ký tham gia:', 'Đã nộp lệ phí', 'Cột 13', 'Họ tên phụ huynh', MARKER_HEADER]
+        sheet = MagicMock()
+        sheet.spreadsheets().get().execute.return_value = {'sheets': [{'properties': {
+            'title': 'FIMO, FIEO', 'sheetId': 1, 'gridProperties': {'columnCount': 18}}}]}
+        markers = {'value': []}
+        def get_values(**kwargs):
+            response = MagicMock()
+            response.execute.return_value = {'values': [headers]} if kwargs['range'].endswith('!1:1') else {'values': markers['value']}
+            return response
+        sheet.spreadsheets().values().get.side_effect = get_values
+        sheet.spreadsheets().values().append.return_value.execute.return_value = {'updates': {'updatedRange': "'FIMO, FIEO'!A5:R5"}}
+        sync_registration(item, service=sheet)
+        appended = sheet.spreadsheets().values().append.call_args.kwargs['body']['values'][0]
+        self.assertEqual(len(appended), 18)
+        self.assertEqual(appended[1], '', 'the accounting column stays empty')
+        self.assertEqual((appended[3], appended[13], appended[17]), ('Nguyễn Minh An', 'FIEO', f'WORKSPACE:{item.id}'))
+        self.assertTrue(sheet.spreadsheets().values().get.call_args.kwargs['range'].endswith('!R2:R'))
+        markers['value'] = [[], [], [], [f'WORKSPACE:{item.id}']]
+        item.refresh_from_db()
+        item.candidate.parent = 'Lê Thị Lý'
+        item.candidate.save()
+        item.refresh_from_db()
+        sync_registration(item, service=sheet)
+        data = sheet.spreadsheets().values().batchUpdate.call_args.kwargs['body']['data']
+        self.assertEqual([entry['range'].split('!')[1] for entry in data], ['D5:M5', 'Q5'])
+
     def test_other_form_tabs_keep_their_own_contest_selection(self):
         row = self.registration_row('FIEO – English')
         self.assertEqual(selected_codes('FIMO, FIEO', row), ['FIEO'])

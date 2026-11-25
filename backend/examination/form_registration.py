@@ -30,6 +30,46 @@ SESSION_IDS = {
 SHEET_URL = f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit'
 
 
+# Vị trí cột chuẩn của Form gốc (đúng thứ tự tab SIPhO…). Staff có thể chèn cột
+# như "Hóa đơn" vào giữa tab; Apps Script gửi kèm dòng tiêu đề để web đọc theo
+# tên cột thay vì vị trí. Một mẫu lặp lại (chọn cuộc thi, xác nhận thanh toán)
+# lấy lần xuất hiện thứ n theo thứ tự cột.
+FORM_COLUMNS = (
+    (0, r'^dấu thời gian'), (1, r'^địa chỉ email'), (2, r'họ và tên thí sinh'), (3, r'ngày sinh'),
+    (4, r'cccd|hộ chiếu'), (5, r'email liên hệ'), (6, r'tỉnh'), (7, r'^xã|xã/'), (8, r'địa chỉ hiện tại'),
+    (9, r'số điện thoại'), (10, r'^trường'), (11, r'^khối'), (12, r'^chọn cuộc thi'),
+    (13, r'thanh toán|nộp lệ phí'), (14, r'^chọn cuộc thi'), (15, r'thanh toán|nộp lệ phí'),
+    (16, r'họ tên phụ huynh'), (17, r'mã đăng ký workspace'),
+)
+
+
+def header_key(value):
+    """'9. Trường:' -> 'trường:'"""
+    return re.sub(r'^\s*\d+\s*[.)]\s*', '', clean(value)).casefold()
+
+
+def form_layout(headers):
+    """{vị trí chuẩn: cột thật trên Sheet (0-based)} theo tiêu đề cột."""
+    keys = [header_key(value) for value in headers]
+    used = set()
+    layout = {}
+    for index, pattern in FORM_COLUMNS:
+        column = next((position for position, key in enumerate(keys)
+                       if position not in used and key and re.search(pattern, key)), None)
+        if column is not None:
+            used.add(column)
+            layout[index] = column
+    return layout
+
+
+def canonical_form_row(headers, row):
+    """Sắp lại một dòng Sheet về thứ tự cột chuẩn theo tiêu đề cột."""
+    result = [''] * len(FORM_COLUMNS)
+    for index, column in form_layout(headers).items():
+        result[index] = row[column] if column < len(row) else ''
+    return result
+
+
 def selected_codes(tab, row):
     allowed = TAB_CODES[tab]
     if len(allowed) == 1:
@@ -67,11 +107,13 @@ def matching_candidate(name, birth_date, identity, email, phone):
     return candidates[0] if candidates else None
 
 
-def import_form_rows(tab, rows):
+def import_form_rows(tab, rows, headers=None):
     if tab not in TAB_CODES:
         raise ValueError('Tab không được theo dõi.')
     if not isinstance(rows, list) or len(rows) > 500:
         raise ValueError('Mỗi yêu cầu chỉ nhận tối đa 500 dòng.')
+    if headers is not None and (not isinstance(headers, list) or len(headers) > 30):
+        raise ValueError('Dòng tiêu đề không hợp lệ.')
     sessions = {code: ExamSession.objects.filter(pk=session_id).first() for code, session_id in SESSION_IDS.items() if code in TAB_CODES[tab]}
     if any(session is None for session in sessions.values()):
         raise ValueError('Chưa cấu hình đủ kỳ tổ chức 2026–2027 trên web.')
@@ -83,6 +125,8 @@ def import_form_rows(tab, rows):
         if not isinstance(row_number, int) or row_number < 2 or not isinstance(row, list) or len(row) > 30:
             summary['skipped'] += 1
             continue
+        if headers:
+            row = canonical_form_row(headers, row)
         # Rows appended by the Workspace registration page are already in the
         # database. The periodic Apps Script sweep must not import them again.
         if len(row) > 17 and clean(row[17]).startswith('WORKSPACE:'):
@@ -161,8 +205,12 @@ def import_form_rows(tab, rows):
                     payment_proof = clean(row[13]) if tab == 'FIMO, FIEO' and len(row) > 13 else ''
                     if tab == 'SIPhO, SIChO, SIBO, SILSO':
                         payment_proof = ' | '.join(clean(row[i]) for i in (13, 15) if i < len(row) and clean(row[i]))
-                    if tab == 'SIAIO' and len(row) > 12:
-                        payment_proof = clean(row[12])
+                    if tab == 'SIAIO':
+                        # SIAIO không có câu chọn cuộc thi: theo tiêu đề, ảnh
+                        # thanh toán là cột "thanh toán" đầu tiên (13); dòng
+                        # gửi không kèm tiêu đề vẫn theo vị trí cũ (12).
+                        proof_column = 13 if headers else 12
+                        payment_proof = clean(row[proof_column]) if len(row) > proof_column else ''
                     registration = dict(participation.registration_data or {})
                     registration.update({'formTab': tab, 'formRow': row_number, 'paymentProof': payment_proof})
                     registration.setdefault('registeredAt', participation.created_at.isoformat())
@@ -203,6 +251,6 @@ def registration_webhook(request):
     if not isinstance(data, dict) or data.get('spreadsheetId') != SPREADSHEET_ID or data.get('sheetTab') not in TAB_CODES:
         return Response({'error': 'Nguồn Sheet không hợp lệ.'}, status=400)
     try:
-        return Response(import_form_rows(data['sheetTab'], data.get('rows')))
+        return Response(import_form_rows(data['sheetTab'], data.get('rows'), data.get('headers')))
     except ValueError as exc:
         return Response({'error': str(exc)}, status=400)

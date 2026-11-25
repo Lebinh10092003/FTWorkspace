@@ -62,7 +62,7 @@ failWebhook = false;
 context.syncWorkspaceRegistrations();
 assert.equal(Object.keys(properties).filter(key => key.startsWith('REG_DIRTY_')).length, 0);
 assert.deepEqual(logged.map(row => row[1]), ['Gửi lại toàn bộ', 'Phiên bản mới'], 'a new version re-sends every row once and proves it is live');
-assert.equal(properties.WORKSPACE_FULL_RESYNC_VERSION, '2026-11-25');
+assert.equal(properties.WORKSPACE_FULL_RESYNC_VERSION, '2026-11-25b');
 context.syncWorkspaceRegistrations();
 assert.equal(logged.filter(row => row[1] === 'Gửi lại toàn bộ').length, 1, 'the full re-send runs once per version');
 
