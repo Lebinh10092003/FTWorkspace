@@ -140,8 +140,8 @@ sudo systemctl enable --now workspace-examination-candidate-queue.timer
 "$VENV_DIR/bin/python" backend/manage.py detach_training_calendars --apply
 "$VENV_DIR/bin/python" backend/manage.py queue_examination_schedule_format
 # Lịch công tác Mr Phong 25–29/11/2026 (bảng theo dõi + báo cáo 9h/21h tuyển sinh
-# FIMO/FIEO): CHẠY THỬ in kế hoạch ra log deploy; xem đúng mới thêm --apply.
-if ! "$VENV_DIR/bin/python" backend/manage.py add_fimo_fieo_report_tasks; then
+# FIMO/FIEO): chạy thử ở a413f2e đúng 10 nhiệm vụ; ghi một lần rồi gỡ.
+if ! "$VENV_DIR/bin/python" backend/manage.py add_fimo_fieo_report_tasks --apply; then
   echo "WARNING: FIMO/FIEO report task plan could not be computed." >&2
 fi
 if ! "$VENV_DIR/bin/python" backend/manage.py sync_examination_partner_contacts; then
