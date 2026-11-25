@@ -5,7 +5,8 @@ from django.core.management.base import BaseCommand, CommandError
 from openpyxl import load_workbook
 
 from examination.models import Candidate, CandidateParticipation, ExamSession, LogNote, RoundResult
-from examination.sync import clean_txt, history_from_sheet_row, merged_headers, normalise_str, parse_dob, resolve_column_indices
+from examination.sync import (clean_txt, find_batch_result, history_from_sheet_row, merged_headers, normalise_str, parse_dob,
+                              resolve_column_indices, resolve_history_round)
 
 
 def normalise_birth_date(value):
@@ -58,7 +59,8 @@ class Command(BaseCommand):
         if any(index is None for index in profile_columns.values()):
             raise CommandError('Profile code, name, or birth-date columns were not found.')
 
-        configured_rounds = [str(item.get('name') or '').strip() for item in (session.rounds or []) if isinstance(item, dict)]
+        round_configs = [item for item in (session.rounds or []) if isinstance(item, dict)]
+        configured_rounds = [str(item.get('name') or '').strip() for item in round_configs]
         changed = unmatched = missing_participation = skipped = 0
         for row in grid[header_index + 1:]:
             if not row:
@@ -110,11 +112,19 @@ class Command(BaseCommand):
                     skipped += 1
                     continue
                 source_round = clean_txt(history.get('round'))
-                result = RoundResult.objects.filter(participation=participation, round_name=source_round).first()
-                if result is None and position < len(configured_rounds):
-                    result = RoundResult.objects.filter(participation=participation, round_name=configured_rounds[position]).first()
-                if result is None and position < len(results):
-                    result = results[position]
+                if history.get('templateBatch'):
+                    # A batch block ("VÒNG 1 · ĐỢT 2") repairs only that batch's result.
+                    resolved = resolve_history_round(round_configs, history, position)
+                    result = None if resolved['problem'] else find_batch_result(results, resolved)
+                else:
+                    # The block's template slot names the round; list position shifts
+                    # when an earlier block is empty or a round has several batch blocks.
+                    slot = int(history['templateSlot']) - 1 if str(history.get('templateSlot') or '').isdigit() else position
+                    result = RoundResult.objects.filter(participation=participation, round_name=source_round).first()
+                    if result is None and 0 <= slot < len(configured_rounds):
+                        result = RoundResult.objects.filter(participation=participation, round_name=configured_rounds[slot]).first()
+                    if result is None and 0 <= slot < len(results):
+                        result = results[slot]
                 if result is None or result.score == score:
                     continue
                 if not options['dry_run']:

@@ -62,8 +62,11 @@ def contact_rows(partners):
 
 
 @contextmanager
-def _single_worker():
-    """Prevent an older snapshot from overwriting a newer concurrent export."""
+def _single_worker(blocking=True):
+    """Prevent an older snapshot from overwriting a newer concurrent export.
+
+    ``blocking=False`` raises BlockingIOError at once when another worker holds the lock.
+    """
     if os.name == 'nt':
         yield
         return
@@ -71,7 +74,7 @@ def _single_worker():
 
     path = Path(tempfile.gettempdir()) / 'ft-workspace-examination-partner-contacts.lock'
     with path.open('w') as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
+        fcntl.flock(handle, fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
             yield
         finally:

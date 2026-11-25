@@ -2,6 +2,7 @@ import io
 import csv
 import hashlib
 import json
+import logging
 import re
 import requests
 import datetime
@@ -11,8 +12,12 @@ import urllib.parse
 from django.utils import timezone
 from .models import Candidate, CandidateParticipation, RoundResult, ExamSession, Competition, ExaminationSheet, LogNote
 from .eligibility import normalize_eligibility
+from .registration_batch import batch_days
+from .registration_window import parse_date
 from authentication.models import SystemConfig
 from integrations.google_sheets import build_sheets_service, extract_spreadsheet_id
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kqztN_iCeZ9uR1mO7gz9j1TcUt8ZmCdpEv0TagTf4VA/edit?usp=sharing'
 
@@ -393,6 +398,156 @@ def occurrence_id_from_history(round_config, occurrence_id='', exam_date='', tim
     return occurrence_id_from_round(round_config, occurrence_id, exam_date, time_slot)
 
 
+def exam_day(value):
+    """The calendar day of an exam date cell (DD/MM/YYYY or ISO), or None."""
+    text = clean_txt(value)
+    iso = parse_exam_date(text) or parse_exam_date(text[:10]) or parse_dob(text)
+    return parse_date(iso) if re.fullmatch(r'\d{4}-\d{2}-\d{2}', iso or '') else None
+
+
+def _history_template_number(item, key):
+    value = str((item or {}).get(key) or '').strip()
+    return int(value) if value.isdigit() else 0
+
+
+def resolve_history_round(configured_rounds, item, position):
+    """Which configured round, round id and batch one Sheet history block belongs to.
+
+    Shared by the import preview and the import itself. A block of a batched
+    round ("VÒNG 1 · ĐỢT 2", ``templateBatch``) belongs to that batch's exam day;
+    ``problem`` is set when the block cannot be placed safely (unknown batch,
+    or a "Ngày thi" of another batch of the same round) and the block is skipped.
+    """
+    round_name = clean_txt(item.get('round'))
+    template_slot = _history_template_number(item, 'templateSlot')
+    if 1 <= template_slot <= len(configured_rounds):
+        round_config = configured_rounds[template_slot - 1]
+    else:
+        round_config = next(
+            (config for config in configured_rounds if clean_txt(config.get('name')).casefold() == round_name.casefold()),
+            configured_rounds[position] if position < len(configured_rounds) else {},
+        )
+    round_id = clean_txt(item.get('roundId')) or clean_txt(round_config.get('id'))
+    raw_date = clean_txt(item.get('date'))
+    date_value = parse_dob(raw_date) or raw_date if raw_date else ''
+    time_slot = clean_txt(item.get('time'))
+    resolved = {'config': round_config, 'round_id': round_id, 'batch': 0, 'day': None, 'slot_ids': [], 'label': '',
+                'occurrence_id': '', 'timed': False, 'place': False, 'problem': ''}
+    batch = _history_template_number(item, 'templateBatch')
+    if not batch:
+        resolved['occurrence_id'] = occurrence_id_from_history(round_config, clean_txt(item.get('occurrenceId')), date_value, time_slot)
+        return resolved
+    days = batch_days(round_config) if 1 <= template_slot <= len(configured_rounds) else []
+    label = f'Vòng {template_slot} · Đợt {batch}'
+    if not 1 <= batch <= len(days):
+        resolved['problem'] = f'{label}: kỳ không có đợt này trong cấu hình vòng thi.'
+        return resolved
+    day = days[batch - 1]
+    resolved['label'] = label
+    label_day = exam_day(item.get('templateBatchDay'))
+    if label_day and label_day != day:
+        # The block was labelled for another date: batches were renumbered.
+        resolved['problem'] = (f'{label}: khối trên Sheet ghi ngày {label_day.strftime("%d/%m/%Y")} nhưng đợt {batch} '
+                               f'của kỳ là ngày {day.strftime("%d/%m/%Y")}; cần sửa tiêu đề khối.')
+        return resolved
+    row_day = exam_day(raw_date)
+    if row_day and row_day != day and row_day in days:
+        resolved['problem'] = (f'{label}: Ngày thi {raw_date} thuộc đợt {days.index(row_day) + 1}, '
+                               f'không phải đợt {batch} ({day.strftime("%d/%m/%Y")}).')
+        return resolved
+    slots = [slot for slot in round_config.get('slots') or [] if isinstance(slot, dict)]
+    slot_ids = [clean_txt(slot.get('id')) for slot in slots if clean_txt(slot.get('id')) and parse_date(slot.get('date')) == day]
+    explicit = clean_txt(item.get('occurrenceId'))
+    if explicit and explicit in slot_ids:
+        occurrence_id, timed = explicit, True
+    elif len(slot_ids) == 1:
+        occurrence_id, timed = slot_ids[0], True
+    elif slot_ids:
+        from .views import _time_key
+        same_day = [slot for slot in slots if clean_txt(slot.get('id')) in slot_ids]
+        timed_slot = next((slot for slot in same_day if _time_key(time_slot) and _time_key(slot.get('time')) == _time_key(time_slot)), None)
+        occurrence_id = clean_txt((timed_slot or same_day[0]).get('id'))
+        timed = bool(timed_slot)
+    else:
+        occurrence_id, timed = '', False
+    resolved.update({'batch': batch, 'day': day, 'slot_ids': slot_ids, 'occurrence_id': occurrence_id,
+                     # Block 1 is where an unplaced registration is shown: without a
+                     # date it must not be placed in batch 1 by a round trip.
+                     'timed': timed, 'place': bool(raw_date) or batch > 1})
+    return resolved
+
+
+def find_batch_result(results, resolved):
+    """The stored result a batch block updates: same batch, else an unplaced one.
+
+    Never the result of another batch: a candidate may sit several batches.
+    """
+    same_round = [result for result in results if result.round_id == resolved['round_id']]
+    occurrence_id, slot_ids, day = resolved['occurrence_id'], resolved['slot_ids'], resolved['day']
+    exact = [result for result in same_round if occurrence_id and result.occurrence_id == occurrence_id]
+    if exact:
+        return exact[0]
+    in_batch = [result for result in same_round if (result.occurrence_id and result.occurrence_id in slot_ids)
+                or (not result.occurrence_id and exam_day(result.exam_date) == day)]
+    if in_batch:
+        return in_batch[0]
+    return next((result for result in same_round if not result.occurrence_id and not clean_txt(result.exam_date)), None)
+
+
+def batch_result_occurrence(existing, resolved):
+    """Occurrence a batch block leaves on the result it updates."""
+    if existing is None:
+        return resolved['occurrence_id']
+    if existing.occurrence_id and existing.occurrence_id in resolved['slot_ids'] and not resolved['timed']:
+        # Several shifts that day and no time on the Sheet: keep the shift.
+        return existing.occurrence_id
+    if not existing.occurrence_id and not resolved['place']:
+        return ''
+    return resolved['occurrence_id'] or existing.occurrence_id
+
+
+def _history_has_result_data(item):
+    """A block holding more than an eligibility mark (eligibility alone never creates a batch)."""
+    return any(clean_txt(item.get(field)) for field in ROUND_HISTORY_FIELD_MAP if field not in ('eligibility', 'occurrenceId'))
+
+
+def batch_block_target(results, resolved, item):
+    """(action, stored result, problem) for one batch block: 'update', 'create' or 'skip'.
+
+    From the Sheet a batch block only updates the result of its own batch or
+    fills an unplaced one. It never creates a result when the candidate already
+    has a result of that round in any batch: an old block left on the Sheet
+    after the web moved or removed a batch would otherwise come back as a
+    phantom second result. New batches are added on the web ("Thêm đợt").
+    """
+    existing = find_batch_result(results, resolved)
+    if existing:
+        return 'update', existing, ''
+    if not _history_has_result_data(item) or not resolved['occurrence_id']:
+        return 'skip', None, ''
+    if any(result.round_id == resolved['round_id'] for result in results):
+        return 'skip', None, (f'{resolved["label"]}: thí sinh đã có kết quả vòng này ở đợt khác; không tạo đợt mới từ Sheet '
+                              f'(Thêm đợt mới bằng nút Thêm đợt trên web).')
+    return 'create', None, ''
+
+
+def history_block_problems(configured_rounds, history, results=None):
+    """Reasons for the history blocks of one Sheet row that the import skips.
+
+    ``results``: the candidate's stored results in this session, when known.
+    """
+    problems = []
+    for position, item in enumerate(history or []):
+        if isinstance(item, dict) and clean_txt(item.get('round')):
+            resolved = resolve_history_round(configured_rounds, item, position)
+            problem = resolved['problem']
+            if not problem and resolved['batch'] and results is not None:
+                problem = batch_block_target(results, resolved, item)[2]
+            if problem:
+                problems.append(problem)
+    return problems
+
+
 def merged_headers(grid, header_index):
     group_row = grid[header_index - 1] if header_index > 0 else []
     current_group = ''
@@ -447,7 +602,8 @@ ROUND_FIELD_ALIASES = {
 
 
 def _round_name_from_group(source_group, number):
-    detailed_name = clean_txt(source_group)
+    # "VÒNG 1 · ĐỢT 2 (08/11/2026)" names the round; the batch is carried by templateBatch.
+    detailed_name = re.sub(r'\s*[·•,\-–—]?\s*(?:đợt|dot)\s*\d+\s*$', '', split_group_day(source_group)[0], flags=re.IGNORECASE)
     parts = re.split(r'\s*[-\u2013\u2014]\s*', detailed_name, maxsplit=1)
     if len(parts) == 2 and normalise_str(parts[0]).startswith(f'vong{number}'):
         detailed_name = parts[1].strip()
@@ -467,12 +623,94 @@ def _is_official_round_layout(headers):
     starts = (21, 36, 51)
     return all(
         index < len(headers) and normalise_str(headers[index]).endswith('dieukienthamgia')
+        # A batch block ("VÒNG 1 · ĐỢT 2") shifts every later block.
+        and not _group_round_batch(round_group_from_header(headers[index]))[1]
         for index in starts
     )
 
 
+# Group label of one round block in row 1: "VÒNG 2" or "VÒNG 1 · ĐỢT 3".
+ROUND_GROUP_PATTERN = re.compile(r'^vong(\d+)(?:dot(\d+))?$')
+ROUND_FIELD_BY_LABEL = {
+    **{normalise_str(label): key for label, key in zip(
+        ('Điều kiện tham gia', 'Số báo danh (SBD)', 'Ngày thi', 'Giờ/Ca thi', 'Hình thức thi', 'Địa điểm/Phòng thi',
+         'Link thi', 'Tài khoản/Mã truy cập', 'Mật khẩu', 'Trạng thái dự thi', 'Điểm', 'Tỷ lệ điểm', 'Xếp hạng',
+         'Kết quả/Giải thưởng', 'Ghi chú/Sự cố'), ROUND_TEMPLATE_FIELD_ORDER)},
+    'sobaodanh': 'sbd', 'sbd': 'sbd', 'dieukienduthi': 'eligibility',
+}
+
+
+GROUP_DAY_PATTERN = re.compile(r'^(.*?)\s*\(\s*(\d{1,2}/\d{1,2}/\d{4})\s*\)\s*$')
+
+
+def split_group_day(group):
+    """("VÒNG 1 · ĐỢT 2", date) from "VÒNG 1 · ĐỢT 2 (08/11/2026)"; the date is optional."""
+    text = clean_txt(group)
+    match = GROUP_DAY_PATTERN.match(text)
+    if not match:
+        return text, None
+    return match.group(1).strip(), exam_day(match.group(2))
+
+
+def _group_round_batch(group):
+    """(round number, batch number or None) of a block label; (None, None) otherwise."""
+    match = ROUND_GROUP_PATTERN.match(normalise_str(split_group_day(group)[0]))
+    if not match:
+        return None, None
+    return int(match.group(1)), (int(match.group(2)) if match.group(2) else None)
+
+
+def header_round_blocks(headers):
+    """Round blocks found by their labels: [(round, batch, group label, {field: column index}, day)].
+
+    ``headers`` are merged two-row headers ("VÒNG 1 · ĐỢT 2 (08/11/2026): Ngày thi").
+    ``day`` is the batch date written in the label (None for an undated label).
+    Columns the web does not know (inserted on the Sheet) are ignored.
+    """
+    blocks, order = {}, []
+    for index, header in enumerate(headers):
+        raw = clean_txt(header)
+        if ':' not in raw:
+            continue
+        group, title = raw.split(':', 1)
+        number, batch = _group_round_batch(group)
+        field = ROUND_FIELD_BY_LABEL.get(normalise_str(title))
+        if number is None or not 1 <= number <= 3 or not field:
+            continue
+        key = (number, batch)
+        if key not in blocks:
+            blocks[key] = (group.strip(), {}, split_group_day(group)[1])
+            order.append(key)
+        blocks[key][1].setdefault(field, index)
+    return [(number, batch, *blocks[(number, batch)]) for number, batch in order]
+
+
 def history_from_sheet_row(headers, row):
     rounds = []
+    blocks = header_round_blocks(headers)
+    if any(block[1] for block in blocks):
+        # A tab with batch blocks: every block is read by its own labels, so the
+        # position of a block never decides which round or batch it belongs to.
+        for number, batch, group, fields, day in blocks:
+            values, columns = {}, {}
+            for key in ROUND_TEMPLATE_FIELD_ORDER:
+                index = fields.get(key)
+                value = clean_txt(row[index]) if index is not None and index < len(row) else ''
+                if value:
+                    values[key] = value
+                    columns[key] = _column_name(index)
+            if values:
+                values['eligibility'] = normalize_eligibility(values.get('eligibility'))
+                values['round'] = _round_name_from_group(group, number)
+                values['templateSlot'] = number
+                if batch:
+                    values['templateBatch'] = batch
+                    if day:
+                        # Checked against the session's batch day (a renumbered batch is skipped).
+                        values['templateBatchDay'] = day.isoformat()
+                values['templateColumns'] = columns
+                rounds.append(values)
+        return rounds
     if _is_official_round_layout(headers):
         for number, start in enumerate((21, 36, 51), start=1):
             values, columns = {}, {}
@@ -569,6 +807,8 @@ def session_is_past(session_id):
 
 def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url, sheet_tab='', source_row_offset=1, update_mode='replace-nonempty', import_empty_values=True):
     past_session = session_is_past(session_id)
+    preview_session = ExamSession.objects.filter(id=session_id).first() if session_id else None
+    session_rounds = [config for config in ((preview_session.rounds if preview_session else []) or []) if isinstance(config, dict)]
     existing = list(Candidate.objects.all())
     # Compare against memberships in this session, not every historic profile.
     session_candidates = list(Candidate.objects.filter(participations__session_id=session_id).distinct()) if session_id else []
@@ -616,6 +856,7 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
                 changed_fields.append(field)
                 changes.append({'field': field, 'label': label, 'current': current_value, 'next': next_value})
 
+        block_results = None
         if base:
             matched += 1
             if base.id in session_candidate_ids:
@@ -636,6 +877,7 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
                     incoming_value = clean_txt((item.get('registration') or {}).get(incoming_field))
                     add_change(f'registration.{incoming_field}', incoming_field, getattr(participation, model_field), incoming_value)
                 existing_rounds = list(participation.round_results.all())
+                block_results = existing_rounds
                 configured_rounds = [config for config in (participation.session.rounds or []) if isinstance(config, dict)]
                 for history_index, history_item in enumerate(item.get('exam_history') or []):
                     incoming_round = clean_txt(history_item.get('round'))
@@ -643,14 +885,22 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
                     # label, e.g. "LOẠI QUỐC GIA (3 ĐỢT)", maps by position to the
                     # session's round), so a stale result of another round is never
                     # compared and the row is not reported as changed forever.
-                    round_config = next((config for config in configured_rounds if clean_txt(config.get('name')).casefold() == incoming_round.casefold()),
-                                        configured_rounds[history_index] if history_index < len(configured_rounds) else {})
-                    round_id = clean_txt(history_item.get('roundId')) or clean_txt(round_config.get('id'))
-                    same_id = [round_item for round_item in existing_rounds if round_id and round_item.round_id == round_id]
-                    existing_round = (same_id[0] if len(same_id) == 1 else next((round_item for round_item in same_id if round_item.occurrence_id), None)) if same_id else None
-                    existing_round = existing_round or next((round_item for round_item in existing_rounds if clean_txt(round_item.round_name).casefold() == incoming_round.casefold()), None)
-                    if not existing_round and not round_id and history_index < len(existing_rounds):
-                        existing_round = existing_rounds[history_index]
+                    resolved = resolve_history_round(configured_rounds, history_item, history_index)
+                    if resolved['problem']:
+                        continue
+                    round_id = resolved['round_id']
+                    if resolved['batch']:
+                        # One result per round and batch: compare only with that batch.
+                        incoming_round = f'{incoming_round} · Đợt {resolved["batch"]}'
+                        action, existing_round, _ = batch_block_target(existing_rounds, resolved, history_item)
+                        if action == 'skip':
+                            continue
+                    else:
+                        same_id = [round_item for round_item in existing_rounds if round_id and round_item.round_id == round_id]
+                        existing_round = (same_id[0] if len(same_id) == 1 else next((round_item for round_item in same_id if round_item.occurrence_id), None)) if same_id else None
+                        existing_round = existing_round or next((round_item for round_item in existing_rounds if clean_txt(round_item.round_name).casefold() == incoming_round.casefold()), None)
+                        if not existing_round and not round_id and history_index < len(existing_rounds):
+                            existing_round = existing_rounds[history_index]
                     if not existing_round:
                         add_change(f'round.{incoming_round}', incoming_round or 'Vòng thi', '', 'Thêm dữ liệu vòng')
                         continue
@@ -686,6 +936,8 @@ def build_sheet_preview(incoming, headers, columns, raw, session_id, source_url,
             'matchedCode': base.code if base else '',
             'changedFields': changed_fields,
             'changes': changes,
+            # Blocks the import skips (e.g. a date of another batch); logged, never applied.
+            'skippedBlocks': history_block_problems(session_rounds, item.get('exam_history'), block_results),
         }
         rows.append(payload)
 
@@ -793,14 +1045,16 @@ def history_for_session(history, session):
 
 
 def upsert_participation_history(candidate, session_id, history, source='', registration=None,
-                                 update_mode='replace-nonempty', import_empty_values=True, historical_import=False):
+                                 update_mode='replace-nonempty', import_empty_values=True, historical_import=False,
+                                 skipped_blocks=None):
     """Store one session membership and each populated round of it.
 
     Single implementation for every path (Sheet scan, manual Sheet import,
     school Excel). Rules follow the Sheet import:
     - a blank incoming cell never erases web data;
     - a round result is merged into the existing one of the same round
-      (including the one with a blank occurrence), never duplicated;
+      (including the one with a blank occurrence), never duplicated; in a
+      round held in several batches ("đợt") each batch is its own result;
     - new results take the session's configured round name;
     - "Trạng thái dự thi" is not imported (ROUND_HISTORY_FIELD_MAP);
     - a new membership with no round data enters the first configured round,
@@ -809,6 +1063,7 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
     ``update_mode='fill-empty'`` only fills empty fields (school Excel).
     ``import_empty_values=False`` only updates fields that already have a value
     and does not create new rounds for an existing membership.
+    ``skipped_blocks``: a list that receives the reason of every skipped block.
     """
     if not session_id:
         return None
@@ -879,24 +1134,34 @@ def upsert_participation_history(candidate, session_id, history, source='', regi
             values['eligibility'] = normalize_eligibility(values['eligibility'])
         if values.get('exam_date'):
             values['exam_date'] = parse_dob(values['exam_date']) or values['exam_date']
-        template_slot = int(item.get('templateSlot')) if str(item.get('templateSlot') or '').isdigit() else 0
-        if 1 <= template_slot <= len(configured_rounds):
-            round_config = configured_rounds[template_slot - 1]
-        else:
-            round_config = next(
-                (config for config in configured_rounds if clean_txt(config.get('name')).casefold() == round_name.casefold()),
-                configured_rounds[position] if position < len(configured_rounds) else {},
-            )
-        values['round_id'] = clean_txt(item.get('roundId')) or clean_txt(round_config.get('id'))
-        values['occurrence_id'] = occurrence_id_from_history(round_config, values.get('occurrence_id'), values.get('exam_date'), values.get('time_slot'))
+        resolved = resolve_history_round(configured_rounds, item, position)
+        if resolved['problem']:
+            # Reported to the caller; the row's other blocks still import.
+            if skipped_blocks is not None:
+                skipped_blocks.append(resolved['problem'])
+            continue
+        round_config = resolved['config']
+        values['round_id'] = resolved['round_id']
         values['raw_data'] = {str(key): value for key, value in item.items() if value not in (None, '')}
-        existing_result = RoundResult.objects.filter(participation=participation, round_id=values['round_id'], occurrence_id=values['occurrence_id']).first() if values['round_id'] and values['occurrence_id'] else RoundResult.objects.filter(participation=participation, round_name=round_name, occurrence_id=values['occurrence_id']).first()
-        if not existing_result and values['round_id']:
-            # A registration made before the slot was known has a blank
-            # occurrence. Fill that row instead of creating a second result for
-            # the same round (the Sheet would then be rewritten from the empty one).
-            same_round = RoundResult.objects.filter(participation=participation, round_id=values['round_id'])
-            existing_result = same_round.filter(occurrence_id='').first() or (same_round.first() if same_round.count() == 1 else None)
+        if resolved['batch']:
+            # One result per round and batch. A batch block only fills that
+            # batch's result or an unplaced one, never another batch's result.
+            action, existing_result, problem = batch_block_target(
+                list(RoundResult.objects.filter(participation=participation)), resolved, item)
+            if action == 'skip':
+                if problem and skipped_blocks is not None:
+                    skipped_blocks.append(problem)
+                continue
+            values['occurrence_id'] = batch_result_occurrence(existing_result, resolved)
+        else:
+            values['occurrence_id'] = resolved['occurrence_id']
+            existing_result = RoundResult.objects.filter(participation=participation, round_id=values['round_id'], occurrence_id=values['occurrence_id']).first() if values['round_id'] and values['occurrence_id'] else RoundResult.objects.filter(participation=participation, round_name=round_name, occurrence_id=values['occurrence_id']).first()
+            if not existing_result and values['round_id']:
+                # A registration made before the slot was known has a blank
+                # occurrence. Fill that row instead of creating a second result for
+                # the same round (the Sheet would then be rewritten from the empty one).
+                same_round = RoundResult.objects.filter(participation=participation, round_id=values['round_id'])
+                existing_result = same_round.filter(occurrence_id='').first() or (same_round.first() if same_round.count() == 1 else None)
         if existing_result:
             if not values.get('round_id'):
                 values['round_id'] = existing_result.round_id
@@ -986,27 +1251,145 @@ EXPORT_GROUP_HEADERS = (
     + ['TỔNG HỢP'] + [''] * (len(SUMMARY_EXPORT_HEADERS) - 1)
 )
 
-def _round_slots(round_results, configured_rounds):
-    """Place a result in the configured template slot, never by DB ordering."""
-    slots = {}
+
+def session_sheet_layout(session, compact=False):
+    """Ordered round blocks of the session tab, 15 columns each.
+
+    Chốt 25/11/2026: a round held in several batches ("đợt": slots on two or
+    more exam days) gets one block per batch, labelled "VÒNG n · ĐỢT k", in
+    that round's position. Other rounds keep one "VÒNG n" block, so a
+    single-batch session has exactly the 70-column template.
+    ``compact`` gives the old one-block-per-round layout (tabs not migrated);
+    ``scored`` then marks a batched round, shown by its best batch.
+    """
+    configured = [item for item in (((session.rounds if session else None) or [])) if isinstance(item, dict)]
+    blocks = []
+    for position in (1, 2, 3):
+        config = configured[position - 1] if position <= len(configured) else {}
+        slots = [slot for slot in config.get('slots') or [] if isinstance(slot, dict)]
+        days = batch_days(config)
+        base = {'round_pos': position, 'round_id': clean_txt(config.get('id'))}
+        if len(days) >= 2 and not compact:
+            for number, day in enumerate(days, start=1):
+                blocks.append({**base, 'batch': number, 'day': day, 'scored': True,
+                               'slot_ids': [clean_txt(slot.get('id')) for slot in slots if clean_txt(slot.get('id')) and parse_date(slot.get('date')) == day],
+                               # The date pins the block: a renumbered batch is never written into it.
+                               'label': f'VÒNG {position} · ĐỢT {number} ({day.strftime("%d/%m/%Y")})'})
+        else:
+            blocks.append({**base, 'batch': None, 'day': None, 'scored': len(days) >= 2,
+                           'slot_ids': [clean_txt(slot.get('id')) for slot in slots if clean_txt(slot.get('id'))],
+                           'label': f'VÒNG {position}'})
+    return blocks
+
+
+def session_sheet_headers(session, compact=False):
+    """(group row, header row) of the session tab for its round layout."""
+    layout = session_sheet_layout(session, compact)
+    groups = ['HỒ SƠ THÍ SINH'] + [''] * (len(PROFILE_EXPORT_HEADERS) - 1) + ['THÔNG TIN ĐĂNG KÝ'] + [''] * (len(REGISTRATION_EXPORT_HEADERS) - 1)
+    for block in layout:
+        groups += [block['label']] + [''] * (len(ROUND_EXPORT_HEADERS) - 1)
+    groups += ['TỔNG HỢP'] + [''] * (len(SUMMARY_EXPORT_HEADERS) - 1)
+    headers = PROFILE_EXPORT_HEADERS + REGISTRATION_EXPORT_HEADERS + ROUND_EXPORT_HEADERS * len(layout) + SUMMARY_EXPORT_HEADERS
+    return groups, headers
+
+
+SCORE_PATTERN = re.compile(r'^\s*(\d+(?:[.,]\d+)?)\s*(?:/\s*(\d+(?:[.,]\d+)?))?\s*(?:điểm|đ)?\s*$', re.IGNORECASE)
+
+
+def score_value(result):
+    """Comparable score of a result: the percentage rate, else the score cell.
+
+    "86,7%" -> 86.7; "34/50" -> 68.0 (as a percentage, comparable with a rate);
+    "45,5 điểm" -> 45.5. Anything else is None (ranked lowest).
+    """
+    rate = re.fullmatch(r'\s*(\d+(?:[.,]\d+)?)\s*%\s*', clean_txt(getattr(result, 'score_rate', '')))
+    if rate:
+        return float(rate.group(1).replace(',', '.'))
+    match = SCORE_PATTERN.match(clean_txt(getattr(result, 'score', '')))
+    if not match:
+        return None
+    value = float(match.group(1).replace(',', '.'))
+    if match.group(2):
+        total = float(match.group(2).replace(',', '.'))
+        return value / total * 100 if total else None
+    return value
+
+
+def _score_key(result):
+    value = score_value(result)
+    return (value is not None, value if value is not None else 0.0)
+
+
+def _round_key(result):
+    return (_award_rank(result), parse_exam_date(result.exam_date), str(result.pk))
+
+
+def _batch_key(result):
+    """Best batch of one round: award, then the highest score, then the latest date."""
+    return (_award_rank(result), _score_key(result), parse_exam_date(result.exam_date), str(result.pk))
+
+
+def _round_positions(round_results, configured_rounds):
+    """{template position: [results]} and results with no position (no configured rounds)."""
+    groups, leftovers = {}, []
     by_id = {clean_txt(item.get('id')): index for index, item in enumerate(configured_rounds, start=1) if clean_txt(item.get('id'))}
     by_name = {normalise_str(item.get('name')): index for index, item in enumerate(configured_rounds, start=1) if normalise_str(item.get('name'))}
-    leftovers = []
     for item in round_results:
         slot = by_id.get(clean_txt(item.round_id)) or by_name.get(normalise_str(item.round_name))
         if not slot:
             match = re.search(r'(?<!\d)([1-3])(?!\d)', clean_txt(item.round_name))
             slot = int(match.group(1)) if match else None
         if slot and slot <= 3:
-            previous = slots.get(slot)
-            if previous is None or (_award_rank(item), parse_exam_date(item.exam_date), str(item.pk)) > (_award_rank(previous), parse_exam_date(previous.exam_date), str(previous.pk)):
-                slots[slot] = item
+            groups.setdefault(slot, []).append(item)
         elif not configured_rounds:
             leftovers.append(item)
+    return groups, leftovers
+
+
+def _round_slots(round_results, configured_rounds):
+    """Place a result in the configured template slot, never by DB ordering."""
+    groups, leftovers = _round_positions(round_results, configured_rounds)
+    slots = {slot: max(items, key=_round_key) for slot, items in groups.items()}
     for number in (1, 2, 3):
         if number not in slots and leftovers:
             slots[number] = leftovers.pop(0)
     return slots
+
+
+def _layout_slots(round_results, configured_rounds, layout):
+    """({block index: result shown there}, {round position: result counted for the round}).
+
+    A batch result goes to the block of its slot, else of its exam date; an
+    unplaced result goes to the round's first batch block. A batched round
+    counts its best batch (highest award, then score).
+    """
+    groups, leftovers = _round_positions(round_results, configured_rounds)
+    placed, counted = {}, {}
+    # Rounds in order of first appearance, as before, so ties in the summary resolve identically.
+    for position in list(groups):
+        indexes = [index for index, block in enumerate(layout) if block['round_pos'] == position]
+        items = groups.get(position) or []
+        if not indexes or not items:
+            continue
+        if layout[indexes[0]]['batch'] is None:
+            best = max(items, key=_batch_key if layout[indexes[0]].get('scored') else _round_key)
+            placed[indexes[0]] = counted[position] = best
+            continue
+        by_block = {}
+        for item in items:
+            target = next((index for index in indexes if item.occurrence_id and item.occurrence_id in layout[index]['slot_ids']), None)
+            if target is None:
+                day = exam_day(item.exam_date)
+                target = next((index for index in indexes if day and layout[index]['day'] == day), indexes[0])
+            by_block.setdefault(target, []).append(item)
+        for index, block_items in by_block.items():
+            placed[index] = max(block_items, key=_batch_key)
+        counted[position] = max((placed[index] for index in by_block), key=_batch_key)
+    for position in (1, 2, 3):
+        if position not in counted and leftovers:
+            indexes = [index for index, block in enumerate(layout) if block['round_pos'] == position]
+            placed[indexes[0]] = counted[position] = leftovers.pop(0)
+    return placed, counted
 
 
 def _session_highest_round(slots, configured_rounds):
@@ -1095,11 +1478,27 @@ def format_sheet_percentage(value):
     return f'{match.group(1)},{match.group(2)}{match.group(3) or ""}'
 
 
-def session_export_rows(session_id):
-    """Build a re-importable export matching the official candidate template."""
+def _round_export_values(result):
+    if not result:
+        return [''] * len(ROUND_EXPORT_HEADERS)
+    return [
+        result.eligibility, result.sbd, format_sheet_date(result.exam_date), result.time_slot, result.mode, result.location,
+        # Attendance goes to the room Sheet only; a blank here keeps whatever the tab already shows.
+        result.link, result.account, result.password, '', result.score, format_sheet_percentage(result.score_rate),
+        result.rank, result.result, result.note,
+    ]
+
+
+def session_export_rows(session_id, compact=False):
+    """Build a re-importable export matching the official candidate template.
+
+    Columns follow ``session_sheet_layout``: one block per batch of a batched
+    round. ``compact`` keeps the old 70-column layout for a tab not migrated yet.
+    """
     session = ExamSession.objects.filter(id=session_id).first()
     configured_rounds = [item for item in ((session.rounds if session else []) or []) if isinstance(item, dict)]
-    rows = [EXPORT_GROUP_HEADERS, EXPORT_HEADERS]
+    layout = session_sheet_layout(session, compact)
+    rows = [list(row) for row in session_sheet_headers(session, compact)]
     participations = list(
         CandidateParticipation.objects.filter(session_id=session_id)
         .select_related('candidate')
@@ -1115,18 +1514,9 @@ def session_export_rows(session_id):
             participation.subject or '', participation.category or '', participation.registration_method or '', participation.team_name or '',
             participation.exam_language or '', participation.general_note or '',
         ]
-        slots = _round_slots(list(participation.round_results.all()), configured_rounds)
-        for number in (1, 2, 3):
-            result = slots.get(number)
-            if not result:
-                row.extend([''] * len(ROUND_EXPORT_HEADERS))
-                continue
-            row.extend([
-                result.eligibility, result.sbd, format_sheet_date(result.exam_date), result.time_slot, result.mode, result.location,
-                # Attendance goes to the room Sheet only; a blank here keeps whatever the tab already shows.
-                result.link, result.account, result.password, '', result.score, format_sheet_percentage(result.score_rate),
-                result.rank, result.result, result.note,
-            ])
+        placed, slots = _layout_slots(list(participation.round_results.all()), configured_rounds, layout)
+        for index in range(len(layout)):
+            row.extend(_round_export_values(placed.get(index)))
         awarded = [result for result in slots.values() if _award_rank(result)]
         best = max(awarded, key=lambda result: (_award_rank(result), parse_exam_date(result.exam_date)), default=None)
         row.extend([_session_highest_round(slots, configured_rounds), clean_txt(best.result) if best else '', participation.certificate_link or '', session_registration_time(participation)])
@@ -1258,7 +1648,7 @@ def _export_row_match(sheet_row, candidate_row, allow_birth_conflicts=False):
     return 50, 'h\u1ecd t\u00ean duy nh\u1ea5t'
 
 
-def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=False, allow_birth_conflicts=False):
+def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=False, allow_birth_conflicts=False, compact=False):
     """Align output to existing Sheet people; never use the Sheet row order as identity.
 
     Row 1 is the group label and row 2 is the immutable column header. This
@@ -1266,7 +1656,7 @@ def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=Fals
     Sheet rows are retained. System candidates that have no Sheet counterpart
     are appended, while ambiguous or missing matches block an overwrite.
     """
-    proposed_rows = session_export_rows(session_id)[2:]
+    proposed_rows = session_export_rows(session_id, compact=compact)[2:]
     remaining = set(range(len(proposed_rows)))
     aligned_rows = [list(row) for row in current_rows]
     matched_rows = 0
@@ -1274,6 +1664,7 @@ def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=Fals
     appended_values = []
     unmatched_sheet_rows = []
     conflicts = []
+    matched_indexes = set()
 
     for row_index, sheet_row in enumerate(current_rows):
         if not any(clean_txt(value) for value in sheet_row):
@@ -1318,6 +1709,7 @@ def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=Fals
         if sheet_row and clean_txt(sheet_row[0]):
             replacement[0] = sheet_row[0]
         aligned_rows[row_index] = replacement
+        matched_indexes.add(row_index)
         remaining.discard(candidate_index)
         matched_rows += 1
 
@@ -1360,6 +1752,8 @@ def _aligned_export_rows(current_rows, session_id, allow_duplicate_profiles=Fals
         'unmatchedSheetRows': unmatched_sheet_rows,
         'matchConflicts': conflicts,
         'systemRows': len(proposed_rows),
+        # Rows replaced by a web row; the others are still the Sheet's own row.
+        'matchedIndexes': matched_indexes,
     }
 
 def sheet_values_fingerprint(values):
@@ -1384,19 +1778,77 @@ def _sheet_values_equivalent(before, after, field):
     return False
 
 
-def _session_sheet_layout(service, spreadsheet_id, target, range_title):
-    column_count = min(target.get('gridProperties', {}).get('columnCount', 70), 70)
+def _tab_column_positions(group_row, header_row, session):
+    """Map each web export column to the tab column with the same block and label.
+
+    Returns ({web column: tab column}, web blocks the tab has no columns for),
+    or (None, []) when the tab has no batch blocks yet (old 70-column layout).
+    """
+    tab_blocks = {(number, batch): (fields, day) for number, batch, _, fields, day in header_round_blocks(merged_headers([group_row, header_row], 1))}
+    if not any(batch for _, batch in tab_blocks):
+        return None, []
+    positions = {index: index for index in range(len(PROFILE_EXPORT_HEADERS) + len(REGISTRATION_EXPORT_HEADERS))}
+    start, missing = len(positions), []
+    layout = session_sheet_layout(session)
+    for block in layout:
+        fields, day = tab_blocks.get((block['round_pos'], block['batch']), (None, None))
+        if fields and day and block['day'] and day != block['day']:
+            # Batches were renumbered: never write a batch into a block labelled for another date.
+            missing.append(f'{block["label"]} (tab ghi ngày {day.strftime("%d/%m/%Y")})')
+            fields = None
+        elif not fields:
+            missing.append(block['label'])
+        for offset, key in enumerate(ROUND_TEMPLATE_FIELD_ORDER):
+            if fields and key in fields:
+                positions[start + offset] = fields[key]
+        start += len(ROUND_EXPORT_HEADERS)
+    labels = [normalise_str(value) for value in header_row]
+    for offset, label in enumerate(SUMMARY_EXPORT_HEADERS):
+        if normalise_str(label) in labels:
+            positions[start + offset] = labels.index(normalise_str(label))
+    return positions, missing
+
+
+def _session_sheet_layout(service, spreadsheet_id, target, range_title, session=None):
+    """How the web writes this tab; the background writer never restructures it.
+
+    ``positions`` maps web columns to the tab's own columns (tab already has
+    batch blocks); ``compact`` writes the old one-block-per-round layout.
+    """
+    grid_columns = target.get('gridProperties', {}).get('columnCount', 70)
+    column_count = min(grid_columns, 70)
     end_column = _column_name(column_count - 1)
-    legacy_headers = None
+    batched = bool(session) and any(block['batch'] for block in session_sheet_layout(session))
+    layout = {'column_count': column_count, 'end_column': end_column, 'legacy_headers': None,
+              'headers': EXPORT_HEADERS, 'positions': None, 'compact': batched}
     if column_count < 70:
         legacy_headers = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
             range=f'{range_title}!A2:{end_column}2').execute(num_retries=6).get('values', [[]])[0]
         if len(legacy_headers) < 55 or normalise_str(legacy_headers[51]) != normalise_str(SUMMARY_EXPORT_HEADERS[0]):
             raise ValueError('Mẫu ít hơn 70 cột chưa có ánh xạ tổng hợp an toàn; giữ nguyên dữ liệu.')
-    return column_count, end_column, legacy_headers
+        layout.update(legacy_headers=legacy_headers, headers=legacy_headers)
+        return layout
+    if not batched:
+        return layout
+    rows = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
+        range=f'{range_title}!A1:ZZ2').execute(num_retries=6).get('values', [])
+    group_row = list(rows[0]) if rows else []
+    header_row = list(rows[1]) if len(rows) > 1 else []
+    positions, missing = _tab_column_positions(group_row, header_row, session)
+    if positions is None:
+        # Deployed before the tab was expanded (expand_session_sheet_batches):
+        # keep writing the old layout, one result per round (its best batch).
+        logger.warning('Tab %s của kỳ %s chưa có cột theo đợt; ghi theo mẫu 70 cột cũ (đợt có điểm cao nhất).', range_title, session.pk)
+        return layout
+    if missing:
+        logger.warning('Tab %s của kỳ %s chưa có cột khớp cho %s; các khối này không được ghi.', range_title, session.pk, ', '.join(missing))
+    width = max(len(group_row), len(header_row), max(positions.values()) + 1)
+    layout.update(column_count=width, end_column=_column_name(width - 1), compact=False, positions=positions,
+                  headers=header_row + [''] * (width - len(header_row)))
+    return layout
 
 
-def _project_session_sheet_row(row, previous, legacy_headers, session):
+def _project_session_sheet_row(row, previous, legacy_headers, session, positions=None, width=None):
     row = list(row)
     if previous and (legacy_headers or normalise_str(session.phase) == 'hoanthanh'):
         # An unresolved historical date/identifier disagreement must not be
@@ -1415,6 +1867,13 @@ def _project_session_sheet_row(row, previous, legacy_headers, session):
         for index in (12, 13, 14):
             if index < len(previous) and clean_txt(previous[index]):
                 row[index] = previous[index]
+    if positions is not None:
+        # The tab's own columns: '' where the web owns nothing (Sheet-only
+        # columns), so the caller keeps whatever the Sheet holds there.
+        projected = [''] * (width or (max(positions.values(), default=-1) + 1))
+        for web_index, tab_index in positions.items():
+            projected[tab_index] = row[web_index] if web_index < len(row) else ''
+        return projected
     if not legacy_headers or len(row) < 70:
         return row
     # Historical two-round sheets keep distinct subjects for the same profile.
@@ -1455,13 +1914,25 @@ def output_sheet_export_preview(sheet, google_access_token=None, max_changes=250
     target = _output_sheet_target(sheet, service)
     tab_name = target.get('title')
     range_title = _sheet_range_title(tab_name)
-    column_count, end_column, legacy_headers = _session_sheet_layout(service, spreadsheet_id, target, range_title)
+    layout = _session_sheet_layout(service, spreadsheet_id, target, range_title, session)
+    column_count, end_column, legacy_headers, positions = (layout['column_count'], layout['end_column'],
+                                                           layout['legacy_headers'], layout['positions'])
     current = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id, range=f'{range_title}!A3:ZZ',
     ).execute(num_retries=6).get('values', [])
-    alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers), allow_birth_conflicts=bool(legacy_headers))
-    proposed = [_project_session_sheet_row(row, current[i] if i < len(current) else None, legacy_headers, session)
-                for i, row in enumerate(alignment['values'])]
+    alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers),
+                                     allow_birth_conflicts=bool(legacy_headers), compact=layout['compact'])
+    proposed = []
+    for i, row in enumerate(alignment['values']):
+        previous = current[i] if i < len(current) else None
+        if positions is not None and previous is not None and i not in alignment['matchedIndexes']:
+            proposed.append(list(previous))
+            continue
+        row = _project_session_sheet_row(row, previous, legacy_headers, session, positions, column_count)
+        if positions is not None and previous:
+            # As the writer does: a blank web cell keeps the Sheet's value.
+            row = [value if clean_txt(value) or index >= len(previous) else previous[index] for index, value in enumerate(row)]
+        proposed.append(row)
     format_changes = False
     if current:
         formatting = service.spreadsheets().get(spreadsheetId=spreadsheet_id,
@@ -1492,7 +1963,7 @@ def output_sheet_export_preview(sheet, google_access_token=None, max_changes=250
             if before == after:
                 continue
             write_changed_cells += 1
-            field_headers = legacy_headers or EXPORT_HEADERS
+            field_headers = layout['headers']
             field = str(field_headers[column_index]) if len(field_headers) > column_index else _column_name(column_index)
             # New values, formatting-equivalent values, and the timestamp do
             # not need operator review; they are still included in the write.
@@ -1680,7 +2151,10 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
     tab_name = target.get('title')
 
     range_title = _sheet_range_title(tab_name)
-    column_count, end_column, legacy_headers = _session_sheet_layout(service, spreadsheet_id, target, range_title)
+    layout = _session_sheet_layout(service, spreadsheet_id, target, range_title, session)
+    column_count, end_column, legacy_headers, positions = (layout['column_count'], layout['end_column'],
+                                                           layout['legacy_headers'], layout['positions'])
+    compact = layout['compact']
     if validate_template:
         headers = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=f'{range_title}!A2:O2',
@@ -1696,12 +2170,14 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         spreadsheetId=spreadsheet_id,
         range=f'{range_title}!A3:ZZ',
     ).execute(num_retries=6).get('values', [])
-    alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers), allow_birth_conflicts=bool(legacy_headers))
+    alignment = _aligned_export_rows(current, session.id, allow_duplicate_profiles=bool(legacy_headers),
+                                     allow_birth_conflicts=bool(legacy_headers), compact=compact)
     def project(row, previous=None):
-        return _project_session_sheet_row(row, previous, legacy_headers, session)
-    if legacy_headers and export_mode == 'merge':
+        return _project_session_sheet_row(row, previous, legacy_headers, session, positions, column_count)
+    if (legacy_headers or positions is not None) and export_mode == 'merge':
+        # Never clear a tab whose columns the web maps by label: update in place.
         export_mode = 'refresh-selected'
-        append_candidate_codes = [row[1] for row in session_export_rows(session.id)[2:]]
+        append_candidate_codes = [row[1] for row in session_export_rows(session.id, compact=compact)[2:]]
     if export_mode not in {'merge', 'append-only', 'refresh-selected'}:
         raise ValueError('Invalid export mode.')
     selected_codes = {clean_txt(code).upper() for code in (append_candidate_codes or []) if clean_txt(code)}
@@ -1710,7 +2186,7 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
     # authoritative: unticked web-only candidates are not added to Sheet.
     skipped_appended_codes = appended_codes - selected_codes if append_candidate_codes is not None else set()
     values = [
-        project(row) for row in session_export_rows(session.id)[2:]
+        project(row) for row in session_export_rows(session.id, compact=compact)[2:]
         if clean_txt(_export_row_record(row)['code']).upper() not in skipped_appended_codes
     ]
     values_to_write = [
@@ -1742,6 +2218,8 @@ def export_session_to_google_sheet(sheet, google_access_token=None, export_mode=
         resulting_values = [list(row) for row in current]
         updates = []
         for index, row in enumerate(alignment['values'][:len(current)]):
+            if positions is not None and index not in alignment['matchedIndexes']:
+                continue  # the Sheet's own row (no web counterpart) is never rewritten
             row = project(row, current[index])
             # An empty web value never erases what someone typed on the Sheet
             # (e.g. a birth year the web could not read yet).
@@ -1944,10 +2422,13 @@ def automatic_import_rows(incoming, headers, columns, raw, session_id, source_ur
         normalise_str(name) for name in Candidate.objects.filter(participations__session_id=session_id).values_list('name', flat=True)
     } if session_id else set()
     names_by_code = {}
-    selected, skipped = [], []
+    selected, skipped, skipped_blocks = [], [], []
     for item, record in zip(incoming, comparison['records']):
         preview = record['_preview']
         status = preview['status']
+        # Every row's unplaceable blocks are reported (deduplicated by the log), changed or not.
+        skipped_blocks.extend({'row': item.get('_sheetRow', preview['sourceRow']), 'name': item['name'],
+                               'code': item.get('code', ''), 'reason': reason} for reason in preview.get('skippedBlocks') or [])
         code = clean_txt(item.get('code')).upper()
         reason = ''
         if code:
@@ -1969,7 +2450,7 @@ def automatic_import_rows(incoming, headers, columns, raw, session_id, source_ur
             continue
         if status in ('new', 'changed'):
             selected.append(item)
-    return selected, skipped
+    return selected, skipped, skipped_blocks
 
 
 def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None, preview=False, sheet_tab='', preview_update_mode='replace-nonempty', preview_import_empty_values=True, automatic=False):
@@ -2044,8 +2525,12 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
             raise Exception('Không tìm thấy cột họ tên thí sinh trong tab đã chọn. Kiểm tra lại tab và dòng tiêu đề.')
         
         incoming = []
-        session_code = clean_txt(ExamSession.objects.filter(id=session_id).values_list('code', flat=True).first()) if session_id else ''
-        for row in grid[header_index + 1:]:
+        target_session = ExamSession.objects.filter(id=session_id).first() if session_id else None
+        session_code = clean_txt(target_session.code) if target_session else ''
+        # Round blocks that cannot be placed (a date of another batch...) are
+        # skipped one by one and reported in the session log.
+        skipped_blocks = []
+        for row_number, row in enumerate(grid[header_index + 1:], start=header_index + 2):
             if not row:
                 continue
 
@@ -2080,16 +2565,18 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
                 'parent': format_person_name(value('parent')), 'updated': value('updated') or ts_vn, 'registration': registration,
                 'exam_history': history_from_sheet_row(header_row, row),
             }
+            cand['_sheetRow'] = row_number
             incoming.append(cand)
             if len(incoming) > 1000:
                 raise Exception('Mỗi lần chỉ được xử lý tối đa 1.000 hồ sơ. Hãy chia tab nguồn thành nhiều đợt nhỏ hơn.')
         fingerprint = 'csv:' + hashlib.sha256(raw.encode('utf-8')).hexdigest()
         skipped = []
         if automatic and not preview:
-            incoming, skipped = automatic_import_rows(incoming, header_row, col, raw, session_id, spreadsheet_url, sheet_tab, header_index + 2)
+            incoming, skipped, skipped_blocks = automatic_import_rows(incoming, header_row, col, raw, session_id, spreadsheet_url, sheet_tab, header_index + 2)
             if not incoming:
                 return {'success': True, 'unchanged': not skipped, 'created': 0, 'updated': 0,
-                        'total': 0, 'skipped': skipped, 'fingerprint': fingerprint, 'timestamp': ts_vn}
+                        'total': 0, 'skipped': skipped, 'skippedBlocks': skipped_blocks,
+                        'fingerprint': fingerprint, 'timestamp': ts_vn}
         if not incoming:
             if preview:
                 result = build_sheet_preview([], header_row, col, raw, session_id, spreadsheet_url, sheet_tab, header_index + 2, preview_update_mode, preview_import_empty_values)
@@ -2117,6 +2604,13 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
             
         # Perform Sync
         past_session = session_is_past(session_id)
+        manual_block_problems = []
+
+        def row_blocks(cand):
+            # Collects this row's skipped blocks (the automatic path takes them from its preview).
+            problems = []
+            manual_block_problems.append((cand, problems))
+            return problems
         existing = list(Candidate.objects.all())
         existing_codes_set = {candidate.code for candidate in existing}
         created = 0
@@ -2166,7 +2660,8 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
                 base.updated = ts_vn
                 base.sort_key = f"{base.name.lower()}_{base.identity or base.id}"
                 base.save()
-                upsert_participation_history(base, session_id, cand['exam_history'], spreadsheet_url, cand['registration'])
+                upsert_participation_history(base, session_id, cand['exam_history'], spreadsheet_url, cand['registration'],
+                                             skipped_blocks=None if automatic else row_blocks(cand))
                 if matched:
                     labels = {
                         'name': 'họ tên', 'birth_date': 'ngày sinh', 'identity': 'CCCD/Hộ chiếu', 'email': 'email',
@@ -2201,12 +2696,15 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
                 email=cand['email'], parent=cand['parent'], phone=cand['phone'], identity=cand['identity'], address=cand['address'], birth_date=cand['birth_date'],
                 session_ids=[session_id] if session_id else [], updated=ts_vn, sort_key=f"{cand['name'].lower()}_{cand['identity'] or code}",
             )
-            upsert_participation_history(new_candidate, session_id, cand['exam_history'], spreadsheet_url, cand['registration'])
+            upsert_participation_history(new_candidate, session_id, cand['exam_history'], spreadsheet_url, cand['registration'],
+                                         skipped_blocks=None if automatic else row_blocks(cand))
             existing.append(new_candidate)
             existing_codes_set.add(code)
             created += 1
         sync_session_candidate_totals()
         update_state({'status': 'success', 'error': None})
+        skipped_blocks.extend({'row': cand.get('_sheetRow'), 'name': cand['name'], 'code': cand.get('code', ''), 'reason': reason}
+                              for cand, problems in manual_block_problems for reason in problems)
         
         return {
             'success': True,
@@ -2216,6 +2714,7 @@ def sync_single_sheet(spreadsheet_url, ts_vn, sheet_doc_id=None, session_id=None
             'linkedExisting': linked_existing,
             'total': len(incoming),
             'skipped': skipped,
+            'skippedBlocks': skipped_blocks,
             'updatedIds': updated_ids,
             'fingerprint': fingerprint,
             'timestamp': ts_vn

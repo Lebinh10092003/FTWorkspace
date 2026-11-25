@@ -139,6 +139,11 @@ sudo systemctl enable --now workspace-examination-partner-contacts.timer
 sudo systemctl enable --now workspace-examination-candidate-queue.timer
 "$VENV_DIR/bin/python" backend/manage.py detach_training_calendars --apply
 "$VENV_DIR/bin/python" backend/manage.py queue_examination_schedule_format
+# Tab khảo thí FIMO/FIEO theo đợt (25/11/2026): CHẠY THỬ, in kế hoạch chèn cột và
+# dời dữ liệu ra log deploy. Chỉ thêm --apply sau khi chủ dự án xem kế hoạch.
+if ! "$VENV_DIR/bin/python" backend/manage.py expand_session_sheet_batches; then
+  echo "WARNING: Sheet batch expansion plan could not be computed." >&2
+fi
 if ! "$VENV_DIR/bin/python" backend/manage.py sync_examination_partner_contacts; then
   echo "WARNING: Examination partner Sheet sync deferred to the retry timer." >&2
 fi

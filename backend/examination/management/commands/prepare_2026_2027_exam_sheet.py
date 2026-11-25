@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from authentication.models import SystemConfig
 from examination.models import ExamSession, ExaminationSheet
-from examination.sync import EXPORT_GROUP_HEADERS, EXPORT_HEADERS
+from examination.sync import EXPORT_GROUP_HEADERS, EXPORT_HEADERS, session_sheet_headers
 from integrations.google_sheets import build_sheets_service, extract_spreadsheet_id
 
 
@@ -25,14 +25,16 @@ def quoted(title):
     return "'" + title.replace("'", "''") + "'"
 
 
-def _same_headers(actual):
-    return len(actual) == len(EXPORT_HEADERS) and all(
+def _same_headers(actual, expected_headers=EXPORT_HEADERS):
+    return len(actual) == len(expected_headers) and all(
         ' '.join(str(value).split()) == ' '.join(expected.split())
-        for value, expected in zip(actual, EXPORT_HEADERS)
+        for value, expected in zip(actual, expected_headers)
     )
 
 
-def provision_tab(service, spreadsheet_id, title):
+def provision_tab(service, spreadsheet_id, title, session=None):
+    # A round held in several batches has one block per batch (session_sheet_layout).
+    group_headers, headers = session_sheet_headers(session) if session else (EXPORT_GROUP_HEADERS, EXPORT_HEADERS)
     metadata = service.spreadsheets().get(
         spreadsheetId=spreadsheet_id, fields='sheets(properties(sheetId,title,gridProperties(columnCount)))',
     ).execute()
@@ -44,33 +46,34 @@ def provision_tab(service, spreadsheet_id, title):
     if created:
         response = service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
-            body={'requests': [{'addSheet': {'properties': {'title': title, 'gridProperties': {'columnCount': len(EXPORT_HEADERS), 'rowCount': 1000}}}}]},
+            body={'requests': [{'addSheet': {'properties': {'title': title, 'gridProperties': {'columnCount': len(headers), 'rowCount': 1000}}}}]},
         ).execute()
         sheet_id = response['replies'][0]['addSheet']['properties']['sheetId']
     else:
         sheet_id = existing[title]['sheetId']
         current = service.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id, range=f'{quoted(title)}!A1:BR2',
+            spreadsheetId=spreadsheet_id, range=f'{quoted(title)}!A1:ZZ2',
         ).execute().get('values', [])
         if any(any(str(cell).strip() for cell in row) for row in current):
-            if len(current) < 2 or not _same_headers(current[1]):
-                raise CommandError(f'Tab {title} đã có dữ liệu khác mẫu 70 cột; cần kiểm tra thủ công.')
+            # An existing 70-column tab of a batched session is widened by expand_session_sheet_batches.
+            if len(current) < 2 or not (_same_headers(current[1], headers) or _same_headers(current[1])):
+                raise CommandError(f'Tab {title} đã có dữ liệu khác mẫu {len(headers)} cột; cần kiểm tra thủ công.')
             return False
-        if existing[title].get('gridProperties', {}).get('columnCount', 0) < len(EXPORT_HEADERS):
+        if existing[title].get('gridProperties', {}).get('columnCount', 0) < len(headers):
             service.spreadsheets().batchUpdate(
                 spreadsheetId=spreadsheet_id,
-                body={'requests': [{'updateSheetProperties': {'properties': {'sheetId': sheet_id, 'gridProperties': {'columnCount': len(EXPORT_HEADERS)}}, 'fields': 'gridProperties.columnCount'}}]},
+                body={'requests': [{'updateSheetProperties': {'properties': {'sheetId': sheet_id, 'gridProperties': {'columnCount': len(headers)}}, 'fields': 'gridProperties.columnCount'}}]},
             ).execute()
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id, range=f'{quoted(title)}!A1',
         valueInputOption='RAW',
-        body={'values': [EXPORT_GROUP_HEADERS, EXPORT_HEADERS]},
+        body={'values': [group_headers, headers]},
     ).execute()
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body={'requests': [
             {'updateSheetProperties': {'properties': {'sheetId': sheet_id, 'gridProperties': {'frozenRowCount': 2}}, 'fields': 'gridProperties.frozenRowCount'}},
-            {'repeatCell': {'range': {'sheetId': sheet_id, 'startRowIndex': 0, 'endRowIndex': 2, 'startColumnIndex': 0, 'endColumnIndex': len(EXPORT_HEADERS)}, 'cell': {'userEnteredFormat': {'textFormat': {'bold': True}, 'backgroundColor': {'red': 0.89, 'green': 0.94, 'blue': 1.0}, 'wrapStrategy': 'WRAP'}}, 'fields': 'userEnteredFormat'}},
+            {'repeatCell': {'range': {'sheetId': sheet_id, 'startRowIndex': 0, 'endRowIndex': 2, 'startColumnIndex': 0, 'endColumnIndex': len(headers)}, 'cell': {'userEnteredFormat': {'textFormat': {'bold': True}, 'backgroundColor': {'red': 0.89, 'green': 0.94, 'blue': 1.0}, 'wrapStrategy': 'WRAP'}}, 'fields': 'userEnteredFormat'}},
         ]},
     ).execute()
     return created
@@ -133,7 +136,7 @@ class Command(BaseCommand):
                 spreadsheet_id = extract_spreadsheet_id(SHEET_URL)
             for session_id, tab_name in TABS:
                 if service:
-                    created = provision_tab(service, spreadsheet_id, tab_name)
+                    created = provision_tab(service, spreadsheet_id, tab_name, ExamSession.objects.get(pk=session_id))
                     action = 'Tạo' if created else 'Giữ'
                 else:
                     action = 'Gắn tab hiện có'

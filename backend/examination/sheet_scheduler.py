@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 
 from django.utils import timezone
@@ -31,6 +32,28 @@ def record_sheet_log(sheet, content):
         updated_by='Hệ thống FT Workspace',
         system=True,
     )
+
+
+def record_skipped_blocks(sheet, skipped_blocks):
+    """One session note per skipped round/batch block, written once.
+
+    The key is stable (tab, candidate, reason), so a block that stays wrong on
+    the Sheet is not logged again on every scan; a different date or batch is
+    a new reason and is logged.
+    """
+    tab = sheet.sheet_tab or sheet.name
+    for item in skipped_blocks:
+        who = str(item.get('code') or item.get('name') or '').strip().upper()
+        digest = hashlib.sha1(f'{tab}|{who}|{item["reason"]}'.encode('utf-8')).hexdigest()[:32]
+        key = f'session-{sheet.session_id}:sheet-block:{digest}'
+        if LogNote.objects.filter(key=key).exists():
+            continue
+        LogNote.objects.create(
+            key=key, entity_key=f'session-{sheet.session_id}',
+            content=f'Tab {tab}, dòng {item.get("row")} ({item.get("name")}): bỏ qua khối {item["reason"]} '
+                    f'Phần còn lại của dòng vẫn được nhập.',
+            updated_by='Hệ thống FT Workspace', system=True,
+        )
 
 
 def output_sheet_has_unreviewed_changes(sheet, google_access_token=None):
@@ -81,6 +104,7 @@ def import_registration_sheet(sheet, now, observed_fingerprint=''):
                                               candidate_id__in=result['updatedIds']).delete()
     previous_error = sheet.last_error
     skipped = result.get('skipped') or []
+    skipped_blocks = result.get('skippedBlocks') or []
     sheet.pending_manual_import = False
     sheet.change_detected_at = None
     sheet.updated_at = now
@@ -95,6 +119,8 @@ def import_registration_sheet(sheet, now, observed_fingerprint=''):
             if skipped:
                 content += f'\nGiữ nguyên {len(skipped)} dòng chưa ghép chắc chắn với hồ sơ trên web:\n' + skipped_rows_summary(skipped)
             record_sheet_log(sheet, content)
+        # Only that round/batch block is skipped; the rest of the row is imported.
+        record_skipped_blocks(sheet, skipped_blocks)
     else:
         # Network/Google failures are retried by the next scan; keep the old
         # fingerprint so the edit is not lost.

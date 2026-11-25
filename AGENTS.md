@@ -24,7 +24,7 @@
 - **Cột A (STT) là công thức `ARRAYFORMULA` ở A3, đếm theo cột B.** Web chỉ ghi từ cột B trở đi. File ở locale Việt Nam dùng dấu `;` trong công thức (`ensure_stt_formula`).
 - **Không bao giờ xóa trắng rồi ghi lại cả tab.** Mọi lần xuất (kể cả lịch 11:00/16:00) chỉ cập nhật đúng dòng tại chỗ và thêm dòng mới ở cuối, để giữ thứ tự dòng và các ô chỉ có trên Sheet.
 - Dòng vừa nhập từ Sheet vào web **không được ghi ngược lại** chính tab đó (xóa job `SessionSheetOutbox` của các hồ sơ vừa cập nhật).
-- Nhập kết quả vòng thi phải ghép vào kết quả sẵn có của cùng vòng (kể cả bản có mã ca rỗng), giữ tên vòng theo cấu hình kỳ. Không tạo bản kết quả thứ hai cho cùng một vòng.
+- Nhập kết quả vòng thi phải ghép vào kết quả sẵn có của cùng vòng **và cùng đợt** (kể cả bản có mã ca rỗng), giữ tên vòng theo cấu hình kỳ. Mỗi vòng, mỗi đợt chỉ một bản kết quả; khối của đợt này không bao giờ ghi vào kết quả của đợt khác, và Sheet không tạo đợt mới khi thí sinh đã có kết quả của vòng đó (thêm đợt bằng nút "Thêm đợt" trên web). Vòng thi nhiều đợt có một khối 15 cột `VÒNG n · ĐỢT k (dd/mm/yyyy)` cho mỗi đợt; khối ghi ngày khác lịch đợt của kỳ thì không đọc, không ghi (`session_sheet_layout`); tab cũ được mở rộng bằng lệnh `expand_session_sheet_batches`.
 - **Điểm danh coi thi chỉ ghi Sheet phân phòng** (`room_sheet.py`), không ghi tab khảo thí của kỳ. Tab khảo thí không xuất và không nhập cột "Trạng thái dự thi"; ô đang có trên tab giữ nguyên. Điểm vẫn ghi tab khảo thí như cũ.
 
 ### Những điều CẤM
