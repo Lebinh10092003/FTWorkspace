@@ -667,21 +667,42 @@ def header_round_blocks(headers):
     ``day`` is the batch date written in the label (None for an undated label).
     Columns the web does not know (inserted on the Sheet) are ignored.
     """
-    blocks, order = {}, []
+    # Group consecutive round-field columns by their group label first; a
+    # repeated field starts a new block (an unlabelled block inherits the
+    # previous label through the merged header).
+    groups = []
     for index, header in enumerate(headers):
         raw = clean_txt(header)
         if ':' not in raw:
             continue
         group, title = raw.split(':', 1)
-        number, batch = _group_round_batch(group)
         field = ROUND_FIELD_BY_LABEL.get(normalise_str(title))
-        if number is None or not 1 <= number <= 3 or not field:
+        if not field:
             continue
+        group = group.strip()
+        if groups and groups[-1][0] == group and field not in groups[-1][1]:
+            groups[-1][1][field] = index
+        else:
+            groups.append((group, {field: index}))
+    # Staff rename round labels on real tabs (FIMO 2026-2027: "LOẠI QUỐC GIA
+    # (3 ĐỢT)"). A complete 15-field block whose label is not "VÒNG n" takes
+    # the next round number in column order, after any labelled block.
+    blocks, order, last_number = {}, [], 0
+    for group, fields in groups:
+        number, batch = _group_round_batch(group)
+        if number is None:
+            if len(fields) != len(ROUND_TEMPLATE_FIELD_ORDER):
+                continue
+            number, batch = last_number + 1, None
+        if not 1 <= number <= 3:
+            continue
+        last_number = number
         key = (number, batch)
         if key not in blocks:
-            blocks[key] = (group.strip(), {}, split_group_day(group)[1])
+            blocks[key] = (group, {}, split_group_day(group)[1])
             order.append(key)
-        blocks[key][1].setdefault(field, index)
+        for field, index in fields.items():
+            blocks[key][1].setdefault(field, index)
     return [(number, batch, *blocks[(number, batch)]) for number, batch in order]
 
 

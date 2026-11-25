@@ -380,6 +380,21 @@ class ExpandSessionSheetBatchesCommandTests(BatchSheetBase):
         self.sheet.refresh_from_db()
         self.assertEqual(self.sheet.last_content_fingerprint, 'old')
 
+    def test_dry_run_handles_round_labels_renamed_by_staff(self):
+        # Real FIMO tab (25/11/2026): staff renamed "VÒNG 1" to "LOẠI QUỐC GIA
+        # (3 ĐỢT)"; the deploy dry run refused with "tab có khối []".
+        group = list(EXPORT_GROUP_HEADERS)
+        start = len(PROFILE_EXPORT_HEADERS) + 6
+        group[start] = 'LOẠI QUỐC GIA (3 ĐỢT)'
+        group[start + len(ROUND_EXPORT_HEADERS)] = 'CHUNG KẾT QUỐC GIA'
+        group[start + 2 * len(ROUND_EXPORT_HEADERS)] = ''
+        output = self.call(self.service([group, EXPORT_HEADERS, *self.rows]))
+        self.assertIn('chèn 30 cột', output)
+        self.assertIn('Dòng 4 FT-90102: VÒNG 1 → VÒNG 1 · ĐỢT 2 (08/11/2026)', output)
+        from .sync import header_round_blocks, merged_headers
+        blocks = header_round_blocks(merged_headers([group, EXPORT_HEADERS], 1))
+        self.assertEqual([(number, batch) for number, batch, *_ in blocks], [(1, None), (2, None), (3, None)])
+
     def test_apply_inserts_blocks_moves_rows_and_records_fingerprints(self):
         after = [['1', 'FT-90100'], ['2', 'FT-90102'], ['3', 'FT-90101']]
         service = self.service([EXPORT_GROUP_HEADERS, EXPORT_HEADERS, *self.rows], after)
