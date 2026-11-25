@@ -26,7 +26,7 @@ import SearchableSelect from "./SearchableSelect";
 import UnmatchedTransfers from "./finance/UnmatchedTransfers";
 import { matchesSearch } from "../lib/searchText";
 import { DateBadge, DeadlineLegend as Legend, Metric, SessionsTable, TimeField, dateValue, emptyDate, todayIso, sessionDisplayName, sessionTimelineLabel, sessionRecencyKey, formatGrade, BirthDateControl, LIST_PAGE_SIZE, TablePagination } from "./examination/ui";
-import { DailyRegistrationSummary, useDailyRegistrations } from "./examination/DailyRegistrations";
+import { DailyRegistrationCard, useDailyRegistrations } from "./examination/DailyRegistrations";
 import { roundDates, sessionRounds } from "./examination/rounds";
 import { examinationPathFor, examinationRouteFromPath } from "./examination/routes";
 import ResponsiveDataList from "./ui/ResponsiveDataList";
@@ -1133,8 +1133,15 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         }
       />
       <section className="ft-surface mb-6 p-5">
-        <div className="flex flex-wrap justify-end">
-          <label className="block min-w-[280px]">
+        {/* One row: total, new registrations of the day, contest filter (25/11/2026). */}
+        <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,2fr)_minmax(240px,1fr)]">
+          <button type="button" onClick={() => go("candidates")} className="min-w-[220px] rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-left transition hover:border-emerald-400">
+            <p className="text-sm font-bold text-emerald-900">Tổng số thí sinh dự thi</p>
+            <p className="mt-1 text-3xl font-extrabold text-emerald-950">{overviewSessions.reduce((sum, session) => sum + Number(session.candidates || 0), 0).toLocaleString("vi-VN")}</p>
+            <p className="mt-1 text-xs text-emerald-800">{overviewCompetitionFilter ? `Cuộc thi ${overviewCompetitionFilter}` : `${overviewSessions.length} kỳ đang tổ chức`}</p>
+          </button>
+          {dailyRegistrations ? <DailyRegistrationCard stats={dailyRegistrations} sessions={overviewSessions} /> : <div />}
+          <label className="block min-w-[240px] self-center">
             <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Cuộc thi</span>
             <select value={overviewCompetitionFilter} onChange={(event) => setOverviewCompetitionFilter(event.target.value)} className="ft-input w-full bg-white">
               <option value="">Tất cả cuộc thi đang tổ chức</option>
@@ -1145,10 +1152,6 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
               ))}
             </select>
           </label>
-        </div>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <Metric label="Các cuộc thi đang theo dõi" value={String(overviewSessions.length).padStart(2, "0")} icon={Trophy} onClick={() => overviewCompetitionFilter && setOverviewCompetitionFilter("")} />
-          <Metric label="Tổng số thí sinh" value={overviewSessions.reduce((sum, session) => sum + Number(session.candidates || 0), 0).toLocaleString("vi-VN")} icon={Users} onClick={() => go("candidates")} hint={dailyRegistrations ? <DailyRegistrationSummary stats={dailyRegistrations} sessions={overviewSessions} layout="row" /> : undefined} />
         </div>
       </section>
       <div className="ft-examination-overview-grid grid min-w-0 gap-6 xl:grid-cols-3">
@@ -1699,8 +1702,8 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
           <p className="text-sm font-bold text-emerald-900">Tổng thí sinh</p>
           <p className="mt-1 text-3xl font-extrabold text-emerald-950">{candidates.length.toLocaleString("vi-VN")}</p>
           <p className="mt-1 text-xs text-emerald-800">Mỗi mã FT được tính một lần.</p>
-          {dailyRegistrations && <div className="mt-3 border-t border-emerald-200 pt-2"><DailyRegistrationSummary stats={dailyRegistrations} sessions={sessions} layout="stack" /></div>}
         </div>
+        {dailyRegistrations && <DailyRegistrationCard stats={dailyRegistrations} sessions={sessions} />}
         {hasCandidateFilters && <div className="min-w-[220px] rounded-xl border border-sky-200 bg-sky-50 px-5 py-4">
           <p className="text-sm font-bold text-sky-900">Khớp tìm kiếm / bộ lọc</p>
           <p className="mt-1 text-3xl font-extrabold text-sky-950">{people.length.toLocaleString("vi-VN")}</p>

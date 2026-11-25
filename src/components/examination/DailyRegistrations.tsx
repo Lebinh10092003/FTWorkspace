@@ -25,12 +25,7 @@ export function useDailyRegistrations(idToken?: string | null, refreshKey?: unkn
   return stats;
 }
 
-/**
- * "Ngày 25/11/2026: 45 thí sinh mới · FIMO: 45 lượt đăng ký mới · … · Tổng: N lượt đăng ký mới".
- * `sessions` limits the count (the overview's contest filter); `layout` is
- * "row" for the wide overview card and "stack" (one line each) for the narrow one.
- */
-export function DailyRegistrationSummary({ stats, sessions, layout }: { stats: DailyRegistrationStats; sessions: ExaminationSession[]; layout: 'row' | 'stack' }) {
+function summarize(stats: DailyRegistrationStats, sessions: ExaminationSession[]) {
   const day = stats.today;
   const ids = new Set(sessions.map(session => session.id));
   const byCode = new Map<string, number>();
@@ -39,23 +34,29 @@ export function DailyRegistrationSummary({ stats, sessions, layout }: { stats: D
     if (count) byCode.set(session.code, (byCode.get(session.code) || 0) + count);
   }
   const lines = [...byCode.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'vi'));
-  const total = lines.reduce((sum, [, count]) => sum + count, 0);
-  const newCandidates = day.newCandidateSessions.filter(list => list.some(id => ids.has(id))).length;
-  const date = stats.date.split('-').reverse().join('/');
+  return {
+    date: stats.date.split('-').reverse().join('/'),
+    lines,
+    total: lines.reduce((sum, [, count]) => sum + count, 0),
+    newCandidates: day.newCandidateSessions.filter(list => list.some(id => ids.has(id))).length,
+  };
+}
+
+/**
+ * A card of its own beside the totals: "Thí sinh đăng ký mới ngày 25/11/2026",
+ * the number of new FT codes, then "FIMO: 45 lượt · FIEO: 12 lượt · Tổng 57 lượt đăng ký".
+ * `sessions` limits the count (the overview's contest filter).
+ */
+export function DailyRegistrationCard({ stats, sessions, className = '' }: { stats: DailyRegistrationStats; sessions: ExaminationSession[]; className?: string }) {
+  const { date, lines, total, newCandidates } = summarize(stats, sessions);
   const number = (value: number) => value.toLocaleString('vi-VN');
-  const items = [
-    <span key="new"><b className="text-emerald-800">{number(newCandidates)}</b> thí sinh mới</span>,
-    ...lines.map(([code, count]) => <span key={code}>{code}: <b>{number(count)}</b> lượt đăng ký mới</span>),
-    <span key="total" className="font-semibold">Tổng: <b className="text-emerald-800">{number(total)}</b> lượt đăng ký mới</span>,
-  ];
-  if (layout === 'stack') {
-    return <div className="text-sm text-slate-700">
-      <p className="font-bold text-emerald-900">Ngày {date}:</p>
-      <ul className="mt-1 space-y-0.5">{items.map(item => <li key={item.key}>{item}</li>)}</ul>
-    </div>;
-  }
-  return <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-slate-700">
-    <span className="font-bold text-emerald-900">Ngày {date}:</span>
-    {items.map((item, index) => <span key={item.key} className="inline-flex items-baseline gap-3">{index > 0 && <span aria-hidden="true" className="text-slate-300">·</span>}{item}</span>)}
+  return <div className={`min-w-[260px] rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4 ${className}`}>
+    <p className="text-sm font-bold text-indigo-900">Thí sinh đăng ký mới ngày {date}</p>
+    <p className="mt-1 text-3xl font-extrabold text-indigo-950">{number(newCandidates)}</p>
+    <p className="mt-1 text-xs leading-5 text-indigo-800">
+      {lines.length
+        ? <>{lines.map(([code, count]) => <span key={code} className="mr-3 inline-block whitespace-nowrap"><b>{code}</b>: {number(count)} lượt</span>)}<span className="inline-block whitespace-nowrap font-semibold">Tổng {number(total)} lượt đăng ký</span></>
+        : 'Chưa có lượt đăng ký mới hôm nay.'}
+    </p>
   </div>;
 }
