@@ -60,6 +60,47 @@ def place_in_batch(participation, entry, day):
                                       occurrence_id=slot_id, exam_date=day.isoformat())
 
 
+def entry_round_results(participation, entry):
+    round_id = str(entry.get('id') or '').strip()
+    round_name = str(entry.get('name') or '').strip() or 'Vòng 1'
+    return list(RoundResult.objects.filter(participation=participation).filter(
+        Q(round_id=round_id) | Q(round_id='', round_name__iexact=round_name)))
+
+
+def in_batch(result, slot_id, day):
+    """Kết quả thuộc đợt (mã ca nếu có, không thì ngày thi)."""
+    if slot_id and result.occurrence_id == slot_id:
+        return True
+    return parse_date(str(result.exam_date or '')[:10]) == day
+
+
+def add_batch(participation, entry, day, slot_id=None):
+    """Cho thí sinh thi thêm một đợt của vòng (miễn phí, chốt 25/11/2026).
+
+    Đã có đợt này thì trả None. Có kết quả vòng còn trống thì điền vào đó;
+    còn lại tạo một kết quả mới cho đợt, giữ nguyên các đợt đã thi.
+    `slot_id`: ca Khảo thí chọn; mặc định là ca duy nhất của ngày đó.
+    """
+    slot_id = slot_id if slot_id is not None else batch_slot_id(entry, day)
+    results = entry_round_results(participation, entry)
+    if any(in_batch(result, slot_id, day) for result in results):
+        return None
+    blank = next((result for result in results if not result.occurrence_id and not result.exam_date), None)
+    if blank:
+        return _fill(blank, entry, slot_id, day)
+    return RoundResult.objects.create(participation=participation, round_id=str(entry.get('id') or '').strip(),
+                                      round_name=str(entry.get('name') or '').strip() or 'Vòng 1',
+                                      occurrence_id=slot_id, exam_date=day.isoformat())
+
+
+def _fill(result, entry, slot_id, day):
+    result.round_id = str(entry.get('id') or '').strip()
+    result.occurrence_id = slot_id
+    result.exam_date = day.isoformat()
+    result.save(update_fields=['round_id', 'occurrence_id', 'exam_date', 'updated_at'])
+    return result
+
+
 def registered_on(participation):
     """Ngày đăng ký: registeredAt của hồ sơ, không có thì ngày tạo lượt tham gia."""
     value = str((participation.registration_data or {}).get('registeredAt') or '')[:10]
@@ -108,8 +149,22 @@ def backfill_plan(sessions):
 
 
 def place_new_registration(participation, today=None):
+    """`today`: ngày đăng ký (dòng Form nhập muộn vẫn vào đợt mở lúc đăng ký)."""
     batch = open_batch(participation.session, today)
     if not batch:
         return None
     entry, _number, day = batch
     return place_in_batch(participation, entry, day)
+
+
+def add_open_batch(participation, today=None):
+    """Đăng ký lại của thí sinh đã có lượt tham gia: thêm đợt đang mở nếu chưa có.
+
+    Trả về (số đợt, ngày thi, RoundResult hoặc None nếu đã có đợt này); None nếu
+    vòng đầu không chia đợt hoặc không còn đợt nào mở.
+    """
+    batch = open_batch(participation.session, today)
+    if not batch:
+        return None
+    entry, number, day = batch
+    return number, day, add_batch(participation, entry, day)

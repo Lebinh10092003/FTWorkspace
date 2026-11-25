@@ -1,5 +1,6 @@
 """Import the private 2026–2027 registration form pushed by its bound Apps Script."""
 
+import datetime
 import hashlib
 import hmac
 import os
@@ -85,6 +86,17 @@ def clean(value):
     return clean_profile_text(value)
 
 
+def submitted_on(row):
+    """Ngày gửi Form từ ô "Dấu thời gian" (dd/mm/yyyy …); không đọc được thì None (= hôm nay)."""
+    match = re.match(r'\s*(\d{1,2})/(\d{1,2})/(\d{4})', clean(row[0]) if row else '')
+    if not match:
+        return None
+    try:
+        return datetime.date(int(match.group(3)), int(match.group(2)), int(match.group(1)))
+    except ValueError:
+        return None
+
+
 def source_uid(row, row_number):
     timestamp = clean(row[0]) if row else ''
     if timestamp:
@@ -166,6 +178,7 @@ def import_form_rows(tab, rows, headers=None):
                         spreadsheet_id=SPREADSHEET_ID, sheet_tab=tab,
                         source_uid=uid, session=session,
                     ).first()
+                    new_form_row = link is None
                     candidate = link.candidate if link else matching_candidate(name, birth_date, identity, email, phone)
                     created = candidate is None
                     if created:
@@ -204,7 +217,12 @@ def import_form_rows(tab, rows, headers=None):
                         defaults={'source': f'{SHEET_URL}#{tab}'},
                     )
                     if participation_created:
-                        place_new_registration(participation)
+                        place_new_registration(participation, submitted_on(row))
+                    elif new_form_row:
+                        # Một lượt gửi Form mới của thí sinh đã có lượt tham gia:
+                        # thi thêm đợt đang mở lúc gửi, miễn phí (25/11/2026).
+                        from .public_registration import record_extra_batch
+                        record_extra_batch(participation, source=f'Google Form ({tab}, dòng {row_number})', today=submitted_on(row))
                     payment_proof = clean(row[13]) if tab == 'FIMO, FIEO' and len(row) > 13 else ''
                     if tab == 'SIPhO, SIChO, SIBO, SILSO':
                         payment_proof = ' | '.join(clean(row[i]) for i in (13, 15) if i < len(row) and clean(row[i]))

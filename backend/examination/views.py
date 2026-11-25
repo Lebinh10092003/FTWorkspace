@@ -1645,6 +1645,11 @@ def exam_room_allocation(request, session_id, round_id):
             'rooms': [_serialize_exam_room(room) for room in rooms],
         })
 
+    from .registration_batch import batch_days
+    if not occurrence_id and len(batch_days(round_config)) > 1:
+        # Thí sinh có thể thi nhiều đợt: phân phòng cả vòng một lúc sẽ xếp một
+        # người vào nhiều ghế và tạo phòng không thuộc đợt nào.
+        return Response({'error': 'Vòng thi này chia nhiều đợt. Hãy chọn đợt trong bộ lọc trước khi phân phòng.'}, status=status.HTTP_400_BAD_REQUEST)
     data = request.data or {}
     common_name = str(data.get('commonName') or '').strip()
     mode = str(data.get('mode') or '').strip().upper()
@@ -2132,6 +2137,35 @@ def candidate_remove_from_session(request, pk, session_id):
     
     sync_session_candidate_totals()
     return Response(serialize_candidate(cand))
+
+@api_view(['POST'])
+@permission_classes([IsManagerOrAdmin])
+def candidate_add_batch(request, pk, session_id):
+    """Thêm đợt: thí sinh thi thêm một đợt của vòng chia đợt, miễn phí (25/11/2026)."""
+    from .registration_batch import add_batch
+    from .registration_window import parse_date
+    data = request.data or {}
+    participation = CandidateParticipation.objects.filter(candidate__code=pk, session_id=session_id).select_related('candidate', 'session').first()
+    if not participation:
+        return Response({'error': 'Thí sinh không thuộc kỳ tổ chức này.'}, status=status.HTTP_404_NOT_FOUND)
+    round_config = _session_round_config(participation.session, str(data.get('roundId') or '').strip())
+    if not round_config:
+        return Response({'error': 'Không tìm thấy vòng thi.'}, status=status.HTTP_404_NOT_FOUND)
+    occurrence_id = str(data.get('occurrenceId') or '').strip()
+    slot = next((item for item in round_config.get('slots') or [] if isinstance(item, dict) and str(item.get('id') or '') == occurrence_id), None)
+    day = parse_date((slot or {}).get('date'))
+    if not slot or not day:
+        return Response({'error': 'Hãy chọn đợt có ngày thi.'}, status=status.HTTP_400_BAD_REQUEST)
+    with transaction.atomic():
+        result = add_batch(participation, round_config, day, slot_id=occurrence_id)
+        if not result:
+            return Response({'error': 'Thí sinh đã có đợt này.'}, status=status.HTTP_409_CONFLICT)
+        candidate = participation.candidate
+        content = f'Thêm đợt thi {day.strftime("%d/%m/%Y")} ({round_config.get("name") or ""}) cho {candidate.code} ({candidate.name}), miễn phí.'
+        append_audit(f'candidate-{candidate.code}', content, request)
+        append_audit(f'session-{session_id}', content, request)
+    return Response({'candidate': serialize_candidate(candidate)})
+
 
 @api_view(['POST'])
 @permission_classes([IsManagerOrAdmin])

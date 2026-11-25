@@ -67,6 +67,72 @@ class RegistrationBatchTests(TestCase):
         place_new_registration(participation, self.today)
         self.assertEqual(list(RoundResult.objects.values_list('occurrence_id', flat=True)), ['b2'])
 
+    def sat_batch_one(self):
+        candidate = self.candidate()
+        candidate.identity, candidate.birth_date, candidate.email, candidate.phone = '001201099999', '2017-01-01', 'parent@example.test', '0912345678'
+        candidate.save()
+        participation = CandidateParticipation.objects.create(candidate=candidate, session=self.session)
+        RoundResult.objects.create(participation=participation, round_id='qualifying', round_name='Vòng loại',
+                                   occurrence_id='b1', exam_date=(self.today - timedelta(days=3)).isoformat(), score='120')
+        return participation
+
+    def test_public_reregistration_adds_open_batch_free(self):
+        from .models import ExaminationBillingRecord
+        participation = self.sat_batch_one()
+        bills = ExaminationBillingRecord.objects.count()
+        payload = {
+            'requestKey': '00000000-0000-4000-8000-000000000001', 'contestCodes': '["FIMO"]',
+            'name': 'Trần Thị Thử', 'birthDate': '2017-01-01', 'identity': '001201099999',
+            'email': 'parent@example.test', 'phone': '0912345678', 'school': 'Trường A', 'grade': '3',
+            'className': '3A1', 'city': 'Hà Nội', 'ward': 'Phường A', 'address': 'Số 1', 'paymentDeclared': 'true',
+            'submitterEmail': 'parent@example.test',
+        }
+        response = self.client.post('/api/public/examination/registration', payload)
+        self.assertEqual(response.status_code, 201, response.content)
+        batches = dict(RoundResult.objects.filter(participation=participation).values_list('occurrence_id', 'score'))
+        self.assertEqual(batches, {'b1': '120', 'b2': ''}, 'batch 1 result kept, batch 2 added')
+        self.assertEqual(ExaminationBillingRecord.objects.count(), bills, 'an extra batch is free')
+        participation.refresh_from_db()
+        self.assertEqual(participation.registration_data['extraBatches'][0]['batch'], 2)
+        again = self.client.post('/api/public/examination/registration', {**payload, 'requestKey': '00000000-0000-4000-8000-000000000002'})
+        self.assertEqual(again.status_code, 409)
+        self.assertIn('đợt này', again.json()['error'])
+
+    def test_new_form_row_of_existing_candidate_adds_batch_once(self):
+        participation = self.sat_batch_one()
+        row = [''] * 17
+        row[0], row[2], row[3], row[4], row[12] = self.today.strftime('%d/%m/%Y 09:00:00'), 'Trần Thị Thử', '01/01/2017', '001201099999', 'FIMO'
+        payload = {'spreadsheetId': SPREADSHEET_ID, 'sheetTab': 'FIMO, FIEO', 'rows': [{'rowNumber': 9, 'values': row}]}
+        with patch.dict('os.environ', {'EXAMINATION_REGISTRATION_WEBHOOK_SECRET': 'test-secret'}):
+            for _ in range(2):
+                self.client.post('/api/examination/form-registration/webhook', payload, content_type='application/json',
+                                 HTTP_X_EXAMINATION_WEBHOOK_SECRET='test-secret')
+        self.assertEqual(sorted(RoundResult.objects.filter(participation=participation).values_list('occurrence_id', flat=True)), ['b1', 'b2'])
+
+    def test_staff_add_batch_and_room_seating_keep_earlier_batch(self):
+        from rest_framework.test import APIClient
+        from authentication.models import UserProfile
+        from .models import ExamRoom
+        from .room_entry import assign_to_room
+        participation = self.sat_batch_one()
+        client = APIClient()
+        client.force_authenticate(UserProfile.objects.create(email='exam-admin@example.test', name='Admin', role='ADMIN'))
+        url = f'/api/examination/candidates/{participation.candidate.code}/sessions/{self.session.id}/batches'
+        response = client.post(url, {'roundId': 'qualifying', 'occurrenceId': 'b3'}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(client.post(url, {'roundId': 'qualifying', 'occurrenceId': 'b3'}, format='json').status_code, 409)
+        room = ExamRoom.objects.create(session=self.session, round_id='qualifying', occurrence_id='b2', round_name='Vòng loại',
+                                       common_name='Phòng', room_number='1', label='Phòng 1', mode=ExamRoom.MODE_IN_PERSON)
+        assign_to_room(participation, room)
+        rows = {row.occurrence_id: row for row in RoundResult.objects.filter(participation=participation)}
+        self.assertEqual(set(rows), {'b1', 'b2'}, 'seating in batch 2 moved the not-yet-sat batch 3 booking, kept batch 1')
+        self.assertEqual(rows['b1'].score, '120')
+        self.assertEqual(rows['b2'].exam_room, room)
+        # Phân phòng cả vòng khi chưa chọn đợt sẽ xếp một người hai ghế: bị chặn.
+        blocked = client.post(f'/api/examination/sessions/{self.session.id}/rounds/qualifying/rooms', {'commonName': 'Phòng', 'rooms': []}, format='json')
+        self.assertEqual(blocked.status_code, 400)
+        self.assertIn('chọn đợt', blocked.json()['error'])
+
     def test_backfill_command_dry_runs_then_places_only_later_registrations(self):
         def registered(offset, name):
             participation = CandidateParticipation.objects.create(candidate=self.candidate(name), session=self.session)

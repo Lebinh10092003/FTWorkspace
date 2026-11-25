@@ -15,6 +15,31 @@ def first_round(session):
     return rounds[0] if rounds else None
 
 
+def _sat(result):
+    """Đợt đã thi: có điểm, kết quả hoặc trạng thái dự thi."""
+    return any(str(getattr(result, field) or '').strip() for field in ('score', 'result', 'attendance', 'rank'))
+
+
+def _batch_row(participation, room, slot):
+    """Kết quả vòng của đúng đợt phòng này.
+
+    Thí sinh có thể thi nhiều đợt (25/11/2026): xếp vào phòng đợt 2 không được
+    chuyển mất kết quả đợt 1 đã thi. Thứ tự: kết quả của chính đợt này, kết quả
+    chưa có đợt, kết quả đợt khác chưa thi (đổi lịch), còn lại tạo kết quả mới.
+    """
+    rows = list(RoundResult.objects.filter(participation=participation, round_id=room.round_id).order_by('-updated_at'))
+    slot_date = str(slot.get('date') or '').strip()
+    same = [row for row in rows if (room.occurrence_id and row.occurrence_id == room.occurrence_id)
+            or (not row.occurrence_id and slot_date and str(row.exam_date or '')[:10] == slot_date)]
+    if same:
+        return same[0]
+    blank = [row for row in rows if not row.occurrence_id and not row.exam_date]
+    if blank:
+        return blank[0]
+    unsat = [row for row in rows if not _sat(row)]
+    return unsat[0] if unsat else None
+
+
 def _slot(round_config, occurrence_id):
     return next((slot for slot in (round_config.get('slots') or [])
                  if isinstance(slot, dict) and str(slot.get('id') or '') == str(occurrence_id or '')), {}) or {}
@@ -101,7 +126,7 @@ def assign_to_room(participation, room):
             'mode': 'Trực tuyến' if online else 'Trực tiếp',
             'location': f'{room.label}: {room.link}' if online and room.link else ' · '.join(value for value in [room.label, room.location] if value),
         }
-    result = (RoundResult.objects.filter(participation=participation, round_id=room.round_id).order_by('-updated_at').first()
+    result = (_batch_row(participation, room, slot)
               or RoundResult(participation=participation, round_id=room.round_id, round_name=str(round_config.get('name') or room.round_name)))
     result.occurrence_id = room.occurrence_id
     result.exam_room = room

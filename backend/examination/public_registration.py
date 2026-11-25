@@ -33,6 +33,32 @@ PHONE_PATTERN = re.compile(r'^\+?\d{9,12}$')
 GRADE_PATTERN = re.compile(r'^(?:[1-9]|1[0-2])$')
 
 
+def record_extra_batch(participation, registration=None, source='Trang đăng ký', today=None):
+    """Thêm đợt đang mở cho lượt tham gia sẵn có, ghi vết và báo Khảo thí. Không thu thêm lệ phí."""
+    from authentication.notifications import notify_workspace
+    from .registration_batch import add_open_batch
+    added = add_open_batch(participation, today)
+    if not added or not added[2]:
+        return None
+    number, day, result = added
+    data = dict(participation.registration_data or {})
+    data['extraBatches'] = [*data.get('extraBatches', []), {
+        'batch': number, 'examDate': day.isoformat(), 'source': source,
+        'publicRegistrationId': str(registration.id) if registration else '',
+        'at': timezone.now().isoformat(),
+    }]
+    participation.registration_data = data
+    participation.save(update_fields=['registration_data', 'updated_at'])
+    candidate = participation.candidate
+    notify_workspace(
+        event_key=f'examination:extra-batch:{participation.pk}:{day.isoformat()}',
+        title='Thí sinh đăng ký thi thêm đợt',
+        message=f'{candidate.name} · {participation.session.code} · đợt {number} (thi {day.strftime("%d/%m/%Y")}) · miễn phí',
+        category='examination', action_url='/examination/candidates', target_modules=['examination'],
+    )
+    return result
+
+
 def open_sessions(content=None):
     """[(mã, kỳ, offer)] đang nhận đăng ký; xem registration_window.py."""
     from .registration_window import open_registration_sessions
@@ -212,8 +238,23 @@ def public_registration(request):
             candidate = matching_candidate(name, dob, identity, email, phone)
         except ValueError:
             return Response({'error': 'Thông tin thí sinh cần được khảo thí kiểm tra. Vui lòng liên hệ ban tổ chức.'}, status=409)
-        if candidate and CandidateParticipation.objects.filter(candidate=candidate, session_id__in=[available[code].id for code in codes]).exists():
-            return Response({'error': 'Thí sinh đã có đăng ký ở một trong các cuộc thi đã chọn. Vui lòng liên hệ ban tổ chức để cập nhật.'}, status=409)
+        # Thí sinh đã có lượt tham gia ở cuộc thi chia đợt (FIMO, FIEO) đăng ký
+        # lại thì thi thêm đợt đang mở, miễn phí (chốt 25/11/2026). Kiểm tra hết
+        # trước khi ghi: trả lỗi giữa chừng không hoàn tác các bản đã ghi.
+        existing = {}
+        if candidate:
+            from .registration_batch import batch_slot_id, entry_round_results, in_batch, open_batch
+            current = {item.session_id: item for item in CandidateParticipation.objects.filter(
+                candidate=candidate, session_id__in=[available[code].id for code in codes])}
+            for code in codes:
+                participation = current.get(available[code].id)
+                if not participation:
+                    continue
+                batch = open_batch(participation.session)
+                if not batch or any(in_batch(result, batch_slot_id(batch[0], batch[2]), batch[2])
+                                    for result in entry_round_results(participation, batch[0])):
+                    return Response({'error': f'Thí sinh đã đăng ký {code}{" ở đợt này" if batch else ""}. Vui lòng liên hệ ban tổ chức để cập nhật.'}, status=409)
+                existing[code] = participation
         if candidate is None:
             candidate_code = next_code(set(Candidate.objects.values_list('code', flat=True)))
             candidate = Candidate.objects.create(
@@ -241,6 +282,9 @@ def public_registration(request):
             proof=proof, proof_type=mime, source_ip_hash=ip_hash,
         )
         for code in codes:
+            if code in existing:
+                record_extra_batch(existing[code], registration)
+                continue
             participation = CandidateParticipation.objects.create(
                 candidate=candidate, session=available[code],
                 source=f'Workspace #{registration.id}',
