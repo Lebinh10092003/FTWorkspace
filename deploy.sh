@@ -140,8 +140,9 @@ sudo systemctl enable --now workspace-examination-candidate-queue.timer
 "$VENV_DIR/bin/python" backend/manage.py detach_training_calendars --apply
 "$VENV_DIR/bin/python" backend/manage.py queue_examination_schedule_format
 # Xếp bù đợt thi FIMO/FIEO cho thí sinh đăng ký sau hạn đợt 1 (25/11/2026).
-# Chạy thử trước: kế hoạch in ra log deploy; xem đúng mới thêm --apply.
-if ! "$VENV_DIR/bin/python" backend/manage.py assign_registration_batches; then
+# Chạy thử ở deploy b490a1b: 24 thí sinh (FIMO 14, FIEO 10) vào đợt 2. Ghi một
+# lần (DB đã sao lưu ở bước backup_workspace_db), rồi gỡ khỏi deploy.
+if ! "$VENV_DIR/bin/python" backend/manage.py assign_registration_batches --apply; then
   echo "WARNING: Registration batch plan could not be computed." >&2
 fi
 if ! "$VENV_DIR/bin/python" backend/manage.py sync_examination_partner_contacts; then
