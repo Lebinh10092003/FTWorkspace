@@ -51,7 +51,9 @@ class DailyRegistrationStatsTests(TestCase):
         self.assertEqual(stats['today']['total'], 3)
         self.assertEqual(stats['today']['bySession'], {SESSION_IDS['FIMO']: 1, SESSION_IDS['FIEO']: 2})
         self.assertEqual(stats['today']['newCandidates'], 1, 'only FT-91001 is a new code today')
-        self.assertEqual(stats['yesterday'], {'total': 1, 'bySession': {SESSION_IDS['FIMO']: 1}, 'newCandidates': 1})
+        self.assertEqual(stats['today']['newCandidateSessions'], [sorted([SESSION_IDS['FIMO'], SESSION_IDS['FIEO']])])
+        self.assertEqual(stats['yesterday'], {'total': 1, 'bySession': {SESSION_IDS['FIMO']: 1}, 'newCandidates': 1,
+                                              'newCandidateSessions': [[SESSION_IDS['FIMO']]]})
 
     def test_web_registration_then_later_form_row_keeps_first_day(self):
         candidate = self.candidate('FT-91010')

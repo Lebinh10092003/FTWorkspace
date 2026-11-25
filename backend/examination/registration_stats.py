@@ -42,9 +42,8 @@ def daily_registration_stats(today=None):
     """{date, today: {...}, yesterday: {...}}; mỗi ngày có total, bySession, newCandidates."""
     today = today or timezone.localdate()
     yesterday = today - datetime.timedelta(days=1)
-    days = {today: {'total': 0, 'bySession': {}, 'newCandidates': 0},
-            yesterday: {'total': 0, 'bySession': {}, 'newCandidates': 0}}
-    first_day, returning = {}, set()
+    days = {day: {'total': 0, 'bySession': {}, 'newCandidates': 0, 'newCandidateSessions': []} for day in (today, yesterday)}
+    first_day, returning, sessions_on = {}, set(), {}
     rows = CandidateParticipation.objects.values_list('candidate_id', 'session_id', 'registration_data', 'created_at', 'source')
     for candidate_id, session_id, data, created_at, source in rows:
         if (data or {}).get('historicalImport') is True:
@@ -62,7 +61,11 @@ def daily_registration_stats(today=None):
             bucket = days[day]
             bucket['total'] += 1
             bucket['bySession'][session_id] = bucket['bySession'].get(session_id, 0) + 1
+            sessions_on.setdefault((candidate_id, day), set()).add(session_id)
     for candidate_id, day in first_day.items():
         if day in days and candidate_id not in returning:
             days[day]['newCandidates'] += 1
+            # Các kỳ thí sinh mới đăng ký trong ngày (không kèm danh tính), để
+            # thẻ Tổng quan đếm thí sinh mới theo bộ lọc cuộc thi.
+            days[day]['newCandidateSessions'].append(sorted(sessions_on.get((candidate_id, day), ())))
     return {'date': today.isoformat(), 'today': days[today], 'yesterday': days[yesterday]}
