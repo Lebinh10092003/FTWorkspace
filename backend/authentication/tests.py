@@ -398,6 +398,20 @@ class EmployeeDirectoryTests(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.token}",
         )
 
+    def test_admin_reset_accepts_any_non_empty_password(self):
+        staff = get_user_model().objects.create_user(username="staff@example.com", email="staff@example.com", password="OldPassword9921")
+        UserProfile.objects.create(email="staff@example.com", name="Staff", role="EMPLOYEE")
+        staff_token = Token.objects.create(user=staff)
+        response = self.request("post", "/api/auth/users/staff@example.com/reset-password", {"password": "12345678"})
+        self.assertEqual(response.status_code, 200, response.content)
+        staff.refresh_from_db()
+        self.assertTrue(staff.check_password("12345678"))
+        self.assertFalse(Token.objects.filter(pk=staff_token.pk).exists(), "existing sessions are revoked")
+        blank = self.request("post", "/api/auth/users/staff@example.com/reset-password", {"password": "   "})
+        self.assertEqual(blank.status_code, 400)
+        staff.refresh_from_db()
+        self.assertTrue(staff.check_password("12345678"))
+
     def test_employee_create_and_directory_filters_keep_employee_fields(self):
         department = Department.objects.create(name="Công nghệ", code="TECH")
         response = self.request("post", "/api/auth/users", {

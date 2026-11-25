@@ -1011,10 +1011,10 @@ def reset_employee_password(request, email):
     if request.user_role == "MANAGER" and profile.role not in {"EMPLOYEE", "VIEWER"}:
         return Response({"error": "Quản lý không thể đặt lại mật khẩu tài khoản này."}, status=status.HTTP_403_FORBIDDEN)
     password = str(request.data.get("password") or "")
-    try:
-        validate_password(password, django_user)
-    except ValidationError as exc:
-        return Response({"error": " ".join(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
+    # Chủ dự án chốt 25/11/2026: quản trị viên được đặt mật khẩu bất kỳ cho
+    # nhân viên; độ mạnh chỉ được gợi ý trên giao diện, không chặn.
+    if not password.strip():
+        return Response({"error": "Vui lòng nhập mật khẩu mới."}, status=status.HTTP_400_BAD_REQUEST)
     django_user.set_password(password)
     django_user.save(update_fields=["password"])
     Token.objects.filter(user=django_user).delete()
