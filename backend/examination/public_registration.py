@@ -303,10 +303,15 @@ def workspace_pending(request):
     if not signed_script_request(request):
         return Response({'error': 'Khóa đồng bộ không hợp lệ.'}, status=403)
     rows = []
-    for item in PublicExamRegistration.objects.select_related('candidate').defer('proof').exclude(sheet_status='synced').order_by('created_at')[:20]:
+    pending = PublicExamRegistration.objects.select_related('candidate').defer('proof').exclude(sheet_status='synced').order_by('created_at')
+    # Skip registrations with nothing left to write instead of letting the
+    # oldest 20 of them hide every newer registration from the Sheet.
+    for item in pending.iterator(chunk_size=100):
         tabs = {tab: row_for(item, tab) for tab in export_tabs(item) if tab not in (item.sheet_rows or {})}
         if tabs:
             rows.append({'registrationId': str(item.id), 'tabs': tabs})
+            if len(rows) >= 20:
+                break
     return Response({'registrations': rows})
 
 

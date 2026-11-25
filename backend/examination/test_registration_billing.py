@@ -163,6 +163,24 @@ class RegistrationAndBillingTests(TestCase):
             self.assertEqual(again.data['registrations'], [])
             self.assertEqual(PublicExamRegistration.objects.get().sheet_status, 'synced')
 
+    def test_apps_script_pull_skips_older_registrations_with_nothing_to_append(self):
+        created = self.client.post('/api/public/examination/registration', self.public_payload(), format='multipart')
+        self.assertEqual(created.status_code, 201, created.data)
+        newest = PublicExamRegistration.objects.get()
+        # Profile edits mark already-appended registrations 'refresh'. Twenty of
+        # them must not hide a newer registration that still needs its rows.
+        older = [PublicExamRegistration.objects.create(
+            request_key=uuid.uuid4(), candidate=newest.candidate, contest_codes=['SIBO'],
+            sheet_rows={'SIPhO, SIChO, SIBO, SILSO': index + 2}, sheet_status='refresh',
+        ) for index in range(25)]
+        PublicExamRegistration.objects.filter(pk__in=[item.pk for item in older]).update(
+            created_at=newest.created_at - timedelta(days=1))
+        with patch.dict('os.environ', {'EXAMINATION_REGISTRATION_WEBHOOK_SECRET': 'test-secret'}):
+            pending = self.client.post('/api/examination/form-registration/workspace-pending', {},
+                                       format='json', HTTP_X_EXAMINATION_WEBHOOK_SECRET='test-secret')
+        self.assertEqual(pending.status_code, 200)
+        self.assertEqual([item['registrationId'] for item in pending.data['registrations']], [str(newest.id)])
+
     def test_grouped_form_registers_only_selected_contests_and_retries_safely(self):
         tab = 'SIPhO, SIChO, SIBO, SILSO'
         self.assertEqual(selected_codes(tab, self.registration_row()), ['SICHO', 'SIBO'])

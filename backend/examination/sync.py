@@ -950,10 +950,12 @@ def sync_session_candidate_totals():
 
     # Include explicit legacy memberships; a contest label alone is not a
     # registration and must never re-add a removed candidate to a session.
-    for candidate in Candidate.objects.all():
-        if valid_candidate_name(candidate.name):
-            for session_id in candidate.session_ids or []:
-                totals.setdefault(session_id, set()).add(candidate.pk)
+    # Only the three columns needed: loading whole rows decodes every
+    # candidate's exam history and slowed every form webhook call.
+    for candidate_id, name, session_ids in Candidate.objects.values_list('pk', 'name', 'session_ids'):
+        if valid_candidate_name(name):
+            for session_id in session_ids or []:
+                totals.setdefault(session_id, set()).add(candidate_id)
 
     for session in sessions:
         next_count = len(totals.get(session.id, set()))

@@ -10,6 +10,21 @@
  */
 var REGISTRATION_SPREADSHEET_ID = '1gqO1Tp4YSBp0UVBgXjJgvL8CuqftVKGNd74PPRX9i8E';
 var REGISTRATION_TABS = ['SIAIO', 'SIPhO, SIChO, SIBO, SILSO', 'FIMO, FIEO'];
+// Network drops, gateway errors and Google's own "server error occurred" /
+// DEADLINE_EXCEEDED clear by themselves: the queues keep every row for the
+// next run. Only report them after about an hour of failed runs.
+var TRANSIENT_ERROR = /timeout|timed out|hết thời gian|address unavailable|dns error|a server error occurred|lỗi máy chủ|deadline_exceeded|(?:trả mã|Workspace:|dòng Sheet:) 50[234]\b/i;
+var FAILED_SYNC_RUNS_KEY = 'WORKSPACE_FAILED_SYNC_RUNS';
+var FAILED_SYNC_RUNS_BEFORE_ALERT = 6;
+// Small batches keep each webhook call well under UrlFetch's one-minute limit.
+var BATCH_ROWS = 50;
+// A time-based run may last six minutes; leave room for the Workspace pull.
+var QUEUE_BUDGET_MS = 4 * 60 * 1000;
+// The _SYNC_LOG tab records failed and recovered runs. Change the version on
+// every paste into Apps Script: the next good run logs it, proving it is live.
+var SYNC_LOG_TAB = '_SYNC_LOG';
+var SYNC_LOG_VERSION = '2026-11-25';
+var SYNC_LOG_VERSION_KEY = 'WORKSPACE_SYNC_LOG_VERSION';
 
 function sendRegistrationRows_(sheet, firstRow, count) {
   if (!sheet || REGISTRATION_TABS.indexOf(sheet.getName()) < 0 || count < 1) return;
@@ -47,10 +62,23 @@ function processRegistrationBatch_(key) {
   var props = PropertiesService.getScriptProperties();
   var value = props.getProperty(key);
   if (!value) return;
-  var job = JSON.parse(value);
+  var job;
+  try {
+    job = JSON.parse(value);
+  } catch (error) {
+    props.deleteProperty(key);
+    logSyncRun_('Bỏ lô hỏng', key);
+    return;
+  }
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(job.tab);
-  if (!sheet) throw new Error('Thiếu tab ' + job.tab);
-  var count = Math.min(150, job.count);
+  if (!sheet) {
+    // A renamed or deleted tab can never be read again; keeping the job would
+    // only fail every run.
+    props.deleteProperty(key);
+    logSyncRun_('Bỏ lô', 'Thiếu tab ' + job.tab + ', dòng ' + job.first + '–' + (job.first + job.count - 1));
+    return;
+  }
+  var count = Math.min(BATCH_ROWS, job.count);
   sendRegistrationRows_(sheet, job.first, count);
   if (job.count > count) {
     job.first += count;
@@ -75,7 +103,7 @@ function queueRegistrationRows_(sheet, first, count) {
   try {
     processRegistrationBatch_(key);
   } catch (error) {
-    if (/timeout|timed out|hết thời gian/i.test(String(error))) {
+    if (TRANSIENT_ERROR.test(String(error))) {
       console.warn('Đã giữ dòng đăng ký trong hàng đợi để thử lại: ' + error);
       return;
     }
@@ -85,11 +113,83 @@ function queueRegistrationRows_(sheet, first, count) {
   }
 }
 
-function retryRegistrationRows_() {
-  var values = PropertiesService.getScriptProperties().getProperties();
-  Object.keys(values).filter(function(key) { return key.indexOf('REG_DIRTY_') === 0; })
-    .sort(function(a, b) { return JSON.parse(values[a]).createdAt - JSON.parse(values[b]).createdAt; })
-    .slice(0, 5).forEach(processRegistrationBatch_);
+function queuedJob_(value) {
+  try {
+    var job = JSON.parse(value);
+    return job && job.tab && job.first >= 2 && job.count >= 1 ? job : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Every cell edit queues its own job, so one busy afternoon can leave hundreds
+ * of overlapping jobs. Merge them into one job per continuous row range.
+ */
+function compactRegistrationQueue_(props) {
+  var values = props.getProperties();
+  var keys = Object.keys(values).filter(function(key) { return key.indexOf('REG_DIRTY_') === 0; });
+  if (keys.length < 2) return;
+  var byTab = {};
+  keys.forEach(function(key) {
+    var job = queuedJob_(values[key]);
+    if (!job) return;
+    (byTab[job.tab] = byTab[job.tab] || []).push({
+      first: job.first, last: job.first + job.count - 1, createdAt: job.createdAt || 0
+    });
+  });
+  var merged = [];
+  Object.keys(byTab).forEach(function(tab) {
+    var current = null;
+    byTab[tab].sort(function(a, b) { return a.first - b.first; }).forEach(function(range) {
+      if (current && range.first <= current.last + 1) {
+        current.last = Math.max(current.last, range.last);
+        current.createdAt = Math.min(current.createdAt, range.createdAt);
+      } else {
+        current = {tab: tab, first: range.first, last: range.last, createdAt: range.createdAt};
+        merged.push(current);
+      }
+    });
+  });
+  if (merged.length === keys.length) return;
+  var next = {};
+  merged.forEach(function(range) {
+    next['REG_DIRTY_' + Utilities.getUuid()] = JSON.stringify({
+      tab: range.tab, first: range.first, count: range.last - range.first + 1, createdAt: range.createdAt
+    });
+  });
+  // Write the merged jobs before removing the old ones so no row is lost.
+  props.setProperties(next);
+  keys.forEach(function(key) { props.deleteProperty(key); });
+}
+
+/**
+ * Send queued rows, oldest first, until the queue is empty or the time budget
+ * runs out. One failing job never stops the others: errors are returned for
+ * the caller to report after the rest of the sync has run.
+ */
+function retryRegistrationRows_(deadline) {
+  var props = PropertiesService.getScriptProperties();
+  compactRegistrationQueue_(props);
+  var values = props.getProperties();
+  var keys = Object.keys(values).filter(function(key) { return key.indexOf('REG_DIRTY_') === 0; })
+    .sort(function(a, b) {
+      var jobA = queuedJob_(values[a]), jobB = queuedJob_(values[b]);
+      return (jobA ? jobA.createdAt : 0) - (jobB ? jobB.createdAt : 0);
+    });
+  var errors = [];
+  for (var index = 0; index < keys.length && Date.now() < deadline; index++) {
+    try {
+      do {
+        processRegistrationBatch_(keys[index]);
+      } while (props.getProperty(keys[index]) && Date.now() < deadline);
+    } catch (error) {
+      errors.push(error);
+      // Workspace unreachable: every other job would wait for the same timeout.
+      if (TRANSIENT_ERROR.test(String(error))) break;
+    }
+  }
+  return errors;
 }
 
 function onRegistrationEdit(e) {
@@ -107,34 +207,77 @@ function syncAllRegistrations() {
   if (!book || book.getId() !== REGISTRATION_SPREADSHEET_ID) {
     throw new Error('Script phải được gắn với đúng Sheet đăng ký 2026–2027.');
   }
+  // Queue every row instead of sending it here: a large sheet would outlast the
+  // six-minute run. The 10-minute trigger drains the rest within its budget.
+  var props = PropertiesService.getScriptProperties();
   REGISTRATION_TABS.forEach(function(name) {
     var sheet = book.getSheetByName(name);
     if (!sheet) throw new Error('Thiếu tab ' + name);
-    for (var row = 2; row <= sheet.getLastRow(); row += 150) {
-      sendRegistrationRows_(sheet, row, Math.min(150, sheet.getLastRow() - row + 1));
-    }
+    if (sheet.getLastRow() < 2) return;
+    props.setProperty('REG_DIRTY_' + Utilities.getUuid(), JSON.stringify({
+      tab: name, first: 2, count: sheet.getLastRow() - 1, createdAt: Date.now()
+    }));
   });
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return;
+  try {
+    var errors = retryRegistrationRows_(Date.now() + QUEUE_BUDGET_MS);
+    if (errors.length) throw errors[0];
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function logSyncRun_(status, detail) {
+  try {
+    var book = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = book.getSheetByName(SYNC_LOG_TAB) || book.insertSheet(SYNC_LOG_TAB);
+    sheet.appendRow([new Date(), status, String(detail).slice(0, 300)]);
+  } catch (error) {
+    // The log only reports on the sync; it must never fail the sync itself.
+    console.warn('Không ghi được ' + SYNC_LOG_TAB + ': ' + error);
+  }
 }
 
 /** Copy registrations entered on Workspace back to the original private Form tabs. */
 function syncWorkspaceRegistrations() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
+  var props = PropertiesService.getScriptProperties();
   try {
     syncWorkspaceRegistrations_();
-  } catch (error) {
-    if (/timeout|timed out|hết thời gian/i.test(String(error))) {
-      console.warn('Workspace tạm thời không phản hồi; sẽ thử lại: ' + error);
-      return;
+    var failedBefore = Number(props.getProperty(FAILED_SYNC_RUNS_KEY) || 0);
+    if (failedBefore) {
+      logSyncRun_('Đã phục hồi', 'Sau ' + failedBefore + ' lượt lỗi liên tiếp');
+      props.deleteProperty(FAILED_SYNC_RUNS_KEY);
     }
-    throw error;
+    if (props.getProperty(SYNC_LOG_VERSION_KEY) !== SYNC_LOG_VERSION) {
+      logSyncRun_('Phiên bản mới', SYNC_LOG_VERSION);
+      props.setProperty(SYNC_LOG_VERSION_KEY, SYNC_LOG_VERSION);
+    }
+  } catch (error) {
+    if (!TRANSIENT_ERROR.test(String(error))) {
+      logSyncRun_('Lỗi', error);
+      throw error;
+    }
+    var failedRuns = Number(props.getProperty(FAILED_SYNC_RUNS_KEY) || 0) + 1;
+    props.setProperty(FAILED_SYNC_RUNS_KEY, String(failedRuns));
+    logSyncRun_('Lỗi tạm thời', 'Lượt ' + failedRuns + ': ' + error);
+    if (failedRuns >= FAILED_SYNC_RUNS_BEFORE_ALERT) throw error;
+    console.warn('Workspace tạm thời không phản hồi; sẽ thử lại: ' + error);
   } finally {
     lock.releaseLock();
   }
 }
 
 function syncWorkspaceRegistrations_() {
-  retryRegistrationRows_();
+  var queueErrors = retryRegistrationRows_(Date.now() + QUEUE_BUDGET_MS);
+  pullWorkspaceRegistrations_();
+  // Report queue failures only after the Workspace pull had its turn.
+  if (queueErrors.length) throw queueErrors[0];
+}
+
+function pullWorkspaceRegistrations_() {
   var book = SpreadsheetApp.getActiveSpreadsheet();
   if (!book || book.getId() !== REGISTRATION_SPREADSHEET_ID) {
     throw new Error('Script phải được gắn với đúng Sheet đăng ký 2026–2027.');
@@ -150,17 +293,8 @@ function syncWorkspaceRegistrations_() {
     headers: {'X-Examination-Webhook-Secret': secret},
     payload: '{}', muteHttpExceptions: true
   };
-  var response;
-  try {
-    response = UrlFetchApp.fetch(base + '/workspace-pending', options);
-  } catch (error) {
-    // The database queue retains every unacknowledged registration for the next run.
-    if (/timeout|timed out|hết thời gian/i.test(String(error))) {
-      console.warn('Workspace tạm thời không phản hồi; sẽ thử lại: ' + error);
-      return;
-    }
-    throw error;
-  }
+  // The database queue retains every unacknowledged registration for the next run.
+  var response = UrlFetchApp.fetch(base + '/workspace-pending', options);
   if (response.getResponseCode() !== 200) throw new Error('Không thể lấy đăng ký Workspace: ' + response.getResponseCode());
   var pending = JSON.parse(response.getContentText()).registrations || [];
   var markerIndexes = {};

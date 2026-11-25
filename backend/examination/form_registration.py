@@ -76,6 +76,7 @@ def import_form_rows(tab, rows):
     if any(session is None for session in sessions.values()):
         raise ValueError('Chưa cấu hình đủ kỳ tổ chức 2026–2027 trên web.')
     summary = {'created': 0, 'linked': 0, 'updated': 0, 'skipped': 0, 'errors': []}
+    existing_codes = None
     for entry in rows:
         row_number = entry.get('rowNumber') if isinstance(entry, dict) else None
         row = entry.get('values') if isinstance(entry, dict) else None
@@ -123,7 +124,11 @@ def import_form_rows(tab, rows):
                     candidate = link.candidate if link else matching_candidate(name, birth_date, identity, email, phone)
                     created = candidate is None
                     if created:
-                        candidate_code = next_code(set(Candidate.objects.values_list('code', flat=True)))
+                        # Read every code once per request, not once per new candidate.
+                        if existing_codes is None:
+                            existing_codes = set(Candidate.objects.values_list('code', flat=True))
+                        candidate_code = next_code(existing_codes)
+                        existing_codes.add(candidate_code)
                         candidate = Candidate.objects.create(
                             id=candidate_code, code=candidate_code, name=name, birth_date=birth_date,
                             identity=identity, email=email, phone=phone, parent=parent, school=clean(row[10]),
@@ -179,7 +184,10 @@ def import_form_rows(tab, rows):
                         summary['linked' if participation_created else 'updated'] += 1
             except ValueError as exc:
                 summary['errors'].append({'row': row_number, 'contest': code, 'reason': str(exc)})
-    sync_session_candidate_totals()
+    # Most webhook calls only re-send rows staff edited; counts change only
+    # when a candidate joins a session.
+    if summary['created'] or summary['linked']:
+        sync_session_candidate_totals()
     return summary
 
 
