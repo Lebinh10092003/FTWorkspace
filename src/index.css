@@ -749,32 +749,8 @@ html { scrollbar-width: thin; scrollbar-color: #94a3b8 #e2e8f0; }
 .ws-grid-tag svg { width: .7rem; height: .7rem; }
 .ws-grid-tag-support { border-color: #fdba74; background: #fff7ed; color: #c2410c; }
 .ws-grid-tag-personal { border-color: #f0abfc; background: #fdf4ff; color: #a21caf; }
-.ft-overview-header + section > div:first-child {
-  display: none;
-}
-.ft-overview-header + section > div:nth-child(2) {
-  margin-top: 0;
-  gap: .75rem;
-}
-.ft-overview-header + section > div:nth-child(2) > button {
-  display: flex;
-  min-height: 5rem;
-  align-items: center;
-  justify-content: space-between;
-  padding: .75rem 1rem;
-}
-.ft-overview-header + section > div:nth-child(2) > button > div {
-  justify-content: flex-start;
-  gap: .75rem;
-}
-.ft-overview-header + section > div:nth-child(2) > button > div svg {
-  order: -1;
-}
-.ft-overview-header + section > div:nth-child(2) > button > p {
-  margin-top: 0;
-  font-size: 1.875rem;
-  line-height: 1;
-}
+/* The overview's metric row (total + new registrations of the day) is plain
+   Tailwind markup; the contest filter sits in the header (25/11/2026). */
 
 @media (min-width: 1280px) {
   .ft-overview-header + section + div > section {

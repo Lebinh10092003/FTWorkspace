@@ -1133,25 +1133,14 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         }
       />
       <section className="ft-surface mb-6 p-5">
-        {/* One row: total, new registrations of the day, contest filter (25/11/2026). */}
-        <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,2fr)_minmax(240px,1fr)]">
+        {/* One row: total and new registrations of the day; the contest filter sits in the header (25/11/2026). */}
+        <div className="grid gap-4 md:grid-cols-2">
           <button type="button" onClick={() => go("candidates")} className="min-w-[220px] rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-left transition hover:border-emerald-400">
             <p className="text-sm font-bold text-emerald-900">Tổng số thí sinh dự thi</p>
             <p className="mt-1 text-3xl font-extrabold text-emerald-950">{overviewSessions.reduce((sum, session) => sum + Number(session.candidates || 0), 0).toLocaleString("vi-VN")}</p>
             <p className="mt-1 text-xs text-emerald-800">{overviewCompetitionFilter ? `Cuộc thi ${overviewCompetitionFilter}` : `${overviewSessions.length} kỳ đang tổ chức`}</p>
           </button>
           {dailyRegistrations ? <DailyRegistrationCard stats={dailyRegistrations} sessions={overviewSessions} /> : <div />}
-          <label className="block min-w-[240px] self-center">
-            <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Cuộc thi</span>
-            <select value={overviewCompetitionFilter} onChange={(event) => setOverviewCompetitionFilter(event.target.value)} className="ft-input w-full bg-white">
-              <option value="">Tất cả cuộc thi đang tổ chức</option>
-              {overviewCompetitionOptions.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
       </section>
       <div className="ft-examination-overview-grid grid min-w-0 gap-6 xl:grid-cols-3">
@@ -1704,6 +1693,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
           <p className="mt-1 text-xs text-emerald-800">Mỗi mã FT được tính một lần.</p>
         </div>
         {dailyRegistrations && <DailyRegistrationCard stats={dailyRegistrations} sessions={sessions} />}
+        {dailyRegistrations && <DailyRegistrationCard stats={dailyRegistrations} sessions={sessions} day="yesterday" />}
         {hasCandidateFilters && <div className="min-w-[220px] rounded-xl border border-sky-200 bg-sky-50 px-5 py-4">
           <p className="text-sm font-bold text-sky-900">Khớp tìm kiếm / bộ lọc</p>
           <p className="mt-1 text-3xl font-extrabold text-sky-950">{people.length.toLocaleString("vi-VN")}</p>
