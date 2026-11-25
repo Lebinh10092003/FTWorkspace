@@ -25,6 +25,7 @@ var QUEUE_BUDGET_MS = 4 * 60 * 1000;
 var SYNC_LOG_TAB = '_SYNC_LOG';
 var SYNC_LOG_VERSION = '2026-11-25';
 var SYNC_LOG_VERSION_KEY = 'WORKSPACE_SYNC_LOG_VERSION';
+var FULL_RESYNC_VERSION_KEY = 'WORKSPACE_FULL_RESYNC_VERSION';
 
 function sendRegistrationRows_(sheet, firstRow, count) {
   if (!sheet || REGISTRATION_TABS.indexOf(sheet.getName()) < 0 || count < 1) return;
@@ -202,13 +203,11 @@ function onRegistrationFormSubmit(e) {
   queueRegistrationRows_(e.range.getSheet(), e.range.getRow(), 1);
 }
 
-function syncAllRegistrations() {
-  var book = SpreadsheetApp.getActiveSpreadsheet();
-  if (!book || book.getId() !== REGISTRATION_SPREADSHEET_ID) {
-    throw new Error('Script phải được gắn với đúng Sheet đăng ký 2026–2027.');
-  }
-  // Queue every row instead of sending it here: a large sheet would outlast the
-  // six-minute run. The 10-minute trigger drains the rest within its budget.
+/**
+ * Queue every row instead of sending it here: a large sheet would outlast the
+ * six-minute run. The 10-minute trigger drains the rest within its budget.
+ */
+function queueAllRegistrationRows_(book) {
   var props = PropertiesService.getScriptProperties();
   REGISTRATION_TABS.forEach(function(name) {
     var sheet = book.getSheetByName(name);
@@ -218,6 +217,27 @@ function syncAllRegistrations() {
       tab: name, first: 2, count: sheet.getLastRow() - 1, createdAt: Date.now()
     }));
   });
+}
+
+/**
+ * The first run of each new script version re-sends every row once, so rows
+ * missed while an older version was failing reach Workspace without anyone
+ * having to run syncAllRegistrations by hand. Rows are matched, not duplicated.
+ */
+function queueFullResyncOnce_(book) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty(FULL_RESYNC_VERSION_KEY) === SYNC_LOG_VERSION) return;
+  queueAllRegistrationRows_(book);
+  props.setProperty(FULL_RESYNC_VERSION_KEY, SYNC_LOG_VERSION);
+  logSyncRun_('Gửi lại toàn bộ', 'Đã xếp hàng mọi dòng cho phiên bản ' + SYNC_LOG_VERSION);
+}
+
+function syncAllRegistrations() {
+  var book = SpreadsheetApp.getActiveSpreadsheet();
+  if (!book || book.getId() !== REGISTRATION_SPREADSHEET_ID) {
+    throw new Error('Script phải được gắn với đúng Sheet đăng ký 2026–2027.');
+  }
+  queueAllRegistrationRows_(book);
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) return;
   try {
@@ -271,6 +291,11 @@ function syncWorkspaceRegistrations() {
 }
 
 function syncWorkspaceRegistrations_() {
+  var book = SpreadsheetApp.getActiveSpreadsheet();
+  if (!book || book.getId() !== REGISTRATION_SPREADSHEET_ID) {
+    throw new Error('Script phải được gắn với đúng Sheet đăng ký 2026–2027.');
+  }
+  queueFullResyncOnce_(book);
   var queueErrors = retryRegistrationRows_(Date.now() + QUEUE_BUDGET_MS);
   pullWorkspaceRegistrations_();
   // Report queue failures only after the Workspace pull had its turn.
