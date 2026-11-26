@@ -114,16 +114,17 @@ jobs:
           VPS_PORT: ${{ secrets.DEPLOY_PORT }}
           VPS_USERNAME: ${{ secrets.DEPLOY_USER }}
           SSHPASS: ${{ secrets.DEPLOY_PASSWORD }}
+          FIMO_BATCH_2_WEBHOOK_SECRET: ${{ secrets.FIMO_BATCH_2_WEBHOOK_SECRET }}
         run: |
           set -Eeuo pipefail
           # Pull before opening deploy.sh: replacing a running shell script can
           # leave Bash executing its buffered old installation steps.
-          DEPLOY_STEPS='set -e; cd /var/www/ft-workspace; git pull --ff-only; bash deploy.sh; cd backend; if ../.venv/bin/python manage.py refresh_priority_task_format --apply; then if ! ../.venv/bin/python manage.py sync_work_schedule_sheet --direction both; then echo WARNING: post-deploy Sheet sync deferred to the recovery timer; fi; else echo WARNING: priority task format sync deferred to the recovery timer; fi'
+          DEPLOY_STEPS='set -e; cd /var/www/ft-workspace; git pull --ff-only; python3 scripts/configure_fimo_confirmation_secret.py; bash deploy.sh; cd backend; if ../.venv/bin/python manage.py refresh_priority_task_format --apply; then if ! ../.venv/bin/python manage.py sync_work_schedule_sheet --direction both; then echo WARNING: post-deploy Sheet sync deferred to the recovery timer; fi; else echo WARNING: priority task format sync deferred to the recovery timer; fi'
           REMOTE="if [ \"\$(id -u)\" -eq 0 ]; then exec sudo -u workspace -H bash -lc '$DEPLOY_STEPS'; else bash -lc '$DEPLOY_STEPS'; fi"
           SSH_OPTS=(-p "$VPS_PORT" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
           if [ "$DEPLOY_AUTH" = "key" ]; then
-            ssh "${SSH_OPTS[@]}" -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes "$VPS_USERNAME@$VPS_HOST" "$REMOTE"
+            printf '%s\n' "$FIMO_BATCH_2_WEBHOOK_SECRET" | ssh "${SSH_OPTS[@]}" -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes "$VPS_USERNAME@$VPS_HOST" "$REMOTE"
           else
             : "${SSHPASS:?Missing repository secret DEPLOY_PASSWORD (or add DEPLOY_SSH_KEY)}"
-            sshpass -e ssh "${SSH_OPTS[@]}" -o BatchMode=no "$VPS_USERNAME@$VPS_HOST" "$REMOTE"
+            printf '%s\n' "$FIMO_BATCH_2_WEBHOOK_SECRET" | sshpass -e ssh "${SSH_OPTS[@]}" -o BatchMode=no "$VPS_USERNAME@$VPS_HOST" "$REMOTE"
           fi
