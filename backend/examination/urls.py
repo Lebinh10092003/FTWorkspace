@@ -3,6 +3,7 @@ from . import views, paper_views, blueprint_views, landing_views, landing_site_v
 from .registration_page import registration_page
 from .registration_payment import registration_payment
 from . import invigilation, invigilation_guest, invigilation_mail, rooms_from_links
+from .fimo_batch_confirmation import fimo_batch_2_confirmation
 from .school_import import school_import
 
 urlpatterns = [
@@ -93,6 +94,7 @@ urlpatterns = [
     path('examination/sheet-publication/sync', views.sheet_publication_sync, name='sheet_publication_sync'),
     path('examination/sheets', views.sheets_list, name='sheets_list'),
     path('examination/sheets/change-webhook', sheet_webhook.examination_sheet_change_webhook, name='examination_sheet_change_webhook'),
+    path('examination/fimo/batch-2/confirmation', fimo_batch_2_confirmation, name='fimo_batch_2_confirmation'),
     path('examination/sheets/preview', views.sheet_import_preview, name='sheet_import_preview'),
     path('examination/sheets/<str:pk>', views.sheet_detail, name='sheet_detail'),
     path('examination/sheets/<str:pk>/export', views.sheet_export, name='sheet_export'),
