@@ -9,7 +9,7 @@ import re
 import unicodedata
 import urllib.parse
 from datetime import datetime, timedelta
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q
 from django.utils import timezone
 from .registration_window import clean_fee, clean_iso_date
@@ -1632,7 +1632,15 @@ def exam_room_allocation(request, session_id, round_id):
         Q(round_id=str(round_id)) | Q(round_id='', round_name=round_name),
     )
     if occurrence_id:
-        result_query = result_query.filter(occurrence_id=occurrence_id)
+        from .registration_batch import batch_days, batch_slot_id
+        from .registration_window import parse_date
+
+        scope = Q(occurrence_id=occurrence_id)
+        slot = next((item for item in (round_config.get('slots') or []) if isinstance(item, dict) and str(item.get('id')) == occurrence_id), {})
+        day = parse_date(slot.get('date'))
+        if day and len(batch_days(round_config)) > 1 and batch_slot_id(round_config, day) == occurrence_id:
+            scope |= Q(occurrence_id='', exam_date=day.isoformat())
+        result_query = result_query.filter(scope)
 
     if request.method == 'GET':
         rooms = list(ExamRoom.objects.filter(session=session, occurrence_id=occurrence_id).filter(Q(round_id=str(round_id)) | Q(round_name=round_name)))
@@ -1851,8 +1859,10 @@ def apply_round_slot(request, session_id, round_id):
     results = RoundResult.objects.filter(
         participation__session=session,
     ).filter(eligible_for_round_q(session, round_id)).filter(Q(round_id=str(round_id)) | Q(round_id='', round_name=round_name)).select_related('participation__candidate')
-    is_batched_round = len(slots) > 1 and any(str(slot.get('label') or '').strip() for slot in slots if isinstance(slot, dict))
-    if occurrence_id and is_batched_round and results.exclude(occurrence_id='').exists():
+    from .registration_batch import batch_days
+    has_distinct_batches = len(batch_days(round_config)) > 1
+    has_assigned_shifts = len(slots) > 1 and any(str(slot.get('label') or '').strip() for slot in slots) and results.exclude(occurrence_id='').exists()
+    if occurrence_id and (has_distinct_batches or has_assigned_shifts):
         # A batch action must never overwrite candidates in another batch.
         results = results.filter(Q(occurrence_id=occurrence_id) | Q(occurrence_id='', exam_date=values['date']))
 
@@ -2007,7 +2017,22 @@ def round_result_detail(request, pk):
         append_competition_scope_audit(session_id_for_log, action, request)
         sync_session_candidate_totals()
         return Response({'candidate': serialize_candidate(candidate)})
+    from .registration_batch import batch_days, result_batch_day
+    from .registration_window import parse_date
+
     data = request.data or {}
+    requested_round_id = str(data.get('roundId') or item.round_id or '').strip()
+    requested_occurrence_id = str(data.get('occurrenceId') or item.occurrence_id or '').strip()
+    round_config = _session_round_config(item.participation.session, requested_round_id)
+    days = batch_days(round_config)
+    if len(days) > 1:
+        old_day = result_batch_day(item, round_config)
+        target_slot_id = str(data.get('slotId') or requested_occurrence_id)
+        target_slot = next((slot for slot in round_config.get('slots') or [] if isinstance(slot, dict) and str(slot.get('id')) == target_slot_id), {})
+        target_day = parse_date(target_slot.get('date'))
+        entered_day = parse_date(str(data.get('date') or '')[:10]) if 'date' in data and data.get('date') != item.exam_date else old_day
+        if old_day in days and ((target_day and target_day != old_day) or entered_day != old_day):
+            return Response({'error': 'Để đổi ngày sang đợt khác, hãy dùng “Chuyển đợt” trong danh sách thí sinh.'}, status=400)
     before_round = {'occurrenceId': item.occurrence_id, 'roomName': item.room_name, 'eligibility': item.eligibility, 'sbd': item.sbd, 'date': item.exam_date, 'time': item.time_slot, 'mode': item.mode, 'location': item.location, 'link': item.link, 'account': item.account, 'password': item.password, 'attendance': item.attendance, 'score': item.score, 'scoreRate': item.score_rate, 'rank': item.rank, 'result': item.result, 'note': item.note, 'registration': json.dumps(item.participation.registration_data or {}, ensure_ascii=False)}
     fields = {
         'eligibility': 'eligibility', 'sbd': 'sbd', 'date': 'exam_date', 'time': 'time_slot',
@@ -2021,9 +2046,6 @@ def round_result_detail(request, pk):
             if payload_field == 'scoreRate':
                 value = format_sheet_percentage(value)
             setattr(item, model_field, normalize_eligibility(value) if payload_field == 'eligibility' else value)
-    requested_round_id = str(data.get('roundId') or item.round_id or '').strip()
-    requested_occurrence_id = str(data.get('occurrenceId') or item.occurrence_id or '').strip()
-    round_config = _session_round_config(item.participation.session, requested_round_id)
     if requested_occurrence_id:
         valid_occurrences = {str(slot.get('id') or '').strip() for slot in ((round_config or {}).get('slots') or []) if isinstance(slot, dict)}
         if valid_occurrences and requested_occurrence_id not in valid_occurrences:
@@ -2040,6 +2062,10 @@ def round_result_detail(request, pk):
                 return Response({'error': 'Phòng thi không thuộc vòng đang chọn.'}, status=status.HTTP_400_BAD_REQUEST)
             if requested_occurrence_id and room.occurrence_id != requested_occurrence_id:
                 return Response({'error': 'Phòng thi không thuộc đợt tổ chức đang chọn.'}, status=status.HTTP_400_BAD_REQUEST)
+            if len(days) > 1 and old_day in days:
+                room_slot = next((slot for slot in round_config.get('slots') or [] if isinstance(slot, dict) and str(slot.get('id')) == room.occurrence_id), {})
+                if parse_date(room_slot.get('date')) != old_day:
+                    return Response({'error': 'Hãy chọn phòng thuộc ngày thi của đợt hiện tại.'}, status=400)
             item.exam_room = room
             item.round_id = room.round_id
             item.occurrence_id = room.occurrence_id
@@ -2150,7 +2176,7 @@ def registration_stats(request):
 @permission_classes([IsManagerOrAdmin])
 def candidate_add_batch(request, pk, session_id):
     """Thêm đợt: thí sinh thi thêm một đợt của vòng chia đợt, miễn phí (25/11/2026)."""
-    from .registration_batch import add_batch
+    from .registration_batch import add_batch, batch_days, move_batch, result_batch_day, entry_round_results
     from .registration_window import parse_date
     data = request.data or {}
     participation = CandidateParticipation.objects.filter(candidate__code=pk, session_id=session_id).select_related('candidate', 'session').first()
@@ -2161,18 +2187,76 @@ def candidate_add_batch(request, pk, session_id):
         return Response({'error': 'Không tìm thấy vòng thi.'}, status=status.HTTP_404_NOT_FOUND)
     occurrence_id = str(data.get('occurrenceId') or '').strip()
     slot = next((item for item in round_config.get('slots') or [] if isinstance(item, dict) and str(item.get('id') or '') == occurrence_id), None)
-    day = parse_date((slot or {}).get('date'))
-    if not slot or not day:
-        return Response({'error': 'Hãy chọn đợt có ngày thi.'}, status=status.HTTP_400_BAD_REQUEST)
+    day = parse_date((slot or {}).get('date')) if occurrence_id else parse_date(data.get('examDate'))
+    if day not in batch_days(round_config):
+        return Response({'error': 'Hãy chọn một đợt thi trong vòng này.'}, status=status.HTTP_400_BAD_REQUEST)
+    source_id = str(data.get('moveFromResultId') or '').strip()
     with transaction.atomic():
-        result = add_batch(participation, round_config, day, slot_id=occurrence_id)
-        if not result:
-            return Response({'error': 'Thí sinh đã có đợt này.'}, status=status.HTTP_409_CONFLICT)
+        participation = CandidateParticipation.objects.select_for_update().select_related('candidate').get(pk=participation.pk)
         candidate = participation.candidate
-        content = f'Thêm đợt thi {day.strftime("%d/%m/%Y")} ({round_config.get("name") or ""}) cho {candidate.code} ({candidate.name}), miễn phí.'
+        if source_id:
+            before = next((entry for entry in entry_round_results(participation, round_config) if str(entry.pk) == source_id), None)
+            previous_day = result_batch_day(before, round_config) if before else None
+            if not previous_day or previous_day != parse_date(data.get('moveFromExamDate')):
+                return Response({'error': 'Đợt cũ đã thay đổi. Hãy tải lại danh sách trước khi chuyển đợt.'}, status=409)
+            try:
+                move_batch(participation, round_config, source_id, day)
+            except ValueError as exc:
+                return Response({'error': str(exc)}, status=status.HTTP_409_CONFLICT)
+            action = f'Chuyển đợt thi từ {previous_day:%d/%m/%Y} sang {day:%d/%m/%Y}'
+        else:
+            if not add_batch(participation, round_config, day, slot_id=occurrence_id or None):
+                return Response({'error': 'Thí sinh đã có đợt này.'}, status=status.HTTP_409_CONFLICT)
+            action = f'Thêm đợt thi {day:%d/%m/%Y}'
+        content = f'{action} ({round_config.get("name") or ""}) cho {candidate.code} ({candidate.name}), miễn phí.'
         append_audit(f'candidate-{candidate.code}', content, request)
         append_audit(f'session-{session_id}', content, request)
     return Response({'candidate': serialize_candidate(candidate)})
+
+
+@api_view(['POST'])
+@permission_classes([IsManagerOrAdmin])
+def session_add_candidate_batches(request, session_id):
+    from .registration_batch import add_batch, staff_batch
+
+    data = request.data or {}
+    codes = data.get('candidateCodes')
+    if not isinstance(codes, list) or not 1 <= len(codes) <= 250 or any(not isinstance(code, str) or not code.strip() for code in codes):
+        return Response({'error': 'Hãy chọn từ 1 đến 250 thí sinh.'}, status=400)
+    codes = list(dict.fromkeys(code.strip().upper() for code in codes))
+    session = ExamSession.objects.filter(pk=session_id).first()
+    if not session:
+        return Response({'error': 'Không tìm thấy kỳ tổ chức.'}, status=404)
+    try:
+        entry, day = staff_batch(session, data.get('examDate'))
+    except ValueError as exc:
+        return Response({'error': str(exc)}, status=400)
+    candidates, skipped = [], []
+    with transaction.atomic():
+        participations = {
+            item.candidate.code.upper(): item for item in CandidateParticipation.objects.select_for_update()
+            .filter(session=session, candidate__code__in=codes).select_related('candidate')
+        }
+        for code in codes:
+            participation = participations.get(code)
+            if not participation:
+                skipped.append({'code': code, 'reason': 'Hồ sơ chưa có trong kỳ này.'})
+                continue
+            try:
+                with transaction.atomic():
+                    added = add_batch(participation, entry, day)
+                    if added:
+                        append_audit(f'candidate-{code}', f'Thêm đợt thi {day:%d/%m/%Y} · {session.code}.', request)
+            except IntegrityError:
+                skipped.append({'code': code, 'reason': 'Dữ liệu đợt thi bị trùng. Hãy mở hồ sơ để kiểm tra.'})
+                continue
+            if added:
+                candidates.append(participation.candidate)
+            else:
+                skipped.append({'code': code, 'reason': 'Đã có đợt thi này.'})
+        if candidates:
+            append_audit(f'session-{session_id}', f'Thêm đợt thi {day:%d/%m/%Y} cho {len(candidates)} thí sinh.', request)
+    return Response({'candidates': [serialize_candidate(candidate) for candidate in candidates], 'skipped': skipped})
 
 
 @api_view(['POST'])
@@ -2188,7 +2272,7 @@ def candidate_transfer_session(request, pk, session_id):
     if not target:
         return Response({'error': 'Hãy chọn cuộc thi mới.'}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        _, summary = transfer_participation(participation, target, data.get('examRoom') if isinstance(data.get('examRoom'), dict) else None, audit_actor(request))
+        _, summary = transfer_participation(participation, target, data.get('examRoom') if isinstance(data.get('examRoom'), dict) else None, audit_actor(request), exam_date=data.get('examDate'))
     except ValueError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     candidate = Candidate.objects.get(pk=participation.candidate.pk)
@@ -2697,6 +2781,15 @@ def import_candidates(request):
         if len(target_sessions_by_id) != len(selected_session_ids):
             return Response({'error': 'Không tìm thấy một hoặc nhiều kỳ tổ chức đã chọn.'}, status=404)
         target_sessions = [target_sessions_by_id[value] for value in selected_session_ids]
+        from .registration_batch import add_batch, staff_batch
+        exam_batches = data.get('examBatches', {})
+        if (not isinstance(exam_batches, dict) or set(exam_batches) - set(selected_session_ids)
+                or (exam_batches and (source_sheet_id or historical_import))):
+            return Response({'error': 'Đợt thi đã chọn không khớp kỳ tổ chức.'}, status=400)
+        try:
+            staff_batches = {key: staff_batch(target_sessions_by_id[key], value) for key, value in exam_batches.items()}
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
         if len(target_sessions) > 1 and (source_sheet_id or remove_session_candidate_codes or any(rec.get('examHistory') for rec in input_records)):
             return Response({'error': 'Nhập kết quả hoặc đối chiếu nguồn Sheet cần chọn riêng từng kỳ tổ chức.'}, status=400)
 
@@ -2958,13 +3051,18 @@ def import_candidates(request):
             for group in groups.values():
                 refresh_group_billing(group)
             import_summary += f' Đăng ký qua trường {partner["school"]}' + (f'; giữ cá nhân (đã có thanh toán): {", ".join(kept)}.' if kept else '.')
+        codes = [item['code'] for item in items_returned]
+        for target_id, (entry, day) in staff_batches.items():
+            for participation in CandidateParticipation.objects.filter(candidate__code__in=codes, session_id=target_id):
+                add_batch(participation, entry, day)
         room_choices = data.get('examRooms') if isinstance(data.get('examRooms'), dict) else {}
         if room_choices:
             # Rooms were already allocated: the person adding the candidate
             # chose a room (or a new one) for each session.
             from .room_entry import assign_to_room, create_room
-            codes = [item['code'] for item in items_returned]
             for session in target_sessions:
+                if session.pk in staff_batches:
+                    continue
                 choice = room_choices.get(session.pk) if isinstance(room_choices.get(session.pk), dict) else {}
                 if choice.get('newRoom'):
                     room = create_room(session, choice['newRoom'], audit_actor(request))
@@ -2977,6 +3075,7 @@ def import_candidates(request):
                 for participation in CandidateParticipation.objects.filter(candidate__code__in=codes, session=session).select_related('session'):
                     assign_to_room(participation, room)
                 import_summary += f' Xếp vào {room.label} ({session.code}).'
+        if room_choices or staff_batches:
             items_returned = [serialize_candidate(candidate) for candidate in Candidate.objects.filter(code__in=codes)]
         for session in target_sessions:
             append_audit(f'session-{session.pk}', import_summary, request, system=True)

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import ExamDialog from './ExamDialog';
+import BatchEntryPicker, { type BatchChoices } from './BatchEntryPicker';
 import RoomEntryPicker, { type RoomChoices } from './RoomEntryPicker';
 import type { Candidate, ExaminationSession } from './types';
 
@@ -16,6 +17,8 @@ export default function TransferSessionDialog({ candidate, session, sessions, id
 }) {
   const [targetId, setTargetId] = useState('');
   const [rooms, setRooms] = useState<RoomChoices>({});
+  const [batches, setBatches] = useState<BatchChoices>({});
+  const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const joined = new Set([...(candidate.sessionIds || []), ...(candidate.participations || []).map(item => item.sessionId)]);
@@ -32,14 +35,15 @@ export default function TransferSessionDialog({ candidate, session, sessions, id
     return body;
   };
   const submit = async () => {
-    if (!target) { setError('Hãy chọn cuộc thi mới.'); return; }
+    if (!target || !confirmed) return;
     setBusy(true);
     setError('');
     try {
       const response = await fetch(`/api/examination/candidates/${encodeURIComponent(candidate.code)}/sessions/${encodeURIComponent(session.id)}/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken || ''}` },
-        body: JSON.stringify({ targetSessionId: target.id, examRoom: rooms[target.id] || null }),
+        body: JSON.stringify({ targetSessionId: target.id, examDate: batches[target.id] || '',
+          examRoom: batches[target.id] ? null : rooms[target.id] || null }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || 'Không đổi được cuộc thi.');
@@ -50,16 +54,16 @@ export default function TransferSessionDialog({ candidate, session, sessions, id
       setBusy(false);
     }
   };
-  const field = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm';
-  return <ExamDialog open title="Đổi cuộc thi" description={`${candidate.name} · ${candidate.code}`} onClose={onClose} onSubmit={submit} busy={busy} submitLabel="Đổi cuộc thi">
+  const field = 'mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-blue-700';
+  return <ExamDialog open title="Đổi cuộc thi" description={`${candidate.name} · ${candidate.code}`} onClose={onClose} onSubmit={submit} busy={busy} submitLabel="Đổi cuộc thi" submitDisabled={!target || !confirmed}>
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
         <span className="rounded-lg bg-white px-3 py-2 font-bold text-[#001e40] shadow-sm">{session.code}</span>
-        <ArrowRight className="h-4 w-4 text-slate-400" />
+        <ArrowRight aria-hidden="true" className="h-4 w-4 text-slate-500" />
         <span className={`rounded-lg px-3 py-2 font-bold shadow-sm ${target ? 'bg-[#001e40] text-white' : 'bg-white text-slate-400'}`}>{target?.code || 'Chọn cuộc thi'}</span>
       </div>
       <label className="text-sm font-bold">Cuộc thi mới
-        <select className={field} value={targetId} onChange={event => { setTargetId(event.target.value); setRooms({}); }}>
+        <select className={field} value={targetId} onChange={event => { setTargetId(event.target.value); setRooms({}); setBatches({}); setConfirmed(false); setError(''); }}>
           <option value="">Chọn cuộc thi…</option>
           {options.map(item => <option key={item.id} value={item.id} disabled={joined.has(item.id)}>{item.code} · {item.name}{joined.has(item.id) ? ' (đã đăng ký)' : ''}</option>)}
         </select>
@@ -69,8 +73,15 @@ export default function TransferSessionDialog({ candidate, session, sessions, id
         <li><b>Bỏ ở {session.code}:</b> {firstRound?.sbd ? `SBD ${firstRound.sbd}, ` : ''}{firstRound?.roomName ? `${firstRound.roomName}, ` : ''}kết quả các vòng. Dòng trên tab Sheet {session.code} được xóa, tab {target?.code || 'mới'} có thêm dòng.</li>
         <li><b>Lệ phí trường:</b> tổng của nhóm trường ở hai cuộc thi tự cập nhật (nếu kế toán chưa xử lý).</li>
       </ul>
-      {target && <RoomEntryPicker api={api} value={rooms} onChange={setRooms} sessions={[{ id: target.id, label: target.code }]} />}
-      {error && <p className="text-sm font-semibold text-rose-600">{error}</p>}
+      {target && <>
+        <BatchEntryPicker sessions={[target]} value={batches} onChange={value => { setBatches(value); setRooms({}); }} />
+        {!batches[target.id] && <RoomEntryPicker api={api} value={rooms} onChange={setRooms} sessions={[{ id: target.id, label: target.code }]} />}
+        <label className="flex min-h-11 items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm leading-5 text-amber-950">
+          <input className="mt-0.5 h-4 w-4 shrink-0" type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />
+          Xác nhận chuyển lượt đăng ký từ {session.code} sang {target.code}.
+        </label>
+      </>}
+      {error && <p role="alert" className="text-sm font-semibold text-rose-700">{error}</p>}
     </div>
   </ExamDialog>;
 }

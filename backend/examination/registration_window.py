@@ -95,19 +95,20 @@ def deadline_options(round_config):
     slots = [slot for slot in round_config.get('slots') or [] if isinstance(slot, dict)]
     # Đánh số đợt theo ngày thi khác nhau: hai ca cùng một ngày vẫn là một đợt.
     batch_days = sorted({day for day in (parse_date(slot.get('date')) for slot in slots) if day})
+    multiple_batches = len(batch_days) > 1
     for slot in slots:
         explicit = parse_date(slot.get('registrationDeadline'))
         exam_day = parse_date(slot.get('date'))
-        day = explicit or exam_day
-        batch = batch_days.index(exam_day) + 1 if exam_day in batch_days and len(batch_days) > 1 else None
-        if day:
+        day = min(explicit, exam_day) if multiple_batches and explicit and exam_day else explicit or exam_day
+        batch = batch_days.index(exam_day) + 1 if multiple_batches and exam_day in batch_days else None
+        if day and (not multiple_batches or batch):
             options.append((day, bool(explicit), batch))
     explicit_round = parse_date(round_config.get('registrationDeadline'))
-    if explicit_round:
+    if explicit_round and not multiple_batches:
         options.append((explicit_round, True, None))
     if not options and parse_date(round_config.get('date')):
         options.append((parse_date(round_config.get('date')), False, None))
-    return sorted(set(options), key=lambda item: (item[0], not item[1]))
+    return sorted(set(options), key=lambda item: (item[0], item[2] or 0, not item[1]))
 
 
 def registration_deadline(round_config, today=None):

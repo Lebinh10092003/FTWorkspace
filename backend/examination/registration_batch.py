@@ -42,22 +42,10 @@ def open_batch(session, today=None):
 
 def place_in_batch(participation, entry, day):
     """Ghi đợt + ngày thi vào kết quả vòng đầu. Trả về RoundResult đã ghi, hoặc None nếu đã được xếp."""
-    round_id = str(entry.get('id') or '').strip()
-    round_name = str(entry.get('name') or '').strip() or 'Vòng 1'
-    results = list(RoundResult.objects.filter(participation=participation).filter(
-        Q(round_id=round_id) | Q(round_id='', round_name__iexact=round_name)))
+    results = entry_round_results(participation, entry)
     if any(result.occurrence_id or result.exam_date for result in results):
         return None
-    slot_id = batch_slot_id(entry, day)
-    if results:
-        result = results[0]
-        result.round_id = round_id
-        result.occurrence_id = slot_id
-        result.exam_date = day.isoformat()
-        result.save(update_fields=['round_id', 'occurrence_id', 'exam_date', 'updated_at'])
-        return result
-    return RoundResult.objects.create(participation=participation, round_id=round_id, round_name=round_name,
-                                      occurrence_id=slot_id, exam_date=day.isoformat())
+    return add_batch(participation, entry, day)
 
 
 def entry_round_results(participation, entry):
@@ -67,11 +55,18 @@ def entry_round_results(participation, entry):
         Q(round_id=round_id) | Q(round_id='', round_name__iexact=round_name)))
 
 
-def in_batch(result, slot_id, day):
-    """Kết quả thuộc đợt (mã ca nếu có, không thì ngày thi)."""
-    if slot_id and result.occurrence_id == slot_id:
-        return True
-    return parse_date(str(result.exam_date or '')[:10]) == day
+def result_batch_day(result, entry):
+    for slot in entry.get('slots') or []:
+        if isinstance(slot, dict) and result.occurrence_id and str(slot.get('id')) == result.occurrence_id:
+            return parse_date(slot.get('date')) or parse_date(str(result.exam_date or '')[:10])
+    return parse_date(str(result.exam_date or '')[:10])
+
+
+def batch_result_locked(result):
+    return any(getattr(result, field) for field in (
+        'exam_room_id', 'room_name', 'sbd', 'time_slot', 'mode', 'location', 'link', 'account', 'password',
+        'attendance', 'score', 'score_rate', 'rank', 'result',
+    ))
 
 
 def add_batch(participation, entry, day, slot_id=None):
@@ -83,9 +78,10 @@ def add_batch(participation, entry, day, slot_id=None):
     """
     slot_id = slot_id if slot_id is not None else batch_slot_id(entry, day)
     results = entry_round_results(participation, entry)
-    if any(in_batch(result, slot_id, day) for result in results):
+    if any(result_batch_day(result, entry) == day for result in results):
         return None
-    blank = next((result for result in results if not result.occurrence_id and not result.exam_date), None)
+    blank = next((result for result in results if not result.occurrence_id and not result.exam_date
+                  and not batch_result_locked(result)), None)
     if blank:
         return _fill(blank, entry, slot_id, day)
     return RoundResult.objects.create(participation=participation, round_id=str(entry.get('id') or '').strip(),
@@ -101,10 +97,34 @@ def _fill(result, entry, slot_id, day):
     return result
 
 
+def move_batch(participation, entry, source_id, day):
+    results = entry_round_results(participation, entry)
+    source = next((result for result in results if str(result.pk) == source_id), None)
+    if source is None or result_batch_day(source, entry) not in batch_days(entry):
+        raise ValueError('Không tìm thấy đợt cũ trong hồ sơ. Hãy tải lại danh sách.')
+    if batch_result_locked(source):
+        raise ValueError('Đợt cũ đã có thông tin dự thi hoặc kết quả. Có thể dùng “Thêm đợt” để giữ dữ liệu cũ.')
+    if any(result_batch_day(result, entry) == day for result in results):
+        raise ValueError('Thí sinh đã có lượt ở đợt này.')
+    return _fill(source, entry, batch_slot_id(entry, day), day)
+
+
+def staff_batch(session, exam_date):
+    rounds = session_rounds(session)
+    entry = rounds[0] if rounds else {}
+    day = parse_date(exam_date)
+    days = batch_days(entry)
+    if len(days) < 2 or day not in days:
+        raise ValueError(f'Hãy chọn một đợt trong vòng đầu của {session.code}.')
+    return entry, day
+
+
 def registered_on(participation):
-    """Ngày đăng ký: registeredAt của hồ sơ, không có thì ngày tạo lượt tham gia."""
-    value = str((participation.registration_data or {}).get('registeredAt') or '')[:10]
-    return parse_date(value) or timezone.localdate(participation.created_at)
+    """Ưu tiên ngày gửi Google Form, kể cả khi webhook nhập muộn."""
+    data = participation.registration_data or {}
+    return (parse_date(str(data.get('formSubmittedAt') or '')[:10])
+            or parse_date(str(data.get('registeredAt') or '')[:10])
+            or timezone.localdate(participation.created_at))
 
 
 def batch_on(session, day):

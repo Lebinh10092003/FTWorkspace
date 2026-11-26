@@ -1,4 +1,4 @@
-import type { ExaminationSession, SessionRound, SessionRoundSlot } from './types';
+import type { CandidateExamHistory, ExaminationSession, SessionRound, SessionRoundSlot } from './types';
 
 export function sessionRounds(session: ExaminationSession): SessionRound[] {
   const configured = (session.rounds || []).filter(round => String(round.name || '').trim());
@@ -27,4 +27,14 @@ export function roundOccurrences(round: SessionRound): SessionRoundSlot[] {
   if (slots.length) return slots;
   if (round.date || round.label) return [{ id: `${round.id || 'round'}-legacy`, label: round.label, date: round.date }];
   return [];
+}
+
+export function batchDates(round?: SessionRound) {
+  const dates = [...new Set((round?.slots || []).flatMap(slot => slot.date && /^\d{4}-\d{2}-\d{2}$/.test(slot.date) ? [slot.date] : []))].sort();
+  return dates.length > 1 ? dates : [];
+}
+
+export function resultBatchDate(round: SessionRound, result: CandidateExamHistory) {
+  return round.slots?.find(slot => Boolean(result.occurrenceId) && slot.id === result.occurrenceId)?.date
+    || String(result.date || '').slice(0, 10);
 }

@@ -367,7 +367,8 @@ class RoundResult(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['participation', 'round_id', 'round_name', 'occurrence_id'], name='unique_round_occurrence_per_participation'),
+            models.UniqueConstraint(fields=['participation', 'round_id', 'round_name', 'occurrence_id'], condition=~models.Q(occurrence_id=''), name='unique_round_occurrence_per_participation'),
+            models.UniqueConstraint(fields=['participation', 'round_id', 'round_name', 'exam_date'], condition=models.Q(occurrence_id=''), name='unique_round_day_without_occurrence'),
         ]
         ordering = ['round_name']
 

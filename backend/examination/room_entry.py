@@ -8,6 +8,8 @@ from django.db.models import Count
 
 from .eligibility import is_first_round
 from .models import ExamRoom, RoundResult
+from .registration_batch import batch_days, batch_result_locked, result_batch_day
+from .registration_window import parse_date
 
 
 def first_round(session):
@@ -15,29 +17,23 @@ def first_round(session):
     return rounds[0] if rounds else None
 
 
-def _sat(result):
-    """Đợt đã thi: có điểm, kết quả hoặc trạng thái dự thi."""
-    return any(str(getattr(result, field) or '').strip() for field in ('score', 'result', 'attendance', 'rank'))
-
-
-def _batch_row(participation, room, slot):
+def _batch_row(participation, room, round_config, slot):
     """Kết quả vòng của đúng đợt phòng này.
 
     Thí sinh có thể thi nhiều đợt (25/11/2026): xếp vào phòng đợt 2 không được
-    chuyển mất kết quả đợt 1 đã thi. Thứ tự: kết quả của chính đợt này, kết quả
-    chưa có đợt, kết quả đợt khác chưa thi (đổi lịch), còn lại tạo kết quả mới.
+    chuyển mất lượt đăng ký hay kết quả ở đợt khác. Dùng kết quả cùng ngày hoặc
+    lượt còn trống trước khi tạo kết quả mới.
     """
     rows = list(RoundResult.objects.filter(participation=participation, round_id=room.round_id).order_by('-updated_at'))
-    slot_date = str(slot.get('date') or '').strip()
+    slot_date = parse_date(slot.get('date'))
     same = [row for row in rows if (room.occurrence_id and row.occurrence_id == room.occurrence_id)
-            or (not row.occurrence_id and slot_date and str(row.exam_date or '')[:10] == slot_date)]
+            or (slot_date and result_batch_day(row, round_config) == slot_date)]
     if same:
         return same[0]
-    blank = [row for row in rows if not row.occurrence_id and not row.exam_date]
+    blank = [row for row in rows if not row.occurrence_id and not row.exam_date and not batch_result_locked(row)]
     if blank:
         return blank[0]
-    unsat = [row for row in rows if not _sat(row)]
-    return unsat[0] if unsat else None
+    return rows[0] if rows and not room.occurrence_id and not slot_date else None
 
 
 def _slot(round_config, occurrence_id):
@@ -116,6 +112,8 @@ def assign_to_room(participation, room):
     if not is_first_round(session, room.round_id):
         raise ValueError('Chỉ xếp phòng khi thêm thí sinh cho vòng đầu tiên.')
     slot = _slot(round_config, room.occurrence_id)
+    if len(batch_days(round_config)) > 1 and not parse_date(slot.get('date')):
+        raise ValueError('Hãy chọn phòng của một đợt thi cụ thể.')
     peer = room.assignments.exclude(participation=participation).order_by('-updated_at').first()
     if peer:
         values = {'exam_date': peer.exam_date, 'time_slot': peer.time_slot, 'mode': peer.mode, 'location': peer.location}
@@ -126,7 +124,7 @@ def assign_to_room(participation, room):
             'mode': 'Trực tuyến' if online else 'Trực tiếp',
             'location': f'{room.label}: {room.link}' if online and room.link else ' · '.join(value for value in [room.label, room.location] if value),
         }
-    result = (_batch_row(participation, room, slot)
+    result = (_batch_row(participation, room, round_config, slot)
               or RoundResult(participation=participation, round_id=room.round_id, round_name=str(round_config.get('name') or room.round_name)))
     result.occurrence_id = room.occurrence_id
     result.exam_room = room

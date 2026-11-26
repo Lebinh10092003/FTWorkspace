@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from .form_registration import SESSION_IDS, SPREADSHEET_ID
 from .models import Candidate, CandidateParticipation, ExamSession, RoundResult
-from .registration_batch import open_batch, place_new_registration
+from .registration_batch import add_batch, open_batch, place_new_registration, registered_on
 
 
 def three_batches(today):
@@ -39,6 +39,17 @@ class RegistrationBatchTests(TestCase):
         self.assertEqual((entry['id'], number, day), ('qualifying', 2, self.today + timedelta(days=20)))
         self.assertEqual(open_batch(self.session, self.today + timedelta(days=30))[1], 3)
         self.assertIsNone(open_batch(self.session, self.today + timedelta(days=90)), 'every batch closed')
+
+    def test_multi_batch_round_uses_batch_deadlines_instead_of_round_deadline(self):
+        self.session.rounds[0]['registrationDeadline'] = self.today.isoformat()
+        self.assertEqual(open_batch(self.session, self.today)[1], 2)
+
+    def test_backfill_uses_original_form_submission_day(self):
+        participation = CandidateParticipation.objects.create(candidate=self.candidate(), session=self.session, registration_data={
+            'formSubmittedAt': (self.today - timedelta(days=1)).isoformat() + 'T08:00:00+07:00',
+            'registeredAt': self.today.isoformat() + 'T09:00:00+07:00',
+        })
+        self.assertEqual(registered_on(participation), self.today - timedelta(days=1))
 
     def test_form_registration_enters_open_batch_with_date_only(self):
         row = [''] * 17
@@ -125,13 +136,72 @@ class RegistrationBatchTests(TestCase):
                                        common_name='Phòng', room_number='1', label='Phòng 1', mode=ExamRoom.MODE_IN_PERSON)
         assign_to_room(participation, room)
         rows = {row.occurrence_id: row for row in RoundResult.objects.filter(participation=participation)}
-        self.assertEqual(set(rows), {'b1', 'b2'}, 'seating in batch 2 moved the not-yet-sat batch 3 booking, kept batch 1')
+        self.assertEqual(set(rows), {'b1', 'b2', 'b3'}, 'seating in batch 2 must keep past results and future bookings')
         self.assertEqual(rows['b1'].score, '120')
         self.assertEqual(rows['b2'].exam_room, room)
         # Phân phòng cả vòng khi chưa chọn đợt sẽ xếp một người hai ghế: bị chặn.
         blocked = client.post(f'/api/examination/sessions/{self.session.id}/rounds/qualifying/rooms', {'commonName': 'Phòng', 'rooms': []}, format='json')
         self.assertEqual(blocked.status_code, 400)
         self.assertIn('chọn đợt', blocked.json()['error'])
+
+    def test_multiple_batches_without_assigning_an_exam_shift(self):
+        entry = self.session.rounds[0]
+        for slot in entry['slots'][:]:
+            entry['slots'].append({**slot, 'id': f"{slot['id']}-afternoon", 'time': '14:00'})
+        participant = CandidateParticipation.objects.create(candidate=self.candidate(), session=self.session)
+        for offset in (20, 60):
+            day = self.today + timedelta(days=offset)
+            result = add_batch(participant, entry, day)
+            self.assertEqual((result.occurrence_id, result.time_slot, result.exam_date), ('', '', day.isoformat()))
+            self.assertIsNone(add_batch(participant, entry, day))
+        self.assertEqual(participant.round_results.count(), 2)
+
+    def test_staff_batch_operations_skip_existing_and_preserve_results(self):
+        from rest_framework.test import APIClient
+        from authentication.models import UserProfile
+
+        first = self.sat_batch_one()
+        second = CandidateParticipation.objects.create(candidate=self.candidate('Nguyễn Gia An'), session=self.session)
+        client = APIClient()
+        client.force_authenticate(UserProfile.objects.create(email='exam-admin@example.test', name='Admin', role='ADMIN'))
+        bulk_url = f'/api/examination/sessions/{self.session.id}/candidate-batches'
+        add_day = (self.today + timedelta(days=20)).isoformat()
+        new_day = (self.today + timedelta(days=60)).isoformat()
+        request = {'examDate': add_day, 'candidateCodes': [first.candidate.code, second.candidate.code, 'FT-99999']}
+        response = client.post(bulk_url, request, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['candidates']), 2)
+        self.assertEqual(response.data['skipped'][0]['code'], 'FT-99999')
+        self.assertEqual(len(client.post(bulk_url, request, format='json').data['skipped']), 3)
+
+        move_url = f'/api/examination/candidates/{first.candidate.code}/sessions/{self.session.id}/batches'
+        result = first.round_results.get(occurrence_id='b2')
+        move = {'roundId': 'qualifying', 'examDate': new_day, 'moveFromResultId': str(result.pk), 'moveFromExamDate': add_day}
+        self.assertEqual(client.post(move_url, move, format='json').status_code, 200)
+        self.assertEqual(client.post(move_url, move, format='json').status_code, 409)
+        completed = first.round_results.get(occurrence_id='b1')
+        self.assertEqual(completed.score, '120')
+        self.assertEqual(client.post(move_url, {
+            **move, 'examDate': add_day, 'moveFromResultId': str(completed.pk), 'moveFromExamDate': completed.exam_date,
+        }, format='json').status_code, 409)
+        self.assertEqual(set(first.round_results.values_list('occurrence_id', flat=True)), {'b1', 'b3'})
+
+    def test_manual_enrollment_can_choose_batch_without_assigning_room(self):
+        from rest_framework.test import APIClient
+        from authentication.models import UserProfile
+
+        client = APIClient()
+        client.force_authenticate(UserProfile.objects.create(email='manual-batch@example.test', name='Admin', role='ADMIN'))
+        target = (self.today + timedelta(days=60)).isoformat()
+        result = client.post('/api/examination/import/candidates', {
+            'sessionId': self.session.pk, 'source': 'Nhập thủ công',
+            'records': [{'name': 'Nguyễn Minh An', 'birthDate': '2017-03-15'}],
+            'examBatches': {self.session.pk: target},
+        }, format='json')
+        self.assertEqual(result.status_code, 200, result.data)
+        saved = RoundResult.objects.get(participation__candidate__name='Nguyễn Minh An', participation__session=self.session)
+        self.assertEqual((saved.occurrence_id, saved.exam_date, saved.exam_room_id, saved.time_slot, saved.link),
+                         ('b3', target, None, '', ''))
 
     def test_backfill_command_dry_runs_then_places_only_later_registrations(self):
         def registered(offset, name):

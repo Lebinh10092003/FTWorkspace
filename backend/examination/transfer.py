@@ -24,7 +24,7 @@ def _partner_for(group):
 
 
 @transaction.atomic
-def transfer_participation(participation, target, room_choice=None, actor=''):
+def transfer_participation(participation, target, room_choice=None, actor='', *, exam_date=None):
     """Returns (new participation, summary text)."""
     from .school_import import attach_to_school, has_individual_accounting
     source = participation.session
@@ -33,6 +33,9 @@ def transfer_participation(participation, target, room_choice=None, actor=''):
         raise ValueError('Hãy chọn một cuộc thi khác với cuộc thi hiện tại.')
     if CandidateParticipation.objects.filter(candidate=candidate, session=target).exists():
         raise ValueError(f'{candidate.name} đã đăng ký {target.code}. Nếu chỉ bỏ {source.code}, hãy dùng "Gỡ khỏi kỳ thi".')
+    if exam_date:
+        from .registration_batch import add_batch, staff_batch
+        entry, day = staff_batch(target, exam_date)
     data = dict(participation.registration_data or {})
     moved = CandidateParticipation.objects.create(
         candidate=candidate, session=target, source=f'Đổi từ {source.code}',
@@ -59,7 +62,10 @@ def transfer_participation(participation, target, room_choice=None, actor=''):
     candidate.contests = ', '.join(dict.fromkeys(contests + [target.code]))
     candidate.save(update_fields=['session_ids', 'contests', 'updated_at'])
     room = None
-    if room_choice:
+    if exam_date:
+        add_batch(moved, entry, day)
+        notes.append(f'xếp đợt thi {day:%d/%m/%Y}')
+    elif room_choice:
         from .models import ExamRoom
         from .room_entry import assign_to_room, create_room
         if room_choice.get('newRoom'):

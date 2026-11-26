@@ -16,6 +16,8 @@ import DetailEditDialogs from "./examination/DetailEditDialogs";
 import SchoolEntryPicker, { emptySchoolEntry, type SchoolEntry } from "./examination/SchoolEntryPicker";
 import { normalizeSearchText } from '../lib/searchText';
 import RoomEntryPicker, { type RoomChoices } from "./examination/RoomEntryPicker";
+import BatchEntryPicker, { type BatchChoices } from "./examination/BatchEntryPicker";
+import ExamDialog from "./examination/ExamDialog";
 import CandidateProfileDetail from "./examination/CandidateProfileDetail";
 import SessionRoster from "./examination/SessionRoster";
 import RegistrationPageStudio from "./examination/RegistrationPageStudio";
@@ -227,7 +229,10 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
     [candidateAddSchool, setCandidateAddSchool] = useState<SchoolEntry>(emptySchoolEntry),
     [enrolSchool, setEnrolSchool] = useState<SchoolEntry>(emptySchoolEntry),
     [candidateAddRooms, setCandidateAddRooms] = useState<RoomChoices>({}),
+    [candidateAddBatches, setCandidateAddBatches] = useState<BatchChoices>({}),
+    [candidateAddError, setCandidateAddError] = useState(''),
     [enrolRooms, setEnrolRooms] = useState<RoomChoices>({}),
+    [enrolBatches, setEnrolBatches] = useState<BatchChoices>({}),
     [candidateAdd, setCandidateAdd] = useState({
       code: "",
       name: "",
@@ -635,6 +640,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
   const createCandidate = async () => {
     if (candidateAddSaving || !candidateAdd.name.trim() || !candidateAdd.sessionIds.length) return;
     setCandidateAddSaving(true);
+    setCandidateAddError('');
     const item = {
       ...candidateAdd,
       contests: [...new Set(sessions.filter(session => candidateAdd.sessionIds.includes(session.id)).map(session => session.code))].join(', '),
@@ -658,7 +664,8 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
           source: "Nhập thủ công",
           schoolPartnerId: candidateAddSchool.partnerId,
           schoolFee: candidateAddSchool.fee,
-          examRooms: Object.fromEntries(Object.entries(candidateAddRooms).filter(([id]) => candidateAdd.sessionIds.includes(id))),
+          examBatches: Object.fromEntries(Object.entries(candidateAddBatches).filter(([id, day]) => day && candidateAdd.sessionIds.includes(id))),
+          examRooms: Object.fromEntries(Object.entries(candidateAddRooms).filter(([id]) => candidateAdd.sessionIds.includes(id) && !candidateAddBatches[id])),
         }),
       });
       (result.items || [item]).forEach((candidate: Candidate) => appendLogNote(`candidate-${candidate.code}`, "Tạo thí sinh mới.", userName || "Nhân viên FT Workspace"));
@@ -669,6 +676,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
       setSessions(list => list.map(session => result.sessions?.find((saved: Session) => saved.id === session.id) || session));
       setCandidateAddSchool(emptySchoolEntry);
       setCandidateAddRooms({});
+      setCandidateAddBatches({});
       setCandidateAdd({
         code: "",
         name: "",
@@ -678,8 +686,9 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         sessionIds: [],
       });
       setShowCandidateAdd(false);
-    } catch (requestError: any) {
-      setNotice(requestError.message || "Không thể thêm thí sinh.");
+      setNotice(`Đã lưu hồ sơ ${candidateAdd.name.trim()}.`);
+    } catch (requestError) {
+      setCandidateAddError(requestError instanceof Error ? requestError.message : 'Không thể thêm thí sinh.');
     } finally {
       setCandidateAddSaving(false);
     }
@@ -798,7 +807,8 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
             source: "Th\u00eam th\u00ed sinh t\u1eeb kho",
             schoolPartnerId: enrolSchool.partnerId,
             schoolFee: enrolSchool.fee,
-            examRooms: enrolRooms[selected.id] ? { [selected.id]: enrolRooms[selected.id] } : {},
+            examBatches: enrolBatches[selected.id] ? { [selected.id]: enrolBatches[selected.id] } : {},
+            examRooms: enrolRooms[selected.id] && !enrolBatches[selected.id] ? { [selected.id]: enrolRooms[selected.id] } : {},
             records: [
               {
                 // A profile from the repository joins this session with no
@@ -817,6 +827,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         if (refreshedSession) setSelected(refreshedSession);
         setEnrolSchool(emptySchoolEntry);
         setEnrolRooms({});
+        setEnrolBatches({});
         setNotice(`\u0110\u00e3 th\u00eam ${candidateEnroll.name} v\u00e0o k\u1ef3 t\u1ed5 ch\u1ee9c.`);
       } else if (dialog === "teacher") {
         const before = selectedTeacher;
@@ -1591,6 +1602,11 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
             setCandidates((list) => list.map((item) => (item.code === candidate.code ? candidate : item)));
             setStudent((current) => (current?.code === candidate.code ? candidate : current));
           }}
+          onCandidatesUpdated={(updated) => {
+            const byCode = new Map(updated.map(candidate => [candidate.code, candidate]));
+            setCandidates(list => list.map(candidate => byCode.get(candidate.code) || candidate));
+            setStudent(current => current ? byCode.get(current.code) || current : current);
+          }}
           onOpenCandidate={(candidate) => {
             setStudent(candidate);
             setStudentDraft(candidate);
@@ -1680,7 +1696,7 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         title="Danh sách thí sinh"
         description="Theo dõi lịch sử tham gia, thành tích và hồ sơ cập nhật gần nhất."
         action={
-          <button disabled={!canContribute} onClick={() => setShowCandidateAdd(true)} className="ft-primary disabled:opacity-50">
+          <button disabled={!canContribute} onClick={() => { setCandidateAddError(''); setShowCandidateAdd(true); }} className="ft-primary disabled:opacity-50">
             <Plus className="h-4 w-4" />
             Thêm thí sinh
           </button>
@@ -1830,21 +1846,12 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         <TablePagination total={people.length} page={activeCandidatePage} onPageChange={setCandidatePage} label="thí sinh" />
       </section>
       {showCandidateAdd && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-            <button onClick={() => setShowCandidateAdd(false)} className="float-right rounded p-1 text-slate-500 hover:bg-slate-100">
-              <X className="h-5 w-5" />
-            </button>
-            <h2 className="text-2xl font-extrabold">Thêm thí sinh</h2>
-            <p className="mt-2 text-sm text-slate-600">Nhập nhanh một hồ sơ hoặc chuyển sang công cụ nhập hàng loạt từ file mẫu và Google Sheets.</p>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <label>
-                <span className="mb-1 block text-sm font-bold">Mã FT</span>
-                <input value={candidateAdd.code} onChange={(e) => setCandidateAdd({ ...candidateAdd, code: e.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Để trống để tự tạo" />
-              </label>
+        <ExamDialog open title="Thêm hồ sơ thí sinh" description="Nhập họ tên, chọn kỳ thi và điền đợt thi nếu đã biết." onClose={() => setShowCandidateAdd(false)}
+          onSubmit={createCandidate} busy={candidateAddSaving} submitLabel="Lưu hồ sơ" submitDisabled={!candidateAdd.name.trim() || !candidateAdd.sessionIds.length}>
+            <div className="grid gap-4 sm:grid-cols-2">
               <label>
                 <span className="mb-1 block text-sm font-bold">Họ và tên *</span>
-                <input value={candidateAdd.name} onChange={(e) => setCandidateAdd({ ...candidateAdd, name: e.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2" />
+                <input required value={candidateAdd.name} onChange={(e) => setCandidateAdd({ ...candidateAdd, name: e.target.value })} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2" />
               </label>
               <label>
                 <span className="mb-1 block text-sm font-bold">Trường học</span>
@@ -1870,7 +1877,11 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
               <div className="sm:col-span-2">
                 <span className="mb-1 block text-sm font-bold">Các kỳ tổ chức *</span>
                 <SearchableSelect multiple value={candidateAdd.sessionIds}
-                  onChange={sessionIds => setCandidateAdd(current => ({ ...current, sessionIds }))}
+                  onChange={sessionIds => {
+                    setCandidateAdd(current => ({ ...current, sessionIds }));
+                    setCandidateAddBatches(current => Object.fromEntries(Object.entries(current).filter(([id]) => sessionIds.includes(id))));
+                    setCandidateAddRooms(current => Object.fromEntries(Object.entries(current).filter(([id]) => sessionIds.includes(id))));
+                  }}
                   options={sessions.map(session => ({ value: session.id, label: `${session.code} · ${sessionDisplayName(session)}` }))}
                   placeholder="Chọn một hoặc nhiều kỳ tổ chức" searchPlaceholder="Tìm cuộc thi hoặc kỳ tổ chức..." />
                 <p className="mt-2 text-xs text-slate-500">Có thể chọn nhiều cuộc thi. Một mã FT dùng chung, thông tin đăng ký được lưu riêng cho từng kỳ.</p>
@@ -1883,28 +1894,25 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
                 }} />
               </div>
               <div className="sm:col-span-2">
-                <RoomEntryPicker api={api} value={candidateAddRooms} onChange={setCandidateAddRooms}
-                  sessions={sessions.filter(session => candidateAdd.sessionIds.includes(session.id)).map(session => ({ id: session.id, label: `${session.code} · ${sessionDisplayName(session)}` }))} />
-              </div>
-            </div>
-            <div className="mt-6 flex flex-wrap justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowCandidateAdd(false);
-                  go("import");
+                <BatchEntryPicker value={candidateAddBatches} onChange={next => {
+                  setCandidateAddBatches(next);
+                  setCandidateAddRooms(current => Object.fromEntries(Object.entries(current).filter(([id]) => !next[id])));
                 }}
-                className="rounded-lg border border-[#aa3000] px-4 py-2 text-sm font-bold text-[#aa3000]"
-              >
-                <UploadCloud className="mr-1 inline h-4 w-4" />
-                Nhập file / Google Sheets
-              </button>
-              <button disabled={candidateAddSaving || !candidateAdd.name.trim() || !candidateAdd.sessionIds.length} onClick={createCandidate} className="ft-primary disabled:opacity-50">
-                <Plus className="h-4 w-4" />
-                {candidateAddSaving ? 'Đang lưu...' : 'Thêm hồ sơ'}
-              </button>
+                  sessions={sessions.filter(session => candidateAdd.sessionIds.includes(session.id))} />
+              </div>
+              <div className="sm:col-span-2">
+                <RoomEntryPicker api={api} value={candidateAddRooms} onChange={setCandidateAddRooms}
+                  sessions={sessions.filter(session => candidateAdd.sessionIds.includes(session.id) && !candidateAddBatches[session.id]).map(session => ({ id: session.id, label: `${session.code} · ${sessionDisplayName(session)}` }))} />
+              </div>
+              <details className="sm:col-span-2">
+                <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-sky-800">Dùng mã FT đã biết</summary>
+                <label className="block text-sm font-semibold">Mã FT
+                  <input value={candidateAdd.code} onChange={event => setCandidateAdd(current => ({ ...current, code: event.target.value }))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Để trống để hệ thống tạo mã" />
+                </label>
+              </details>
             </div>
-          </div>
-        </div>
+            {candidateAddError && <p role="alert" className="mt-4 text-sm font-semibold text-rose-700">{candidateAddError}</p>}
+        </ExamDialog>
       )}
     </>
   );
@@ -2229,7 +2237,10 @@ export default function ExaminationModule({ onBackToWorkspace, onAccountClick, o
         partners={partners}
         schoolEntry={enrolSchool}
         onSchoolEntryChange={setEnrolSchool}
-        enrolExtra={dialog === "enrol" && selected?.id ? <RoomEntryPicker api={api} value={enrolRooms} onChange={setEnrolRooms} sessions={[{ id: selected.id, label: selected.code }]} /> : null}
+        enrolExtra={dialog === "enrol" && selected?.id ? <div className="grid gap-3">
+          <BatchEntryPicker sessions={[selected]} value={enrolBatches} onChange={next => { setEnrolBatches(next); setEnrolRooms({}); }} />
+          {!enrolBatches[selected.id] && <RoomEntryPicker api={api} value={enrolRooms} onChange={setEnrolRooms} sessions={[{ id: selected.id, label: selected.code }]} />}
+        </div> : null}
         onTeacherChange={setTeacherEdit}
         onSave={saveDialog}
       />

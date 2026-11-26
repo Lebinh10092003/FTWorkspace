@@ -243,7 +243,7 @@ def public_registration(request):
         # trước khi ghi: trả lỗi giữa chừng không hoàn tác các bản đã ghi.
         existing = {}
         if candidate:
-            from .registration_batch import batch_slot_id, entry_round_results, in_batch, open_batch
+            from .registration_batch import entry_round_results, open_batch, result_batch_day
             current = {item.session_id: item for item in CandidateParticipation.objects.filter(
                 candidate=candidate, session_id__in=[available[code].id for code in codes])}
             for code in codes:
@@ -251,7 +251,7 @@ def public_registration(request):
                 if not participation:
                     continue
                 batch = open_batch(participation.session)
-                if not batch or any(in_batch(result, batch_slot_id(batch[0], batch[2]), batch[2])
+                if not batch or any(result_batch_day(result, batch[0]) == batch[2]
                                     for result in entry_round_results(participation, batch[0])):
                     return Response({'error': f'Thí sinh đã đăng ký {code}{" ở đợt này" if batch else ""}. Vui lòng liên hệ ban tổ chức để cập nhật.'}, status=409)
                 existing[code] = participation
